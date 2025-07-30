@@ -1,0 +1,1203 @@
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#   "click>=8.0",
+#   "openai>=1.14.0",
+#   "httpx>=0.27.0",
+#   "rich>=13.7",
+#   "platformdirs>=3.0",
+#   "aiofiles>=23.0",
+#   "tenacity>=8.0",
+#   "python-dateutil>=2.8"
+# ]
+# ///
+"""
+Thoth - AI-Powered Research Assistant
+
+A command-line tool that automates deep technical research using multiple LLM providers.
+"""
+
+import asyncio
+import json
+import os
+import sys
+import time
+import tomllib
+from dataclasses import dataclass, asdict, field
+from datetime import datetime, timedelta
+from pathlib import Path
+from typing import List, Optional, Dict, Any
+from uuid import uuid4
+import re
+import shutil
+
+import click
+from rich.console import Console
+from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn
+from rich.table import Table
+from platformdirs import user_config_dir
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+from openai import AsyncOpenAI
+import httpx
+import aiofiles
+
+# Initialize console for rich output
+console = Console()
+
+# Version tracking
+THOTH_VERSION = "1.2.0"
+CONFIG_VERSION = "1.0"
+
+# Built-in mode definitions
+BUILTIN_MODES = {
+    "clarification": {
+        "provider": "openai",
+        "model": "gpt-4o-mini",
+        "system_prompt": """I don't want you to follow the above question and instructions; I want you to tell me the ways this is unclear, point out any ambiguities or anything you don't understand. Follow that by asking questions to help clarify the ambiguous points. Once there are no more unclear, ambiguous or not understood portions, help me draft a clear version of the question/instruction.""",
+        "description": "Clarifying takes the prompt to get. Ask clarifying questions to get rid of anything that's ambiguous, unclear, and also make suggestions on what would be a better question.",
+        "next": "exploration"
+    },
+    "exploration": {
+        "provider": "openai",
+        "model": "gpt-4o",
+        "system_prompt": "Explore the topic at hand, looking at options, alternatives, different trade-offs, and make recommendations based on the use case or alternative/related technologies.",
+        "description": "Exploration looks at the topic at hand and explores some options and alternatives, different trade-offs, and makes recommendations based on the use case or just alternative and related technologies.",
+        "previous": "clarification",
+        "next": "deep_dive"
+    },
+    "deep_dive": {
+        "provider": "openai",
+        "model": "gpt-4o",
+        "system_prompt": "Deep dive into the specific technology, giving an overview, going deep on it, discussing it, and exploring it. For APIs, cover what the API is, how it works, assumptions, dependencies, if it's deprecated, common pitfalls. For other technologies, cover what the technology is and how it's used.",
+        "description": "This deep dives into a specific technology, giving an overview of it, going deep on it, discussing it, and exploring it.",
+        "previous": "exploration",
+        "next": "tutorial"
+    },
+    "tutorial": {
+        "provider": "openai", 
+        "model": "gpt-4o",
+        "system_prompt": "Create a detailed tutorial with examples of how the technologies are used in common scenarios to get started, along with code samples, command-line execution process, and other useful information.",
+        "description": "The tutorial goes into a detailed explanation with examples of how the technologies are used in common scenarios to get started.",
+        "previous": "deep_dive",
+        "next": "solution"
+    },
+    "solution": {
+        "provider": "openai",
+        "model": "gpt-4o",
+        "system_prompt": "Design a specific solution to solve the given problem using appropriate technology. Focus on practical implementation.",
+        "description": "A solution generally goes into a specific solution to solve a specific problem using technology.",
+        "previous": "tutorial",
+        "next": "prd"
+    },
+    "prd": {
+        "provider": "openai",
+        "model": "gpt-4o",
+        "system_prompt": "Create a Product Requirements Document based on prior research. Use previous research on solutions and technologies to create a comprehensive requirements document.",
+        "description": "Product Requirements Document based on prior research, we'll create the PRD looking at previous research on solutions to technologies.",
+        "previous": "solution",
+        "next": "tdd"
+    },
+    "tdd": {
+        "provider": "openai",
+        "model": "gpt-4o",
+        "system_prompt": "Create a Technical Design Document based on the PRD and prior research. Consider best practices on architecture and good abstractions to make things maintainable and well-structured in code.",
+        "description": "The Technical Design Document based on the PRD and prior research puts together a technical design document.",
+        "previous": "prd"
+    },
+    "thinking": {
+        "provider": "openai",
+        "model": "gpt-4o-mini",
+        "temperature": 0.4,
+        "system_prompt": "You are a helpful assistant for quick analysis.",
+        "description": "Quick thinking and analysis mode for simple questions."
+    },
+    "deep_research": {
+        "providers": ["openai", "perplexity"],
+        "parallel": True,
+        "system_prompt": "Conduct comprehensive research with citations and multiple perspectives.\nOrganize findings clearly and highlight key insights.",
+        "description": "Deep research mode using multiple providers for comprehensive analysis.",
+        "previous": "exploration",
+        "auto_input": True
+    }
+}
+
+# ============================================================================
+# Configuration Management
+# ============================================================================
+
+class Config:
+    """Manages configuration loading and validation"""
+    
+    def __init__(self, config_path: Optional[Path] = None):
+        self.config_path = config_path or Path(user_config_dir("thoth")) / "config.toml"
+        self.data = self._load_config()
+    
+    def _load_config(self) -> Dict[str, Any]:
+        """Load and validate configuration"""
+        if not self.config_path.exists():
+            return self._default_config()
+        
+        with open(self.config_path, "rb") as f:
+            config = tomllib.load(f)
+        
+        # Check configuration version
+        config_version = config.get("version", "0.0")
+        if config_version != CONFIG_VERSION:
+            console.print(f"[yellow]Warning:[/yellow] Configuration version mismatch. Expected {CONFIG_VERSION}, found {config_version}")
+            console.print("[yellow]Some settings may not work as expected. Run 'thoth init' to update.[/yellow]")
+        
+        # Expand paths - handle symlinks by resolving to absolute paths
+        if "paths" in config:
+            for key, value in config["paths"].items():
+                path = Path(value).expanduser()
+                if path.exists() and path.is_symlink():
+                    path = path.resolve()
+                config["paths"][key] = str(path)
+        
+        # Handle environment variables
+        config = self._substitute_env_vars(config)
+        
+        return config
+    
+    def _substitute_env_vars(self, config: Dict[str, Any]) -> Dict[str, Any]:
+        """Replace ${VAR} with environment variable values"""
+        def substitute(value):
+            if type(value) == str and value.startswith("${") and value.endswith("}"):
+                var_name = value[2:-1]
+                return os.getenv(var_name, value)
+            elif type(value) == dict:
+                return {k: substitute(v) for k, v in value.items()}
+            elif type(value) == list:
+                return [substitute(v) for v in value]
+            return value
+        
+        return substitute(config)
+    
+    def _default_config(self) -> Dict[str, Any]:
+        """Return default configuration"""
+        return {
+            "version": CONFIG_VERSION,
+            "general": {
+                "default_project": "",  # Empty means ad-hoc mode
+                "default_mode": "deep_research"
+            },
+            "paths": {
+                "base_output_dir": "./research-outputs",
+                "checkpoint_dir": str(Path(user_config_dir("thoth")) / "checkpoints")
+            },
+            "execution": {
+                "poll_interval": 30,
+                "max_wait": 30,
+                "parallel_providers": True,
+                "retry_attempts": 3,
+                "auto_input": True
+            },
+            "output": {
+                "combine_reports": True,
+                "format": "markdown",
+                "include_metadata": True,
+                "timestamp_format": "%Y-%m-%d_%H%M%S"
+            },
+            "providers": {
+                "openai": {
+                    "api_key": "${OPENAI_API_KEY}"
+                },
+                "perplexity": {
+                    "api_key": "${PERPLEXITY_API_KEY}"
+                }
+            },
+            "modes": {}  # Modes will be merged with built-in modes
+        }
+    
+    def get_mode_config(self, mode: str) -> Dict[str, Any]:
+        """Get mode configuration, merging built-in with user config"""
+        # Start with built-in mode if it exists
+        mode_config = BUILTIN_MODES.get(mode, {}).copy()
+        
+        # Override with user config if present
+        user_mode = self.data.get("modes", {}).get(mode, {})
+        mode_config.update(user_mode)
+        
+        return mode_config
+
+# ============================================================================
+# Utility Functions
+# ============================================================================
+
+def generate_operation_id() -> str:
+    """Generate unique operation ID with 16-char UUID suffix"""
+    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    unique_suffix = str(uuid4()).replace('-', '')[:16]  # 16 chars for better uniqueness
+    return f"research-{timestamp}-{unique_suffix}"
+
+def sanitize_slug(text: str, max_length: int = 50) -> str:
+    """Convert text to filename-safe slug"""
+    # Keep alphanumeric and spaces, replace spaces with hyphens
+    slug = re.sub(r'[^a-zA-Z0-9\s-]', '', text)
+    slug = re.sub(r'\s+', '-', slug.strip())
+    return slug[:max_length].lower()
+
+def mask_api_key(key: str) -> str:
+    """Mask API key for display"""
+    if not key or len(key) < 8:
+        return "***"
+    return f"{key[:3]}...{key[-3:]}"
+
+def check_disk_space(path: Path, required_mb: int = 100) -> bool:
+    """Check if sufficient disk space is available"""
+    stat = shutil.disk_usage(path)
+    available_mb = stat.free / (1024 * 1024)
+    return available_mb >= required_mb
+
+# ============================================================================
+# Data Models
+# ============================================================================
+
+@dataclass
+class OperationStatus:
+    """Status of a research operation"""
+    id: str
+    query: str
+    mode: str
+    status: str  # "queued", "running", "completed", "failed", "cancelled"
+    created_at: datetime
+    updated_at: datetime
+    providers: Dict[str, Dict[str, Any]] = field(default_factory=dict)
+    output_paths: Dict[str, Path] = field(default_factory=dict)
+    error: Optional[str] = None
+    progress: float = 0.0  # 0.0 to 1.0
+    project: Optional[str] = None
+    input_files: List[Path] = field(default_factory=list)
+
+# ============================================================================
+# Exception Classes
+# ============================================================================
+
+class ThothError(Exception):
+    """Base exception for Thoth errors"""
+    def __init__(self, message: str, suggestion: str = None, exit_code: int = 1):
+        self.message = message
+        self.suggestion = suggestion
+        self.exit_code = exit_code
+        super().__init__(message)
+
+class APIKeyError(ThothError):
+    """Missing or invalid API key"""
+    def __init__(self, provider: str):
+        super().__init__(
+            f"{provider} API key not found",
+            f"Set {provider.upper()}_API_KEY or run 'thoth init'",
+            exit_code=2
+        )
+
+class ProviderError(ThothError):
+    """Provider-specific error"""
+    def __init__(self, provider: str, message: str):
+        super().__init__(
+            f"{provider} error: {message}",
+            "Check API status or try again later",
+            exit_code=3
+        )
+
+class DiskSpaceError(ThothError):
+    """Insufficient disk space"""
+    def __init__(self, message: str):
+        super().__init__(
+            message,
+            "Free up disk space and try again",
+            exit_code=8
+        )
+
+class APIQuotaError(ThothError):
+    """API quota exceeded"""
+    def __init__(self, provider: str):
+        super().__init__(
+            f"{provider} API quota exceeded",
+            "Wait for quota reset or upgrade your plan",
+            exit_code=9
+        )
+
+def handle_error(error: Exception):
+    """Display error with appropriate formatting"""
+    if isinstance(error, ThothError):
+        console.print(f"\n[red]Error:[/red] {error.message}")
+        if error.suggestion:
+            console.print(f"[yellow]Suggestion:[/yellow] {error.suggestion}")
+        sys.exit(error.exit_code)
+    elif isinstance(error, KeyboardInterrupt):
+        console.print("\n[yellow]Operation cancelled by user[/yellow]")
+        sys.exit(1)
+    else:
+        console.print(f"\n[red]Unexpected error:[/red] {str(error)}")
+        console.print("[dim]Please report this issue[/dim]")
+        if os.getenv("THOTH_DEBUG"):
+            console.print_exception()
+        sys.exit(127)
+
+# ============================================================================
+# Click CLI Implementation
+# ============================================================================
+
+@click.group(invoke_without_command=True)
+@click.pass_context
+@click.option('--mode', '-m', 'mode_opt', help='Research mode')
+@click.option('--query', '-q', 'query_opt', help='Research query')
+@click.option('--query-file', '-Q', help='Read query from file (use - for stdin)')
+@click.option('--async', '-A', 'async_mode', is_flag=True, help='Submit and exit')
+@click.option('--resume', '-R', 'resume_id', help='Resume operation by ID')
+@click.option('--project', '-p', help='Project name')
+@click.option('--output-dir', '-o', help='Override output directory')
+@click.option('--provider', '-P', type=click.Choice(['openai', 'perplexity']), help='Single provider')
+@click.option('--input-file', help='Use output from previous mode as input')
+@click.option('--auto', is_flag=True, help='Automatically use latest relevant output as input')
+@click.option('--verbose', '-v', is_flag=True, help='Enable debug output')
+@click.option('--version', '-V', is_flag=True, help='Show version and exit')
+def cli(ctx, mode_opt, query_opt, query_file, async_mode, resume_id, 
+        project, output_dir, provider, input_file, auto, verbose, version):
+    """Thoth - AI-Powered Research Assistant
+    
+    Run research with: thoth MODE "QUERY"
+    Or use commands: init, status, list
+    """
+    # Show version if requested
+    if version:
+        console.print(f"Thoth v{THOTH_VERSION}")
+        sys.exit(0)
+    
+    # If no subcommand, run research
+    if ctx.invoked_subcommand is None:
+        # For positional arguments, we need to check remaining args
+        args = ctx.args
+        
+        # Resolve mode and query from positional or options
+        final_mode = None
+        final_query = None
+        
+        if len(args) >= 2:
+            final_mode = args[0]
+            final_query = args[1]
+        elif len(args) == 1:
+            final_mode = args[0]
+            final_query = query_opt
+        else:
+            final_mode = mode_opt
+            final_query = query_opt
+        
+        # Handle query file
+        if query_file:
+            if query_file == '-':
+                # Read from stdin with size limit
+                stdin_data = sys.stdin.read(1024 * 1024)  # 1MB limit
+                if len(stdin_data) >= 1024 * 1024:
+                    raise click.BadParameter("Stdin input exceeds 1MB limit")
+                final_query = stdin_data.strip()
+            else:
+                with open(query_file, 'r') as f:
+                    final_query = f.read().strip()
+        
+        # Validation
+        if async_mode and resume_id:
+            raise click.BadParameter("Cannot use --async with --resume")
+        
+        if query_file and query_opt:
+            raise click.BadParameter("Cannot use --query-file with --query")
+            
+        if input_file and auto:
+            raise click.BadParameter("Cannot use --input-file with --auto")
+        
+        if resume_id:
+            # Resume existing operation
+            asyncio.run(resume_operation(resume_id, verbose))
+        elif final_mode and final_query:
+            # Run new research
+            asyncio.run(run_research(
+                mode=final_mode,
+                query=final_query,
+                async_mode=async_mode,
+                project=project,
+                output_dir=output_dir,
+                provider=provider,
+                input_file=input_file,
+                auto=auto,
+                verbose=verbose
+            ))
+        else:
+            # Show help if no valid command
+            console.print(ctx.get_help())
+
+@cli.command()
+def init():
+    """Initialize Thoth configuration"""
+    console.print("[bold]Welcome to Thoth Research Assistant Setup![/bold]\n")
+    
+    # Check environment
+    console.print("Checking environment...")
+    console.print(f"✓ Python {sys.version.split()[0]} detected")
+    console.print("✓ UV package manager available")
+    console.print(f"✓ Operating System: {sys.platform} (supported)\n")
+    
+    config_path = Path(user_config_dir("thoth")) / "config.toml"
+    console.print(f"Configuration file will be created at: {config_path}\n")
+    
+    # Create config directory if it doesn't exist
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    
+    # TODO: Implement interactive setup wizard
+    console.print("[yellow]Interactive setup wizard not yet implemented.[/yellow]")
+    console.print("Creating default configuration...")
+    
+    # Create default config
+    config = Config()
+    
+    # For now, just save the default config using basic TOML format
+    # Since we can't use external toml library in UV script, write manually
+    with open(config_path, 'w') as f:
+        f.write('# Thoth Configuration File\n')
+        f.write(f'version = "{CONFIG_VERSION}"\n\n')
+        f.write('[general]\n')
+        f.write('default_project = ""\n')
+        f.write('default_mode = "deep_research"\n\n')
+        f.write('[paths]\n')
+        f.write('base_output_dir = "./research-outputs"\n')
+        f.write(f'checkpoint_dir = "{config.data["paths"]["checkpoint_dir"]}"\n\n')
+        f.write('[execution]\n')
+        f.write('poll_interval = 30\n')
+        f.write('max_wait = 30\n')
+        f.write('parallel_providers = true\n')
+        f.write('retry_attempts = 3\n')
+        f.write('auto_input = true\n\n')
+        f.write('[output]\n')
+        f.write('combine_reports = true\n')
+        f.write('format = "markdown"\n')
+        f.write('include_metadata = true\n')
+        f.write('timestamp_format = "%Y-%m-%d_%H%M%S"\n\n')
+        f.write('[providers.openai]\n')
+        f.write('api_key = "${OPENAI_API_KEY}"\n\n')
+        f.write('[providers.perplexity]\n')
+        f.write('api_key = "${PERPLEXITY_API_KEY}"\n')
+    
+    console.print(f"\n[green]✓[/green] Configuration saved to {config_path}")
+    console.print("\nYou can now run: thoth deep_research \"your query\"")
+
+@cli.command()
+@click.argument('operation_id')
+def status(operation_id):
+    """Check status of a research operation"""
+    asyncio.run(show_status(operation_id))
+
+@cli.command(name='list')
+@click.option('--all', 'show_all', is_flag=True, help='Show all operations')
+def list_cmd(show_all):
+    """List research operations"""
+    asyncio.run(list_operations(show_all=show_all))
+
+# ============================================================================
+# Checkpoint Management
+# ============================================================================
+
+class CheckpointManager:
+    """Handles operation persistence with corruption recovery"""
+    
+    def __init__(self, config: Config):
+        self.checkpoint_dir = Path(config.data["paths"]["checkpoint_dir"])
+        self.checkpoint_dir.mkdir(parents=True, exist_ok=True)
+    
+    async def save(self, operation: OperationStatus) -> None:
+        """Save operation state atomically"""
+        checkpoint_file = self.checkpoint_dir / f"{operation.id}.json"
+        temp_file = checkpoint_file.with_suffix(".tmp")
+        
+        data = asdict(operation)
+        # Convert datetime and Path objects to strings
+        data["created_at"] = operation.created_at.isoformat()
+        data["updated_at"] = operation.updated_at.isoformat()
+        data["output_paths"] = {
+            k: str(v) for k, v in operation.output_paths.items()
+        }
+        data["input_files"] = [str(p) for p in operation.input_files]
+        
+        async with aiofiles.open(temp_file, 'w') as f:
+            await f.write(json.dumps(data, indent=2))
+        
+        temp_file.replace(checkpoint_file)
+    
+    async def load(self, operation_id: str) -> Optional[OperationStatus]:
+        """Load operation from checkpoint with corruption handling"""
+        checkpoint_file = self.checkpoint_dir / f"{operation_id}.json"
+        
+        if not checkpoint_file.exists():
+            return None
+        
+        try:
+            async with aiofiles.open(checkpoint_file, 'r') as f:
+                data = json.loads(await f.read())
+            
+            # Convert back to proper types
+            data["created_at"] = datetime.fromisoformat(data["created_at"])
+            data["updated_at"] = datetime.fromisoformat(data["updated_at"])
+            data["output_paths"] = {
+                k: Path(v) for k, v in data["output_paths"].items()
+            }
+            data["input_files"] = [Path(p) for p in data.get("input_files", [])]
+            
+            return OperationStatus(**data)
+        except (json.JSONDecodeError, KeyError, ValueError) as e:
+            console.print(f"[yellow]Warning:[/yellow] Checkpoint file corrupted: {checkpoint_file}")
+            console.print(f"[yellow]Creating new checkpoint. Previous state lost.[/yellow]")
+            # Remove corrupted file
+            checkpoint_file.unlink()
+            return None
+    
+    def trigger_checkpoint(self, event: str) -> bool:
+        """Determine if checkpoint should be saved based on event"""
+        checkpoint_events = [
+            "operation_start",
+            "provider_start",
+            "provider_complete",
+            "provider_fail",
+            "operation_complete",
+            "operation_fail"
+        ]
+        return event in checkpoint_events
+
+# ============================================================================
+# Output Management
+# ============================================================================
+
+class OutputManager:
+    """Manages research output files"""
+    
+    def __init__(self, config: Config):
+        self.config = config
+        self.base_output_dir = Path(config.data["paths"]["base_output_dir"])
+        self.format = config.data["output"]["format"]
+    
+    def get_output_path(
+        self,
+        operation: OperationStatus,
+        provider: str,
+        output_dir: Optional[str] = None
+    ) -> Path:
+        """Generate output path based on mode"""
+        timestamp = operation.created_at.strftime(
+            self.config.data["output"]["timestamp_format"]
+        )
+        slug = sanitize_slug(operation.query)
+        
+        # Determine output directory
+        if output_dir:
+            # Explicit override - takes precedence over everything
+            base_dir = Path(output_dir)
+        elif operation.project:
+            # Project mode
+            base_dir = self.base_output_dir / operation.project
+        else:
+            # Ad-hoc mode - current directory
+            base_dir = Path.cwd()
+        
+        # Ensure directory exists
+        base_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Generate filename with provider
+        ext = "md" if self.format == "markdown" else "json"
+        if provider == "combined":
+            # Special case for combined reports: <timestamp>_<mode>_combined_<slug>.md
+            base_name = f"{timestamp}_{operation.mode}_combined_{slug}"
+        else:
+            base_name = f"{timestamp}_{operation.mode}_{provider}_{slug}"
+        filename = f"{base_name}.{ext}"
+        
+        # Handle deduplication
+        output_path = base_dir / filename
+        counter = 1
+        while output_path.exists():
+            filename = f"{base_name}-{counter}.{ext}"
+            output_path = base_dir / filename
+            counter += 1
+        
+        return output_path
+    
+    async def save_result(
+        self,
+        operation: OperationStatus,
+        provider: str,
+        content: str,
+        output_dir: Optional[str] = None
+    ) -> Path:
+        """Save research result to file"""
+        output_path = self.get_output_path(operation, provider, output_dir)
+        
+        # Check disk space before writing
+        if not check_disk_space(output_path.parent, 10):  # 10MB minimum
+            raise DiskSpaceError("Insufficient disk space to save results")
+        
+        if self.format == "markdown" and self.config.data["output"]["include_metadata"]:
+            # Add metadata header
+            metadata = f"""---
+query: {operation.query}
+mode: {operation.mode}
+provider: {provider}
+operation_id: {operation.id}
+created_at: {operation.created_at.isoformat()}
+"""
+            if operation.input_files:
+                metadata += "input_files:\n"
+                for f in operation.input_files:
+                    metadata += f"  - {f}\n"
+            metadata += "---\n\n"
+            content = metadata + content
+        
+        # Write file
+        async with aiofiles.open(output_path, 'w', encoding='utf-8') as f:
+            await f.write(content)
+        
+        return output_path
+    
+    async def generate_combined_report(
+        self,
+        operation: OperationStatus,
+        contents: Dict[str, str],
+        output_dir: Optional[str] = None
+    ) -> Path:
+        """Generate a combined report from multiple provider results"""
+        # Create synthesized content
+        combined_content = f"# Combined Research Report: {operation.query}\n\n"
+        combined_content += f"Generated: {datetime.now().isoformat()}\n\n"
+        
+        for provider, content in contents.items():
+            combined_content += f"\n## {provider.title()} Results\n\n"
+            combined_content += content
+            combined_content += "\n\n---\n\n"
+        
+        # Save combined report
+        return await self.save_result(operation, "combined", combined_content, output_dir)
+
+# ============================================================================
+# Provider Base Classes and Implementations
+# ============================================================================
+
+class ResearchProvider:
+    """Base class for research providers"""
+    
+    async def submit(self, query: str, mode: str, system_prompt: str = None) -> str:
+        """Submit research and return job ID"""
+        raise NotImplementedError
+    
+    async def check_status(self, job_id: str) -> Dict[str, Any]:
+        """Check job status with progress information"""
+        raise NotImplementedError
+    
+    async def get_result(self, job_id: str) -> str:
+        """Get the final result content"""
+        raise NotImplementedError
+    
+    def supports_progress(self) -> bool:
+        """Whether this provider supports progress reporting"""
+        return False
+
+class MockProvider(ResearchProvider):
+    """Mock provider for testing and development"""
+    
+    def __init__(self, name: str = "mock", delay: float = 5.0):
+        self.name = name
+        self.delay = delay
+        self.jobs = {}
+    
+    async def submit(self, query: str, mode: str, system_prompt: str = None) -> str:
+        """Submit mock research and return job ID"""
+        job_id = f"mock-{generate_operation_id()}"
+        self.jobs[job_id] = {
+            "query": query,
+            "mode": mode,
+            "status": "running",
+            "progress": 0.0,
+            "start_time": asyncio.get_event_loop().time()
+        }
+        return job_id
+    
+    async def check_status(self, job_id: str) -> Dict[str, Any]:
+        """Check mock job status"""
+        if job_id not in self.jobs:
+            return {"status": "not_found", "error": "Job not found"}
+        
+        job = self.jobs[job_id]
+        elapsed = asyncio.get_event_loop().time() - job["start_time"]
+        
+        if elapsed >= self.delay:
+            job["status"] = "completed"
+            job["progress"] = 1.0
+        else:
+            job["progress"] = min(elapsed / self.delay, 0.99)
+        
+        return {
+            "status": job["status"],
+            "progress": job["progress"],
+            "elapsed": elapsed
+        }
+    
+    async def get_result(self, job_id: str) -> str:
+        """Get mock result"""
+        if job_id not in self.jobs:
+            raise ValueError("Job not found")
+        
+        job = self.jobs[job_id]
+        return f"""# {self.name.title()} Research Results
+
+## Query: {job["query"]}
+## Mode: {job["mode"]}
+
+This is a mock research result from the {self.name} provider.
+
+### Key Findings
+1. This is a simulated finding
+2. Another mock insight
+3. Test data point
+
+### Conclusion
+This mock provider successfully completed the research task.
+"""
+    
+    def supports_progress(self) -> bool:
+        return True
+
+# Placeholder for real providers
+class OpenAIProvider(ResearchProvider):
+    """OpenAI Deep Research implementation"""
+    
+    def __init__(self, api_key: str, config: Dict[str, Any] = None):
+        self.api_key = api_key
+        self.config = config or {}
+        # TODO: Initialize AsyncOpenAI client
+    
+    async def submit(self, query: str, mode: str, system_prompt: str = None) -> str:
+        """Submit to OpenAI"""
+        # TODO: Implement actual OpenAI submission
+        raise NotImplementedError("OpenAI provider not yet implemented")
+
+class PerplexityProvider(ResearchProvider):
+    """Perplexity research implementation"""
+    
+    def __init__(self, api_key: str, config: Dict[str, Any] = None):
+        self.api_key = api_key
+        self.config = config or {}
+    
+    async def submit(self, query: str, mode: str, system_prompt: str = None) -> str:
+        """Submit to Perplexity"""
+        # TODO: Implement actual Perplexity submission
+        raise NotImplementedError("Perplexity provider not yet implemented")
+
+# ============================================================================
+# Async Functions for Research Operations
+# ============================================================================
+
+async def find_latest_outputs(current_mode: str, project: Optional[str], config: Config) -> List[Path]:
+    """Find latest outputs from previous mode in chain"""
+    mode_config = config.get_mode_config(current_mode)
+    previous_mode = mode_config.get("previous")
+    
+    if not previous_mode:
+        return []
+    
+    # Determine search directory
+    if project:
+        search_dir = Path(config.data["paths"]["base_output_dir"]) / project
+    else:
+        search_dir = Path.cwd()
+    
+    if not search_dir.exists():
+        return []
+    
+    # Use strict pattern matching to avoid false matches
+    # Pattern: YYYY-MM-DD_HHMMSS_<mode>_<provider>_<slug>.(md|json)
+    pattern = f"*_*_{previous_mode}_*_*.md"
+    files = sorted(search_dir.glob(pattern), key=lambda p: p.stat().st_mtime, reverse=True)
+    
+    # Validate files match expected pattern more strictly
+    valid_files = []
+    for file in files:
+        parts = file.stem.split('_')
+        if len(parts) >= 5:  # Ensure we have all expected parts
+            # Validate timestamp format
+            try:
+                datetime.strptime(f"{parts[0]}_{parts[1]}", "%Y-%m-%d_%H%M%S")
+                if parts[2] == previous_mode:  # Confirm mode matches
+                    valid_files.append(file)
+            except ValueError:
+                continue
+    
+    # Return latest file for each provider
+    providers_found = set()
+    result = []
+    for file in valid_files:
+        parts = file.stem.split('_')
+        if len(parts) >= 4:
+            provider = parts[3]
+            # Skip combined reports when collecting inputs
+            if provider != "combined" and provider not in providers_found:
+                providers_found.add(provider)
+                result.append(file)
+    
+    return result
+
+def get_estimated_duration(mode: str, provider: Optional[str]) -> float:
+    """Get estimated duration in seconds based on mode and provider"""
+    estimates = {
+        "thinking": {"openai": 10, "perplexity": 8, "mock": 5},
+        "clarification": {"openai": 15, "perplexity": 12, "mock": 5},
+        "exploration": {"openai": 60, "perplexity": 45, "mock": 10},
+        "deep_research": {"openai": 300, "perplexity": 180, "combined": 300, "mock": 15}
+    }
+    
+    mode_estimates = estimates.get(mode, {"default": 60})
+    if provider:
+        return mode_estimates.get(provider, 60)
+    else:
+        # For multi-provider modes, use the max time
+        return mode_estimates.get("combined", max(mode_estimates.values(), default=60))
+
+# ============================================================================
+# Async Functions (Main implementations)
+# ============================================================================
+
+async def run_research(mode: str, query: str, async_mode: bool, 
+                      project: Optional[str], 
+                      output_dir: Optional[str], provider: Optional[str],
+                      input_file: Optional[str], auto: bool, verbose: bool):
+    """Execute research operation"""
+    config = Config()
+    
+    # Check disk space
+    output_path = Path(output_dir) if output_dir else Path.cwd()
+    if not check_disk_space(output_path):
+        raise DiskSpaceError("Insufficient disk space", "Free up at least 100MB")
+    
+    # Validate that mode and query are provided
+    if not mode or not query:
+        raise click.BadParameter("Both mode and query are required for research operations")
+    
+    # Create operation
+    operation_id = generate_operation_id()
+    
+    if verbose:
+        console.print(f"[dim]Operation ID: {operation_id}[/dim]")
+    
+    # Handle input files
+    input_files = []
+    if input_file:
+        input_files.append(Path(input_file))
+    elif auto:
+        # Check mode-specific auto_input first, then global
+        mode_config = config.get_mode_config(mode)
+        mode_auto = mode_config.get("auto_input")
+        global_auto = config.data["execution"].get("auto_input", False)
+        
+        if mode_auto is not None:
+            use_auto = mode_auto
+        else:
+            use_auto = global_auto
+            
+        if use_auto:
+            # Find latest relevant output
+            input_files = await find_latest_outputs(mode, project, config)
+            if not input_files:
+                console.print("[yellow]Warning:[/yellow] No previous outputs found for auto-input")
+    
+    # Create operation status
+    operation = OperationStatus(
+        id=operation_id,
+        query=query,
+        mode=mode,
+        status="queued",
+        created_at=datetime.now(),
+        updated_at=datetime.now(),
+        project=project,
+        input_files=input_files
+    )
+    
+    # Initialize managers
+    checkpoint_manager = CheckpointManager(config)
+    output_manager = OutputManager(config)
+    
+    # Save initial checkpoint
+    await checkpoint_manager.save(operation)
+    
+    # Get providers to use
+    mode_config = config.get_mode_config(mode)
+    
+    # Determine which providers to use
+    if mode == "thinking" or "provider" in mode_config:
+        # Single-provider mode
+        default_provider = mode_config.get("provider", "openai")
+        providers_to_use = [provider] if provider else [default_provider]
+    elif "providers" in mode_config:
+        # Multi-provider mode
+        if provider:
+            # When --provider is specified, use only that provider
+            providers_to_use = [provider]
+        else:
+            providers_to_use = mode_config.get("providers", ["openai"])
+    else:
+        # Default to single provider
+        providers_to_use = [provider] if provider else ["openai"]
+    
+    # For now, use mock providers
+    console.print("[yellow]Using mock providers for development[/yellow]")
+    providers = {}
+    for provider_name in providers_to_use:
+        providers[provider_name] = MockProvider(name=provider_name, delay=get_estimated_duration(mode, provider_name))
+    
+    if async_mode:
+        # Submit and exit
+        console.print(f"[green]✓[/green] Research submitted")
+        console.print(f"Operation ID: [bold]{operation_id}[/bold]")
+        console.print(f"\nCheck status: [dim]thoth status {operation_id}[/dim]")
+        
+        # TODO: Actually submit async tasks
+        return
+    
+    # Synchronous execution with progress
+    from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn
+    
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+        TimeElapsedColumn(),
+        TextColumn("| Next poll: {task.fields[next_poll]}s"),
+        console=console
+    ) as progress:
+        # Submit to all providers
+        jobs = {}
+        for provider_name, provider_instance in providers.items():
+            system_prompt = mode_config.get("system_prompt", "")
+            job_id = await provider_instance.submit(query, mode, system_prompt)
+            jobs[provider_name] = {
+                "provider": provider_instance,
+                "job_id": job_id,
+                "task_id": progress.add_task(f"{provider_name.title()} Research", total=100, next_poll=30)
+            }
+            operation.providers[provider_name] = {"status": "running", "job_id": job_id}
+        
+        # Update checkpoint
+        operation.status = "running"
+        await checkpoint_manager.save(operation)
+        
+        # Poll for completion
+        all_completed = False
+        poll_interval = config.data["execution"]["poll_interval"]
+        max_wait = config.data["execution"]["max_wait"] * 60  # Convert to seconds
+        start_time = asyncio.get_event_loop().time()
+        
+        while not all_completed:
+            all_completed = True
+            
+            for provider_name, job_info in jobs.items():
+                status = await job_info["provider"].check_status(job_info["job_id"])
+                
+                if status["status"] == "running":
+                    all_completed = False
+                    progress_pct = int(status.get("progress", 0) * 100)
+                    elapsed = asyncio.get_event_loop().time() - start_time
+                    next_poll = max(0, poll_interval - int(elapsed % poll_interval))
+                    progress.update(job_info["task_id"], completed=progress_pct, next_poll=next_poll)
+                elif status["status"] == "completed":
+                    progress.update(job_info["task_id"], completed=100, next_poll=0)
+                    
+                    # Get and save result
+                    if provider_name not in operation.output_paths:
+                        result_content = await job_info["provider"].get_result(job_info["job_id"])
+                        output_path = await output_manager.save_result(
+                            operation, provider_name, result_content, output_dir
+                        )
+                        operation.output_paths[provider_name] = output_path
+                        operation.providers[provider_name]["status"] = "completed"
+                        await checkpoint_manager.save(operation)
+            
+            # Check timeout
+            if asyncio.get_event_loop().time() - start_time > max_wait:
+                console.print(f"\n[red]Timeout exceeded ({max_wait/60} minutes)[/red]")
+                break
+            
+            if not all_completed:
+                await asyncio.sleep(min(poll_interval, 1))  # Sleep for 1 second increments
+    
+    # Generate combined report if multiple providers
+    if len(operation.output_paths) > 1 and config.data["output"].get("combine_reports", True):
+        contents = {}
+        for provider_name, path in operation.output_paths.items():
+            with open(path, 'r') as f:
+                contents[provider_name] = f.read()
+        
+        combined_path = await output_manager.generate_combined_report(
+            operation, contents, output_dir
+        )
+        operation.output_paths["combined"] = combined_path
+    
+    # Final checkpoint
+    operation.status = "completed"
+    operation.updated_at = datetime.now()
+    await checkpoint_manager.save(operation)
+    
+    console.print(f"\n[green]✓[/green] Research completed!")
+    if project:
+        console.print(f"Results saved to: [dim]{config.data['paths']['base_output_dir']}/{project}/[/dim]")
+    else:
+        console.print(f"Results saved to: [dim]current directory[/dim]")
+    
+    # Show output files
+    for provider_name, path in operation.output_paths.items():
+        console.print(f"  • {path.name}")
+    
+    return operation
+
+async def resume_operation(operation_id: str, verbose: bool):
+    """Resume an existing operation"""
+    config = Config()
+    checkpoint_manager = CheckpointManager(config)
+    
+    # Load operation from checkpoint
+    operation = await checkpoint_manager.load(operation_id)
+    if not operation:
+        console.print(f"[red]Error:[/red] Operation {operation_id} not found")
+        sys.exit(6)
+    
+    console.print(f"[yellow]Resuming operation {operation_id}...[/yellow]")
+    console.print(f"Query: {operation.query}")
+    console.print(f"Mode: {operation.mode}")
+    console.print(f"Status: {operation.status}")
+    
+    # TODO: Implement actual resumption logic
+    console.print("[yellow]Full resume functionality not yet implemented[/yellow]")
+
+async def show_status(operation_id: str):
+    """Show status of a specific operation"""
+    config = Config()
+    checkpoint_manager = CheckpointManager(config)
+    
+    # Load operation from checkpoint
+    operation = await checkpoint_manager.load(operation_id)
+    if not operation:
+        console.print(f"[red]Error:[/red] Operation {operation_id} not found")
+        sys.exit(6)
+    
+    # Display operation details
+    console.print("\nOperation Details:")
+    console.print("─────────────────")
+    console.print(f"ID:        {operation.id}")
+    console.print(f"Query:     {operation.query}")
+    console.print(f"Mode:      {operation.mode}")
+    console.print(f"Status:    {operation.status}")
+    console.print(f"Started:   {operation.created_at.strftime('%Y-%m-%d %H:%M:%S')}")
+    
+    # Calculate elapsed time
+    if operation.status in ["running", "completed"]:
+        elapsed = datetime.now() - operation.created_at
+        minutes = int(elapsed.total_seconds() / 60)
+        console.print(f"Elapsed:   {minutes} minutes")
+    
+    if operation.project:
+        console.print(f"Project:   {operation.project}")
+    
+    # Show provider status
+    if operation.providers:
+        console.print("\nProvider Status:")
+        console.print("───────────────")
+        for provider_name, provider_info in operation.providers.items():
+            status_icon = "✓" if provider_info.get("status") == "completed" else "▶"
+            status_text = provider_info.get("status", "unknown").title()
+            console.print(f"{provider_name.title()}:  {status_icon} {status_text}")
+    
+    # Show output files
+    if operation.output_paths:
+        console.print("\nOutput Files:")
+        console.print("────────────")
+        if operation.project:
+            base_dir = Path(config.data["paths"]["base_output_dir"]) / operation.project
+            console.print(f"{base_dir}/")
+        else:
+            console.print("./")
+        
+        for provider_name, path in operation.output_paths.items():
+            console.print(f"  ├── {Path(path).name}")
+
+async def list_operations(show_all: bool):
+    """List all operations"""
+    config = Config()
+    checkpoint_manager = CheckpointManager(config)
+    
+    # Get all checkpoint files
+    checkpoint_files = list(checkpoint_manager.checkpoint_dir.glob("*.json"))
+    
+    if not checkpoint_files:
+        console.print("No operations found.")
+        return
+    
+    # Load operations
+    operations = []
+    for checkpoint_file in checkpoint_files:
+        operation_id = checkpoint_file.stem
+        operation = await checkpoint_manager.load(operation_id)
+        if operation:
+            operations.append(operation)
+    
+    # Sort by creation time (newest first)
+    operations.sort(key=lambda op: op.created_at, reverse=True)
+    
+    # Filter if not showing all
+    if not show_all:
+        # Only show recent or active operations
+        cutoff_time = datetime.now() - timedelta(hours=24)
+        operations = [op for op in operations if op.status in ["running", "queued"] or op.created_at > cutoff_time]
+    
+    if not operations:
+        console.print("No active operations found. Use --all to see all operations.")
+        return
+    
+    # Display table
+    from rich.table import Table
+    
+    table = Table(title="Research Operations")
+    table.add_column("ID", style="dim", width=40)
+    table.add_column("Query", width=25)
+    table.add_column("Status", width=10)
+    table.add_column("Elapsed", width=8)
+    table.add_column("Mode", width=15)
+    
+    for operation in operations:
+        # Truncate query if too long
+        query_display = operation.query[:22] + "..." if len(operation.query) > 25 else operation.query
+        
+        # Calculate elapsed time
+        elapsed = datetime.now() - operation.created_at
+        if elapsed.total_seconds() < 3600:
+            elapsed_str = f"{int(elapsed.total_seconds() / 60)}m"
+        else:
+            elapsed_str = f"{int(elapsed.total_seconds() / 3600)}h"
+        
+        # Status color
+        status_style = "green" if operation.status == "completed" else "yellow" if operation.status == "running" else "dim"
+        
+        table.add_row(
+            operation.id,
+            query_display,
+            f"[{status_style}]{operation.status}[/{status_style}]",
+            elapsed_str,
+            operation.mode
+        )
+    
+    console.print(table)
+    console.print("\nUse 'thoth status <ID>' for details")
+
+# ============================================================================
+# Main Entry Point
+# ============================================================================
+
+if __name__ == "__main__":
+    try:
+        cli()
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        handle_error(e)
