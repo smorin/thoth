@@ -46,11 +46,18 @@ import aiofiles
 console = Console()
 
 # Version tracking
-THOTH_VERSION = "1.2.0"
+THOTH_VERSION = "1.5.0"
 CONFIG_VERSION = "1.0"
 
 # Built-in mode definitions
 BUILTIN_MODES = {
+    "default": {
+        "provider": "openai",
+        "model": "gpt-4o",
+        "system_prompt": None,  # No system prompt - pass query directly
+        "description": "Default mode - passes query directly to LLM without any system prompt",
+        "auto_input": False
+    },
     "clarification": {
         "provider": "openai",
         "model": "gpt-4o-mini",
@@ -113,10 +120,10 @@ BUILTIN_MODES = {
         "description": "Quick thinking and analysis mode for simple questions."
     },
     "deep_research": {
-        "providers": ["openai", "perplexity"],
+        "providers": ["openai"],
         "parallel": True,
         "system_prompt": "Conduct comprehensive research with citations and multiple perspectives.\nOrganize findings clearly and highlight key insights.",
-        "description": "Deep research mode using multiple providers for comprehensive analysis.",
+        "description": "Deep research mode using OpenAI for comprehensive analysis.",
         "previous": "exploration",
         "auto_input": True
     }
@@ -180,7 +187,7 @@ class Config:
             "version": CONFIG_VERSION,
             "general": {
                 "default_project": "",  # Empty means ad-hoc mode
-                "default_mode": "deep_research"
+                "default_mode": "default"
             },
             "paths": {
                 "base_output_dir": "./research-outputs",
@@ -339,8 +346,9 @@ def handle_error(error: Exception):
 # Click CLI Implementation
 # ============================================================================
 
-@click.group(invoke_without_command=True)
+@click.command(context_settings=dict(allow_extra_args=True, allow_interspersed_args=False))
 @click.pass_context
+@click.argument('args', nargs=-1)
 @click.option('--mode', '-m', 'mode_opt', help='Research mode')
 @click.option('--query', '-q', 'query_opt', help='Research query')
 @click.option('--query-file', '-Q', help='Read query from file (use - for stdin)')
@@ -348,86 +356,115 @@ def handle_error(error: Exception):
 @click.option('--resume', '-R', 'resume_id', help='Resume operation by ID')
 @click.option('--project', '-p', help='Project name')
 @click.option('--output-dir', '-o', help='Override output directory')
-@click.option('--provider', '-P', type=click.Choice(['openai', 'perplexity']), help='Single provider')
+@click.option('--provider', '-P', type=click.Choice(['openai', 'perplexity','mock']), help='Single provider')
 @click.option('--input-file', help='Use output from previous mode as input')
 @click.option('--auto', is_flag=True, help='Automatically use latest relevant output as input')
 @click.option('--verbose', '-v', is_flag=True, help='Enable debug output')
 @click.option('--version', '-V', is_flag=True, help='Show version and exit')
-def cli(ctx, mode_opt, query_opt, query_file, async_mode, resume_id, 
+def cli(ctx, args, mode_opt, query_opt, query_file, async_mode, resume_id, 
         project, output_dir, provider, input_file, auto, verbose, version):
     """Thoth - AI-Powered Research Assistant
     
-    Run research with: thoth MODE "QUERY"
-    Or use commands: init, status, list
+    Quick usage: thoth "QUERY"
+    Advanced: thoth MODE "QUERY"
+    Commands: init, status, list, help
+    
+    Examples:
+      thoth "how does DNS work"
+      thoth "best practices for REST APIs"
+      thoth exploration "web frameworks"
     """
     # Show version if requested
     if version:
         console.print(f"Thoth v{THOTH_VERSION}")
         sys.exit(0)
     
-    # If no subcommand, run research
-    if ctx.invoked_subcommand is None:
-        # For positional arguments, we need to check remaining args
-        args = ctx.args
-        
-        # Resolve mode and query from positional or options
-        final_mode = None
-        final_query = None
-        
-        if len(args) >= 2:
-            final_mode = args[0]
-            final_query = args[1]
-        elif len(args) == 1:
-            final_mode = args[0]
-            final_query = query_opt
-        else:
-            final_mode = mode_opt
-            final_query = query_opt
-        
-        # Handle query file
-        if query_file:
-            if query_file == '-':
-                # Read from stdin with size limit
-                stdin_data = sys.stdin.read(1024 * 1024)  # 1MB limit
-                if len(stdin_data) >= 1024 * 1024:
-                    raise click.BadParameter("Stdin input exceeds 1MB limit")
-                final_query = stdin_data.strip()
-            else:
-                with open(query_file, 'r') as f:
-                    final_query = f.read().strip()
-        
-        # Validation
-        if async_mode and resume_id:
-            raise click.BadParameter("Cannot use --async with --resume")
-        
-        if query_file and query_opt:
-            raise click.BadParameter("Cannot use --query-file with --query")
-            
-        if input_file and auto:
-            raise click.BadParameter("Cannot use --input-file with --auto")
-        
-        if resume_id:
-            # Resume existing operation
-            asyncio.run(resume_operation(resume_id, verbose))
-        elif final_mode and final_query:
-            # Run new research
-            asyncio.run(run_research(
-                mode=final_mode,
-                query=final_query,
-                async_mode=async_mode,
-                project=project,
-                output_dir=output_dir,
-                provider=provider,
-                input_file=input_file,
-                auto=auto,
-                verbose=verbose
-            ))
-        else:
-            # Show help if no valid command
+    # Handle special commands
+    if args and args[0] in ['init', 'status', 'list', 'help']:
+        command = args[0]
+        if command == 'init':
+            init_command()
+            return
+        elif command == 'status':
+            if len(args) < 2:
+                console.print("[red]Error:[/red] status command requires an operation ID")
+                sys.exit(1)
+            asyncio.run(show_status(args[1]))
+            return
+        elif command == 'list':
+            show_all = '--all' in args
+            asyncio.run(list_operations(show_all=show_all))
+            return
+        elif command == 'help':
             console.print(ctx.get_help())
+            return
+    
+    # For all other cases, treat as research query
+    # Resolve mode and query from positional or options
+    final_mode = None
+    final_query = None
+    
+    if len(args) >= 2:
+        # Two args: MODE QUERY
+        final_mode = args[0]
+        final_query = args[1]
+    elif len(args) == 1:
+        # One arg: could be just QUERY (default to deep_research) or MODE (with --query)
+        if query_opt:
+            # If --query provided, arg is MODE
+            final_mode = args[0]
+            final_query = query_opt
+        else:
+            # Single arg is QUERY, use default mode
+            final_mode = "default"
+            final_query = args[0]
+    else:
+        # No positional args, check options
+        final_mode = mode_opt or "default"
+        final_query = query_opt
+    # Handle query file
+    if query_file:
+        if query_file == '-':
+            # Read from stdin with size limit
+            stdin_data = sys.stdin.read(1024 * 1024)  # 1MB limit
+            if len(stdin_data) >= 1024 * 1024:
+                raise click.BadParameter("Stdin input exceeds 1MB limit")
+            final_query = stdin_data.strip()
+        else:
+            with open(query_file, 'r') as f:
+                final_query = f.read().strip()
+    
+    # Validation
+    if async_mode and resume_id:
+        raise click.BadParameter("Cannot use --async with --resume")
+    
+    if query_file and query_opt:
+        raise click.BadParameter("Cannot use --query-file with --query")
+        
+    if input_file and auto:
+        raise click.BadParameter("Cannot use --input-file with --auto")
+    
+    if resume_id:
+        # Resume existing operation
+        asyncio.run(resume_operation(resume_id, verbose))
+    elif final_mode and final_query:
+        # Run new research
+        asyncio.run(run_research(
+            mode=final_mode,
+            query=final_query,
+            async_mode=async_mode,
+            project=project,
+            output_dir=output_dir,
+            provider=provider,
+            input_file=input_file,
+            auto=auto,
+            verbose=verbose
+        ))
+    else:
+        # Show help if no valid command
+        console.print(ctx.get_help())
 
-@cli.command()
-def init():
+def init_command():
     """Initialize Thoth configuration"""
     console.print("[bold]Welcome to Thoth Research Assistant Setup![/bold]\n")
     
@@ -457,7 +494,7 @@ def init():
         f.write(f'version = "{CONFIG_VERSION}"\n\n')
         f.write('[general]\n')
         f.write('default_project = ""\n')
-        f.write('default_mode = "deep_research"\n\n')
+        f.write('default_mode = "default"\n\n')
         f.write('[paths]\n')
         f.write('base_output_dir = "./research-outputs"\n')
         f.write(f'checkpoint_dir = "{config.data["paths"]["checkpoint_dir"]}"\n\n')
@@ -480,17 +517,13 @@ def init():
     console.print(f"\n[green]✓[/green] Configuration saved to {config_path}")
     console.print("\nYou can now run: thoth deep_research \"your query\"")
 
-@cli.command()
-@click.argument('operation_id')
-def status(operation_id):
+def status_command(operation_id):
     """Check status of a research operation"""
-    asyncio.run(show_status(operation_id))
+    return show_status(operation_id)
 
-@cli.command(name='list')
-@click.option('--all', 'show_all', is_flag=True, help='Show all operations')
-def list_cmd(show_all):
+def list_command(show_all):
     """List research operations"""
-    asyncio.run(list_operations(show_all=show_all))
+    return list_operations(show_all=show_all)
 
 # ============================================================================
 # Checkpoint Management
@@ -768,12 +801,57 @@ class OpenAIProvider(ResearchProvider):
     def __init__(self, api_key: str, config: Dict[str, Any] = None):
         self.api_key = api_key
         self.config = config or {}
-        # TODO: Initialize AsyncOpenAI client
+        self.client = AsyncOpenAI(api_key=api_key)
     
     async def submit(self, query: str, mode: str, system_prompt: str = None) -> str:
         """Submit to OpenAI"""
-        # TODO: Implement actual OpenAI submission
-        raise NotImplementedError("OpenAI provider not yet implemented")
+        try:
+            # Build messages
+            messages = []
+            if system_prompt:
+                messages.append({"role": "system", "content": system_prompt})
+            messages.append({"role": "user", "content": query})
+            
+            # Get model from config or use default
+            model = self.config.get("model", "gpt-4o")
+            
+            # Submit request
+            self.response = await self.client.chat.completions.create(
+                model=model,
+                messages=messages,
+                temperature=0.7,
+                max_tokens=4000
+            )
+            
+            # Return a job ID (use request ID or generate one)
+            return f"openai-{datetime.now().strftime('%Y%m%d%H%M%S')}"
+            
+        except Exception as e:
+            # Check for authentication errors
+            error_msg = str(e).lower()
+            if "authentication" in error_msg or "api key" in error_msg or "401" in str(e):
+                # Extract the specific error message if available
+                if "incorrect api key" in error_msg:
+                    raise ThothError(
+                        "Invalid OpenAI API key",
+                        "Please check your API key at https://platform.openai.com/account/api-keys"
+                    )
+                else:
+                    raise APIKeyError("openai")
+            raise ProviderError("openai", str(e))
+    
+    async def check_status(self, job_id: str) -> Dict[str, Any]:
+        """Check status - for sync mode, always return completed"""
+        return {
+            "status": "completed",
+            "progress": 1.0
+        }
+    
+    async def get_result(self, job_id: str) -> str:
+        """Get the result"""
+        if hasattr(self, 'response') and self.response:
+            return self.response.choices[0].message.content
+        return "No response available"
 
 class PerplexityProvider(ResearchProvider):
     """Perplexity research implementation"""
@@ -786,6 +864,33 @@ class PerplexityProvider(ResearchProvider):
         """Submit to Perplexity"""
         # TODO: Implement actual Perplexity submission
         raise NotImplementedError("Perplexity provider not yet implemented")
+
+# ============================================================================
+# Provider Factory
+# ============================================================================
+
+def create_provider(provider_name: str, config: Config) -> ResearchProvider:
+    """Create a provider instance with proper configuration and error handling"""
+    provider_config = config.data["providers"].get(provider_name, {})
+    
+    if provider_name == "mock":
+        # Always allow mock provider for testing
+        return MockProvider(name=provider_name, delay=5)
+    
+    # Get API key from provider config
+    api_key = provider_config.get("api_key", "")
+    
+    # Check if API key exists or is still a placeholder
+    if not api_key or api_key.startswith("${") and api_key.endswith("}"):
+        raise APIKeyError(provider_name)
+    
+    # Create provider instance
+    if provider_name == "openai":
+        return OpenAIProvider(api_key=api_key, config=provider_config)
+    elif provider_name == "perplexity":
+        return PerplexityProvider(api_key=api_key, config=provider_config)
+    else:
+        raise ThothError(f"Unknown provider: {provider_name}", f"Valid providers are: openai, perplexity, mock")
 
 # ============================================================================
 # Async Functions for Research Operations
@@ -845,8 +950,8 @@ def get_estimated_duration(mode: str, provider: Optional[str]) -> float:
     estimates = {
         "thinking": {"openai": 10, "perplexity": 8, "mock": 5},
         "clarification": {"openai": 15, "perplexity": 12, "mock": 5},
-        "exploration": {"openai": 60, "perplexity": 45, "mock": 10},
-        "deep_research": {"openai": 300, "perplexity": 180, "combined": 300, "mock": 15}
+        "exploration": {"openai": 20, "perplexity": 15, "mock": 10},
+        "deep_research": {"openai": 22, "perplexity": 20, "combined": 23, "mock": 2}
     }
     
     mode_estimates = estimates.get(mode, {"default": 60})
@@ -941,11 +1046,19 @@ async def run_research(mode: str, query: str, async_mode: bool,
         # Default to single provider
         providers_to_use = [provider] if provider else ["openai"]
     
-    # For now, use mock providers
-    console.print("[yellow]Using mock providers for development[/yellow]")
+    # Create provider instances
     providers = {}
     for provider_name in providers_to_use:
-        providers[provider_name] = MockProvider(name=provider_name, delay=get_estimated_duration(mode, provider_name))
+        try:
+            providers[provider_name] = create_provider(provider_name, config)
+        except APIKeyError as e:
+            console.print(f"[red]Error:[/red] {e.message}")
+            console.print(f"[yellow]Suggestion:[/yellow] {e.suggestion}")
+            raise click.Abort()
+        except ThothError as e:
+            console.print(f"[red]Error:[/red] {e.message}")
+            console.print(f"[yellow]Suggestion:[/yellow] {e.suggestion}")
+            raise click.Abort()
     
     if async_mode:
         # Submit and exit
