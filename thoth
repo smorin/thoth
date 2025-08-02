@@ -52,8 +52,6 @@ CONFIG_VERSION = "1.0"
 # Built-in mode definitions
 BUILTIN_MODES = {
     "default": {
-        "provider": "openai",
-        "model": "gpt-4o",
         "system_prompt": None,  # No system prompt - pass query directly
         "description": "Default mode - passes query directly to LLM without any system prompt",
         "auto_input": False
@@ -170,12 +168,12 @@ class Config:
     def _substitute_env_vars(self, config: Dict[str, Any]) -> Dict[str, Any]:
         """Replace ${VAR} with environment variable values"""
         def substitute(value):
-            if type(value) == str and value.startswith("${") and value.endswith("}"):
+            if isinstance(value, str) and value.startswith("${") and value.endswith("}"):
                 var_name = value[2:-1]
                 return os.getenv(var_name, value)
-            elif type(value) == dict:
+            elif isinstance(value, dict):
                 return {k: substitute(v) for k, v in value.items()}
-            elif type(value) == list:
+            elif isinstance(value, list):
                 return [substitute(v) for v in value]
             return value
         
@@ -343,10 +341,94 @@ def handle_error(error: Exception):
         sys.exit(127)
 
 # ============================================================================
+# Custom Click Command Class
+# ============================================================================
+
+class ThothCommand(click.Command):
+    """Custom command class to enhance help display"""
+    
+    def parse_args(self, ctx, args):
+        """Override to intercept --help with subcommands"""
+        # Check if --help is present
+        if '--help' in args:
+            help_index = args.index('--help')
+            
+            # Check if --help is followed by a command
+            if help_index + 1 < len(args):
+                subcommand = args[help_index + 1]
+                
+                # Show subcommand help instead of general help
+                if subcommand == 'init':
+                    show_init_help()
+                    ctx.exit(0)
+                elif subcommand == 'status':
+                    show_status_help()
+                    ctx.exit(0)
+                elif subcommand == 'list':
+                    show_list_help()
+                    ctx.exit(0)
+        
+        return super().parse_args(ctx, args)
+    
+    def format_epilog(self, ctx, formatter):
+        """Override to format epilog without rewrapping"""
+        if self.epilog:
+            formatter.write_paragraph()
+            # Split epilog into lines and write each one to preserve formatting
+            for line in self.epilog.split('\n'):
+                if line:
+                    formatter.write_text(line)
+                else:
+                    formatter.write_paragraph()
+
+def build_epilog():
+    """Build the epilog text with modes and examples"""
+    lines = []
+    
+    # Commands section
+    lines.append("Commands:")
+    lines.append("  init            Initialize configuration")
+    lines.append("  status <ID>     Check operation status") 
+    lines.append("  list            List research operations")
+    lines.append("  help [COMMAND]  Show help (general or command-specific)")
+    lines.append("")
+    
+    # Research modes section
+    lines.append("Research Modes:")
+    for mode_name, mode_config in BUILTIN_MODES.items():
+        desc = mode_config.get('description', 'No description')
+        # Truncate long descriptions to fit nicely
+        if len(desc) > 60:
+            desc = desc[:57] + "..."
+        lines.append(f"  {mode_name:<15} {desc}")
+    lines.append("")
+    
+    # Examples section
+    lines.append("Examples:")
+    lines.append("  # Simple query (uses default mode)")
+    lines.append("  $ thoth \"how does DNS work\"")
+    lines.append("")
+    lines.append("  # Specify a research mode")
+    lines.append("  $ thoth deep_research \"explain kubernetes networking\"")
+    lines.append("")
+    lines.append("  # Get command-specific help")
+    lines.append("  $ thoth help init")
+    lines.append("  $ thoth --help status")
+    lines.append("")
+    lines.append("For detailed command help: thoth help [COMMAND]")
+    
+    return '\n'.join(lines)
+
+
+# ============================================================================
 # Click CLI Implementation
 # ============================================================================
 
-@click.command(context_settings=dict(allow_extra_args=True, allow_interspersed_args=False))
+@click.command(
+    cls=ThothCommand,
+    context_settings=dict(allow_extra_args=True, allow_interspersed_args=True),
+    epilog=build_epilog()
+)
 @click.pass_context
 @click.argument('args', nargs=-1)
 @click.option('--mode', '-m', 'mode_opt', help='Research mode')
@@ -361,18 +443,21 @@ def handle_error(error: Exception):
 @click.option('--auto', is_flag=True, help='Automatically use latest relevant output as input')
 @click.option('--verbose', '-v', is_flag=True, help='Enable debug output')
 @click.option('--version', '-V', is_flag=True, help='Show version and exit')
+@click.option('--api-key', help='API key for the provider')
 def cli(ctx, args, mode_opt, query_opt, query_file, async_mode, resume_id, 
-        project, output_dir, provider, input_file, auto, verbose, version):
+        project, output_dir, provider, input_file, auto, verbose, version, api_key):
     """Thoth - AI-Powered Research Assistant
     
     Quick usage: thoth "QUERY"
     Advanced: thoth MODE "QUERY"
-    Commands: init, status, list, help
+    Commands: init, status, list, help [COMMAND]
     
     Examples:
       thoth "how does DNS work"
       thoth "best practices for REST APIs"
       thoth exploration "web frameworks"
+      thoth help init
+      thoth help status
     """
     # Show version if requested
     if version:
@@ -396,7 +481,22 @@ def cli(ctx, args, mode_opt, query_opt, query_file, async_mode, resume_id,
             asyncio.run(list_operations(show_all=show_all))
             return
         elif command == 'help':
-            console.print(ctx.get_help())
+            # Check if there's a specific command to get help for
+            if len(args) > 1:
+                help_command = args[1]
+                if help_command == 'init':
+                    show_init_help()
+                elif help_command == 'status':
+                    show_status_help()
+                elif help_command == 'list':
+                    show_list_help()
+                else:
+                    console.print(f"[red]Error:[/red] Unknown command: {help_command}")
+                    console.print("[yellow]Available commands:[/yellow] init, status, list")
+                    console.print("\nUse 'thoth help' for general help")
+            else:
+                # Show general help - use Click's help instead
+                console.print(ctx.get_help())
             return
     
     # For all other cases, treat as research query
@@ -405,11 +505,24 @@ def cli(ctx, args, mode_opt, query_opt, query_file, async_mode, resume_id,
     final_query = None
     
     if len(args) >= 2:
-        # Two args: MODE QUERY
-        final_mode = args[0]
-        final_query = args[1]
+        # Two or more args: First is potentially a mode, rest is query
+        # Check if first arg is a known mode
+        if args[0] in BUILTIN_MODES:
+            final_mode = args[0]
+            final_query = " ".join(args[1:])
+        else:
+            # Check if it looks like a mode but is invalid
+            # (heuristic: single word followed by more args)
+            if len(args[0].split()) == 1 and not args[0].startswith("-"):
+                # Might be an invalid mode
+                console.print(f"[red]Error:[/red] Unknown mode: {args[0]}")
+                console.print(f"[yellow]Available modes:[/yellow] {', '.join(BUILTIN_MODES.keys())}")
+                sys.exit(1)
+            # Not a mode, treat entire args as query
+            final_mode = "default"
+            final_query = " ".join(args)
     elif len(args) == 1:
-        # One arg: could be just QUERY (default to deep_research) or MODE (with --query)
+        # One arg: could be just QUERY (default to default mode) or MODE (with --query)
         if query_opt:
             # If --query provided, arg is MODE
             final_mode = args[0]
@@ -444,6 +557,10 @@ def cli(ctx, args, mode_opt, query_opt, query_file, async_mode, resume_id,
     if input_file and auto:
         raise click.BadParameter("Cannot use --input-file with --auto")
     
+    # Check for empty query
+    if final_query is not None and final_query.strip() == "":
+        raise click.BadParameter("Query cannot be empty")
+    
     if resume_id:
         # Resume existing operation
         asyncio.run(resume_operation(resume_id, verbose))
@@ -458,7 +575,8 @@ def cli(ctx, args, mode_opt, query_opt, query_file, async_mode, resume_id,
             provider=provider,
             input_file=input_file,
             auto=auto,
-            verbose=verbose
+            verbose=verbose,
+            cli_api_key=api_key
         ))
     else:
         # Show help if no valid command
@@ -524,6 +642,128 @@ def status_command(operation_id):
 def list_command(show_all):
     """List research operations"""
     return list_operations(show_all=show_all)
+
+# ============================================================================
+# Help Functions
+# ============================================================================
+
+def show_init_help():
+    """Show detailed help for the init command"""
+    console.print("\n[bold]thoth init[/bold] - Initialize Thoth configuration")
+    console.print("\n[bold]Description:[/bold]")
+    console.print("  Sets up Thoth configuration file and verifies environment.")
+    console.print("  Creates default configuration at ~/.thoth/config.toml")
+    console.print("\n[bold]Usage:[/bold]")
+    console.print("  thoth init")
+    console.print("\n[bold]What it does:[/bold]")
+    console.print("  • Checks Python and UV package manager")
+    console.print("  • Creates configuration directory")
+    console.print("  • Generates default config.toml file")
+    console.print("  • Sets up provider API key placeholders")
+    console.print("\n[bold]Configuration file location:[/bold]")
+    console.print(f"  {Path(user_config_dir('thoth')) / 'config.toml'}")
+    console.print("\n[bold]After initialization:[/bold]")
+    console.print("  1. Set your API keys as environment variables:")
+    console.print("     export OPENAI_API_KEY='your-api-key'")
+    console.print("     export PERPLEXITY_API_KEY='your-api-key'")
+    console.print("  2. Or edit the config file directly")
+    console.print("\n[bold]Examples:[/bold]")
+    console.print("  # Initialize configuration")
+    console.print("  $ thoth init")
+    console.print("\n[bold]Related commands:[/bold]")
+    console.print("  thoth help       - Show general help")
+
+def show_status_help():
+    """Show detailed help for the status command"""
+    console.print("\n[bold]thoth status[/bold] - Check status of a research operation")
+    console.print("\n[bold]Description:[/bold]")
+    console.print("  Shows detailed status of a specific research operation,")
+    console.print("  including progress, providers, and output files.")
+    console.print("\n[bold]Usage:[/bold]")
+    console.print("  thoth status <OPERATION_ID>")
+    console.print("\n[bold]Arguments:[/bold]")
+    console.print("  OPERATION_ID    The unique identifier for the operation")
+    console.print("                  (e.g., research-20240803-143022-abc123...)")
+    console.print("\n[bold]Information displayed:[/bold]")
+    console.print("  • Operation ID and query")
+    console.print("  • Current status (queued/running/completed/failed)")
+    console.print("  • Start time and elapsed duration")
+    console.print("  • Provider status for each LLM")
+    console.print("  • Output file locations")
+    console.print("\n[bold]Examples:[/bold]")
+    console.print("  # Check status of a specific operation")
+    console.print("  $ thoth status research-20240803-143022-1234abcd5678efgh")
+    console.print("\n[bold]Related commands:[/bold]")
+    console.print("  thoth list       - List all operations")
+    console.print("  thoth help       - Show general help")
+
+def show_list_help():
+    """Show detailed help for the list command"""
+    console.print("\n[bold]thoth list[/bold] - List research operations")
+    console.print("\n[bold]Description:[/bold]")
+    console.print("  Shows a table of research operations with their status.")
+    console.print("  By default, shows only recent and active operations.")
+    console.print("\n[bold]Usage:[/bold]")
+    console.print("  thoth list [OPTIONS]")
+    console.print("\n[bold]Options:[/bold]")
+    console.print("  --all           Show all operations (not just recent/active)")
+    console.print("\n[bold]Default behavior:[/bold]")
+    console.print("  • Shows operations from the last 24 hours")
+    console.print("  • Always shows running or queued operations")
+    console.print("  • Sorted by creation time (newest first)")
+    console.print("\n[bold]Table columns:[/bold]")
+    console.print("  • ID       - Unique operation identifier")
+    console.print("  • Query    - Research query (truncated if long)")
+    console.print("  • Status   - Current status with color coding")
+    console.print("  • Elapsed  - Time since operation started")
+    console.print("  • Mode     - Research mode used")
+    console.print("\n[bold]Examples:[/bold]")
+    console.print("  # List recent operations")
+    console.print("  $ thoth list")
+    console.print("\n  # List all operations")
+    console.print("  $ thoth list --all")
+    console.print("\n[bold]Related commands:[/bold]")
+    console.print("  thoth status     - Show details for specific operation")
+    console.print("  thoth help       - Show general help")
+
+def show_general_help(ctx):
+    """Show enhanced general help with command overview"""
+    console.print("\n[bold]Thoth - AI-Powered Research Assistant[/bold]")
+    console.print(f"Version {THOTH_VERSION}")
+    console.print("\n[bold]Usage:[/bold]")
+    console.print("  thoth [COMMAND] [OPTIONS]")
+    console.print("  thoth [MODE] \"QUERY\" [OPTIONS]")
+    console.print("  thoth \"QUERY\" [OPTIONS]")
+    console.print("\n[bold]Quick Start:[/bold]")
+    console.print("  # Simple query (uses default mode)")
+    console.print("  $ thoth \"how does DNS work\"")
+    console.print("\n  # Specify a research mode")
+    console.print("  $ thoth deep_research \"explain kubernetes networking\"")
+    console.print("\n[bold]Commands:[/bold]")
+    console.print("  init            Initialize configuration")
+    console.print("  status <ID>     Check operation status")
+    console.print("  list            List research operations")
+    console.print("  help [COMMAND]  Show help (general or command-specific)")
+    console.print("\n[bold]Research Modes:[/bold]")
+    for mode_name, mode_config in BUILTIN_MODES.items():
+        desc = mode_config.get('description', 'No description')
+        # Truncate long descriptions
+        if len(desc) > 60:
+            desc = desc[:57] + "..."
+        console.print(f"  {mode_name:<15} {desc}")
+    console.print("\n[bold]Common Options:[/bold]")
+    console.print("  --mode, -m      Research mode to use")
+    console.print("  --query, -q     Research query")
+    console.print("  --async, -A     Submit and exit immediately")
+    console.print("  --project, -p   Project name for organized output")
+    console.print("  --verbose, -v   Show debug output")
+    console.print("  --version, -V   Show version and exit")
+    console.print("\n[bold]For detailed command help:[/bold]")
+    console.print("  $ thoth help init")
+    console.print("  $ thoth help status")
+    console.print("  $ thoth help list")
+    console.print("\n[bold]For all options:[/bold]")
+    console.print("  $ thoth --help")
 
 # ============================================================================
 # Checkpoint Management
@@ -732,7 +972,7 @@ class ResearchProvider:
 class MockProvider(ResearchProvider):
     """Mock provider for testing and development"""
     
-    def __init__(self, name: str = "mock", delay: float = 5.0):
+    def __init__(self, name: str = "mock", delay: float = 0.1):
         self.name = name
         self.delay = delay
         self.jobs = {}
@@ -869,19 +1109,42 @@ class PerplexityProvider(ResearchProvider):
 # Provider Factory
 # ============================================================================
 
-def create_provider(provider_name: str, config: Config) -> ResearchProvider:
+def create_provider(provider_name: str, config: Config, cli_api_key: Optional[str] = None) -> ResearchProvider:
     """Create a provider instance with proper configuration and error handling"""
     provider_config = config.data["providers"].get(provider_name, {})
     
     if provider_name == "mock":
-        # Always allow mock provider for testing
-        return MockProvider(name=provider_name, delay=5)
+        # Mock provider accepts any API key (for testing)
+        # Check environment variable first
+        mock_api_key = os.getenv("MOCK_API_KEY", "")
+        
+        # Override with CLI key if provided
+        if cli_api_key:
+            mock_api_key = cli_api_key
+        
+        # Override with config key if no env/cli key
+        if not mock_api_key:
+            mock_api_key = provider_config.get("api_key", "")
+        
+        # Mock provider requires some API key (can be dummy)
+        if not mock_api_key or (mock_api_key.startswith("${") and mock_api_key.endswith("}")):
+            raise APIKeyError("mock")
+        
+        # Special validation for testing: reject "invalid" as API key
+        if mock_api_key == "invalid":
+            raise ThothError("Invalid mock API key format", "Mock API key should not be 'invalid'")
+        
+        return MockProvider(name=provider_name, delay=0.1)
     
     # Get API key from provider config
     api_key = provider_config.get("api_key", "")
     
+    # Override with CLI key if provided
+    if cli_api_key:
+        api_key = cli_api_key
+    
     # Check if API key exists or is still a placeholder
-    if not api_key or api_key.startswith("${") and api_key.endswith("}"):
+    if not api_key or (api_key.startswith("${") and api_key.endswith("}")):
         raise APIKeyError(provider_name)
     
     # Create provider instance
@@ -890,7 +1153,7 @@ def create_provider(provider_name: str, config: Config) -> ResearchProvider:
     elif provider_name == "perplexity":
         return PerplexityProvider(api_key=api_key, config=provider_config)
     else:
-        raise ThothError(f"Unknown provider: {provider_name}", f"Valid providers are: openai, perplexity, mock")
+        raise ThothError(f"Unknown provider: {provider_name}", "Valid providers are: openai, perplexity, mock")
 
 # ============================================================================
 # Async Functions for Research Operations
@@ -968,12 +1231,18 @@ def get_estimated_duration(mode: str, provider: Optional[str]) -> float:
 async def run_research(mode: str, query: str, async_mode: bool, 
                       project: Optional[str], 
                       output_dir: Optional[str], provider: Optional[str],
-                      input_file: Optional[str], auto: bool, verbose: bool):
+                      input_file: Optional[str], auto: bool, verbose: bool,
+                      cli_api_key: Optional[str] = None):
     """Execute research operation"""
     config = Config()
     
     # Check disk space
     output_path = Path(output_dir) if output_dir else Path.cwd()
+    
+    # Create output directory if it doesn't exist
+    if output_dir and not output_path.exists():
+        output_path.mkdir(parents=True, exist_ok=True)
+    
     if not check_disk_space(output_path):
         raise DiskSpaceError("Insufficient disk space", "Free up at least 100MB")
     
@@ -1031,26 +1300,27 @@ async def run_research(mode: str, query: str, async_mode: bool,
     mode_config = config.get_mode_config(mode)
     
     # Determine which providers to use
-    if mode == "thinking" or "provider" in mode_config:
-        # Single-provider mode
+    if provider:
+        # When --provider is explicitly specified, use only that provider
+        # This takes precedence over any mode configuration
+        providers_to_use = [provider]
+    elif mode == "thinking" or "provider" in mode_config:
+        # Single-provider mode (only if no explicit --provider flag)
         default_provider = mode_config.get("provider", "openai")
-        providers_to_use = [provider] if provider else [default_provider]
+        providers_to_use = [default_provider]
     elif "providers" in mode_config:
-        # Multi-provider mode
-        if provider:
-            # When --provider is specified, use only that provider
-            providers_to_use = [provider]
-        else:
-            providers_to_use = mode_config.get("providers", ["openai"])
+        # Multi-provider mode (only if no explicit --provider flag)
+        providers_to_use = mode_config.get("providers", ["openai"])
     else:
         # Default to single provider
-        providers_to_use = [provider] if provider else ["openai"]
+        providers_to_use = ["openai"]
+    
     
     # Create provider instances
     providers = {}
     for provider_name in providers_to_use:
         try:
-            providers[provider_name] = create_provider(provider_name, config)
+            providers[provider_name] = create_provider(provider_name, config, cli_api_key=cli_api_key)
         except APIKeyError as e:
             console.print(f"[red]Error:[/red] {e.message}")
             console.print(f"[yellow]Suggestion:[/yellow] {e.suggestion}")
