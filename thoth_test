@@ -79,6 +79,7 @@ class TestCase:
     skip_reason: str = ""
     provider: Optional[str] = None  # Which provider this test requires
     api_key_method: str = "env"  # "env", "cli", or "config"
+    signal_after: Optional[float] = None  # Send signal after N seconds
 
 # ============================================================================
 # Utility Functions
@@ -109,7 +110,8 @@ def get_available_providers(test_api_keys: Dict[str, str]) -> List[str]:
     return providers
 
 def run_command(command: List[str], env: Optional[Dict[str, str]] = None, 
-                timeout: int = TEST_TIMEOUT, cwd: Optional[str] = None) -> Tuple[int, str, str]:
+                timeout: int = TEST_TIMEOUT, cwd: Optional[str] = None,
+                signal_after: Optional[float] = None) -> Tuple[int, str, str]:
     """
     Execute a command and return exit code, stdout, stderr
     """
@@ -134,6 +136,17 @@ def run_command(command: List[str], env: Optional[Dict[str, str]] = None,
         )
         
         try:
+            if signal_after:
+                # Wait for specified time then send signal
+                import threading
+                def send_signal():
+                    time.sleep(signal_after)
+                    if process.poll() is None:  # Process still running
+                        process.send_signal(signal.SIGINT)
+                
+                signal_thread = threading.Thread(target=send_signal)
+                signal_thread.start()
+            
             stdout, stderr = process.communicate(timeout=timeout)
             return process.returncode, stdout, stderr
         except subprocess.TimeoutExpired:
@@ -367,7 +380,8 @@ api_key = "{api_key}"
         exit_code, stdout, stderr = run_command(
             test_command,
             env=test_env,
-            timeout=test_case.timeout
+            timeout=test_case.timeout,
+            signal_after=test_case.signal_after
         )
         
         duration = time.time() - start_time
@@ -717,6 +731,16 @@ all_tests = [
         expected_exit_code=0
     ),
     
+    # Graceful Shutdown Test (F-81)
+    TestCase(
+        test_id="M1T-09",
+        description="Ctrl-C graceful shutdown with checkpoint save",
+        command=[THOTH_EXECUTABLE, "test ctrl-c", "--provider", "mock"],
+        expected_exit_code=130,  # Standard exit code for SIGINT
+        skip=True,
+        skip_reason="Requires manual signal testing"
+    ),
+    
     TestCase(
         test_id="M1T-05",
         description="Help command works",
@@ -753,6 +777,19 @@ all_tests = [
         api_key_method="cli"
     ),
     
+    # Provider flag short form test (F-39/T-CLI-03)
+    TestCase(
+        test_id="T-CLI-03",
+        description="Short form -P works for provider flag",
+        command=[THOTH_EXECUTABLE, "test short provider flag", "-P", "mock"],
+        expected_stdout_patterns=[r"Research completed"],
+        expected_files=["*_mock_*.md"],
+        cleanup_files=["*_mock_*.md"],
+        expected_exit_code=0,
+        provider="mock",
+        api_key_method="env"
+    ),
+    
     # Milestone 2: Configuration System
     TestCase(
         test_id="M2T-01",
@@ -763,6 +800,19 @@ all_tests = [
         expected_exit_code=1
     ),
     
+    # API Key Masking Test (F-19/M2-08)
+    TestCase(
+        test_id="M2T-08",
+        description="API keys are masked in all output",
+        command=[THOTH_EXECUTABLE, "test masking", "--provider", "mock", "-v"],
+        env={"MOCK_API_KEY": "sk-secret-key-12345"},
+        not_expected_stdout_patterns=[r"sk-secret-key-12345"],
+        expected_stdout_patterns=[r"sk-\*+"],
+        expected_exit_code=0,
+        provider="mock",
+        api_key_method="env"
+    ),
+    
     TestCase(
         test_id="M2T-02",
         description="Init command creates config directory",
@@ -771,6 +821,19 @@ all_tests = [
         expected_stdout_patterns=[r"Configuration saved to"],
         expected_exit_code=0,
         cleanup_files=["./test_temp_config/*"]
+    ),
+    
+    # Config flag test (F-40/T-CFG-06)
+    TestCase(
+        test_id="T-CFG-06",
+        description="--config flag loads custom config file",
+        command=[THOTH_EXECUTABLE, "test custom config", "--provider", "mock", "--config", "./test_config.toml"],
+        expected_stdout_patterns=[r"Research completed"],
+        expected_files=["*_mock_*.md"],
+        cleanup_files=["*_mock_*.md"],
+        expected_exit_code=0,
+        provider="mock",
+        api_key_method="config"
     ),
     
     # Milestone 3: Provider Architecture
@@ -893,6 +956,40 @@ all_tests = [
         command=[THOTH_EXECUTABLE, "list"],
         expected_stdout_patterns=[r"Research Operations|No operations found"],
         expected_exit_code=0
+    ),
+    
+    # Checkpoint Persistence Tests
+    TestCase(
+        test_id="M5T-04",
+        description="Checkpoint saves operation state",
+        command=[THOTH_EXECUTABLE, "test checkpoint", "--provider", "mock"],
+        expected_stdout_patterns=[r"Research completed"],
+        expected_files=["*_mock_*.md"],
+        cleanup_files=["*_mock_*.md"],
+        expected_exit_code=0,
+        provider="mock",
+        api_key_method="env"
+    ),
+    
+    TestCase(
+        test_id="M5T-05",
+        description="Checkpoint recovery on corrupted file",
+        command=[THOTH_EXECUTABLE, "status", "invalid-json-checkpoint"],
+        expected_stdout_patterns=[r"Operation .* not found|Error loading checkpoint"],
+        expected_exit_code=1,
+        skip=True,
+        skip_reason="Requires creating corrupted checkpoint file"
+    ),
+    
+    # Checkpoint Corruption Recovery Test (F-82)
+    TestCase(
+        test_id="M5T-09",
+        description="Checkpoint corruption detection and recovery",
+        command=[THOTH_EXECUTABLE, "status", "corrupted-checkpoint-id"],
+        expected_stdout_patterns=[r"Checkpoint corrupted|Invalid checkpoint"],
+        expected_exit_code=1,
+        skip=True,
+        skip_reason="Requires test infrastructure for corrupted checkpoints"
     ),
     
     # Milestone 6: Output Management
@@ -1138,6 +1235,22 @@ all_tests = [
         expected_exit_code=0,
         provider="perplexity",
         api_key_method="env"
+    ),
+    
+    # Signal handling tests
+    TestCase(
+        test_id="T-SIG-01",
+        description="Graceful exit on Ctrl-C with checkpoint save",
+        command=[THOTH_EXECUTABLE, "test interrupt handling", "--provider", "mock"],
+        expected_stdout_patterns=[
+            r"Interrupt received\. Saving checkpoint",
+            r"Checkpoint saved\. Resume with: thoth --resume"
+        ],
+        expected_exit_code=1,
+        provider="mock",
+        api_key_method="env",
+        signal_after=2,  # Send SIGINT after 2 seconds
+        cleanup_files=["*_mock_*.md", "~/.thoth/checkpoints/*.json"]
     ),
 ]
 

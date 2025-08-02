@@ -31,6 +31,7 @@ from typing import List, Optional, Dict, Any
 from uuid import uuid4
 import re
 import shutil
+import signal
 
 import click
 from rich.console import Console
@@ -48,6 +49,17 @@ console = Console()
 # Version tracking
 THOTH_VERSION = "1.5.0"
 CONFIG_VERSION = "1.0"
+
+# Global variables for signal handling
+_current_checkpoint_manager = None
+_current_operation = None
+
+# Global config path
+_config_path = None
+
+def get_config():
+    """Get Config instance with custom path if provided"""
+    return Config(_config_path) if _config_path else Config()
 
 # Built-in mode definitions
 BUILTIN_MODES = {
@@ -199,7 +211,7 @@ class Config:
                 "auto_input": True
             },
             "output": {
-                "combine_reports": True,
+                "combine_reports": False,
                 "format": "markdown",
                 "include_metadata": True,
                 "timestamp_format": "%Y-%m-%d_%H%M%S"
@@ -433,7 +445,7 @@ def build_epilog():
 @click.argument('args', nargs=-1)
 @click.option('--mode', '-m', 'mode_opt', help='Research mode')
 @click.option('--query', '-q', 'query_opt', help='Research query')
-@click.option('--query-file', '-Q', help='Read query from file (use - for stdin)')
+@click.option('--query-file', '-F', help='Read query from file (use - for stdin)')
 @click.option('--async', '-A', 'async_mode', is_flag=True, help='Submit and exit')
 @click.option('--resume', '-R', 'resume_id', help='Resume operation by ID')
 @click.option('--project', '-p', help='Project name')
@@ -444,8 +456,11 @@ def build_epilog():
 @click.option('--verbose', '-v', is_flag=True, help='Enable debug output')
 @click.option('--version', '-V', is_flag=True, help='Show version and exit')
 @click.option('--api-key', help='API key for the provider')
+@click.option('--config', '-c', 'config_path', help='Path to custom config file')
+@click.option('--combined', is_flag=True, help='Generate combined report from multiple providers')
+@click.option('--quiet', '-Q', is_flag=True, help='Minimal output during execution')
 def cli(ctx, args, mode_opt, query_opt, query_file, async_mode, resume_id, 
-        project, output_dir, provider, input_file, auto, verbose, version, api_key):
+        project, output_dir, provider, input_file, auto, verbose, version, api_key, config_path, combined, quiet):
     """Thoth - AI-Powered Research Assistant
     
     Quick usage: thoth "QUERY"
@@ -459,6 +474,11 @@ def cli(ctx, args, mode_opt, query_opt, query_file, async_mode, resume_id,
       thoth help init
       thoth help status
     """
+    # Set global config path if provided
+    global _config_path
+    if config_path:
+        _config_path = Path(config_path).expanduser().resolve()
+    
     # Show version if requested
     if version:
         console.print(f"Thoth v{THOTH_VERSION}")
@@ -576,7 +596,9 @@ def cli(ctx, args, mode_opt, query_opt, query_file, async_mode, resume_id,
             input_file=input_file,
             auto=auto,
             verbose=verbose,
-            cli_api_key=api_key
+            cli_api_key=api_key,
+            combined=combined,
+            quiet=quiet
         ))
     else:
         # Show help if no valid command
@@ -592,7 +614,11 @@ def init_command():
     console.print("✓ UV package manager available")
     console.print(f"✓ Operating System: {sys.platform} (supported)\n")
     
-    config_path = Path(user_config_dir("thoth")) / "config.toml"
+    # Use custom config path if provided, otherwise use default
+    if _config_path:
+        config_path = _config_path
+    else:
+        config_path = Path(user_config_dir("thoth")) / "config.toml"
     console.print(f"Configuration file will be created at: {config_path}\n")
     
     # Create config directory if it doesn't exist
@@ -603,7 +629,7 @@ def init_command():
     console.print("Creating default configuration...")
     
     # Create default config
-    config = Config()
+    config = get_config()
     
     # For now, just save the default config using basic TOML format
     # Since we can't use external toml library in UV script, write manually
@@ -623,7 +649,7 @@ def init_command():
         f.write('retry_attempts = 3\n')
         f.write('auto_input = true\n\n')
         f.write('[output]\n')
-        f.write('combine_reports = true\n')
+        f.write('combine_reports = false\n')
         f.write('format = "markdown"\n')
         f.write('include_metadata = true\n')
         f.write('timestamp_format = "%Y-%m-%d_%H%M%S"\n\n')
@@ -1232,9 +1258,12 @@ async def run_research(mode: str, query: str, async_mode: bool,
                       project: Optional[str], 
                       output_dir: Optional[str], provider: Optional[str],
                       input_file: Optional[str], auto: bool, verbose: bool,
-                      cli_api_key: Optional[str] = None):
+                      cli_api_key: Optional[str] = None, combined: bool = False,
+                      quiet: bool = False):
     """Execute research operation"""
-    config = Config()
+    global _current_checkpoint_manager, _current_operation
+    
+    config = get_config()
     
     # Check disk space
     output_path = Path(output_dir) if output_dir else Path.cwd()
@@ -1293,6 +1322,10 @@ async def run_research(mode: str, query: str, async_mode: bool,
     checkpoint_manager = CheckpointManager(config)
     output_manager = OutputManager(config)
     
+    # Set globals for signal handling
+    _current_checkpoint_manager = checkpoint_manager
+    _current_operation = operation
+    
     # Save initial checkpoint
     await checkpoint_manager.save(operation)
     
@@ -1332,9 +1365,11 @@ async def run_research(mode: str, query: str, async_mode: bool,
     
     if async_mode:
         # Submit and exit
-        console.print(f"[green]✓[/green] Research submitted")
+        if not quiet:
+            console.print(f"[green]✓[/green] Research submitted")
         console.print(f"Operation ID: [bold]{operation_id}[/bold]")
-        console.print(f"\nCheck status: [dim]thoth status {operation_id}[/dim]")
+        if not quiet:
+            console.print(f"\nCheck status: [dim]thoth status {operation_id}[/dim]")
         
         # TODO: Actually submit async tasks
         return
@@ -1349,7 +1384,8 @@ async def run_research(mode: str, query: str, async_mode: bool,
         TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
         TimeElapsedColumn(),
         TextColumn("| Next poll: {task.fields[next_poll]}s"),
-        console=console
+        console=console,
+        disable=quiet  # Disable progress in quiet mode
     ) as progress:
         # Submit to all providers
         jobs = {}
@@ -1406,8 +1442,8 @@ async def run_research(mode: str, query: str, async_mode: bool,
             if not all_completed:
                 await asyncio.sleep(min(poll_interval, 1))  # Sleep for 1 second increments
     
-    # Generate combined report if multiple providers
-    if len(operation.output_paths) > 1 and config.data["output"].get("combine_reports", True):
+    # Generate combined report if multiple providers and combined flag is set
+    if len(operation.output_paths) > 1 and combined:
         contents = {}
         for provider_name, path in operation.output_paths.items():
             with open(path, 'r') as f:
@@ -1423,21 +1459,30 @@ async def run_research(mode: str, query: str, async_mode: bool,
     operation.updated_at = datetime.now()
     await checkpoint_manager.save(operation)
     
-    console.print(f"\n[green]✓[/green] Research completed!")
-    if project:
-        console.print(f"Results saved to: [dim]{config.data['paths']['base_output_dir']}/{project}/[/dim]")
-    else:
-        console.print(f"Results saved to: [dim]current directory[/dim]")
+    if not quiet:
+        console.print(f"\n[green]✓[/green] Research completed!")
+        if project:
+            console.print(f"Results saved to: [dim]{config.data['paths']['base_output_dir']}/{project}/[/dim]")
+        else:
+            console.print(f"Results saved to: [dim]current directory[/dim]")
     
     # Show output files
     for provider_name, path in operation.output_paths.items():
         console.print(f"  • {path.name}")
     
+    # Suggest combined report if multiple providers and not already generated
+    if not quiet and len(operation.output_paths) > 1 and "combined" not in operation.output_paths:
+        console.print("\nTo generate a combined report, run with --combined flag")
+    
+    # Clear globals after successful completion
+    _current_checkpoint_manager = None
+    _current_operation = None
+    
     return operation
 
 async def resume_operation(operation_id: str, verbose: bool):
     """Resume an existing operation"""
-    config = Config()
+    config = get_config()
     checkpoint_manager = CheckpointManager(config)
     
     # Load operation from checkpoint
@@ -1456,7 +1501,7 @@ async def resume_operation(operation_id: str, verbose: bool):
 
 async def show_status(operation_id: str):
     """Show status of a specific operation"""
-    config = Config()
+    config = get_config()
     checkpoint_manager = CheckpointManager(config)
     
     # Load operation from checkpoint
@@ -1507,7 +1552,7 @@ async def show_status(operation_id: str):
 
 async def list_operations(show_all: bool):
     """List all operations"""
-    config = Config()
+    config = get_config()
     checkpoint_manager = CheckpointManager(config)
     
     # Get all checkpoint files
@@ -1574,10 +1619,41 @@ async def list_operations(show_all: bool):
     console.print("\nUse 'thoth status <ID>' for details")
 
 # ============================================================================
+# Signal Handlers
+# ============================================================================
+
+def handle_sigint(signum, frame):
+    """Handle Ctrl-C gracefully by saving checkpoint"""
+    console.print("\n[yellow]Interrupt received. Saving checkpoint...[/yellow]")
+    
+    if _current_checkpoint_manager and _current_operation:
+        # Update operation status
+        _current_operation.status = "interrupted"
+        _current_operation.updated_at = datetime.now()
+        
+        # Save checkpoint synchronously
+        try:
+            # Run async save in sync context
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            loop.run_until_complete(_current_checkpoint_manager.save(_current_operation))
+            console.print(f"[green]✓[/green] Checkpoint saved. Resume with: thoth --resume {_current_operation.id}")
+        except Exception as e:
+            console.print(f"[red]Error saving checkpoint:[/red] {e}")
+        finally:
+            loop.close()
+    
+    console.print("[red]Exiting...[/red]")
+    sys.exit(1)
+
+# ============================================================================
 # Main Entry Point
 # ============================================================================
 
 if __name__ == "__main__":
+    # Register signal handler for graceful shutdown
+    signal.signal(signal.SIGINT, handle_sigint)
+    
     try:
         cli()
     except Exception as e:
