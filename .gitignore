@@ -46,6 +46,7 @@ htmlcov/
 research-outputs/
 ~/.thoth/checkpoints/
 *.md
+openai.env
 !README.md
 !CLAUDE.md
 !thoth.*.md
