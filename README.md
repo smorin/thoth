@@ -5,11 +5,13 @@ Thoth is a command-line tool that automates deep technical research using multip
 ## Features
 
 - **Multi-provider intelligence**: Parallel execution of OpenAI and Perplexity for comprehensive results
+- **Provider discovery**: List available providers, models, and API key configuration
 - **Zero-configuration deployment**: UV inline script dependencies eliminate setup complexity
 - **Flexible operation modes**: Support both interactive (wait) and background (submit and exit) workflows
 - **Production-ready reliability**: Checkpoint/resume, graceful error handling, and operation persistence
 - **Simple output structure**: Intuitive file placement with ad-hoc and project modes
 - **Mode chaining**: Seamless workflow from clarification through exploration to deep research
+- **Rich metadata**: Output files include model information and exact prompts sent to LLMs
 
 ## Prerequisites
 
@@ -45,15 +47,23 @@ sudo make install
    export PERPLEXITY_API_KEY="your-perplexity-key"
    ```
 
-3. **Run your first research:**
+3. **Check provider configuration:**
    ```bash
-   thoth deep_research "impact of quantum computing on cryptography"
+   thoth providers -- --list
+   ```
+
+4. **Run your first research:**
+   ```bash
+   thoth "impact of quantum computing on cryptography"
    ```
 
 ## Usage
 
 ### Basic Research
 ```bash
+# Quick research (uses default mode)
+thoth "your research query"
+
 # Run research with a specific mode
 thoth deep_research "your research query"
 thoth clarification "ambiguous topic needing clarity"
@@ -79,6 +89,30 @@ thoth exploration --auto
 thoth deep_research --auto
 ```
 
+### Provider-Specific API Keys
+```bash
+# Use specific API key for a provider
+thoth "query" --api-key-openai "sk-..." --provider openai
+
+# Multiple provider keys for multi-provider modes
+thoth deep_research "query" --api-key-openai "sk-..." --api-key-perplexity "pplx-..."
+
+# Testing with mock provider
+thoth "test query" --api-key-mock "test-key" --provider mock
+```
+
+### Output Control
+```bash
+# Generate combined report from multiple providers
+thoth "query" --combined
+
+# Disable metadata headers and prompt section
+thoth "query" --no-metadata
+
+# Quiet mode for minimal output
+thoth "query" --quiet
+```
+
 ### Async Operations
 ```bash
 # Submit research and exit immediately
@@ -90,6 +124,22 @@ thoth status research-20240803-143022-a1b2c3d4e5f6g7h8
 
 # Resume operation
 thoth --resume research-20240803-143022-a1b2c3d4e5f6g7h8
+```
+
+### Provider Management
+```bash
+# List available providers and their status
+thoth providers -- --list
+
+# Show API key configuration
+thoth providers -- --keys
+
+# List available models from all providers
+thoth providers -- --models
+
+# List models from specific provider
+thoth providers -- --models --provider openai
+thoth providers -- --models -P perplexity
 ```
 
 ### List Operations
@@ -117,9 +167,55 @@ Configuration file is stored at `~/.thoth/config.toml`. Key settings:
 
 ### Ad-hoc Mode (default)
 ```
-./2024-08-03_143022_deep_research_openai_quantum-computing.md
-./2024-08-03_143022_deep_research_perplexity_quantum-computing.md
-./2024-08-03_143022_deep_research_combined_quantum-computing.md
+./2024-08-03_143022_default_openai_quantum-computing.md
+./2024-08-03_143022_default_perplexity_quantum-computing.md
+./2024-08-03_143022_default_combined_quantum-computing.md  # With --combined flag
+```
+
+### Output File Format
+
+Each output file includes (unless `--no-metadata` is used):
+
+```yaml
+---
+query: What is Python?
+mode: default
+provider: openai
+model: gpt-4o
+operation_id: research-20250802-154755-a38d159848984fa8
+created_at: 2025-08-02T15:47:55.468596
+---
+
+### Prompt
+
+```
+What is Python?
+```
+
+[Research content follows...]
+```
+
+For modes with system prompts:
+```yaml
+---
+query: explain kubernetes
+mode: deep_research
+provider: openai
+model: gpt-4o
+operation_id: research-20250802-154755-a38d159848984fa8
+created_at: 2025-08-02T15:47:55.468596
+---
+
+### Prompt
+
+```
+System: Conduct comprehensive research with citations and multiple perspectives.
+Organize findings clearly and highlight key insights.
+
+User: explain kubernetes
+```
+
+[Research content follows...]
 ```
 
 ### Project Mode
@@ -144,13 +240,24 @@ make lint
 
 # Format code
 make format
+
+# Test with mock provider (no API keys needed)
+./thoth "test query" --provider mock
 ```
 
 ## Environment Variables
 
 - `OPENAI_API_KEY`: OpenAI API key
 - `PERPLEXITY_API_KEY`: Perplexity API key
+- `MOCK_API_KEY`: Mock provider API key (for testing)
 - `THOTH_DEBUG`: Enable debug output (set to 1)
+
+### API Key Precedence
+
+API keys are resolved in the following order (highest to lowest priority):
+1. Command-line arguments (`--api-key-openai`, `--api-key-perplexity`, `--api-key-mock`)
+2. Environment variables (`OPENAI_API_KEY`, `PERPLEXITY_API_KEY`, `MOCK_API_KEY`)
+3. Configuration file (`~/.thoth/config.toml`)
 
 ## Exit Codes
 
@@ -168,6 +275,37 @@ make format
 | 9 | API quota exceeded |
 | 10 | Checkpoint corruption |
 | 127 | Unexpected error |
+
+## Commands Reference
+
+### Main Commands
+
+| Command | Description | Example |
+|---------|-------------|---------|  
+| (default) | Run research with query | `thoth "your research query"` |
+| init | Setup wizard for API keys | `thoth init` |
+| status | Show operation details | `thoth status research-20240803-143022-xxx` |
+| list | Show recent operations | `thoth list` |
+| providers | Manage providers and models | `thoth providers -- --list` |
+| help | Show help information | `thoth help [COMMAND]` |
+
+### Providers Command Options
+
+| Option | Description | Example |
+|--------|-------------|---------|  
+| --list | Show available providers and status | `thoth providers -- --list` |
+| --models | List models from providers | `thoth providers -- --models` |
+| --keys | Show API key configuration | `thoth providers -- --keys` |
+| --provider, -P | Filter by specific provider | `thoth providers -- --models -P openai` |
+
+**Note**: Use `--` separator before options to prevent parsing conflicts.
+
+## Version History
+
+- **v2.2**: Provider discovery, provider-specific API keys, enhanced metadata
+- **v2.1**: Providers command, dynamic model listing  
+- **v2.0**: Mode chaining, checkpoint/resume, operation management
+- **v1.5**: Core research functionality with multiple modes
 
 ## License
 
