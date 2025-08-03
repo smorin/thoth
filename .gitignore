@@ -1,0 +1,67 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+venv/
+ENV/
+env/
+.venv
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.hypothesis/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Thoth specific
+research-outputs/
+~/.thoth/checkpoints/
+*.md
+!README.md
+!CLAUDE.md
+!thoth.*.md
+!temp.*.md
+!references.md
+
+# Logs
+*.log
+thoth.log
+
+# Temporary files
+*.tmp
+.tmp/
+
+# UV cache
+.uv/
+
+# Ruff cache
+.ruff_cache/

@@ -11,3 +11,9 @@
 - https://docs.perplexity.ai/guides/structured-outputs
 - https://docs.perplexity.ai/guides/prompt-guide
 - https://docs.perplexity.ai/guides/chat-completions-guide
+
+# OpenAI model list
+- https://platform.openai.com/docs/api-reference/models/list
+
+# Perplexity Model
+- `sonar-deep-research`

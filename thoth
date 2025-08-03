@@ -37,6 +37,7 @@ import click
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn
 from rich.table import Table
+from rich import box
 from platformdirs import user_config_dir
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 from openai import AsyncOpenAI
@@ -379,6 +380,9 @@ class ThothCommand(click.Command):
                 elif subcommand == 'list':
                     show_list_help()
                     ctx.exit(0)
+                elif subcommand == 'providers':
+                    show_providers_help()
+                    ctx.exit(0)
         
         return super().parse_args(ctx, args)
     
@@ -455,17 +459,22 @@ def build_epilog():
 @click.option('--auto', is_flag=True, help='Automatically use latest relevant output as input')
 @click.option('--verbose', '-v', is_flag=True, help='Enable debug output')
 @click.option('--version', '-V', is_flag=True, help='Show version and exit')
-@click.option('--api-key', help='API key for the provider')
+@click.option('--api-key-openai', help='API key for OpenAI provider')
+@click.option('--api-key-perplexity', help='API key for Perplexity provider')
+@click.option('--api-key-mock', help='API key for Mock provider')
 @click.option('--config', '-c', 'config_path', help='Path to custom config file')
 @click.option('--combined', is_flag=True, help='Generate combined report from multiple providers')
 @click.option('--quiet', '-Q', is_flag=True, help='Minimal output during execution')
+@click.option('--no-metadata', is_flag=True, help='Disable metadata headers and prompt section in output files')
+@click.option('--timeout', '-T', type=float, help='Override request timeout in seconds')
 def cli(ctx, args, mode_opt, query_opt, query_file, async_mode, resume_id, 
-        project, output_dir, provider, input_file, auto, verbose, version, api_key, config_path, combined, quiet):
+        project, output_dir, provider, input_file, auto, verbose, version, 
+        api_key_openai, api_key_perplexity, api_key_mock, config_path, combined, quiet, no_metadata, timeout):
     """Thoth - AI-Powered Research Assistant
     
     Quick usage: thoth "QUERY"
     Advanced: thoth MODE "QUERY"
-    Commands: init, status, list, help [COMMAND]
+    Commands: init, status, list, providers, help [COMMAND]
     
     Examples:
       thoth "how does DNS work"
@@ -485,7 +494,7 @@ def cli(ctx, args, mode_opt, query_opt, query_file, async_mode, resume_id,
         sys.exit(0)
     
     # Handle special commands
-    if args and args[0] in ['init', 'status', 'list', 'help']:
+    if args and args[0] in ['init', 'status', 'list', 'help', 'providers']:
         command = args[0]
         if command == 'init':
             init_command()
@@ -500,6 +509,30 @@ def cli(ctx, args, mode_opt, query_opt, query_file, async_mode, resume_id,
             show_all = '--all' in args
             asyncio.run(list_operations(show_all=show_all))
             return
+        elif command == 'providers':
+            # For providers command, we need to check both args and ctx.args 
+            # because Click might intercept some flags
+            all_args = list(args) + list(ctx.args)
+            show_models = '--models' in all_args or '--models' in sys.argv
+            show_list = '--list' in all_args or '--list' in sys.argv
+            show_keys = '--keys' in all_args or '--keys' in sys.argv
+            filter_provider = None
+            
+            # Check for --provider flag in multiple places
+            for arg_list in [args, ctx.args, sys.argv]:
+                for i, arg in enumerate(arg_list):
+                    if arg in ['--provider', '-P'] and i + 1 < len(arg_list):
+                        filter_provider = arg_list[i + 1]
+                        break
+                if filter_provider:
+                    break
+            
+            # Also check if provider was parsed by Click
+            if not filter_provider and provider:
+                filter_provider = provider
+                
+            asyncio.run(providers_command(show_models=show_models, show_list=show_list, show_keys=show_keys, filter_provider=filter_provider))
+            return
         elif command == 'help':
             # Check if there's a specific command to get help for
             if len(args) > 1:
@@ -510,9 +543,11 @@ def cli(ctx, args, mode_opt, query_opt, query_file, async_mode, resume_id,
                     show_status_help()
                 elif help_command == 'list':
                     show_list_help()
+                elif help_command == 'providers':
+                    show_providers_help()
                 else:
                     console.print(f"[red]Error:[/red] Unknown command: {help_command}")
-                    console.print("[yellow]Available commands:[/yellow] init, status, list")
+                    console.print("[yellow]Available commands:[/yellow] init, status, list, providers")
                     console.print("\nUse 'thoth help' for general help")
             else:
                 # Show general help - use Click's help instead
@@ -586,6 +621,12 @@ def cli(ctx, args, mode_opt, query_opt, query_file, async_mode, resume_id,
         asyncio.run(resume_operation(resume_id, verbose))
     elif final_mode and final_query:
         # Run new research
+        # Create provider-specific API keys dictionary
+        cli_api_keys = {
+            'openai': api_key_openai,
+            'perplexity': api_key_perplexity,
+            'mock': api_key_mock
+        }
         asyncio.run(run_research(
             mode=final_mode,
             query=final_query,
@@ -596,9 +637,11 @@ def cli(ctx, args, mode_opt, query_opt, query_file, async_mode, resume_id,
             input_file=input_file,
             auto=auto,
             verbose=verbose,
-            cli_api_key=api_key,
+            cli_api_keys=cli_api_keys,
             combined=combined,
-            quiet=quiet
+            quiet=quiet,
+            no_metadata=no_metadata,
+            timeout_override=timeout
         ))
     else:
         # Show help if no valid command
@@ -752,6 +795,41 @@ def show_list_help():
     console.print("  thoth status     - Show details for specific operation")
     console.print("  thoth help       - Show general help")
 
+def show_providers_help():
+    """Show detailed help for the providers command"""
+    console.print("\n[bold]thoth providers[/bold] - List providers and available models")
+    console.print("\n[bold]Description:[/bold]")
+    console.print("  Shows available providers and their configuration status,")
+    console.print("  lists available models from each LLM provider,")
+    console.print("  or displays API key configuration information.")
+    console.print("  OpenAI models are fetched dynamically via API.")
+    console.print("  Perplexity models are returned from a predefined list.")
+    console.print("\n[bold]Usage:[/bold]")
+    console.print("  thoth providers -- [OPTIONS]")
+    console.print("\n[bold]Options:[/bold]")
+    console.print("  --list                List available providers and their status")
+    console.print("  --models              List available models from providers")
+    console.print("  --keys                Show API key configuration for each provider")
+    console.print("  --provider, -P        Filter by specific provider (with --models)")
+    console.print("\n[bold]Note:[/bold]")
+    console.print("  Use -- before options to prevent parsing conflicts")
+    console.print("\n[bold]Available providers:[/bold]")
+    console.print("  • openai     - OpenAI GPT models")
+    console.print("  • perplexity - Perplexity Sonar models")
+    console.print("  • mock       - Mock provider for testing")
+    console.print("\n[bold]Examples:[/bold]")
+    console.print("  # List all available providers")
+    console.print("  $ thoth providers -- --list")
+    console.print("\n  # Show API key configuration")
+    console.print("  $ thoth providers -- --keys")
+    console.print("\n  # List all models from all providers")
+    console.print("  $ thoth providers -- --models")
+    console.print("\n  # List only OpenAI models")
+    console.print("  $ thoth providers -- --models --provider openai")
+    console.print("  $ thoth providers -- --models -P openai")
+    console.print("\n[bold]Related commands:[/bold]")
+    console.print("  thoth help       - Show general help")
+
 def show_general_help(ctx):
     """Show enhanced general help with command overview"""
     console.print("\n[bold]Thoth - AI-Powered Research Assistant[/bold]")
@@ -867,10 +945,11 @@ class CheckpointManager:
 class OutputManager:
     """Manages research output files"""
     
-    def __init__(self, config: Config):
+    def __init__(self, config: Config, no_metadata: bool = False):
         self.config = config
         self.base_output_dir = Path(config.data["paths"]["base_output_dir"])
         self.format = config.data["output"]["format"]
+        self.no_metadata = no_metadata
     
     def get_output_path(
         self,
@@ -922,7 +1001,9 @@ class OutputManager:
         operation: OperationStatus,
         provider: str,
         content: str,
-        output_dir: Optional[str] = None
+        output_dir: Optional[str] = None,
+        model: Optional[str] = None,
+        system_prompt: Optional[str] = None
     ) -> Path:
         """Save research result to file"""
         output_path = self.get_output_path(operation, provider, output_dir)
@@ -931,12 +1012,13 @@ class OutputManager:
         if not check_disk_space(output_path.parent, 10):  # 10MB minimum
             raise DiskSpaceError("Insufficient disk space to save results")
         
-        if self.format == "markdown" and self.config.data["output"]["include_metadata"]:
+        if self.format == "markdown" and self.config.data["output"]["include_metadata"] and not self.no_metadata:
             # Add metadata header
             metadata = f"""---
 query: {operation.query}
 mode: {operation.mode}
 provider: {provider}
+model: {model if model else "Unknown"}
 operation_id: {operation.id}
 created_at: {operation.created_at.isoformat()}
 """
@@ -945,6 +1027,15 @@ created_at: {operation.created_at.isoformat()}
                 for f in operation.input_files:
                     metadata += f"  - {f}\n"
             metadata += "---\n\n"
+            
+            # Add prompt section
+            metadata += "### Prompt\n\n```\n"
+            if system_prompt:
+                metadata += f"System: {system_prompt}\n\nUser: {operation.query}\n"
+            else:
+                metadata += operation.query + "\n"
+            metadata += "```\n\n"
+            
             content = metadata + content
         
         # Write file
@@ -957,7 +1048,8 @@ created_at: {operation.created_at.isoformat()}
         self,
         operation: OperationStatus,
         contents: Dict[str, str],
-        output_dir: Optional[str] = None
+        output_dir: Optional[str] = None,
+        system_prompt: Optional[str] = None
     ) -> Path:
         """Generate a combined report from multiple provider results"""
         # Create synthesized content
@@ -970,7 +1062,8 @@ created_at: {operation.created_at.isoformat()}
             combined_content += "\n\n---\n\n"
         
         # Save combined report
-        return await self.save_result(operation, "combined", combined_content, output_dir)
+        return await self.save_result(operation, "combined", combined_content, output_dir, 
+                                     model="Multiple", system_prompt=system_prompt)
 
 # ============================================================================
 # Provider Base Classes and Implementations
@@ -994,13 +1087,19 @@ class ResearchProvider:
     def supports_progress(self) -> bool:
         """Whether this provider supports progress reporting"""
         return False
+    
+    async def list_models(self) -> List[Dict[str, Any]]:
+        """List available models for this provider"""
+        raise NotImplementedError
 
 class MockProvider(ResearchProvider):
     """Mock provider for testing and development"""
     
-    def __init__(self, name: str = "mock", delay: float = 0.1):
+    def __init__(self, name: str = "mock", delay: float = 0.1, api_key: str = ""):
         self.name = name
         self.delay = delay
+        self.api_key = api_key
+        self.model = "None"  # Mock provider has no model
         self.jobs = {}
     
     async def submit(self, query: str, mode: str, system_prompt: str = None) -> str:
@@ -1059,6 +1158,13 @@ This mock provider successfully completed the research task.
     
     def supports_progress(self) -> bool:
         return True
+    
+    async def list_models(self) -> List[Dict[str, Any]]:
+        """Return mock models for testing"""
+        return [
+            {"id": "mock-model-v1", "created": 1680000000, "owned_by": "mock"},
+            {"id": "mock-model-v2", "created": 1690000000, "owned_by": "mock"}
+        ]
 
 # Placeholder for real providers
 class OpenAIProvider(ResearchProvider):
@@ -1067,10 +1173,23 @@ class OpenAIProvider(ResearchProvider):
     def __init__(self, api_key: str, config: Dict[str, Any] = None):
         self.api_key = api_key
         self.config = config or {}
-        self.client = AsyncOpenAI(api_key=api_key)
+        self.model = self.config.get("model", "gpt-4o")  # Store model from config
+        self.responses = {}  # Store responses by job_id
+        
+        # Add timeout configuration
+        timeout = self.config.get("timeout", 30.0)
+        self.client = AsyncOpenAI(
+            api_key=api_key,
+            timeout=httpx.Timeout(timeout, connect=5.0)
+        )
     
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=4, max=10),
+        retry=retry_if_exception_type((httpx.TimeoutException, httpx.ConnectError))
+    )
     async def submit(self, query: str, mode: str, system_prompt: str = None) -> str:
-        """Submit to OpenAI"""
+        """Submit to OpenAI with retry logic for transient errors"""
         try:
             # Build messages
             messages = []
@@ -1078,33 +1197,75 @@ class OpenAIProvider(ResearchProvider):
                 messages.append({"role": "system", "content": system_prompt})
             messages.append({"role": "user", "content": query})
             
-            # Get model from config or use default
-            model = self.config.get("model", "gpt-4o")
+            # Get configuration parameters
+            temperature = self.config.get("temperature", 0.7)
+            max_tokens = self.config.get("max_tokens", 4000)
             
-            # Submit request
-            self.response = await self.client.chat.completions.create(
-                model=model,
+            # Submit request using stored model
+            response = await self.client.chat.completions.create(
+                model=self.model,
                 messages=messages,
-                temperature=0.7,
-                max_tokens=4000
+                temperature=temperature,
+                max_tokens=max_tokens
             )
             
-            # Return a job ID (use request ID or generate one)
-            return f"openai-{datetime.now().strftime('%Y%m%d%H%M%S')}"
+            # Generate unique job ID
+            job_id = f"openai-{datetime.now().strftime('%Y%m%d%H%M%S')}-{uuid4().hex[:8]}"
             
+            # Store response by job_id
+            self.responses[job_id] = response
+            
+            return job_id
+            
+        except httpx.TimeoutException:
+            raise ProviderError("openai", "Request timed out. Try increasing timeout in config.")
+        except httpx.ConnectError:
+            raise ProviderError("openai", "Failed to connect to OpenAI API. Check your internet connection.")
         except Exception as e:
-            # Check for authentication errors
-            error_msg = str(e).lower()
-            if "authentication" in error_msg or "api key" in error_msg or "401" in str(e):
-                # Extract the specific error message if available
-                if "incorrect api key" in error_msg:
+            error_msg = str(e)
+            error_msg_lower = error_msg.lower()
+            
+            # Check for authentication errors (401)
+            if "authentication" in error_msg_lower or "api key" in error_msg_lower or "401" in error_msg:
+                if "incorrect api key" in error_msg_lower:
                     raise ThothError(
                         "Invalid OpenAI API key",
                         "Please check your API key at https://platform.openai.com/account/api-keys"
                     )
                 else:
                     raise APIKeyError("openai")
-            raise ProviderError("openai", str(e))
+            
+            # Check for rate limit errors (429)
+            elif "rate limit" in error_msg_lower or "429" in error_msg:
+                raise ProviderError(
+                    "openai", 
+                    "Rate limit exceeded. Please wait a moment and try again."
+                )
+            
+            # Check for model not found errors (404)
+            elif "model" in error_msg_lower and ("not found" in error_msg_lower or "404" in error_msg):
+                raise ProviderError(
+                    "openai",
+                    f"Model '{self.model}' not found. Please check available models with 'thoth providers -- --models --provider openai'"
+                )
+            
+            # Check for quota exceeded errors
+            elif "quota" in error_msg_lower or "insufficient_quota" in error_msg_lower:
+                raise ProviderError(
+                    "openai",
+                    "API quota exceeded. Please check your OpenAI account billing."
+                )
+            
+            # Check for invalid request errors (400)
+            elif "invalid" in error_msg_lower or "400" in error_msg:
+                raise ProviderError(
+                    "openai",
+                    f"Invalid request: {error_msg}"
+                )
+            
+            # Generic error
+            else:
+                raise ProviderError("openai", str(e))
     
     async def check_status(self, job_id: str) -> Dict[str, Any]:
         """Check status - for sync mode, always return completed"""
@@ -1115,9 +1276,27 @@ class OpenAIProvider(ResearchProvider):
     
     async def get_result(self, job_id: str) -> str:
         """Get the result"""
-        if hasattr(self, 'response') and self.response:
-            return self.response.choices[0].message.content
+        if job_id in self.responses:
+            response = self.responses[job_id]
+            return response.choices[0].message.content
         return "No response available"
+    
+    async def list_models(self) -> List[Dict[str, Any]]:
+        """Fetch available models from OpenAI API"""
+        try:
+            response = await self.client.models.list()
+            models = []
+            for model in response.data:
+                # Filter to only include text generation models
+                if any(cap in model.id for cap in ['gpt', 'o1', 'davinci', 'curie', 'babbage', 'ada']):
+                    models.append({
+                        "id": model.id,
+                        "created": model.created,
+                        "owned_by": model.owned_by
+                    })
+            return sorted(models, key=lambda x: x['created'], reverse=True)
+        except Exception as e:
+            raise ProviderError("openai", f"Failed to fetch models: {str(e)}")
 
 class PerplexityProvider(ResearchProvider):
     """Perplexity research implementation"""
@@ -1125,17 +1304,24 @@ class PerplexityProvider(ResearchProvider):
     def __init__(self, api_key: str, config: Dict[str, Any] = None):
         self.api_key = api_key
         self.config = config or {}
+        self.model = self.config.get("model", "sonar-pro")  # Store model from config
     
     async def submit(self, query: str, mode: str, system_prompt: str = None) -> str:
         """Submit to Perplexity"""
         # TODO: Implement actual Perplexity submission
         raise NotImplementedError("Perplexity provider not yet implemented")
+    
+    async def list_models(self) -> List[Dict[str, Any]]:
+        """Return hardcoded Perplexity models as specified"""
+        return [
+            {"id": "sonar-deep-research", "created": 1700000000, "owned_by": "perplexity"}
+        ]
 
 # ============================================================================
 # Provider Factory
 # ============================================================================
 
-def create_provider(provider_name: str, config: Config, cli_api_key: Optional[str] = None) -> ResearchProvider:
+def create_provider(provider_name: str, config: Config, cli_api_key: Optional[str] = None, timeout_override: Optional[float] = None) -> ResearchProvider:
     """Create a provider instance with proper configuration and error handling"""
     provider_config = config.data["providers"].get(provider_name, {})
     
@@ -1160,7 +1346,7 @@ def create_provider(provider_name: str, config: Config, cli_api_key: Optional[st
         if mock_api_key == "invalid":
             raise ThothError("Invalid mock API key format", "Mock API key should not be 'invalid'")
         
-        return MockProvider(name=provider_name, delay=0.1)
+        return MockProvider(name=provider_name, delay=0.1, api_key=mock_api_key)
     
     # Get API key from provider config
     api_key = provider_config.get("api_key", "")
@@ -1172,6 +1358,11 @@ def create_provider(provider_name: str, config: Config, cli_api_key: Optional[st
     # Check if API key exists or is still a placeholder
     if not api_key or (api_key.startswith("${") and api_key.endswith("}")):
         raise APIKeyError(provider_name)
+    
+    # Apply timeout override if provided
+    if timeout_override is not None and provider_name in ['openai', 'perplexity']:
+        provider_config = provider_config.copy()  # Don't modify original config
+        provider_config['timeout'] = timeout_override
     
     # Create provider instance
     if provider_name == "openai":
@@ -1258,8 +1449,8 @@ async def run_research(mode: str, query: str, async_mode: bool,
                       project: Optional[str], 
                       output_dir: Optional[str], provider: Optional[str],
                       input_file: Optional[str], auto: bool, verbose: bool,
-                      cli_api_key: Optional[str] = None, combined: bool = False,
-                      quiet: bool = False):
+                      cli_api_keys: Optional[Dict[str, Optional[str]]] = None, combined: bool = False,
+                      quiet: bool = False, no_metadata: bool = False, timeout_override: Optional[float] = None):
     """Execute research operation"""
     global _current_checkpoint_manager, _current_operation
     
@@ -1320,7 +1511,7 @@ async def run_research(mode: str, query: str, async_mode: bool,
     
     # Initialize managers
     checkpoint_manager = CheckpointManager(config)
-    output_manager = OutputManager(config)
+    output_manager = OutputManager(config, no_metadata=no_metadata)
     
     # Set globals for signal handling
     _current_checkpoint_manager = checkpoint_manager
@@ -1353,7 +1544,11 @@ async def run_research(mode: str, query: str, async_mode: bool,
     providers = {}
     for provider_name in providers_to_use:
         try:
-            providers[provider_name] = create_provider(provider_name, config, cli_api_key=cli_api_key)
+            # Get the provider-specific CLI API key if provided
+            provider_cli_key = None
+            if cli_api_keys:
+                provider_cli_key = cli_api_keys.get(provider_name)
+            providers[provider_name] = create_provider(provider_name, config, cli_api_key=provider_cli_key, timeout_override=timeout_override)
         except APIKeyError as e:
             console.print(f"[red]Error:[/red] {e.message}")
             console.print(f"[yellow]Suggestion:[/yellow] {e.suggestion}")
@@ -1362,6 +1557,17 @@ async def run_research(mode: str, query: str, async_mode: bool,
             console.print(f"[red]Error:[/red] {e.message}")
             console.print(f"[yellow]Suggestion:[/yellow] {e.suggestion}")
             raise click.Abort()
+    
+    # Show masked API keys and timeout in verbose mode
+    if verbose:
+        for provider_name, provider_instance in providers.items():
+            if hasattr(provider_instance, 'api_key') and provider_instance.api_key:
+                masked = mask_api_key(provider_instance.api_key)
+                console.print(f"[dim]{provider_name} API Key: {masked}[/dim]")
+            # Show timeout for providers that support it
+            if hasattr(provider_instance, 'config') and 'timeout' in provider_instance.config:
+                timeout_value = provider_instance.config.get('timeout')
+                console.print(f"[dim]{provider_name} Timeout: {timeout_value}s[/dim]")
     
     if async_mode:
         # Submit and exit
@@ -1427,8 +1633,13 @@ async def run_research(mode: str, query: str, async_mode: bool,
                     # Get and save result
                     if provider_name not in operation.output_paths:
                         result_content = await job_info["provider"].get_result(job_info["job_id"])
+                        # Get model information from provider
+                        provider_model = getattr(job_info["provider"], "model", None)
+                        # Get system prompt from mode config
+                        system_prompt = mode_config.get("system_prompt", "")
                         output_path = await output_manager.save_result(
-                            operation, provider_name, result_content, output_dir
+                            operation, provider_name, result_content, output_dir,
+                            model=provider_model, system_prompt=system_prompt
                         )
                         operation.output_paths[provider_name] = output_path
                         operation.providers[provider_name]["status"] = "completed"
@@ -1450,7 +1661,7 @@ async def run_research(mode: str, query: str, async_mode: bool,
                 contents[provider_name] = f.read()
         
         combined_path = await output_manager.generate_combined_report(
-            operation, contents, output_dir
+            operation, contents, output_dir, system_prompt=mode_config.get("system_prompt", "")
         )
         operation.output_paths["combined"] = combined_path
     
@@ -1617,6 +1828,158 @@ async def list_operations(show_all: bool):
     
     console.print(table)
     console.print("\nUse 'thoth status <ID>' for details")
+
+async def providers_command(show_models: bool = False, show_list: bool = False, show_keys: bool = False, filter_provider: str = None):
+    """Show provider information and available models"""
+    if not show_models and not show_list and not show_keys:
+        console.print("[yellow]Usage:[/yellow] thoth providers -- [OPTIONS]")
+        console.print("\nShow provider information and available models.")
+        console.print("\nOptions:")
+        console.print("  --list                List available providers and their status")
+        console.print("  --models              List available models from providers")
+        console.print("  --keys                Show API key configuration for each provider")
+        console.print("  --provider, -P        Filter by specific provider (with --models)")
+        console.print("\n[dim]Note: Use -- before options to prevent parsing conflicts[/dim]")
+        console.print("\nExamples:")
+        console.print("  # List all available providers")
+        console.print("  $ thoth providers -- --list")
+        console.print("\n  # Show API key configuration")
+        console.print("  $ thoth providers -- --keys")
+        console.print("\n  # List all models from all providers")
+        console.print("  $ thoth providers -- --models")
+        console.print("\n  # List only OpenAI models")
+        console.print("  $ thoth providers -- --models --provider openai")
+        return
+    
+    config = get_config()
+    
+    # Define available providers
+    all_providers = ['openai', 'perplexity', 'mock']
+    
+    # Provider descriptions
+    provider_descriptions = {
+        'openai': 'OpenAI GPT models',
+        'perplexity': 'Perplexity search AI',
+        'mock': 'Mock provider for tests'
+    }
+    
+    if show_list:
+        # Show provider listing with status
+        table = Table(title="Available Providers", box=box.ROUNDED)
+        table.add_column("Provider", style="cyan", width=13)
+        table.add_column("Status", width=10)
+        table.add_column("Description", style="dim", width=25)
+        
+        for provider_name in all_providers:
+            try:
+                # Try to create provider instance to check if configured
+                provider = create_provider(provider_name, config)
+                status = "[green]✓ Ready[/green]"
+            except APIKeyError:
+                status = "[red]✗ No key[/red]"
+            except Exception:
+                status = "[yellow]⚠ Error[/yellow]"
+            
+            description = provider_descriptions.get(provider_name, "Unknown provider")
+            table.add_row(provider_name, status, description)
+        
+        console.print(table)
+        console.print("\nTo see available models, use: thoth providers -- --models")
+        return
+    
+    if show_keys:
+        # Show API key configuration
+        # Hardcoded mapping of providers to environment variables
+        env_vars = {
+            'openai': 'OPENAI_API_KEY',
+            'perplexity': 'PERPLEXITY_API_KEY',
+            'mock': 'MOCK_API_KEY'
+        }
+        
+        table = Table(title="Provider API Key Configuration", box=box.ROUNDED)
+        table.add_column("Provider", style="cyan", width=13)
+        table.add_column("Environment Variable", style="green", width=22)
+        table.add_column("CLI Argument", style="yellow", width=22)
+        
+        for provider_name in all_providers:
+            env_var = env_vars.get(provider_name, f"{provider_name.upper()}_API_KEY")
+            cli_arg = f"--api-key-{provider_name}"
+            table.add_row(provider_name, env_var, cli_arg)
+        
+        console.print(table)
+        console.print("\nExamples:")
+        console.print("  # Set via environment variable")
+        console.print("  $ export OPENAI_API_KEY=\"your-key-here\"")
+        console.print("\n  # Set via command line for single provider")
+        console.print("  $ thoth \"query\" --api-key-openai \"your-key-here\" --provider openai")
+        console.print("\n  # Set multiple API keys for multi-provider modes")
+        console.print("  $ thoth deep_research \"query\" --api-key-openai \"sk-...\" --api-key-perplexity \"pplx-...\"")
+        return
+    
+    # Original --models logic
+    providers = all_providers
+    if filter_provider:
+        if filter_provider not in providers:
+            # Print to stderr directly
+            print(f"Error: Unknown provider: {filter_provider}", file=sys.stderr)
+            print(f"Available providers: {', '.join(providers)}", file=sys.stderr)
+            sys.exit(1)
+        providers = [filter_provider]
+    
+    console.print("Fetching available models...\n")
+    
+    for provider_name in providers:
+        try:
+            # Create provider instance
+            provider = create_provider(provider_name, config)
+            
+            # Fetch models
+            models = await provider.list_models()
+            
+            # Calculate dynamic column width based on longest model ID
+            if models:
+                max_model_id_length = max(len(model.get('id', '')) for model in models)
+                # Add padding and ensure minimum width
+                model_id_width = max(max_model_id_length + 2, 20)
+            else:
+                model_id_width = 25  # Default width if no models
+            
+            # Display in table format
+            if provider_name == 'openai':
+                table = Table(title=f"OpenAI Models", box=box.ROUNDED)
+                table.add_column("Model ID", style="cyan", width=model_id_width)
+                table.add_column("Created", style="green", width=14)
+                table.add_column("Owned By", style="yellow", width=16)
+                
+                for model in models:
+                    created_date = datetime.fromtimestamp(model['created']).strftime('%Y-%m-%d')
+                    table.add_row(
+                        model['id'],
+                        created_date,
+                        model['owned_by']
+                    )
+            elif provider_name == 'perplexity':
+                table = Table(title=f"Perplexity Models", box=box.ROUNDED)
+                table.add_column("Model ID", style="cyan", width=model_id_width)
+                
+                for model in models:
+                    table.add_row(model['id'])
+            else:  # mock
+                table = Table(title=f"Mock Models", box=box.ROUNDED)
+                table.add_column("Model ID", style="cyan", width=model_id_width)
+                
+                for model in models:
+                    table.add_row(model['id'])
+            
+            console.print(table)
+            console.print()
+            
+        except APIKeyError as e:
+            console.print(f"[yellow]Skipping {provider_name}:[/yellow] {e}")
+            console.print()
+        except Exception as e:
+            console.print(f"[red]Error fetching models from {provider_name}:[/red] {str(e)}")
+            console.print()
 
 # ============================================================================
 # Signal Handlers

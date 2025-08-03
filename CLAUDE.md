@@ -10,3 +10,9 @@ Never say in commits
  or 
 
    Co-Authored-By: Claude <noreply@anthropic.com>" 
+
+# API and UV References
+Please check @references.md URLs to look up detail about the openai
+
+# OpenAI API Key
+get the openai api key from @openai.env
