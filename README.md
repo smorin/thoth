@@ -13,6 +13,8 @@ Thoth is a command-line tool that automates deep technical research using multip
 - **Mode chaining**: Seamless workflow from clarification through exploration to deep research
 - **Rich metadata**: Output files include model information and exact prompts sent to LLMs
 
+Origin of the name: Thoth (also spelled Tehuti) is the god of wisdom, writing, hieroglyphs, science, magic, art, and judgment. He is often depicted as a man with the head of an ibis or a baboon, animals sacred to him. Thoth is also associated with the moon and is considered the scribe of the gods. 
+
 ## Prerequisites
 
 - Python ≥ 3.11
