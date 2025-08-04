@@ -1,5 +1,5 @@
 # Thoth Makefile
-.PHONY: help install dev test lint format clean run
+.PHONY: help install dev test lint format typecheck check fix clean run
 
 # Default target
 help:
@@ -7,8 +7,11 @@ help:
 	@echo "  make install    - Install thoth to /usr/local/bin"
 	@echo "  make dev        - Run thoth from current directory"
 	@echo "  make test       - Run test suite"
-	@echo "  make lint       - Run linters (ruff)"
-	@echo "  make format     - Format code with black"
+	@echo "  make lint       - Run linters (ruff via uv)"
+	@echo "  make format     - Format code (ruff via uv)"
+	@echo "  make typecheck  - Run type checker (ty via uv)"
+	@echo "  make check      - Run all checks (lint + typecheck)"
+	@echo "  make fix        - Auto-fix lint issues and format code"
 	@echo "  make clean      - Remove generated files"
 	@echo "  make run        - Run thoth with example query"
 
@@ -39,12 +42,29 @@ test:
 # Lint code
 lint:
 	@echo "Running linters..."
-	@ruff check thoth || echo "Install ruff: pip install ruff"
+	@uv tool run ruff check thoth
 
 # Format code
 format:
 	@echo "Formatting code..."
-	@black thoth --line-length 100 || echo "Install black: pip install black"
+	@uv tool run ruff format thoth
+
+# Run type checker
+typecheck:
+	@echo "Running type checker..."
+	@uv tool run ty check thoth
+
+# Run all checks
+check: lint typecheck
+	@echo "✓ All checks passed"
+
+# Auto-fix issues
+fix:
+	@echo "Auto-fixing lint issues..."
+	@uv tool run ruff check --fix thoth
+	@echo "Formatting code..."
+	@uv tool run ruff format thoth
+	@echo "✓ Code fixed and formatted"
 
 # Clean generated files
 clean:

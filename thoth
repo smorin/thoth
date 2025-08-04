@@ -17,6 +17,27 @@
 Thoth - AI-Powered Research Assistant
 
 A command-line tool that automates deep technical research using multiple LLM providers.
+
+FILE STRUCTURE:
+===============
+SECTION 1:  CONFIGURATION MANAGEMENT      - Configuration classes and managers
+SECTION 2:  UTILITY FUNCTIONS            - General utility functions
+SECTION 3:  DATA MODELS                  - Core data structures
+SECTION 4:  ERROR HANDLING               - Exception classes and error handling
+SECTION 5:  CLI SETUP AND CONFIGURATION  - Click command setup
+SECTION 6:  MAIN CLI FUNCTION            - Main CLI command implementation
+SECTION 7:  COMMAND HANDLERS             - Command execution logic
+SECTION 8:  HELP AND DOCUMENTATION       - Help text functions
+SECTION 9:  CHECKPOINT MANAGEMENT        - Async operation state management
+SECTION 10: OUTPUT MANAGEMENT            - File output and report generation
+SECTION 11: MODEL CACHE MANAGEMENT       - Provider model caching
+SECTION 12: PROVIDER ARCHITECTURE        - Provider base classes and implementations
+SECTION 13: PROVIDER REGISTRY            - Central provider management
+SECTION 14: RESEARCH OPERATIONS - UTILS  - Research operation utilities
+SECTION 15: RESEARCH OPERATIONS - MAIN   - Core research execution
+SECTION 16: INTERACTIVE MODE             - Interactive query interface
+SECTION 17: SIGNAL HANDLING              - System signal handlers
+SECTION 18: MAIN ENTRY POINT             - Application entry point
 """
 
 import asyncio
@@ -49,8 +70,8 @@ import aiofiles
 console = Console()
 
 # Version tracking
-THOTH_VERSION = "1.5.0"
-CONFIG_VERSION = "1.0"
+THOTH_VERSION = "2.4.0"
+CONFIG_VERSION = "2.0"
 
 # Global variables for signal handling
 _current_checkpoint_manager = None
@@ -142,58 +163,19 @@ BUILTIN_MODES = {
 }
 
 # ============================================================================
-# Configuration Management
+# SECTION 1: CONFIGURATION MANAGEMENT
+# ============================================================================
+# This section contains all configuration-related classes and functions:
+# - ConfigSchema: Defines configuration defaults and structure
+# - ConfigManager: Manages layered configuration with precedence
+# - Config: Legacy wrapper for backward compatibility
 # ============================================================================
 
-class Config:
-    """Manages configuration loading and validation"""
+class ConfigSchema:
+    """Configuration schema and defaults"""
     
-    def __init__(self, config_path: Optional[Path] = None):
-        self.config_path = config_path or Path(user_config_dir("thoth")) / "config.toml"
-        self.data = self._load_config()
-    
-    def _load_config(self) -> Dict[str, Any]:
-        """Load and validate configuration"""
-        if not self.config_path.exists():
-            return self._default_config()
-        
-        with open(self.config_path, "rb") as f:
-            config = tomllib.load(f)
-        
-        # Check configuration version
-        config_version = config.get("version", "0.0")
-        if config_version != CONFIG_VERSION:
-            console.print(f"[yellow]Warning:[/yellow] Configuration version mismatch. Expected {CONFIG_VERSION}, found {config_version}")
-            console.print("[yellow]Some settings may not work as expected. Run 'thoth init' to update.[/yellow]")
-        
-        # Expand paths - handle symlinks by resolving to absolute paths
-        if "paths" in config:
-            for key, value in config["paths"].items():
-                path = Path(value).expanduser()
-                if path.exists() and path.is_symlink():
-                    path = path.resolve()
-                config["paths"][key] = str(path)
-        
-        # Handle environment variables
-        config = self._substitute_env_vars(config)
-        
-        return config
-    
-    def _substitute_env_vars(self, config: Dict[str, Any]) -> Dict[str, Any]:
-        """Replace ${VAR} with environment variable values"""
-        def substitute(value):
-            if isinstance(value, str) and value.startswith("${") and value.endswith("}"):
-                var_name = value[2:-1]
-                return os.getenv(var_name, value)
-            elif isinstance(value, dict):
-                return {k: substitute(v) for k, v in value.items()}
-            elif isinstance(value, list):
-                return [substitute(v) for v in value]
-            return value
-        
-        return substitute(config)
-    
-    def _default_config(self) -> Dict[str, Any]:
+    @staticmethod
+    def get_defaults() -> Dict[str, Any]:
         """Return default configuration"""
         return {
             "version": CONFIG_VERSION,
@@ -228,6 +210,175 @@ class Config:
             },
             "modes": {}  # Modes will be merged with built-in modes
         }
+
+class ConfigManager:
+    """Manages layered configuration with clear precedence hierarchy"""
+    
+    def __init__(self, config_path: Optional[Path] = None):
+        self.user_config_path = config_path or Path(user_config_dir("thoth")) / "config.toml"
+        self.project_config_paths = ["./thoth.toml", "./.thoth/config.toml"]
+        self.layers = {}
+        self.data = {}
+        
+    def load_all_layers(self, cli_args: Optional[Dict[str, Any]] = None):
+        """Load all configuration layers in precedence order"""
+        # Layer 1: Internal defaults
+        self.layers['defaults'] = ConfigSchema.get_defaults()
+        
+        # Layer 2: User config file
+        if self.user_config_path.exists():
+            self.layers['user'] = self._load_toml_file(self.user_config_path)
+        else:
+            self.layers['user'] = {}
+            
+        # Layer 3: Project config file (if exists)
+        self.layers['project'] = self._load_project_config()
+        
+        # Layer 4: Environment variables
+        self.layers['env'] = self._get_env_overrides()
+        
+        # Layer 5: CLI arguments
+        self.layers['cli'] = cli_args or {}
+        
+        # Merge all layers
+        self.data = self._merge_layers()
+        
+        # Validate configuration
+        self._validate_config()
+        
+    def _load_toml_file(self, path: Path) -> Dict[str, Any]:
+        """Load and parse a TOML configuration file"""
+        try:
+            with open(path, "rb") as f:
+                config = tomllib.load(f)
+            
+            # Check version compatibility
+            config_version = config.get("version", "0.0")
+            if config_version != CONFIG_VERSION:
+                console.print(f"[yellow]Warning:[/yellow] Config version mismatch in {path}")
+                
+            # Expand paths and substitute env vars
+            config = self._expand_paths(config)
+            config = self._substitute_env_vars(config)
+            
+            return config
+        except Exception as e:
+            console.print(f"[yellow]Warning:[/yellow] Failed to load {path}: {e}")
+            return {}
+    
+    def _load_project_config(self) -> Dict[str, Any]:
+        """Load project-level configuration if it exists"""
+        for config_path in self.project_config_paths:
+            path = Path(config_path)
+            if path.exists():
+                return self._load_toml_file(path)
+        return {}
+    
+    def _get_env_overrides(self) -> Dict[str, Any]:
+        """Get configuration overrides from environment variables"""
+        overrides = {}
+        
+        # Map of env vars to config paths
+        env_mappings = {
+            "THOTH_DEFAULT_MODE": "general.default_mode",
+            "THOTH_DEFAULT_PROJECT": "general.default_project",
+            "THOTH_OUTPUT_DIR": "paths.base_output_dir",
+            "THOTH_POLL_INTERVAL": "execution.poll_interval",
+            "THOTH_MAX_WAIT": "execution.max_wait",
+        }
+        
+        for env_var, config_path in env_mappings.items():
+            value = os.getenv(env_var)
+            if value is not None:
+                # Convert config path to nested dict
+                keys = config_path.split('.')
+                current = overrides
+                for key in keys[:-1]:
+                    if key not in current:
+                        current[key] = {}
+                    current = current[key]
+                
+                # Try to convert to appropriate type
+                try:
+                    if value.lower() in ('true', 'false'):
+                        current[keys[-1]] = value.lower() == 'true'
+                    elif value.isdigit():
+                        current[keys[-1]] = int(value)
+                    else:
+                        current[keys[-1]] = value
+                except:
+                    current[keys[-1]] = value
+                    
+        return overrides
+    
+    def _merge_layers(self) -> Dict[str, Any]:
+        """Merge all configuration layers with proper precedence"""
+        result = {}
+        
+        # Merge in order of precedence
+        for layer_name in ['defaults', 'user', 'project', 'env', 'cli']:
+            if layer_name in self.layers and self.layers[layer_name]:
+                result = self._deep_merge(result, self.layers[layer_name])
+                
+        return result
+    
+    def _deep_merge(self, base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]:
+        """Deep merge two dictionaries"""
+        result = base.copy()
+        
+        for key, value in override.items():
+            if key in result and isinstance(result[key], dict) and isinstance(value, dict):
+                result[key] = self._deep_merge(result[key], value)
+            else:
+                result[key] = value
+                
+        return result
+    
+    def _expand_paths(self, config: Dict[str, Any]) -> Dict[str, Any]:
+        """Expand paths in configuration"""
+        if "paths" in config:
+            for key, value in config["paths"].items():
+                path = Path(value).expanduser()
+                if path.exists() and path.is_symlink():
+                    path = path.resolve()
+                config["paths"][key] = str(path)
+        return config
+    
+    def _substitute_env_vars(self, config: Dict[str, Any]) -> Dict[str, Any]:
+        """Replace ${VAR} with environment variable values"""
+        def substitute(value):
+            if isinstance(value, str) and value.startswith("${") and value.endswith("}"):
+                var_name = value[2:-1]
+                return os.getenv(var_name, value)
+            elif isinstance(value, dict):
+                return {k: substitute(v) for k, v in value.items()}
+            elif isinstance(value, list):
+                return [substitute(v) for v in value]
+            return value
+        
+        return substitute(config)
+    
+    def _validate_config(self):
+        """Validate the merged configuration"""
+        # Basic validation - can be extended
+        required_keys = ['version', 'general', 'paths', 'execution', 'output', 'providers']
+        for key in required_keys:
+            if key not in self.data:
+                raise ThothError(f"Missing required configuration key: {key}", 
+                               "Check your configuration file")
+    
+    def get(self, key: str, default: Any = None) -> Any:
+        """Get configuration value using dot notation"""
+        keys = key.split('.')
+        current = self.data
+        
+        for k in keys:
+            if isinstance(current, dict) and k in current:
+                current = current[k]
+            else:
+                return default
+                
+        return current
     
     def get_mode_config(self, mode: str) -> Dict[str, Any]:
         """Get mode configuration, merging built-in with user config"""
@@ -239,9 +390,27 @@ class Config:
         mode_config.update(user_mode)
         
         return mode_config
+    
+    def get_effective_config(self) -> Dict[str, Any]:
+        """Return the merged effective configuration"""
+        return self.data
+
+# Keep old Config class for backward compatibility during migration
+class Config:
+    """Legacy Config class - redirects to ConfigManager"""
+    
+    def __init__(self, config_path: Optional[Path] = None):
+        self.manager = ConfigManager(config_path)
+        self.manager.load_all_layers()
+        self.data = self.manager.data
+        
+    def get_mode_config(self, mode: str) -> Dict[str, Any]:
+        return self.manager.get_mode_config(mode)
 
 # ============================================================================
-# Utility Functions
+# SECTION 2: UTILITY FUNCTIONS
+# ============================================================================
+# General-purpose utility functions used throughout the application
 # ============================================================================
 
 def generate_operation_id() -> str:
@@ -270,7 +439,9 @@ def check_disk_space(path: Path, required_mb: int = 100) -> bool:
     return available_mb >= required_mb
 
 # ============================================================================
-# Data Models
+# SECTION 3: DATA MODELS
+# ============================================================================
+# Core data structures and models used by the application
 # ============================================================================
 
 @dataclass
@@ -299,7 +470,9 @@ class InteractiveInitialSettings:
     cli_api_keys: Optional[Dict[str, Optional[str]]] = None
 
 # ============================================================================
-# Exception Classes
+# SECTION 4: ERROR HANDLING
+# ============================================================================
+# Custom exception classes and error handling utilities
 # ============================================================================
 
 class ThothError(Exception):
@@ -364,7 +537,9 @@ def handle_error(error: Exception):
         sys.exit(127)
 
 # ============================================================================
-# Custom Click Command Class
+# SECTION 5: CLI SETUP AND CONFIGURATION
+# ============================================================================
+# Click command setup, option handling, and CLI structure
 # ============================================================================
 
 class ThothCommand(click.Command):
@@ -447,7 +622,9 @@ def build_epilog():
 
 
 # ============================================================================
-# Click CLI Implementation
+# SECTION 6: MAIN CLI FUNCTION
+# ============================================================================
+# Main Click CLI command implementation and argument processing
 # ============================================================================
 
 @click.command(
@@ -580,21 +757,26 @@ def cli(ctx, args, mode_opt, query_opt, query_file, async_mode, resume_id,
         ))
         return
     
-    # Handle special commands
+    # Handle special commands using CommandHandler
     if args and args[0] in ['init', 'status', 'list', 'help', 'providers']:
+        # Create CommandHandler for special commands
+        config_manager = ConfigManager()
+        config_manager.load_all_layers({'config_path': config_path})
+        handler = CommandHandler(config_manager)
+        
         command = args[0]
         if command == 'init':
-            init_command()
+            handler.init_command(config_path=config_path)
             return
         elif command == 'status':
             if len(args) < 2:
                 console.print("[red]Error:[/red] status command requires an operation ID")
                 sys.exit(1)
-            asyncio.run(show_status(args[1]))
+            handler.status_command(operation_id=args[1])
             return
         elif command == 'list':
             show_all = '--all' in args
-            asyncio.run(list_operations(show_all=show_all))
+            handler.list_command(show_all=show_all)
             return
         elif command == 'providers':
             # For providers command, we need to check both args and ctx.args 
@@ -699,62 +881,146 @@ def cli(ctx, args, mode_opt, query_opt, query_file, async_mode, resume_id,
         # Show help if no valid command
         console.print(ctx.get_help())
 
-def init_command():
-    """Initialize Thoth configuration"""
-    console.print("[bold]Welcome to Thoth Research Assistant Setup![/bold]\n")
+# ============================================================================
+# SECTION 7: COMMAND HANDLERS
+# ============================================================================
+# Command execution logic and handlers for CLI commands
+# ============================================================================
+
+class CommandHandler:
+    """Unified command execution for CLI and interactive modes"""
     
-    # Check environment
-    console.print("Checking environment...")
-    console.print(f"✓ Python {sys.version.split()[0]} detected")
-    console.print("✓ UV package manager available")
-    console.print(f"✓ Operating System: {sys.platform} (supported)\n")
+    def __init__(self, config_manager: ConfigManager):
+        self.config = config_manager
+        self.commands = {
+            'init': self.init_command,
+            'status': self.status_command,
+            'list': self.list_command,
+            'providers': self.providers_command,
+            'research': self.research_command,
+            'help': self.help_command,
+        }
     
-    # Use custom config path if provided, otherwise use default
-    if _config_path:
-        config_path = _config_path
-    else:
-        config_path = Path(user_config_dir("thoth")) / "config.toml"
-    console.print(f"Configuration file will be created at: {config_path}\n")
+    def execute(self, command: str, **params) -> Any:
+        """Execute command with parameters"""
+        if command not in self.commands:
+            raise ThothError(f"Unknown command: {command}", 
+                           f"Available commands: {', '.join(self.commands.keys())}")
+        return self.commands[command](**params)
     
-    # Create config directory if it doesn't exist
-    config_path.parent.mkdir(parents=True, exist_ok=True)
+    def init_command(self, config_path: Optional[Path] = None, **params):
+        """Initialize Thoth configuration"""
+        console.print("[bold]Welcome to Thoth Research Assistant Setup![/bold]\n")
+        
+        # Check environment
+        console.print("Checking environment...")
+        console.print(f"✓ Python {sys.version.split()[0]} detected")
+        console.print("✓ UV package manager available")
+        console.print(f"✓ Operating System: {sys.platform} (supported)\n")
+        
+        # Use custom config path if provided, otherwise use default
+        if config_path is None:
+            config_path = Path(user_config_dir("thoth")) / "config.toml"
+        console.print(f"Configuration file will be created at: {config_path}\n")
+        
+        # Create config directory if it doesn't exist
+        config_path.parent.mkdir(parents=True, exist_ok=True)
+        
+        # TODO: Implement interactive setup wizard
+        console.print("[yellow]Interactive setup wizard not yet implemented.[/yellow]")
+        console.print("Creating default configuration...")
+        
+        # Create default config using new ConfigManager
+        config_manager = ConfigManager()
+        config_manager.load_all_layers()
+        config_data = config_manager.get_effective_config()
+        
+        # For now, just save the default config using basic TOML format
+        # Since we can't use external toml library in UV script, write manually
+        with open(config_path, 'w') as f:
+            f.write('# Thoth Configuration File\n')
+            f.write(f'version = "{CONFIG_VERSION}"\n\n')
+            f.write('[general]\n')
+            f.write('default_project = ""\n')
+            f.write('default_mode = "default"\n\n')
+            f.write('[paths]\n')
+            f.write('base_output_dir = "./research-outputs"\n')
+            f.write(f'checkpoint_dir = "{config_data["paths"]["checkpoint_dir"]}"\n\n')
+            f.write('[execution]\n')
+            f.write('poll_interval = 30\n')
+            f.write('max_wait = 30\n')
+            f.write('parallel_providers = true\n')
+            f.write('retry_attempts = 3\n')
+            f.write('auto_input = true\n\n')
+            f.write('[output]\n')
+            f.write('combine_reports = false\n')
+            f.write('format = "markdown"\n')
+            f.write('include_metadata = true\n')
+            f.write('timestamp_format = "%Y-%m-%d_%H%M%S"\n\n')
+            f.write('[providers.openai]\n')
+            f.write('api_key = "${OPENAI_API_KEY}"\n\n')
+            f.write('[providers.perplexity]\n')
+            f.write('api_key = "${PERPLEXITY_API_KEY}"\n')
+        
+        console.print(f"\n[green]✓[/green] Configuration saved to {config_path}")
+        console.print("\nYou can now run: thoth deep_research \"your query\"")
     
-    # TODO: Implement interactive setup wizard
-    console.print("[yellow]Interactive setup wizard not yet implemented.[/yellow]")
-    console.print("Creating default configuration...")
+    def status_command(self, operation_id: str, **params):
+        """Check status of a research operation"""
+        return asyncio.run(show_status(operation_id))
     
-    # Create default config
-    config = get_config()
+    def list_command(self, show_all: bool = False, **params):
+        """List research operations"""
+        return asyncio.run(list_operations(show_all=show_all))
     
-    # For now, just save the default config using basic TOML format
-    # Since we can't use external toml library in UV script, write manually
-    with open(config_path, 'w') as f:
-        f.write('# Thoth Configuration File\n')
-        f.write(f'version = "{CONFIG_VERSION}"\n\n')
-        f.write('[general]\n')
-        f.write('default_project = ""\n')
-        f.write('default_mode = "default"\n\n')
-        f.write('[paths]\n')
-        f.write('base_output_dir = "./research-outputs"\n')
-        f.write(f'checkpoint_dir = "{config.data["paths"]["checkpoint_dir"]}"\n\n')
-        f.write('[execution]\n')
-        f.write('poll_interval = 30\n')
-        f.write('max_wait = 30\n')
-        f.write('parallel_providers = true\n')
-        f.write('retry_attempts = 3\n')
-        f.write('auto_input = true\n\n')
-        f.write('[output]\n')
-        f.write('combine_reports = false\n')
-        f.write('format = "markdown"\n')
-        f.write('include_metadata = true\n')
-        f.write('timestamp_format = "%Y-%m-%d_%H%M%S"\n\n')
-        f.write('[providers.openai]\n')
-        f.write('api_key = "${OPENAI_API_KEY}"\n\n')
-        f.write('[providers.perplexity]\n')
-        f.write('api_key = "${PERPLEXITY_API_KEY}"\n')
+    def providers_command(self, **params):
+        """Show provider information - delegate to existing function"""
+        # This will delegate to the existing providers_command async function
+        # We'll keep the complex logic there for now
+        return asyncio.run(providers_command(**params))
     
-    console.print(f"\n[green]✓[/green] Configuration saved to {config_path}")
-    console.print("\nYou can now run: thoth deep_research \"your query\"")
+    def research_command(self, **params):
+        """Execute research operation - delegate to run_research"""
+        # Extract needed parameters
+        mode = params.get('mode', 'default')
+        query = params.get('query')
+        if not query:
+            raise ThothError("Query is required for research command")
+        
+        # Delegate to existing run_research function
+        return asyncio.run(run_research(
+            mode=mode,
+            query=query,
+            async_mode=params.get('async_mode', False),
+            project=params.get('project'),
+            output_dir=params.get('output_dir'),
+            provider=params.get('provider'),
+            input_file=params.get('input_file'),
+            auto=params.get('auto', False),
+            verbose=params.get('verbose', False),
+            cli_api_keys=params.get('cli_api_keys'),
+            combined=params.get('combined', False),
+            quiet=params.get('quiet', False),
+            no_metadata=params.get('no_metadata', False),
+            timeout_override=params.get('timeout_override')
+        ))
+    
+    def help_command(self, command: Optional[str] = None, **params):
+        """Show help for commands"""
+        if command == 'init':
+            show_init_help()
+        elif command == 'status':
+            show_status_help()
+        elif command == 'list':
+            show_list_help()
+        elif command == 'providers':
+            show_providers_help()
+        else:
+            # Show general help
+            console.print("Thoth - AI-Powered Research Assistant")
+            console.print("\nAvailable commands:")
+            for cmd_name in self.commands.keys():
+                console.print(f"  {cmd_name}")
 
 def status_command(operation_id):
     """Check status of a research operation"""
@@ -765,7 +1031,9 @@ def list_command(show_all):
     return list_operations(show_all=show_all)
 
 # ============================================================================
-# Help Functions
+# SECTION 8: HELP AND DOCUMENTATION
+# ============================================================================
+# Help text and documentation functions for user assistance
 # ============================================================================
 
 def show_init_help():
@@ -929,7 +1197,9 @@ def show_general_help(ctx):
     console.print("  $ thoth --help")
 
 # ============================================================================
-# Checkpoint Management
+# SECTION 9: CHECKPOINT MANAGEMENT
+# ============================================================================
+# Handles saving and loading operation state for async operations
 # ============================================================================
 
 class CheckpointManager:
@@ -998,7 +1268,9 @@ class CheckpointManager:
         return event in checkpoint_events
 
 # ============================================================================
-# Output Management
+# SECTION 10: OUTPUT MANAGEMENT
+# ============================================================================
+# Handles file output, report generation, and output organization
 # ============================================================================
 
 class OutputManager:
@@ -1125,7 +1397,9 @@ created_at: {operation.created_at.isoformat()}
                                      model="Multiple", system_prompt=system_prompt)
 
 # ============================================================================
-# Model Cache Implementation
+# SECTION 11: MODEL CACHE MANAGEMENT
+# ============================================================================
+# Caches available models from providers to reduce API calls
 # ============================================================================
 
 class ModelCache:
@@ -1235,7 +1509,13 @@ class ModelCache:
             return None
 
 # ============================================================================
-# Provider Base Classes and Implementations
+# SECTION 12: PROVIDER ARCHITECTURE
+# ============================================================================
+# Provider abstraction layer and implementations:
+# - ResearchProvider: Base class for all providers
+# - MockProvider: For testing
+# - OpenAIProvider: OpenAI Deep Research API
+# - PerplexityProvider: Perplexity Sonar API
 # ============================================================================
 
 class ResearchProvider:
@@ -1533,8 +1813,76 @@ class PerplexityProvider(ResearchProvider):
         ]
 
 # ============================================================================
-# Provider Factory
+# SECTION 13: PROVIDER REGISTRY
 # ============================================================================
+# Central registry for managing and creating provider instances
+# ============================================================================
+
+class ProviderRegistry:
+    """Central registry for provider management"""
+    
+    def __init__(self):
+        self.providers = {
+            'openai': OpenAIProvider,
+            'perplexity': PerplexityProvider,
+            'mock': MockProvider,
+        }
+    
+    def register(self, name: str, provider_class: type):
+        """Register a new provider class"""
+        self.providers[name] = provider_class
+    
+    def get_available_providers(self) -> List[str]:
+        """Get list of registered provider names"""
+        return list(self.providers.keys())
+    
+    def create(self, provider_name: str, config: Any, cli_api_key: Optional[str] = None, 
+               timeout_override: Optional[float] = None) -> ResearchProvider:
+        """Create a provider instance with configuration"""
+        if provider_name not in self.providers:
+            raise ThothError(f"Unknown provider: {provider_name}", 
+                           f"Valid providers are: {', '.join(self.providers.keys())}")
+        
+        # Get config data - handle both Config and ConfigManager
+        if hasattr(config, 'data'):
+            config_data = config.data
+        elif hasattr(config, 'get_effective_config'):
+            config_data = config.get_effective_config()
+        else:
+            config_data = config
+            
+        provider_config = config_data.get("providers", {}).get(provider_name, {})
+        
+        # Handle mock provider specially
+        if provider_name == "mock":
+            mock_api_key = cli_api_key or os.getenv("MOCK_API_KEY", "") or provider_config.get("api_key", "")
+            if not mock_api_key or (mock_api_key.startswith("${") and mock_api_key.endswith("}")):
+                raise APIKeyError("mock")
+            if mock_api_key == "invalid":
+                raise ThothError("Invalid mock API key format", "Mock API key should not be 'invalid'")
+            return MockProvider(name=provider_name, delay=0.1, api_key=mock_api_key)
+        
+        # Handle real providers
+        api_key = cli_api_key or provider_config.get("api_key", "")
+        if not api_key or (api_key.startswith("${") and api_key.endswith("}")):
+            raise APIKeyError(provider_name)
+        
+        # Apply timeout override if provided
+        if timeout_override is not None:
+            provider_config = provider_config.copy()
+            provider_config['timeout'] = timeout_override
+        
+        # Create provider instance
+        provider_class = self.providers[provider_name]
+        if provider_name == "openai":
+            return OpenAIProvider(api_key=api_key, config=provider_config)
+        elif provider_name == "perplexity":
+            return PerplexityProvider(api_key=api_key, config=provider_config)
+        else:
+            raise ThothError(f"Provider {provider_name} not properly configured")
+
+# Global provider registry instance
+provider_registry = ProviderRegistry()
 
 def create_provider(provider_name: str, config: Config, cli_api_key: Optional[str] = None, timeout_override: Optional[float] = None) -> ResearchProvider:
     """Create a provider instance with proper configuration and error handling"""
@@ -1588,7 +1936,9 @@ def create_provider(provider_name: str, config: Config, cli_api_key: Optional[st
         raise ThothError(f"Unknown provider: {provider_name}", "Valid providers are: openai, perplexity, mock")
 
 # ============================================================================
-# Async Functions for Research Operations
+# SECTION 14: RESEARCH OPERATIONS - UTILITIES
+# ============================================================================
+# Utility functions for research operations
 # ============================================================================
 
 async def find_latest_outputs(current_mode: str, project: Optional[str], config: Config) -> List[Path]:
@@ -1657,7 +2007,9 @@ def get_estimated_duration(mode: str, provider: Optional[str]) -> float:
         return mode_estimates.get("combined", max(mode_estimates.values(), default=60))
 
 # ============================================================================
-# Async Functions (Main implementations)
+# SECTION 15: RESEARCH OPERATIONS - MAIN
+# ============================================================================
+# Core research execution logic and async operation management
 # ============================================================================
 
 async def run_research(mode: str, query: str, async_mode: bool, 
@@ -2234,7 +2586,12 @@ async def providers_command(show_models: bool = False, show_list: bool = False, 
             console.print()
 
 # ============================================================================
-# Interactive Mode Implementation
+# SECTION 16: INTERACTIVE MODE
+# ============================================================================
+# Interactive query interface with slash commands and UI components:
+# - SlashCommandRegistry: Manages slash commands
+# - InteractiveSession: Main interactive session handler
+# - UI components and keyboard handling
 # ============================================================================
 
 from rich.panel import Panel
@@ -2980,7 +3337,9 @@ async def enter_interactive_mode(initial_settings: InteractiveInitialSettings,
         console.print(f"[red]Error:[/red] {str(e)}")
 
 # ============================================================================
-# Signal Handlers
+# SECTION 17: SIGNAL HANDLING
+# ============================================================================
+# System signal handlers for graceful shutdown
 # ============================================================================
 
 def handle_sigint(signum, frame):
@@ -3008,7 +3367,9 @@ def handle_sigint(signum, frame):
     sys.exit(1)
 
 # ============================================================================
-# Main Entry Point
+# SECTION 18: MAIN ENTRY POINT
+# ============================================================================
+# Application entry point and execution
 # ============================================================================
 
 if __name__ == "__main__":

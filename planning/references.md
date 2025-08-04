@@ -17,3 +17,12 @@
 
 # Perplexity Model
 - `sonar-deep-research`
+
+## TypeChecker for the Project `ty`
+https://docs.astral.sh/ty/
+
+## Linter and Formatter for the Project `ruff`
+https://docs.astral.sh/ruff/
+
+## Make example
+https://github.com/smorinlabs/py-launch-blueprint/blob/main/Makefile
