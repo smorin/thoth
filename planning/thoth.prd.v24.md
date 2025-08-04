@@ -9,8 +9,18 @@
 | Author | System Design Team |
 | Date | 03 Aug 2025 |
 | Status | In Development |
-| Target Release | v2.5 |
-| Document Version | 25.0 |
+| Target Release | v2.6 |
+| Document Version | 26.0 |
+
+### Changes in Version 26.0
+- Updated version to v2.6 based on v2.5
+- Integrated clarification mode directly into interactive mode
+- Added Shift+Tab key binding to toggle between Edit Mode and Clarification Mode
+- Implemented query refinement workflow within interactive session
+- Added --clarify flag to start interactive mode in Clarification Mode
+- Query interception and clarification in Clarification Mode before submission
+- Support for multiple clarification rounds within same session
+- Visual mode indicators and context-sensitive help text
 
 ### Changes in Version 25.0
 - Updated version to v2.5 based on v2.4
@@ -445,6 +455,22 @@ Create the simplest yet most powerful research tool where users can get comprehe
 | F-158 | Independent verification of main code vs test code | Must | - | ✓ Implemented |
 | F-159 | Comprehensive help target showing all available commands | Must | - | ✓ Implemented |
 
+### Interactive Clarification Mode Requirements (v2.6)
+
+| ID | Requirement | Priority | Test ID |
+|----|-------------|----------|---------|
+| F-160 | Support Shift+Tab to toggle between Edit Mode and Clarification Mode in interactive mode | Must | T-CLAR-01 |
+| F-161 | Display current mode (Edit Mode/Clarification Mode) in interactive UI | Must | T-CLAR-02 |
+| F-162 | In Clarification Mode, intercept query submission for refinement | Must | T-CLAR-03 |
+| F-163 | Send query to clarification prompt for improvement suggestions | Must | T-CLAR-04 |
+| F-164 | Display clarification questions/suggestions in interactive box | Must | T-CLAR-05 |
+| F-165 | Allow user to edit refined query before final submission | Must | T-CLAR-06 |
+| F-166 | Support multiple clarification rounds within same session | Must | T-CLAR-07 |
+| F-167 | Add --clarify flag to force Clarification Mode on startup | Should | T-CLAR-08 |
+| F-168 | Show mode toggle instructions below input box | Must | T-CLAR-09 |
+| F-169 | Preserve original query when switching modes | Must | T-CLAR-10 |
+| F-170 | Support Enter to accept clarification, Shift+Tab to return to edit | Must | T-CLAR-11 |
+
 ---
 
 ## 9. Non-Functional Requirements
@@ -473,8 +499,9 @@ Create the simplest yet most powerful research tool where users can get comprehe
 thoth "QUERY"                    # Deep research with output to current directory
 
 # INTERACTIVE MODE - Visual Query Input
-thoth -i                         # Enter interactive query mode
+thoth -i                         # Enter interactive mode (Edit Mode)
 thoth --interactive              # Same as above
+thoth -i --clarify              # Start in Clarification Mode
 
 # ADVANCED USAGE - Full Control  
 thoth MODE QUERY [OPTIONS]       # Specify mode and options
@@ -500,6 +527,12 @@ Interactive Mode Commands:
   /async        Toggle async submission mode
   /status       Check operation status
   /exit, /quit  Exit without submitting query
+
+Interactive Mode Controls:
+  Shift+Tab     Toggle between Edit Mode and Clarification Mode
+  Enter         Submit (in Edit Mode) or Accept clarification (in Clarification Mode)
+  Shift+Enter   New line (multi-line input)
+  Ctrl+A/E/K    Standard Unix line editing
 ```
 
 ### 10.2 Usage Examples
@@ -647,6 +680,7 @@ thoth providers -- --models --no-cache        # Bypass cache completely without 
 | Long | Short | Type | Description |
 |------|-------|------|-------------|
 | --interactive | -i | flag | Enter interactive query mode with visual input box |
+| --clarify | | flag | Start interactive mode in Clarification Mode (use with -i) |
 | --mode | -m | TEXT | Research mode (defaults to 'default' when not specified) |
 | --query | -q | TEXT | Research query (alternative to positional) |
 | --query-file | -Q | PATH | Read query from file (use '-' for stdin) |
@@ -967,6 +1001,61 @@ The progress display implementation includes:
 - **Adaptive intervals**: Check frequency adjusts based on operation duration
 
 Note: All progress display features shown in examples are now fully implemented as of v2.1.
+
+### 11.7 Interactive Clarification Mode Experience (v2.6)
+
+```bash
+$ thoth -i
+
+[dim]Edit Mode • Shift+Tab: switch to Clarification Mode • Enter: submit • /help: commands[/dim]
+┌────────────────────────────────────────────────────────────────────┐
+│ > help with database performance                                   │
+└────────────────────────────────────────────────────────────────────┘
+
+[User presses Shift+Tab]
+
+[dim]Clarification Mode • Shift+Tab: switch to Edit Mode • Enter: clarify[/dim]
+┌────────────────────────────────────────────────────────────────────┐
+│ > help with database performance                                   │
+└────────────────────────────────────────────────────────────────────┘
+
+[User presses Enter - query sent for clarification]
+
+[dim]Clarification Mode • Review suggestions • Enter: accept • Shift+Tab: edit[/dim]
+┌────────────────────────────────────────────────────────────────────┐
+│ Your query could be more specific. Consider:                       │
+│                                                                     │
+│ 1. PostgreSQL query optimization for slow SELECT statements with   │
+│    complex JOINs on large tables (100GB+)                         │
+│                                                                     │
+│ 2. MySQL performance tuning for high-concurrency OLTP workloads   │
+│                                                                     │
+│ 3. MongoDB index optimization for aggregation pipeline queries     │
+│                                                                     │
+│ Refined query:                                                     │
+│ > PostgreSQL performance optimization techniques for slow queries  │
+│   involving multiple table JOINs                                   │
+└────────────────────────────────────────────────────────────────────┘
+
+[User can edit the refined query or press Enter to accept]
+[User presses Enter - switches to Edit Mode with refined query]
+
+[dim]Edit Mode • Shift+Tab: switch to Clarification Mode • Enter: submit[/dim]
+┌────────────────────────────────────────────────────────────────────┐
+│ > PostgreSQL performance optimization techniques for slow queries  │
+│   involving multiple table JOINs                                   │
+└────────────────────────────────────────────────────────────────────┘
+
+[User presses Enter - submits refined query for research]
+
+$ thoth -i --clarify
+
+[dim]Clarification Mode • Shift+Tab: switch to Edit Mode • Enter: clarify[/dim]
+┌────────────────────────────────────────────────────────────────────┐
+│ >                                                                   │
+└────────────────────────────────────────────────────────────────────┘
+[Starts directly in Clarification Mode]
+```
 
 ---
 

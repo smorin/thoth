@@ -1,6 +1,35 @@
 ## Development Principles
 - When planning features, look at using design patterns that make it easy to keep code consistent. And then put in place best practices.
 
+## Code Quality Assurance Workflow
+
+After making any code changes, follow this verification workflow:
+
+1. **Main Executable Verification** (thoth):
+   ```bash
+   make check    # Run lint and typecheck on main executable
+   make fix      # Auto-fix any issues found
+   ```
+
+2. **Run Tests**:
+   ```bash
+   ./thoth_test -r  # Run the test suite to ensure functionality
+   ```
+
+3. **Test Suite Verification** (thoth_test):
+   ```bash
+   make test-check  # Run lint and typecheck on test suite
+   make test-fix    # Auto-fix any issues in test suite
+   ```
+
+4. **Final Verification**:
+   - Only consider the change complete when:
+     - `make check` passes without errors
+     - All tests pass
+     - `make test-check` passes without errors
+
+This ensures both the main executable and test suite maintain code quality standards.
+
 ## Planning Documents Management
 
 ### Location and Structure
