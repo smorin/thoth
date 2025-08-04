@@ -30,6 +30,19 @@ After making any code changes, follow this verification workflow:
 
 This ensures both the main executable and test suite maintain code quality standards.
 
+### Test Debugging Workflow
+- When a test fails, start by running the test suite with only the failing tests
+- Fix the specific tests while running the subset of tests
+- Once fixed, run the full test suite to ensure no regressions
+- Systematically run `./thoth_test` with targeted test subsets
+- Always follow the verification steps:
+  1. `make check`
+  2. `make fix`
+  3. `./thoth_test`
+  4. `make test-check`
+  5. `make test-fix`
+  6. Verify all tests pass in the full test suite
+
 ## Planning Documents Management
 
 ### Location and Structure

@@ -424,7 +424,6 @@ class InteractiveTestRunner:
                 pass
 
             # Execute the interactive scenario
-            output_buffer = []
             if test_case.interactive_scenario:
                 for i, (expect_pattern, send_input) in enumerate(
                     test_case.interactive_scenario
@@ -481,7 +480,7 @@ class InteractiveTestRunner:
                 if child.isalive():
                     child.send("/exit\r")
                     child.expect(pexpect.EOF, timeout=2)
-            except:
+            except Exception:
                 pass  # Process might have already exited
 
             # Get final output
@@ -664,11 +663,21 @@ class TestRunner:
 
             elif test_case.api_key_method == "cli":
                 # Add API key as command-line argument
-                if "--api-key" not in test_command:
-                    test_command.extend(["--api-key", api_key])
+                # Determine the correct API key flag based on provider
+                if test_case.provider == "mock":
+                    api_key_flag = "--api-key-mock"
+                elif test_case.provider == "openai":
+                    api_key_flag = "--api-key-openai"
+                elif test_case.provider == "perplexity":
+                    api_key_flag = "--api-key-perplexity"
+                else:
+                    api_key_flag = "--api-key-mock"  # Default to mock
+
+                if api_key_flag not in test_command:
+                    test_command.extend([api_key_flag, api_key])
                 else:
                     # Replace existing dummy key with actual key
-                    idx = test_command.index("--api-key")
+                    idx = test_command.index(api_key_flag)
                     if idx + 1 < len(test_command):
                         test_command[idx + 1] = api_key
 
@@ -1135,7 +1144,7 @@ all_tests = [
             "test cli key",
             "--provider",
             "mock",
-            "--api-key",
+            "--api-key-mock",
             "dummy-key",
         ],
         expected_stdout_patterns=[r"Research completed"],
@@ -1657,8 +1666,8 @@ all_tests = [
         description="Providers command shows usage without --models flag",
         command=[THOTH_EXECUTABLE, "providers"],
         expected_stdout_patterns=[
-            r"Usage:.*thoth providers -- --models",
-            r"Show available models from each provider",
+            r"Usage:.*thoth providers -- \[OPTIONS\]",
+            r"Show provider information and available models",
         ],
         expected_exit_code=0,
     ),
@@ -2080,7 +2089,7 @@ all_tests = [
             "-v",
         ],
         expected_stdout_patterns=[r"Request timed out|Timeout|Connection error"],
-        expected_exit_code=3,
+        expected_exit_code=1,
         timeout=5,
     ),
 ]

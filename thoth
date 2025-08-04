@@ -80,7 +80,7 @@ import aiofiles
 console = Console()
 
 # Version tracking
-THOTH_VERSION = "2.4.0"
+THOTH_VERSION = "2.5.0"
 CONFIG_VERSION = "2.0"
 
 # Global variables for signal handling
@@ -99,20 +99,29 @@ def get_config():
 # Built-in mode definitions
 BUILTIN_MODES = {
     "default": {
+        "provider": "openai",
+        "model": "o3",  # Use standard o3 for default
         "system_prompt": None,  # No system prompt - pass query directly
         "description": "Default mode - passes query directly to LLM without any system prompt",
         "auto_input": False,
     },
     "clarification": {
         "provider": "openai",
-        "model": "gpt-4o-mini",
+        "model": "o3",  # Use standard o3 for clarification
         "system_prompt": """I don't want you to follow the above question and instructions; I want you to tell me the ways this is unclear, point out any ambiguities or anything you don't understand. Follow that by asking questions to help clarify the ambiguous points. Once there are no more unclear, ambiguous or not understood portions, help me draft a clear version of the question/instruction.""",
         "description": "Clarifying takes the prompt to get. Ask clarifying questions to get rid of anything that's ambiguous, unclear, and also make suggestions on what would be a better question.",
         "next": "exploration",
     },
+    "mini_research": {  # NEW MODE for quick research
+        "provider": "openai",
+        "model": "o4-mini-deep-research",
+        "system_prompt": "Conduct quick, focused research with key findings and essential information. Be concise but thorough.",
+        "description": "Fast, lightweight research mode for quick answers using o4-mini-deep-research.",
+        "auto_input": False,
+    },
     "exploration": {
         "provider": "openai",
-        "model": "gpt-4o",
+        "model": "o3-deep-research",  # Use deep research for exploration
         "system_prompt": "Explore the topic at hand, looking at options, alternatives, different trade-offs, and make recommendations based on the use case or alternative/related technologies.",
         "description": "Exploration looks at the topic at hand and explores some options and alternatives, different trade-offs, and makes recommendations based on the use case or just alternative and related technologies.",
         "previous": "clarification",
@@ -120,7 +129,7 @@ BUILTIN_MODES = {
     },
     "deep_dive": {
         "provider": "openai",
-        "model": "gpt-4o",
+        "model": "o3-deep-research",  # Use deep research for deep dive
         "system_prompt": "Deep dive into the specific technology, giving an overview, going deep on it, discussing it, and exploring it. For APIs, cover what the API is, how it works, assumptions, dependencies, if it's deprecated, common pitfalls. For other technologies, cover what the technology is and how it's used.",
         "description": "This deep dives into a specific technology, giving an overview of it, going deep on it, discussing it, and exploring it.",
         "previous": "exploration",
@@ -128,7 +137,7 @@ BUILTIN_MODES = {
     },
     "tutorial": {
         "provider": "openai",
-        "model": "gpt-4o",
+        "model": "o3-deep-research",  # Use deep research for tutorial
         "system_prompt": "Create a detailed tutorial with examples of how the technologies are used in common scenarios to get started, along with code samples, command-line execution process, and other useful information.",
         "description": "The tutorial goes into a detailed explanation with examples of how the technologies are used in common scenarios to get started.",
         "previous": "deep_dive",
@@ -136,7 +145,7 @@ BUILTIN_MODES = {
     },
     "solution": {
         "provider": "openai",
-        "model": "gpt-4o",
+        "model": "o3-deep-research",  # Use deep research for solution
         "system_prompt": "Design a specific solution to solve the given problem using appropriate technology. Focus on practical implementation.",
         "description": "A solution generally goes into a specific solution to solve a specific problem using technology.",
         "previous": "tutorial",
@@ -144,7 +153,7 @@ BUILTIN_MODES = {
     },
     "prd": {
         "provider": "openai",
-        "model": "gpt-4o",
+        "model": "o3-deep-research",  # Use deep research for PRD
         "system_prompt": "Create a Product Requirements Document based on prior research. Use previous research on solutions and technologies to create a comprehensive requirements document.",
         "description": "Product Requirements Document based on prior research, we'll create the PRD looking at previous research on solutions to technologies.",
         "previous": "solution",
@@ -152,25 +161,33 @@ BUILTIN_MODES = {
     },
     "tdd": {
         "provider": "openai",
-        "model": "gpt-4o",
+        "model": "o3-deep-research",  # Use deep research for TDD
         "system_prompt": "Create a Technical Design Document based on the PRD and prior research. Consider best practices on architecture and good abstractions to make things maintainable and well-structured in code.",
         "description": "The Technical Design Document based on the PRD and prior research puts together a technical design document.",
         "previous": "prd",
     },
     "thinking": {
         "provider": "openai",
-        "model": "gpt-4o-mini",
+        "model": "o3-deep-research",  # Use deep research for thinking
         "temperature": 0.4,
         "system_prompt": "You are a helpful assistant for quick analysis.",
         "description": "Quick thinking and analysis mode for simple questions.",
     },
     "deep_research": {
+        "provider": "openai",
+        "model": "o3-deep-research",  # Explicit deep research model
         "providers": ["openai"],
         "parallel": True,
         "system_prompt": "Conduct comprehensive research with citations and multiple perspectives.\nOrganize findings clearly and highlight key insights.",
         "description": "Deep research mode using OpenAI for comprehensive analysis.",
         "previous": "exploration",
         "auto_input": True,
+    },
+    "comparison": {  # Add comparison mode with deep research
+        "provider": "openai",
+        "model": "o3-deep-research",
+        "system_prompt": "Compare and contrast the given options, technologies, or approaches. Provide a detailed analysis of pros, cons, and recommendations.",
+        "description": "Comparative analysis mode for evaluating multiple options.",
     },
 }
 
@@ -320,7 +337,7 @@ class ConfigManager:
                         current[keys[-1]] = int(value)
                     else:
                         current[keys[-1]] = value
-                except:
+                except Exception:
                     current[keys[-1]] = value
 
         return overrides
@@ -544,9 +561,11 @@ class APIKeyError(ThothError):
 
 
 class ProviderError(ThothError):
-    """Provider-specific error"""
+    """Provider-specific error with raw error support"""
 
-    def __init__(self, provider: str, message: str):
+    def __init__(self, provider: str, message: str, raw_error: Optional[str] = None):
+        self.provider = provider
+        self.raw_error = raw_error
         super().__init__(
             f"{provider} error: {message}",
             "Check API status or try again later",
@@ -1671,7 +1690,7 @@ class ModelCache:
 class ResearchProvider:
     """Base class for research providers"""
 
-    async def submit(self, query: str, mode: str, system_prompt: str = None) -> str:
+    async def submit(self, query: str, mode: str, system_prompt: str = None, verbose: bool = False) -> str:
         """Submit research and return job ID"""
         raise NotImplementedError
 
@@ -1720,7 +1739,7 @@ class MockProvider(ResearchProvider):
         self.model = "None"  # Mock provider has no model
         self.jobs = {}
 
-    async def submit(self, query: str, mode: str, system_prompt: str = None) -> str:
+    async def submit(self, query: str, mode: str, system_prompt: str = None, verbose: bool = False) -> str:
         """Submit mock research and return job ID"""
         job_id = f"mock-{generate_operation_id()}"
         self.jobs[job_id] = {
@@ -1787,13 +1806,14 @@ This mock provider successfully completed the research task.
 
 # Placeholder for real providers
 class OpenAIProvider(ResearchProvider):
-    """OpenAI Deep Research implementation"""
+    """OpenAI Responses API implementation for Deep Research"""
 
     def __init__(self, api_key: str, config: Dict[str, Any] = None):
         self.api_key = api_key
         self.config = config or {}
-        self.model = self.config.get("model", "gpt-4o")  # Store model from config
-        self.responses = {}  # Store responses by job_id
+        # Model will be passed from mode configuration, default to o3
+        self.model = self.config.get("model", "o3")
+        self.jobs = {}  # Store job information for async tracking
         self.model_cache = ModelCache("openai")  # Initialize cache for OpenAI
 
         # Add timeout configuration
@@ -1807,45 +1827,81 @@ class OpenAIProvider(ResearchProvider):
         wait=wait_exponential(multiplier=1, min=4, max=10),
         retry=retry_if_exception_type((httpx.TimeoutException, httpx.ConnectError)),
     )
-    async def submit(self, query: str, mode: str, system_prompt: str = None) -> str:
-        """Submit to OpenAI with retry logic for transient errors"""
+    async def submit(self, query: str, mode: str, system_prompt: str = None, verbose: bool = False) -> str:
+        """Submit research using OpenAI Responses API"""
         try:
-            # Build messages
-            messages = []
+            # Build structured input format for Responses API
+            input_messages = []
+
             if system_prompt:
-                messages.append({"role": "system", "content": system_prompt})
-            messages.append({"role": "user", "content": query})
+                input_messages.append(
+                    {
+                        "role": "developer",
+                        "content": [{"type": "input_text", "text": system_prompt}],
+                    }
+                )
+
+            input_messages.append(
+                {"role": "user", "content": [{"type": "input_text", "text": query}]}
+            )
+
+            # Configure tools based on model type
+            tools = []
+            if "deep-research" in self.model:
+                # Deep research models get full tool access
+                tools = [{"type": "web_search_preview"}, {"type": "code_interpreter"}]
+
+            # Determine if background mode should be used
+            # Use background for deep-research models or if explicitly configured
+            use_background = "deep-research" in self.model or self.config.get(
+                "background", False
+            )
 
             # Get configuration parameters
             temperature = self.config.get("temperature", 0.7)
-            max_tokens = self.config.get("max_tokens", 4000)
+            
+            # Build request parameters
+            request_params = {
+                "model": self.model,
+                "input": input_messages,
+                "reasoning": {"summary": "auto"},  # Enable reasoning summaries
+                "tools": tools,
+                "background": use_background,
+            }
+            
+            # Only add temperature for models that support it
+            # Response models (o3, o3-deep-research, o4-mini-deep-research) don't support temperature
+            if not self.model.startswith("o"):
+                request_params["temperature"] = temperature
 
-            # Submit request using stored model
-            response = await self.client.chat.completions.create(
-                model=self.model,
-                messages=messages,
-                temperature=temperature,
-                max_tokens=max_tokens,
-            )
+            # Use Responses API
+            response = await self.client.responses.create(**request_params)
 
-            # Generate unique job ID
+            # Store job information
             job_id = (
-                f"openai-{datetime.now().strftime('%Y%m%d%H%M%S')}-{uuid4().hex[:8]}"
+                response.id
+                if hasattr(response, "id")
+                else f"openai-{datetime.now().strftime('%Y%m%d%H%M%S')}-{uuid4().hex[:8]}"
             )
-
-            # Store response by job_id
-            self.responses[job_id] = response
+            self.jobs[job_id] = {
+                "response": response,
+                "background": use_background,
+                "created_at": datetime.now(),
+            }
 
             return job_id
 
-        except httpx.TimeoutException:
+        except httpx.TimeoutException as e:
             raise ProviderError(
-                "openai", "Request timed out. Try increasing timeout in config."
+                "openai", 
+                "Request timed out. Try increasing timeout in config.",
+                raw_error=str(e) if verbose else None
             )
-        except httpx.ConnectError:
+        except httpx.ConnectError as e:
             raise ProviderError(
                 "openai",
                 "Failed to connect to OpenAI API. Check your internet connection.",
+                raw_error=str(e) if verbose else None
             )
         except Exception as e:
             error_msg = str(e)
@@ -1865,10 +1921,31 @@ class OpenAIProvider(ResearchProvider):
                 else:
                     raise APIKeyError("openai")
 
+            # Check for unsupported parameter errors
+            elif "unsupported parameter" in error_msg_lower:
+                if "'temperature'" in error_msg:
+                    raise ProviderError(
+                        "openai",
+                        f"Model '{self.model}' does not support temperature parameter. This is likely a response model (o3, o3-deep-research, etc.)",
+                        raw_error=str(e) if verbose else None
+                    )
+                else:
+                    # Extract parameter name from error message
+                    import re
+                    param_match = re.search(r"'(\w+)'", error_msg)
+                    param_name = param_match.group(1) if param_match else "unknown"
+                    raise ProviderError(
+                        "openai",
+                        f"Model '{self.model}' does not support parameter '{param_name}'",
+                        raw_error=str(e) if verbose else None
+                    )
+            
             # Check for rate limit errors (429)
             elif "rate limit" in error_msg_lower or "429" in error_msg:
                 raise ProviderError(
-                    "openai", "Rate limit exceeded. Please wait a moment and try again."
+                    "openai", 
+                    "Rate limit exceeded. Please wait a moment and try again.",
+                    raw_error=str(e) if verbose else None
                 )
 
             # Check for model not found errors (404)
@@ -1878,6 +1955,7 @@ class OpenAIProvider(ResearchProvider):
                 raise ProviderError(
                     "openai",
                     f"Model '{self.model}' not found. Please check available models with 'thoth providers -- --models --provider openai'",
+                    raw_error=str(e) if verbose else None
                 )
 
             # Check for quota exceeded errors
@@ -1885,46 +1963,213 @@ class OpenAIProvider(ResearchProvider):
                 raise ProviderError(
                     "openai",
                     "API quota exceeded. Please check your OpenAI account billing.",
+                    raw_error=str(e) if verbose else None
                 )
 
             # Check for invalid request errors (400)
             elif "invalid" in error_msg_lower or "400" in error_msg:
-                raise ProviderError("openai", f"Invalid request: {error_msg}")
+                raise ProviderError(
+                    "openai", 
+                    f"Invalid request: {error_msg}",
+                    raw_error=str(e) if verbose else None
+                )
 
             # Generic error
             else:
-                raise ProviderError("openai", str(e))
+                raise ProviderError(
+                    "openai", 
+                    str(e),
+                    raw_error=str(e) if verbose else None
+                )
 
     async def check_status(self, job_id: str) -> Dict[str, Any]:
-        """Check status - for sync mode, always return completed"""
-        return {"status": "completed", "progress": 1.0}
+        """Check actual status of research task"""
+        if job_id not in self.jobs:
+            return {"status": "not_found", "error": "Job not found"}
+
+        job_info = self.jobs[job_id]
+
+        # If not background mode, it's already completed
+        if not job_info.get("background", False):
+            return {"status": "completed", "progress": 1.0}
+
+        try:
+            # Poll the Responses API for status of background job
+            response = await self.client.responses.retrieve(job_id)
+
+            if hasattr(response, "status"):
+                if response.status == "completed":
+                    # Update stored response with completed data
+                    self.jobs[job_id]["response"] = response
+                    return {"status": "completed", "progress": 1.0}
+                elif response.status == "in_progress":
+                    # Try to get progress from metadata
+                    progress = 0.5  # Default progress
+                    if hasattr(response, "metadata") and response.metadata:
+                        progress = response.metadata.get("progress", 0.5)
+                    return {"status": "running", "progress": progress}
+                elif response.status == "failed":
+                    error_msg = getattr(response, "error", "Unknown error")
+                    return {"status": "failed", "error": str(error_msg)}
+                else:
+                    return {"status": "queued", "progress": 0.0}
+            else:
+                # If no status attribute, assume completed (synchronous response)
+                return {"status": "completed", "progress": 1.0}
+        except Exception as e:
+            # If retrieval fails, check if we have a cached response
+            if "response" in job_info and job_info["response"]:
+                return {"status": "completed", "progress": 1.0}
+            return {"status": "error", "error": str(e)}
 
     async def get_result(self, job_id: str) -> str:
-        """Get the result"""
-        if job_id in self.responses:
-            response = self.responses[job_id]
-            return response.choices[0].message.content
-        return "No response available"
+        """Get the Deep Research result"""
+        if job_id not in self.jobs:
+            raise ValueError("Job not found")
+
+        job_info = self.jobs[job_id]
+
+        # If background mode, retrieve the latest response
+        if job_info.get("background", False):
+            try:
+                response = await self.client.responses.retrieve(job_id)
+                job_info["response"] = response  # Update cached response
+            except Exception as e:
+                # Use cached response if retrieval fails
+                response = job_info.get("response")
+                if not response:
+                    return f"Error retrieving result: {str(e)}"
+        else:
+            response = job_info.get("response")
+
+        if not response:
+            return "No response available"
+
+        # Extract content based on response structure
+        content = ""
+
+        # Handle different response formats
+        if hasattr(response, "output"):
+            # Responses API format
+            if isinstance(response.output, list):
+                # New o3 format: output is a list with reasoning and message items
+                for item in response.output:
+                    if hasattr(item, "type") and item.type == "message":
+                        if hasattr(item, "content") and isinstance(item.content, list):
+                            # Extract text from content items
+                            for content_item in item.content:
+                                if hasattr(content_item, "text"):
+                                    content = content_item.text
+                                    break
+                        elif hasattr(item, "content"):
+                            content = item.content
+                        break
+            elif isinstance(response.output, dict):
+                content = response.output.get("content", "")
+            elif isinstance(response.output, str):
+                content = response.output
+            elif hasattr(response.output, "content"):
+                content = response.output.content
+        elif hasattr(response, "choices"):
+            # Chat-style response format (might be returned by responses API for non-background)
+            if response.choices and len(response.choices) > 0:
+                # Check if it's a message or direct content
+                choice = response.choices[0]
+                if hasattr(choice, "message") and hasattr(choice.message, "content"):
+                    content = choice.message.content
+                elif hasattr(choice, "text"):
+                    content = choice.text
+                elif hasattr(choice, "content"):
+                    content = choice.content
+        elif hasattr(response, "content"):
+            content = response.content
+        elif hasattr(response, "text"):
+            content = response.text
+        
+        # If still no content, try to debug the response structure
+        if not content and response:
+            # Debug: log response structure for troubleshooting
+            import json
+            try:
+                # Try to serialize the response to understand its structure
+                if hasattr(response, "model_dump_json"):
+                    content = f"[Debug] Response structure: {response.model_dump_json()}"
+                elif hasattr(response, "__dict__"):
+                    content = f"[Debug] Response attributes: {json.dumps({k: str(v)[:100] for k, v in response.__dict__.items() if not k.startswith('_')}, indent=2)}"
+            except:
+                content = f"[Debug] Response type: {type(response).__name__}"
+
+        # Extract reasoning from the new format if available
+        reasoning_content = ""
+        if hasattr(response, "output") and isinstance(response.output, list):
+            for item in response.output:
+                if hasattr(item, "type") and item.type == "reasoning":
+                    if hasattr(item, "summary") and item.summary:
+                        # If summary is a list, join it
+                        if isinstance(item.summary, list):
+                            reasoning_content = "\n".join(str(s) for s in item.summary)
+                        else:
+                            reasoning_content = str(item.summary)
+                    break
+        
+        # Include reasoning summary if available (either from new format or old format)
+        if reasoning_content:
+            content = f"## Reasoning Summary\n{reasoning_content}\n\n{content}"
+        elif hasattr(response, "reasoning") and response.reasoning:
+            if isinstance(response.reasoning, dict) and response.reasoning.get(
+                "summary"
+            ):
+                reasoning_summary = response.reasoning["summary"]
+                content = f"## Reasoning Summary\n{reasoning_summary}\n\n{content}"
+
+        return content if content else "No content in response"
 
     async def list_models(self) -> List[Dict[str, Any]]:
-        """Fetch available models from OpenAI API"""
+        """List available models including Responses API models"""
+        # Start with known Responses API models
+        response_models = [
+            {
+                "id": "o3",
+                "type": "response",
+                "description": "Standard response model for general tasks",
+                "created": 1719500000,  # Approximate timestamp
+                "owned_by": "openai",
+            },
+            {
+                "id": "o3-deep-research",
+                "type": "deep_research",
+                "description": "Full deep research model with web search and code execution",
+                "created": 1719500001,
+                "owned_by": "openai",
+            },
+            {
+                "id": "o4-mini-deep-research",
+                "type": "deep_research",
+                "description": "Fast lightweight research model for quick answers",
+                "created": 1719500002,
+                "owned_by": "openai",
+            },
+        ]
+
+        # Also try to fetch other models from API
         try:
             response = await self.client.models.list()
-            models = []
+            api_models = []
             for model in response.data:
-                # Filter to only include text generation models
-                if any(
-                    cap in model.id
-                    for cap in ["gpt", "o1", "davinci", "curie", "babbage", "ada"]
-                ):
-                    models.append(
+                # Include all models without filtering
+                # Don't duplicate the response models we already added
+                if model.id not in ["o3", "o3-deep-research", "o4-mini-deep-research"]:
+                    api_models.append(
                         {
                             "id": model.id,
                             "created": model.created,
                             "owned_by": model.owned_by,
+                            "type": "unknown",  # Mark type as unknown for unfiltered models
                         }
                     )
-            return sorted(models, key=lambda x: x["created"], reverse=True)
+            # Combine and sort all models
+            all_models = response_models + api_models
+            return sorted(all_models, key=lambda x: x.get("created", 0), reverse=True)
         except Exception as e:
             raise ProviderError("openai", f"Failed to fetch models: {str(e)}")
 
@@ -1968,7 +2213,7 @@ class PerplexityProvider(ResearchProvider):
         self.config = config or {}
         self.model = self.config.get("model", "sonar-pro")  # Store model from config
 
-    async def submit(self, query: str, mode: str, system_prompt: str = None) -> str:
+    async def submit(self, query: str, mode: str, system_prompt: str = None, verbose: bool = False) -> str:
         """Submit to Perplexity"""
         # TODO: Implement actual Perplexity submission
         raise NotImplementedError("Perplexity provider not yet implemented")
@@ -2062,7 +2307,6 @@ class ProviderRegistry:
             provider_config["timeout"] = timeout_override
 
         # Create provider instance
-        provider_class = self.providers[provider_name]
         if provider_name == "openai":
             return OpenAIProvider(api_key=api_key, config=provider_config)
         elif provider_name == "perplexity":
@@ -2080,9 +2324,10 @@ def create_provider(
     config: Config,
     cli_api_key: Optional[str] = None,
     timeout_override: Optional[float] = None,
+    mode_config: Optional[Dict[str, Any]] = None,
 ) -> ResearchProvider:
     """Create a provider instance with proper configuration and error handling"""
-    provider_config = config.data["providers"].get(provider_name, {})
+    provider_config = config.data["providers"].get(provider_name, {}).copy()
 
     if provider_name == "mock":
         # Mock provider accepts any API key (for testing)
@@ -2124,8 +2369,16 @@ def create_provider(
 
     # Apply timeout override if provided
     if timeout_override is not None and provider_name in ["openai", "perplexity"]:
-        provider_config = provider_config.copy()  # Don't modify original config
         provider_config["timeout"] = timeout_override
+
+    # Apply model from mode configuration if specified
+    if mode_config and "model" in mode_config and provider_name == "openai":
+        provider_config["model"] = mode_config["model"]
+
+    # Apply background mode for deep research models
+    if provider_name == "openai" and provider_config.get("model", ""):
+        if "deep-research" in provider_config["model"]:
+            provider_config["background"] = True
 
     # Create provider instance
     if provider_name == "openai":
@@ -2344,10 +2597,17 @@ async def run_research(
                 config,
                 cli_api_key=provider_cli_key,
                 timeout_override=timeout_override,
+                mode_config=mode_config,  # Pass mode config to get model
             )
         except APIKeyError as e:
             console.print(f"[red]Error:[/red] {e.message}")
             console.print(f"[yellow]Suggestion:[/yellow] {e.suggestion}")
+            raise click.Abort()
+        except ProviderError as e:
+            console.print(f"[red]Error:[/red] {e.message}")
+            console.print(f"[yellow]Suggestion:[/yellow] {e.suggestion}")
+            if verbose and hasattr(e, 'raw_error') and e.raw_error:
+                console.print(f"[dim]Raw error: {e.raw_error}[/dim]")
             raise click.Abort()
         except ThothError as e:
             console.print(f"[red]Error:[/red] {e.message}")
@@ -2394,16 +2654,28 @@ async def run_research(
         # Submit to all providers
         jobs = {}
         for provider_name, provider_instance in providers.items():
-            system_prompt = mode_config.get("system_prompt", "")
-            job_id = await provider_instance.submit(query, mode, system_prompt)
-            jobs[provider_name] = {
-                "provider": provider_instance,
-                "job_id": job_id,
-                "task_id": progress.add_task(
-                    f"{provider_name.title()} Research", total=100, next_poll=30
-                ),
-            }
-            operation.providers[provider_name] = {"status": "running", "job_id": job_id}
+            try:
+                system_prompt = mode_config.get("system_prompt", "")
+                job_id = await provider_instance.submit(query, mode, system_prompt, verbose=verbose)
+                jobs[provider_name] = {
+                    "provider": provider_instance,
+                    "job_id": job_id,
+                    "task_id": progress.add_task(
+                        f"{provider_name.title()} Research", total=100, next_poll=30
+                    ),
+                }
+                operation.providers[provider_name] = {"status": "running", "job_id": job_id}
+            except ProviderError as e:
+                console.print(f"\n[red]Error:[/red] {e.message}")
+                console.print(f"[yellow]Suggestion:[/yellow] {e.suggestion}")
+                if verbose and hasattr(e, 'raw_error') and e.raw_error:
+                    console.print(f"[dim]Raw error: {e.raw_error}[/dim]")
+                raise click.Abort()
+            except Exception as e:
+                console.print(f"\n[red]Unexpected error during submission:[/red] {str(e)}")
+                if verbose:
+                    console.print(f"[dim]Full error: {repr(e)}[/dim]")
+                raise click.Abort()
 
         # Update checkpoint
         operation.status = "running"
@@ -2901,10 +3173,9 @@ try:
     from prompt_toolkit.styles import Style
     from prompt_toolkit.layout import Layout, HSplit
     from prompt_toolkit.widgets import TextArea, Frame, Label
-    from prompt_toolkit.completion import WordCompleter, Completer, Completion
+    from prompt_toolkit.completion import Completer, Completion
     from prompt_toolkit.document import Document
     from prompt_toolkit.application import run_in_terminal
-    from prompt_toolkit.shortcuts import radiolist_dialog
 
     PROMPT_TOOLKIT_AVAILABLE = True
 except ImportError:
@@ -3585,7 +3856,7 @@ class InteractiveSession:
 
         # Check if we're already in an event loop
         try:
-            loop = asyncio.get_running_loop()
+            asyncio.get_running_loop()
             # We're in an async context, can't use run()
             raise RuntimeError(
                 "Cannot use run() in async context, use run_async() instead"

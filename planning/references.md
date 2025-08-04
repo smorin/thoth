@@ -26,3 +26,8 @@ https://docs.astral.sh/ruff/
 
 ## Make example
 https://github.com/smorinlabs/py-launch-blueprint/blob/main/Makefile
+
+
+## openai request models
+`curl https://api.openai.com/v1/models \
+  -H "Authorization: Bearer $OPENAI_API_KEY"`
