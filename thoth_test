@@ -10,7 +10,7 @@ This test suite validates all aspects of Thoth's functionality through
 black-box testing using subprocess and pexpect. Each test validates:
 - Exit codes
 - Standard output patterns
-- Standard error patterns  
+- Standard error patterns
 - File creation and content
 - Interactive mode behavior
 """
@@ -19,12 +19,11 @@ import subprocess
 import json
 import os
 import sys
-import tempfile
 import time
 import signal
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import List, Optional, Dict, Any, Tuple, Union
+from typing import List, Optional, Dict, Tuple
 import re
 import shutil
 from datetime import datetime
@@ -38,6 +37,7 @@ import click
 # Try to import pexpect for interactive tests
 try:
     import pexpect
+
     PEXPECT_AVAILABLE = True
 except ImportError:
     PEXPECT_AVAILABLE = False
@@ -52,26 +52,31 @@ TEST_TIMEOUT = 30
 CLEANUP_ENABLED = True
 VERBOSE_OUTPUT = False  # Global verbose flag
 
+
 # Terminal key sequences for interactive tests
 class Keys:
     """ANSI escape sequences for special keys in terminal"""
-    UP = '\x1b[A'
-    DOWN = '\x1b[B'
-    TAB = '\t'
-    CTRL_C = '\x03'
-    CTRL_D = '\x04'
-    CTRL_J = '\x0a'  # Line feed - universal newline
-    ALT_ENTER = '\x1b\r'  # ESC + Enter
-    SHIFT_ENTER_CSI = '\x1b[13;2u'  # CSI-u sequence for Shift+Enter
-    ENTER = '\r'
+
+    UP = "\x1b[A"
+    DOWN = "\x1b[B"
+    TAB = "\t"
+    CTRL_C = "\x03"
+    CTRL_D = "\x04"
+    CTRL_J = "\x0a"  # Line feed - universal newline
+    ALT_ENTER = "\x1b\r"  # ESC + Enter
+    SHIFT_ENTER_CSI = "\x1b[13;2u"  # CSI-u sequence for Shift+Enter
+    ENTER = "\r"
+
 
 # ============================================================================
 # Data Models
 # ============================================================================
 
+
 @dataclass
 class TestResult:
     """Result of a single test execution"""
+
     test_id: str
     passed: bool
     duration: float
@@ -82,9 +87,11 @@ class TestResult:
     created_files: List[Path] = field(default_factory=list)
     is_api_key_failure: bool = False
 
+
 @dataclass
 class TestCase:
     """Definition of a test case"""
+
     test_id: str
     description: str
     command: List[str]
@@ -103,41 +110,52 @@ class TestCase:
     api_key_method: str = "env"  # "env", "cli", or "config"
     signal_after: Optional[float] = None  # Send signal after N seconds
     test_type: str = "subprocess"  # "subprocess" or "interactive"
-    interactive_scenario: Optional[List[Tuple]] = None  # For pexpect tests: [(expect, send), ...]
+    interactive_scenario: Optional[List[Tuple]] = (
+        None  # For pexpect tests: [(expect, send), ...]
+    )
     terminal_env: Optional[Dict[str, str]] = None  # Terminal-specific env vars
     is_interactive: bool = False  # Whether this is an interactive mode test
+
 
 # ============================================================================
 # Utility Functions
 # ============================================================================
 
+
 def generate_mock_api_key() -> str:
     """Generate a random dummy API key for mock provider testing"""
     return f"mock-key-{uuid4().hex[:16]}"
+
 
 def get_test_api_keys() -> Dict[str, str]:
     """Get API keys for testing (real or generated)"""
     return {
         "mock": generate_mock_api_key(),
         "openai": os.getenv("OPENAI_API_KEY", ""),
-        "perplexity": os.getenv("PERPLEXITY_API_KEY", "")
+        "perplexity": os.getenv("PERPLEXITY_API_KEY", ""),
     }
+
 
 def get_available_providers(test_api_keys: Dict[str, str]) -> List[str]:
     """Determine which providers are available for testing"""
     providers = ["mock"]  # Mock is always available
-    
+
     if test_api_keys.get("openai"):
         providers.append("openai")
-    
+
     if test_api_keys.get("perplexity"):
         providers.append("perplexity")
-    
+
     return providers
 
-def run_command(command: List[str], env: Optional[Dict[str, str]] = None, 
-                timeout: int = TEST_TIMEOUT, cwd: Optional[str] = None,
-                signal_after: Optional[float] = None) -> Tuple[int, str, str]:
+
+def run_command(
+    command: List[str],
+    env: Optional[Dict[str, str]] = None,
+    timeout: int = TEST_TIMEOUT,
+    cwd: Optional[str] = None,
+    signal_after: Optional[float] = None,
+) -> Tuple[int, str, str]:
     """
     Execute a command and return exit code, stdout, stderr
     """
@@ -145,10 +163,10 @@ def run_command(command: List[str], env: Optional[Dict[str, str]] = None,
     cmd_env = os.environ.copy()
     if env:
         cmd_env.update(env)
-    
+
     # Set terminal columns to ensure tables render properly
     cmd_env["COLUMNS"] = "200"
-    
+
     try:
         # Use Popen for more control over output capture
         process = subprocess.Popen(
@@ -158,36 +176,38 @@ def run_command(command: List[str], env: Optional[Dict[str, str]] = None,
             text=True,
             env=cmd_env,
             cwd=cwd,
-            bufsize=-1  # Use system default buffering
+            bufsize=-1,  # Use system default buffering
         )
-        
+
         try:
             if signal_after:
                 # Wait for specified time then send signal
                 import threading
+
                 def send_signal():
                     time.sleep(signal_after)
                     if process.poll() is None:  # Process still running
                         process.send_signal(signal.SIGINT)
-                
+
                 signal_thread = threading.Thread(target=send_signal)
                 signal_thread.start()
-            
+
             stdout, stderr = process.communicate(timeout=timeout)
             return process.returncode, stdout, stderr
         except subprocess.TimeoutExpired:
             process.kill()
             stdout, stderr = process.communicate()
             return -1, stdout, f"Command timed out after {timeout} seconds\n{stderr}"
-            
+
     except Exception as e:
         return -1, "", f"Command failed: {str(e)}"
+
 
 def cleanup_test_files(patterns: List[str]):
     """Remove test artifacts matching patterns"""
     if not CLEANUP_ENABLED:
         return
-    
+
     for pattern in patterns:
         for file_path in Path(".").glob(pattern):
             try:
@@ -198,37 +218,45 @@ def cleanup_test_files(patterns: List[str]):
             except Exception:
                 pass
 
+
 def validate_file_creation(expected_files: List[str]) -> Tuple[bool, List[Path], str]:
     """Check if expected files were created"""
     created_files = []
     missing_files = []
-    
+
     for file_pattern in expected_files:
         matching_files = list(Path(".").glob(file_pattern))
         if matching_files:
             created_files.extend(matching_files)
         else:
             missing_files.append(file_pattern)
-    
+
     if missing_files:
-        return False, created_files, f"Missing expected files: {', '.join(missing_files)}"
-    
+        return (
+            False,
+            created_files,
+            f"Missing expected files: {', '.join(missing_files)}",
+        )
+
     return True, created_files, ""
 
-def validate_output(output: str, expected_patterns: List[str], 
-                   not_expected_patterns: List[str]) -> Tuple[bool, str]:
+
+def validate_output(
+    output: str, expected_patterns: List[str], not_expected_patterns: List[str]
+) -> Tuple[bool, str]:
     """Validate output against expected and not-expected patterns"""
     # Check expected patterns
     for pattern in expected_patterns:
         if not re.search(pattern, output, re.MULTILINE | re.DOTALL):
             return False, f"Pattern not found: {pattern}"
-    
+
     # Check not-expected patterns
     for pattern in not_expected_patterns:
         if re.search(pattern, output, re.MULTILINE | re.DOTALL):
             return False, f"Unexpected pattern found: {pattern}"
-    
+
     return True, ""
+
 
 def is_api_key_error(stdout: str, stderr: str) -> bool:
     """Check if the error is due to missing API key"""
@@ -237,10 +265,13 @@ def is_api_key_error(stdout: str, stderr: str) -> bool:
         r"api key not found",
         r"Set.*API_KEY",
         r"OPENAI_API_KEY",
-        r"PERPLEXITY_API_KEY"
+        r"PERPLEXITY_API_KEY",
     ]
     combined_output = stdout + stderr
-    return any(re.search(pattern, combined_output, re.IGNORECASE) for pattern in error_patterns)
+    return any(
+        re.search(pattern, combined_output, re.IGNORECASE) for pattern in error_patterns
+    )
+
 
 def create_test_config(config_dir: Path, content: str):
     """Create a test configuration file"""
@@ -249,18 +280,24 @@ def create_test_config(config_dir: Path, content: str):
     config_file.write_text(content)
     return config_file
 
+
 def find_latest_output_file(pattern: str = "*_*_*_*_*.md") -> Optional[Path]:
     """Find the most recently created output file matching pattern"""
-    files = sorted(Path(".").glob(pattern), key=lambda p: p.stat().st_mtime, reverse=True)
+    files = sorted(
+        Path(".").glob(pattern), key=lambda p: p.stat().st_mtime, reverse=True
+    )
     return files[0] if files else None
 
-def validate_test_environment(test_api_keys: Dict[str, str], requested_providers: Optional[List[str]] = None) -> None:
+
+def validate_test_environment(
+    test_api_keys: Dict[str, str], requested_providers: Optional[List[str]] = None
+) -> None:
     """Validate test environment and show configuration"""
     console.print("\n[bold]Test Environment Configuration:[/bold]")
-    
+
     # Always show mock status (it's always available)
     console.print(f"Mock API Key: {test_api_keys['mock'][:8]}... (auto-generated)")
-    
+
     # If specific providers requested, validate only those
     if requested_providers:
         missing_keys = []
@@ -268,50 +305,66 @@ def validate_test_environment(test_api_keys: Dict[str, str], requested_providers
             if provider == "mock":
                 continue  # Mock is always available
             elif provider == "openai":
-                if test_api_keys['openai']:
+                if test_api_keys["openai"]:
                     console.print(f"OpenAI API Key: {test_api_keys['openai'][:8]}... ✓")
                 else:
-                    console.print("[red]OpenAI API Key: Not set (required for requested tests)[/red]")
+                    console.print(
+                        "[red]OpenAI API Key: Not set (required for requested tests)[/red]"
+                    )
                     missing_keys.append("OPENAI_API_KEY")
             elif provider == "perplexity":
-                if test_api_keys['perplexity']:
-                    console.print(f"Perplexity API Key: {test_api_keys['perplexity'][:8]}... ✓")
+                if test_api_keys["perplexity"]:
+                    console.print(
+                        f"Perplexity API Key: {test_api_keys['perplexity'][:8]}... ✓"
+                    )
                 else:
-                    console.print("[red]Perplexity API Key: Not set (required for requested tests)[/red]")
+                    console.print(
+                        "[red]Perplexity API Key: Not set (required for requested tests)[/red]"
+                    )
                     missing_keys.append("PERPLEXITY_API_KEY")
-        
+
         if missing_keys:
-            console.print(f"\n[red]Error: Missing required API keys: {', '.join(missing_keys)}[/red]")
-            console.print("Please set the environment variables or remove these providers from your selection.")
+            console.print(
+                f"\n[red]Error: Missing required API keys: {', '.join(missing_keys)}[/red]"
+            )
+            console.print(
+                "Please set the environment variables or remove these providers from your selection."
+            )
             sys.exit(1)
     else:
         # Default behavior: show status of all providers
-        if test_api_keys['openai']:
+        if test_api_keys["openai"]:
             console.print(f"OpenAI API Key: {test_api_keys['openai'][:8]}... ✓")
         else:
-            console.print("[yellow]OpenAI API Key: Not set (OpenAI tests will be skipped)[/yellow]")
-        
-        if test_api_keys['perplexity']:
+            console.print(
+                "[yellow]OpenAI API Key: Not set (OpenAI tests will be skipped)[/yellow]"
+            )
+
+        if test_api_keys["perplexity"]:
             console.print(f"Perplexity API Key: {test_api_keys['perplexity'][:8]}... ✓")
         else:
-            console.print("[yellow]Perplexity API Key: Not set (Perplexity tests will be skipped)[/yellow]")
-    
+            console.print(
+                "[yellow]Perplexity API Key: Not set (Perplexity tests will be skipped)[/yellow]"
+            )
+
     console.print("")  # Blank line
+
 
 # ============================================================================
 # Interactive Test Runner
 # ============================================================================
 
+
 class InteractiveTestRunner:
     """Handles pexpect-based interactive tests"""
-    
+
     def __init__(self, verbose: bool = False):
         self.verbose = verbose
-    
+
     def strip_ansi(self, text: str) -> str:
         """Remove ANSI escape codes from text for easier matching"""
-        return re.sub(r'\x1b\[[0-9;]*[A-Za-z]', '', text)
-    
+        return re.sub(r"\x1b\[[0-9;]*[A-Za-z]", "", text)
+
     def run_interactive_test(self, test_case: TestCase) -> TestResult:
         """Execute an interactive test using pexpect"""
         if not PEXPECT_AVAILABLE:
@@ -321,23 +374,23 @@ class InteractiveTestRunner:
                 duration=0,
                 stdout="",
                 stderr="Skipped: pexpect not available",
-                exit_code=0
+                exit_code=0,
             )
-        
+
         start_time = time.time()
-        
+
         # Set up environment
         test_env = os.environ.copy()
-        test_env['COLUMNS'] = '80'  # Standard terminal width
-        
+        test_env["COLUMNS"] = "80"  # Standard terminal width
+
         # Add test-specific environment variables
         if test_case.env:
             test_env.update(test_case.env)
-        
+
         # Add terminal-specific environment if provided
         if test_case.terminal_env:
             test_env.update(test_case.terminal_env)
-        
+
         # Set up API key if needed
         if test_case.provider:
             api_key = generate_mock_api_key() if test_case.provider == "mock" else ""
@@ -347,86 +400,103 @@ class InteractiveTestRunner:
                 test_env["OPENAI_API_KEY"] = os.getenv("OPENAI_API_KEY", "")
             elif test_case.provider == "perplexity":
                 test_env["PERPLEXITY_API_KEY"] = os.getenv("PERPLEXITY_API_KEY", "")
-        
+
         try:
             # Spawn the interactive process
             child = pexpect.spawn(
                 test_case.command[0],
                 args=test_case.command[1:] if len(test_case.command) > 1 else [],
                 env=test_env,
-                encoding='utf-8',
+                encoding="utf-8",
                 timeout=test_case.timeout,
-                dimensions=(24, 80)  # Standard terminal size
+                dimensions=(24, 80),  # Standard terminal size
             )
-            
+
             if self.verbose:
                 child.logfile = sys.stdout
-            
+
             # Wait for initial prompt/ready state
             # Most interactive tests should start with Thoth Interactive Mode
             try:
-                child.expect('Thoth Interactive Mode', timeout=5)
+                child.expect("Thoth Interactive Mode", timeout=5)
             except (pexpect.TIMEOUT, pexpect.EOF):
                 # Some tests might not show this, continue anyway
                 pass
-            
+
             # Execute the interactive scenario
             output_buffer = []
             if test_case.interactive_scenario:
-                for i, (expect_pattern, send_input) in enumerate(test_case.interactive_scenario):
+                for i, (expect_pattern, send_input) in enumerate(
+                    test_case.interactive_scenario
+                ):
                     if expect_pattern is not None:
                         try:
                             child.expect(expect_pattern, timeout=3)
                             if self.verbose:
-                                console.print(f"✓ Step {i+1}: Found pattern: {expect_pattern[:50]}")
+                                console.print(
+                                    f"✓ Step {i + 1}: Found pattern: {expect_pattern[:50]}"
+                                )
                         except pexpect.TIMEOUT:
-                            error_msg = f"Step {i+1}: Timeout waiting for: {expect_pattern}"
+                            error_msg = (
+                                f"Step {i + 1}: Timeout waiting for: {expect_pattern}"
+                            )
                             return TestResult(
                                 test_id=test_case.test_id,
                                 passed=False,
                                 duration=time.time() - start_time,
-                                stdout=child.before if hasattr(child, 'before') else "",
+                                stdout=child.before if hasattr(child, "before") else "",
                                 stderr=error_msg,
                                 exit_code=-1,
-                                error_message=error_msg
+                                error_message=error_msg,
                             )
                         except pexpect.EOF:
                             # EOF might be expected for Ctrl+C tests
-                            if "exit" not in str(expect_pattern).lower() and "eof" not in str(expect_pattern).lower():
-                                error_msg = f"Step {i+1}: Unexpected EOF"
+                            if (
+                                "exit" not in str(expect_pattern).lower()
+                                and "eof" not in str(expect_pattern).lower()
+                            ):
+                                error_msg = f"Step {i + 1}: Unexpected EOF"
                                 return TestResult(
                                     test_id=test_case.test_id,
                                     passed=False,
                                     duration=time.time() - start_time,
-                                    stdout=child.before if hasattr(child, 'before') else "",
+                                    stdout=child.before
+                                    if hasattr(child, "before")
+                                    else "",
                                     stderr=error_msg,
                                     exit_code=-1,
-                                    error_message=error_msg
+                                    error_message=error_msg,
                                 )
-                    
+
                     if send_input is not None:
                         child.send(send_input)
                         if self.verbose:
-                            console.print(f"✓ Step {i+1}: Sent input: {repr(send_input[:20])}")
+                            console.print(
+                                f"✓ Step {i + 1}: Sent input: {repr(send_input[:20])}"
+                            )
                         time.sleep(0.1)  # Small delay for processing
-            
+
             # Try to exit cleanly if not already done
             try:
                 if child.isalive():
-                    child.send('/exit\r')
+                    child.send("/exit\r")
                     child.expect(pexpect.EOF, timeout=2)
             except:
                 pass  # Process might have already exited
-            
+
             # Get final output
-            stdout = child.before if hasattr(child, 'before') else ""
-            
+            stdout = child.before if hasattr(child, "before") else ""
+
             # Close the child process
             child.close(force=True)
-            exit_code = child.exitstatus if hasattr(child, 'exitstatus') and child.exitstatus is not None else 0
-            
+            exit_code = (
+                child.exitstatus
+                if hasattr(child, "exitstatus") and child.exitstatus is not None
+                else 0
+            )
+
             duration = time.time() - start_time
-            
+
             # Create result
             result = TestResult(
                 test_id=test_case.test_id,
@@ -434,14 +504,14 @@ class InteractiveTestRunner:
                 duration=duration,
                 stdout=stdout,
                 stderr="",
-                exit_code=exit_code
+                exit_code=exit_code,
             )
-            
+
             # Validate exit code if specified
             if exit_code != test_case.expected_exit_code:
                 result.passed = False
                 result.error_message = f"Expected exit code {test_case.expected_exit_code}, got {exit_code}"
-            
+
             # Validate expected patterns in output if specified
             if test_case.expected_stdout_patterns:
                 for pattern in test_case.expected_stdout_patterns:
@@ -449,9 +519,9 @@ class InteractiveTestRunner:
                         result.passed = False
                         result.error_message = f"Pattern not found: {pattern}"
                         break
-            
+
             return result
-            
+
         except Exception as e:
             # Handle specific exceptions
             if "Input/output error" in str(e) and test_case.test_id in ["INT-06"]:
@@ -462,9 +532,9 @@ class InteractiveTestRunner:
                     duration=time.time() - start_time,
                     stdout="",
                     stderr="Process terminated as expected",
-                    exit_code=0
+                    exit_code=0,
                 )
-            
+
             return TestResult(
                 test_id=test_case.test_id,
                 passed=False,
@@ -472,17 +542,24 @@ class InteractiveTestRunner:
                 stdout="",
                 stderr=str(e),
                 exit_code=-1,
-                error_message=f"Test failed with error: {e}"
+                error_message=f"Test failed with error: {e}",
             )
+
 
 # ============================================================================
 # Test Runner
 # ============================================================================
 
+
 class TestRunner:
     """Executes test cases and validates results"""
-    
-    def __init__(self, verbose: bool = False, save_output: bool = False, requested_providers: Optional[List[str]] = None):
+
+    def __init__(
+        self,
+        verbose: bool = False,
+        save_output: bool = False,
+        requested_providers: Optional[List[str]] = None,
+    ):
         self.results: List[TestResult] = []
         self.start_time = time.time()
         self.test_api_keys = get_test_api_keys()
@@ -492,28 +569,35 @@ class TestRunner:
         self.verbose = verbose
         self.save_output = save_output
         if save_output:
-            self.output_dir = Path("test_outputs") / datetime.now().strftime("%Y%m%d_%H%M%S")
+            self.output_dir = Path("test_outputs") / datetime.now().strftime(
+                "%Y%m%d_%H%M%S"
+            )
             self.output_dir.mkdir(parents=True, exist_ok=True)
-    
+
     def should_skip_test(self, test_case: TestCase) -> Tuple[bool, str]:
         """Check if test should be skipped based on provider availability and selection"""
         if not test_case.provider:
             return False, ""  # No specific provider required
-        
+
         # If specific providers were requested, skip tests for other providers
-        if self.requested_providers and test_case.provider not in self.requested_providers:
+        if (
+            self.requested_providers
+            and test_case.provider not in self.requested_providers
+        ):
             return True, f"Provider {test_case.provider} not requested"
-        
+
         if test_case.provider == "mock":
             return False, ""  # Mock tests always run (API key auto-generated)
-        
+
         # Check if API key is available for the provider
         if test_case.provider not in self.available_providers:
-            self.skipped_by_provider[test_case.provider] = self.skipped_by_provider.get(test_case.provider, 0) + 1
+            self.skipped_by_provider[test_case.provider] = (
+                self.skipped_by_provider.get(test_case.provider, 0) + 1
+            )
             return True, f"{test_case.provider.upper()}_API_KEY not set"
-        
+
         return False, ""
-    
+
     def run_test(self, test_case: TestCase) -> TestResult:
         """Execute a single test case"""
         # Check for manual skip
@@ -524,9 +608,9 @@ class TestRunner:
                 duration=0,
                 stdout="",
                 stderr=f"Skipped: {test_case.skip_reason}",
-                exit_code=0
+                exit_code=0,
             )
-        
+
         # Check for provider-based skip
         should_skip, skip_reason = self.should_skip_test(test_case)
         if should_skip:
@@ -536,9 +620,9 @@ class TestRunner:
                 duration=0,
                 stdout="",
                 stderr=f"Skipped: {skip_reason}",
-                exit_code=0
+                exit_code=0,
             )
-        
+
         # Handle interactive tests
         if test_case.test_type == "interactive":
             if not PEXPECT_AVAILABLE:
@@ -548,23 +632,23 @@ class TestRunner:
                     duration=0,
                     stdout="",
                     stderr="Skipped: pexpect not available for interactive tests",
-                    exit_code=0
+                    exit_code=0,
                 )
             interactive_runner = InteractiveTestRunner(self.verbose)
             return interactive_runner.run_interactive_test(test_case)
-        
+
         start_time = time.time()
-        
+
         # Clean up any existing test files
         cleanup_test_files(test_case.cleanup_files)
-        
+
         # Set up environment with appropriate API key
         test_env = test_case.env.copy()
         test_command = test_case.command.copy()
-        
+
         if test_case.provider:
             api_key = self.test_api_keys.get(test_case.provider, "")
-            
+
             if test_case.api_key_method == "env":
                 # Inject the appropriate API key in environment
                 if test_case.provider == "mock":
@@ -577,7 +661,7 @@ class TestRunner:
                 elif test_case.provider == "perplexity":
                     if "PERPLEXITY_API_KEY" not in test_env:
                         test_env["PERPLEXITY_API_KEY"] = api_key
-                    
+
             elif test_case.api_key_method == "cli":
                 # Add API key as command-line argument
                 if "--api-key" not in test_command:
@@ -587,7 +671,7 @@ class TestRunner:
                     idx = test_command.index("--api-key")
                     if idx + 1 < len(test_command):
                         test_command[idx + 1] = api_key
-                        
+
             elif test_case.api_key_method == "config":
                 # Create a temporary config file with API key
                 config_content = f"""version = "1.0"
@@ -614,7 +698,7 @@ api_key = "{api_key}"
 """
                 with open("test_config.toml", "w") as f:
                     f.write(config_content)
-        
+
         # Create test query file if needed
         if "--query-file" in test_command:
             idx = test_command.index("--query-file")
@@ -623,17 +707,17 @@ api_key = "{api_key}"
                 if query_file == "test_query.txt":
                     with open(query_file, "w") as f:
                         f.write("test query from file")
-        
+
         # Run the command
         exit_code, stdout, stderr = run_command(
             test_command,
             env=test_env,
             timeout=test_case.timeout,
-            signal_after=test_case.signal_after
+            signal_after=test_case.signal_after,
         )
-        
+
         duration = time.time() - start_time
-        
+
         # Initialize result
         result = TestResult(
             test_id=test_case.test_id,
@@ -641,17 +725,19 @@ api_key = "{api_key}"
             duration=duration,
             stdout=stdout,
             stderr=stderr,
-            exit_code=exit_code
+            exit_code=exit_code,
         )
-        
+
         # Check if this is an API key failure
         if not result.passed or exit_code != 0:
             result.is_api_key_failure = is_api_key_error(stdout, stderr)
-        
+
         # Show verbose output if enabled
         if self.verbose:
-            console.print(f"\n[dim]{'='*60}[/dim]")
-            console.print(f"[cyan]Test {test_case.test_id}: {test_case.description}[/cyan]")
+            console.print(f"\n[dim]{'=' * 60}[/dim]")
+            console.print(
+                f"[cyan]Test {test_case.test_id}: {test_case.description}[/cyan]"
+            )
             console.print(f"[dim]Command: {' '.join(test_command)}[/dim]")
             console.print(f"[dim]Exit Code: {exit_code}[/dim]")
             if stdout:
@@ -660,82 +746,90 @@ api_key = "{api_key}"
             if stderr:
                 console.print("[dim]--- STDERR ---[/dim]")
                 console.print(stderr)
-            console.print(f"[dim]{'='*60}[/dim]\n")
-        
+            console.print(f"[dim]{'=' * 60}[/dim]\n")
+
         # Save output to files if enabled
         if self.save_output:
             test_output_dir = self.output_dir / test_case.test_id
             test_output_dir.mkdir(exist_ok=True)
-            
+
             # Save command info
             with open(test_output_dir / "command.txt", "w") as f:
                 f.write(f"Command: {' '.join(test_command)}\n")
                 f.write(f"Exit Code: {exit_code}\n")
                 f.write(f"Expected Exit Code: {test_case.expected_exit_code}\n")
-            
+
             # Save stdout
             if stdout:
                 with open(test_output_dir / "stdout.txt", "w") as f:
                     f.write(stdout)
-            
+
             # Save stderr
             if stderr:
                 with open(test_output_dir / "stderr.txt", "w") as f:
                     f.write(stderr)
-            
+
             # Save test metadata
             with open(test_output_dir / "test_info.json", "w") as f:
-                json.dump({
-                    "test_id": test_case.test_id,
-                    "description": test_case.description,
-                    "provider": test_case.provider,
-                    "passed": False,  # Will be updated later
-                    "duration": duration,
-                    "timestamp": datetime.now().isoformat()
-                }, f, indent=2)
-        
+                json.dump(
+                    {
+                        "test_id": test_case.test_id,
+                        "description": test_case.description,
+                        "provider": test_case.provider,
+                        "passed": False,  # Will be updated later
+                        "duration": duration,
+                        "timestamp": datetime.now().isoformat(),
+                    },
+                    f,
+                    indent=2,
+                )
+
         # Validate exit code
         if exit_code != test_case.expected_exit_code:
             result.passed = False
-            result.error_message = f"Expected exit code {test_case.expected_exit_code}, got {exit_code}"
+            result.error_message = (
+                f"Expected exit code {test_case.expected_exit_code}, got {exit_code}"
+            )
             result.is_api_key_failure = is_api_key_error(stdout, stderr)
             return result
-        
+
         # Validate stdout
         passed, error = validate_output(
-            stdout, 
+            stdout,
             test_case.expected_stdout_patterns,
-            test_case.not_expected_stdout_patterns
+            test_case.not_expected_stdout_patterns,
         )
         if not passed:
             result.passed = False
             result.error_message = f"Stdout validation failed: {error}"
             return result
-        
+
         # Validate stderr
         passed, error = validate_output(
             stderr,
             test_case.expected_stderr_patterns,
-            test_case.not_expected_stderr_patterns
+            test_case.not_expected_stderr_patterns,
         )
         if not passed:
             result.passed = False
             result.error_message = f"Stderr validation failed: {error}"
             return result
-        
+
         # Validate file creation
         if test_case.expected_files:
-            passed, created_files, error = validate_file_creation(test_case.expected_files)
+            passed, created_files, error = validate_file_creation(
+                test_case.expected_files
+            )
             result.created_files = created_files
             if not passed:
                 result.passed = False
                 result.error_message = f"File validation failed: {error}"
                 return result
-        
+
         # Clean up after successful test
         if result.passed and CLEANUP_ENABLED:
             cleanup_test_files(test_case.cleanup_files)
-        
+
         # Update test result in saved output
         if self.save_output:
             test_output_dir = self.output_dir / test_case.test_id
@@ -745,125 +839,149 @@ api_key = "{api_key}"
             test_info["error_message"] = result.error_message
             with open(test_output_dir / "test_info.json", "w") as f:
                 json.dump(test_info, f, indent=2)
-        
+
         return result
-    
+
     def run_all_tests(self, test_cases: List[TestCase]):
         """Run all test cases and generate report"""
         total_tests = len(test_cases)
-        
+
         with Progress(
             SpinnerColumn(),
             TextColumn("[progress.description]{task.description}"),
             BarColumn(),
             TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
-            console=console
+            console=console,
         ) as progress:
             task = progress.add_task("Running tests...", total=total_tests)
-            
+
             for test_case in test_cases:
                 # Update progress
-                progress.update(task, description=f"Running {test_case.test_id}: {test_case.description}")
-                
+                progress.update(
+                    task,
+                    description=f"Running {test_case.test_id}: {test_case.description}",
+                )
+
                 # Run test
                 result = self.run_test(test_case)
                 self.results.append(result)
-                
+
                 # Update progress
                 progress.advance(task)
-        
+
         # Generate report
         self.generate_report()
-    
+
     def generate_report(self):
         """Generate and display test report"""
         total_time = time.time() - self.start_time
-        passed_tests = sum(1 for r in self.results if r.passed and "Skipped" not in r.stderr)
-        skipped_tests = sum(1 for r in self.results if r.passed and "Skipped" in r.stderr)
+        passed_tests = sum(
+            1 for r in self.results if r.passed and "Skipped" not in r.stderr
+        )
+        skipped_tests = sum(
+            1 for r in self.results if r.passed and "Skipped" in r.stderr
+        )
         failed_tests = sum(1 for r in self.results if not r.passed)
-        api_key_failures = sum(1 for r in self.results if not r.passed and r.is_api_key_failure)
+        api_key_failures = sum(
+            1 for r in self.results if not r.passed and r.is_api_key_failure
+        )
         other_failures = failed_tests - api_key_failures
-        
+
         # Summary
         console.print("\n[bold]Test Results Summary[/bold]")
         console.print(f"Total tests: {len(self.results)}")
         console.print(f"Passed: [green]{passed_tests}[/green]")
         console.print(f"Skipped: [yellow]{skipped_tests}[/yellow]")
         if api_key_failures > 0:
-            console.print(f"Failed: [red]{failed_tests}[/red] ([yellow]{api_key_failures} due to API key[/yellow], [red]{other_failures} other issues[/red])")
+            console.print(
+                f"Failed: [red]{failed_tests}[/red] ([yellow]{api_key_failures} due to API key[/yellow], [red]{other_failures} other issues[/red])"
+            )
         else:
             console.print(f"Failed: [red]{failed_tests}[/red]")
         console.print(f"Total time: {total_time:.2f}s\n")
-        
+
         # Provider Coverage
         console.print("[bold]Provider Coverage:[/bold]")
-        
+
         # Show what was requested vs what was tested
         if self.requested_providers:
             console.print(f"Requested providers: {', '.join(self.requested_providers)}")
         else:
             console.print("Requested providers: All available")
-        
+
         # Count tests by provider
         provider_test_counts = {"mock": 0, "openai": 0, "perplexity": 0, "none": 0}
         provider_run_counts = {"mock": 0, "openai": 0, "perplexity": 0, "none": 0}
-        
+
         for test_case in all_tests:
             provider_key = test_case.provider or "none"
             if provider_key in provider_test_counts:
                 provider_test_counts[provider_key] += 1
-        
+
         for result in self.results:
-            test_case = next((tc for tc in all_tests if tc.test_id == result.test_id), None)
+            test_case = next(
+                (tc for tc in all_tests if tc.test_id == result.test_id), None
+            )
             if test_case:
                 provider_key = test_case.provider or "none"
-                if provider_key in provider_run_counts and not ("Skipped" in result.stderr):
+                if (
+                    provider_key in provider_run_counts
+                    and "Skipped" not in result.stderr
+                ):
                     provider_run_counts[provider_key] += 1
-        
+
         # Display provider matrix
         console.print("\nProvider Test Matrix:")
         for provider in ["mock", "openai", "perplexity"]:
             total = provider_test_counts[provider]
             ran = provider_run_counts[provider]
             skipped = total - ran
-            
+
             if provider == "mock":
                 status = "[green]Available (auto-generated)[/green]"
             elif provider in self.available_providers:
                 status = "[green]Available[/green]"
             else:
                 status = "[yellow]Not available[/yellow]"
-            
-            console.print(f"  {provider.capitalize()}: {status} - {ran}/{total} tests run", end="")
+
+            console.print(
+                f"  {provider.capitalize()}: {status} - {ran}/{total} tests run", end=""
+            )
             if skipped > 0:
                 console.print(f" ({skipped} skipped)")
             else:
                 console.print()
-        
+
         # Show provider-agnostic tests
         if provider_test_counts["none"] > 0:
-            console.print(f"  Provider-agnostic: {provider_run_counts['none']}/{provider_test_counts['none']} tests run")
-        
+            console.print(
+                f"  Provider-agnostic: {provider_run_counts['none']}/{provider_test_counts['none']} tests run"
+            )
+
         console.print("")
-        
+
         # API Key Warning
         if api_key_failures > 0:
             console.print("[yellow]⚠️  API Key Issues Detected[/yellow]")
             console.print(f"{api_key_failures} tests failed due to missing API keys.")
-            console.print("Set OPENAI_API_KEY and/or PERPLEXITY_API_KEY environment variables.\n")
-        
+            console.print(
+                "Set OPENAI_API_KEY and/or PERPLEXITY_API_KEY environment variables.\n"
+            )
+
         # Detailed results table
-        table = Table(title="Test Results", show_header=True, header_style="bold magenta")
+        table = Table(
+            title="Test Results", show_header=True, header_style="bold magenta"
+        )
         table.add_column("Test ID", style="cyan", width=12)
         table.add_column("Description", style="white", width=45)
         table.add_column("Provider", style="white", width=12)
         table.add_column("Status", style="white", width=10)
         table.add_column("Duration", style="white", width=10)
         table.add_column("Error", style="red", width=35)
-        
+
         for result in self.results:
             status = "[green]PASS[/green]" if result.passed else "[red]FAIL[/red]"
-            
+
             # Handle error message and API key indication
             if result.is_api_key_failure:
                 error_msg = "🔑 API Key Required"
@@ -871,13 +989,15 @@ api_key = "{api_key}"
                 error_msg = result.error_message or ""
                 if len(error_msg) > 40:
                     error_msg = error_msg[:37] + "..."
-            
+
             # Find matching test case for description and provider
-            test_case = next((tc for tc in all_tests if tc.test_id == result.test_id), None)
+            test_case = next(
+                (tc for tc in all_tests if tc.test_id == result.test_id), None
+            )
             description = test_case.description if test_case else "Unknown test"
             if len(description) > 45:
                 description = description[:42] + "..."
-            
+
             # Determine provider info
             if test_case and test_case.provider:
                 if result.passed:
@@ -886,31 +1006,37 @@ api_key = "{api_key}"
                     provider_info = f"[red]{test_case.provider}[/red]"
             else:
                 provider_info = "[dim]-[/dim]"
-            
+
             table.add_row(
                 result.test_id,
                 description,
                 provider_info,
                 status,
                 f"{result.duration:.2f}s",
-                error_msg
+                error_msg,
             )
-        
+
         console.print(table)
-        
+
         # Detailed failure information
         if failed_tests > 0:
             console.print("\n[bold red]Failed Test Details[/bold red]")
-            
+
             # Show API key failures separately
-            api_failures = [r for r in self.results if not r.passed and r.is_api_key_failure]
-            other_failures = [r for r in self.results if not r.passed and not r.is_api_key_failure]
-            
+            api_failures = [
+                r for r in self.results if not r.passed and r.is_api_key_failure
+            ]
+            other_failures = [
+                r for r in self.results if not r.passed and not r.is_api_key_failure
+            ]
+
             if api_failures:
-                console.print("\n[yellow]Tests Failed Due to Missing API Keys:[/yellow]")
+                console.print(
+                    "\n[yellow]Tests Failed Due to Missing API Keys:[/yellow]"
+                )
                 for result in api_failures:
                     console.print(f"  • {result.test_id}: {result.error_message}")
-            
+
             if other_failures:
                 console.print("\n[red]Other Test Failures:[/red]")
                 for result in other_failures:
@@ -921,9 +1047,10 @@ api_key = "{api_key}"
                         console.print(f"Stdout:\n{result.stdout[:2000]}")
                     if result.stderr:
                         console.print(f"Stderr:\n{result.stderr[:2000]}")
-        
+
         # Exit with appropriate code
         sys.exit(0 if failed_tests == 0 else 1)
+
 
 # ============================================================================
 # Test Definitions
@@ -937,24 +1064,19 @@ all_tests = [
         description="Verify --version displays version",
         command=[THOTH_EXECUTABLE, "--version"],
         expected_stdout_patterns=[r"Thoth v\d+\.\d+\.\d+"],
-        expected_exit_code=0
+        expected_exit_code=0,
     ),
-    
     TestCase(
         test_id="M1T-02",
         description="Quick mode with mock provider creates output file",
         command=[THOTH_EXECUTABLE, "test query", "--provider", "mock"],
-        expected_stdout_patterns=[
-            r"Research completed",
-            r"Results saved to:"
-        ],
+        expected_stdout_patterns=[r"Research completed", r"Results saved to:"],
         expected_files=["*_*_*_mock_*.md"],
         cleanup_files=["*_*_*_mock_*.md"],
         expected_exit_code=0,
         provider="mock",
-        api_key_method="env"
+        api_key_method="env",
     ),
-    
     TestCase(
         test_id="M1T-03",
         description="Filename follows correct pattern",
@@ -964,9 +1086,8 @@ all_tests = [
         cleanup_files=["*_*_*_mock_*.md"],
         expected_exit_code=0,
         provider="mock",
-        api_key_method="env"
+        api_key_method="env",
     ),
-    
     TestCase(
         test_id="M1T-04",
         description="Help text shows quick mode examples",
@@ -974,11 +1095,10 @@ all_tests = [
         expected_stdout_patterns=[
             r"Usage:",
             r"Quick usage:",
-            r"thoth \"how does DNS work\""
+            r"thoth \"how does DNS work\"",
         ],
-        expected_exit_code=0
+        expected_exit_code=0,
     ),
-    
     # Graceful Shutdown Test (F-81)
     TestCase(
         test_id="M1T-09",
@@ -986,20 +1106,15 @@ all_tests = [
         command=[THOTH_EXECUTABLE, "test ctrl-c", "--provider", "mock"],
         expected_exit_code=130,  # Standard exit code for SIGINT
         skip=True,
-        skip_reason="Requires manual signal testing"
+        skip_reason="Requires manual signal testing",
     ),
-    
     TestCase(
         test_id="M1T-05",
         description="Help command works",
         command=[THOTH_EXECUTABLE, "help"],
-        expected_stdout_patterns=[
-            r"Usage:",
-            r"Quick usage:"
-        ],
-        expected_exit_code=0
+        expected_stdout_patterns=[r"Usage:", r"Quick usage:"],
+        expected_exit_code=0,
     ),
-    
     # Mock Provider API Key Tests
     TestCase(
         test_id="MOCK-01",
@@ -1010,21 +1125,26 @@ all_tests = [
         cleanup_files=["*_mock_*.md"],
         expected_exit_code=0,
         provider="mock",
-        api_key_method="env"
+        api_key_method="env",
     ),
-    
     TestCase(
         test_id="MOCK-02",
         description="Mock provider works with command-line API key",
-        command=[THOTH_EXECUTABLE, "test cli key", "--provider", "mock", "--api-key", "dummy-key"],
+        command=[
+            THOTH_EXECUTABLE,
+            "test cli key",
+            "--provider",
+            "mock",
+            "--api-key",
+            "dummy-key",
+        ],
         expected_stdout_patterns=[r"Research completed"],
         expected_files=["*_mock_*.md"],
         cleanup_files=["*_mock_*.md"],
         expected_exit_code=0,
         provider="mock",
-        api_key_method="cli"
+        api_key_method="cli",
     ),
-    
     # Provider flag short form test (F-39/T-CLI-03)
     TestCase(
         test_id="T-CLI-03",
@@ -1035,9 +1155,8 @@ all_tests = [
         cleanup_files=["*_mock_*.md"],
         expected_exit_code=0,
         provider="mock",
-        api_key_method="env"
+        api_key_method="env",
     ),
-    
     # Milestone 2: Configuration System
     TestCase(
         test_id="M2T-01",
@@ -1045,9 +1164,8 @@ all_tests = [
         command=[THOTH_EXECUTABLE, "clarification", "test env"],
         env={"OPENAI_API_KEY": ""},
         expected_stdout_patterns=[r"openai API key not found"],
-        expected_exit_code=1
+        expected_exit_code=1,
     ),
-    
     # API Key Masking Test (F-19/M2-08)
     TestCase(
         test_id="M2T-08",
@@ -1058,9 +1176,8 @@ all_tests = [
         expected_stdout_patterns=[r"API Key: sk-\.\.\.345"],
         expected_exit_code=0,
         provider="mock",
-        api_key_method="env"
+        api_key_method="env",
     ),
-    
     TestCase(
         test_id="M2T-02",
         description="Init command creates config directory",
@@ -1068,22 +1185,27 @@ all_tests = [
         env={"XDG_CONFIG_HOME": "./test_temp_config"},
         expected_stdout_patterns=[r"Configuration saved to"],
         expected_exit_code=0,
-        cleanup_files=["./test_temp_config/*"]
+        cleanup_files=["./test_temp_config/*"],
     ),
-    
     # Config flag test (F-40/T-CFG-06)
     TestCase(
         test_id="T-CFG-06",
         description="--config flag loads custom config file",
-        command=[THOTH_EXECUTABLE, "test custom config", "--provider", "mock", "--config", "./test_config.toml"],
+        command=[
+            THOTH_EXECUTABLE,
+            "test custom config",
+            "--provider",
+            "mock",
+            "--config",
+            "./test_config.toml",
+        ],
         expected_stdout_patterns=[r"Research completed"],
         expected_files=["*_mock_*.md"],
         cleanup_files=["*_mock_*.md", "test_config.toml"],
         expected_exit_code=0,
         provider="mock",
-        api_key_method="config"
+        api_key_method="config",
     ),
-    
     # Milestone 3: Provider Architecture
     TestCase(
         test_id="M3T-01",
@@ -1094,30 +1216,35 @@ all_tests = [
         cleanup_files=["*_mock_*.md"],
         expected_exit_code=0,
         provider="mock",
-        api_key_method="env"
+        api_key_method="env",
     ),
-    
     TestCase(
         test_id="M3T-02",
         description="--provider flag limits execution",
-        command=[THOTH_EXECUTABLE, "deep_research", "test provider", "--provider", "mock"],
+        command=[
+            THOTH_EXECUTABLE,
+            "deep_research",
+            "test provider",
+            "--provider",
+            "mock",
+        ],
         expected_stdout_patterns=[r"Research completed"],
         expected_files=["*_mock_*.md"],
         not_expected_stdout_patterns=[r"_openai_", r"_perplexity_"],
         cleanup_files=["*_mock_*.md"],
         expected_exit_code=0,
         provider="mock",
-        api_key_method="env"
+        api_key_method="env",
     ),
-    
     TestCase(
         test_id="M3T-03",
         description="Invalid provider shows error",
         command=[THOTH_EXECUTABLE, "test", "--provider", "invalid-provider"],
-        expected_stderr_patterns=[r"Invalid value for '--provider' / '-P': 'invalid-provider' is not one of"],
-        expected_exit_code=2
+        expected_stderr_patterns=[
+            r"Invalid value for '--provider' / '-P': 'invalid-provider' is not one of"
+        ],
+        expected_exit_code=2,
     ),
-    
     # Milestone 4: Mode System
     TestCase(
         test_id="M4T-01",
@@ -1129,83 +1256,91 @@ all_tests = [
         cleanup_files=["*_default_*.md"],
         expected_exit_code=0,
         provider="mock",
-        api_key_method="env"
+        api_key_method="env",
     ),
-    
     TestCase(
         test_id="M4T-02",
         description="All built-in modes are accessible",
-        command=[THOTH_EXECUTABLE, "thinking", "test thinking mode", "--provider", "mock"],
+        command=[
+            THOTH_EXECUTABLE,
+            "thinking",
+            "test thinking mode",
+            "--provider",
+            "mock",
+        ],
         expected_stdout_patterns=[r"Research completed"],
         expected_files=["*_thinking_*.md"],
         cleanup_files=["*_thinking_*.md"],
         expected_exit_code=0,
         provider="mock",
-        api_key_method="env"
+        api_key_method="env",
     ),
-    
     TestCase(
         test_id="M4T-03",
         description="Unknown mode shows error",
         command=[THOTH_EXECUTABLE, "invalid-mode", "test"],
         expected_stdout_patterns=[r"Unknown mode: invalid-mode"],
-        expected_exit_code=1
+        expected_exit_code=1,
     ),
-    
     TestCase(
         test_id="M4T-04",
         description="Clarification mode works",
-        command=[THOTH_EXECUTABLE, "clarification", "test clarification", "--provider", "mock"],
+        command=[
+            THOTH_EXECUTABLE,
+            "clarification",
+            "test clarification",
+            "--provider",
+            "mock",
+        ],
         expected_stdout_patterns=[r"Research completed"],
         expected_files=["*_clarification_*.md"],
         cleanup_files=["*_clarification_*.md"],
         expected_exit_code=0,
         provider="mock",
-        api_key_method="env"
+        api_key_method="env",
     ),
-    
     TestCase(
         test_id="M4T-05",
         description="Exploration mode works",
-        command=[THOTH_EXECUTABLE, "exploration", "test exploration", "--provider", "mock"],
+        command=[
+            THOTH_EXECUTABLE,
+            "exploration",
+            "test exploration",
+            "--provider",
+            "mock",
+        ],
         expected_stdout_patterns=[r"Research completed"],
         expected_files=["*_exploration_*.md"],
         cleanup_files=["*_exploration_*.md"],
         expected_exit_code=0,
         provider="mock",
-        api_key_method="env"
+        api_key_method="env",
     ),
-    
     # Milestone 5: Async Operations
     TestCase(
         test_id="M5T-01",
         description="--async returns operation ID immediately",
         command=[THOTH_EXECUTABLE, "test async", "--async", "--provider", "mock"],
-        expected_stdout_patterns=[
-            r"Operation ID: \w+-\d+-\d+-\w+"
-        ],
+        expected_stdout_patterns=[r"Operation ID: \w+-\d+-\d+-\w+"],
         expected_exit_code=0,
         timeout=5,  # Should return immediately
         provider="mock",
-        api_key_method="env"
+        api_key_method="env",
     ),
-    
     TestCase(
         test_id="M5T-02",
         description="Status command shows help when no ID",
         command=[THOTH_EXECUTABLE, "status"],
         expected_stdout_patterns=[r"Error: status command requires an operation ID"],
-        expected_exit_code=1
+        expected_exit_code=1,
     ),
-    
     TestCase(
         test_id="M5T-03",
         description="List command works",
         command=[THOTH_EXECUTABLE, "list"],
         expected_stdout_patterns=[r"Research Operations|No operations found"],
-        expected_exit_code=0
+        expected_exit_code=0,
     ),
-    
     # Checkpoint Persistence Tests
     TestCase(
         test_id="M5T-04",
@@ -1216,9 +1351,8 @@ all_tests = [
         cleanup_files=["*_mock_*.md"],
         expected_exit_code=0,
         provider="mock",
-        api_key_method="env"
+        api_key_method="env",
     ),
-    
     TestCase(
         test_id="M5T-05",
         description="Checkpoint recovery on corrupted file",
@@ -1226,9 +1360,8 @@ all_tests = [
         expected_stdout_patterns=[r"Operation .* not found|Error loading checkpoint"],
         expected_exit_code=1,
         skip=True,
-        skip_reason="Requires creating corrupted checkpoint file"
+        skip_reason="Requires creating corrupted checkpoint file",
     ),
-    
     # Checkpoint Corruption Recovery Test (F-82)
     TestCase(
         test_id="M5T-09",
@@ -1237,9 +1370,8 @@ all_tests = [
         expected_stdout_patterns=[r"Checkpoint corrupted|Invalid checkpoint"],
         expected_exit_code=1,
         skip=True,
-        skip_reason="Requires test infrastructure for corrupted checkpoints"
+        skip_reason="Requires test infrastructure for corrupted checkpoints",
     ),
-    
     # Milestone 6: Output Management
     TestCase(
         test_id="M6T-01",
@@ -1250,21 +1382,26 @@ all_tests = [
         cleanup_files=["*_mock_*.md"],
         expected_exit_code=0,
         provider="mock",
-        api_key_method="env"
+        api_key_method="env",
     ),
-    
     TestCase(
         test_id="M6T-02",
         description="Output directory can be specified",
-        command=[THOTH_EXECUTABLE, "test output dir", "--provider", "mock", "-o", "test_output"],
+        command=[
+            THOTH_EXECUTABLE,
+            "test output dir",
+            "--provider",
+            "mock",
+            "-o",
+            "test_output",
+        ],
         expected_stdout_patterns=[r"Results saved to:"],
         expected_files=["test_output/*_mock_*.md"],
         cleanup_files=["test_output/*"],
         expected_exit_code=0,
         provider="mock",
-        api_key_method="env"
+        api_key_method="env",
     ),
-    
     # Milestone 7: Progress and UX
     TestCase(
         test_id="M7T-02",
@@ -1275,49 +1412,41 @@ all_tests = [
         cleanup_files=["*_mock_*.md"],
         expected_exit_code=0,
         provider="mock",
-        api_key_method="env"
+        api_key_method="env",
     ),
-    
     # API Key Tests
     TestCase(
         test_id="API-01",
         description="Missing API key shows helpful error",
         command=[THOTH_EXECUTABLE, "clarification", "test"],
         env={"OPENAI_API_KEY": ""},
-        expected_stdout_patterns=[
-            r"openai API key not found",
-            r"Set OPENAI_API_KEY"
-        ],
-        expected_exit_code=1
+        expected_stdout_patterns=[r"openai API key not found", r"Set OPENAI_API_KEY"],
+        expected_exit_code=1,
     ),
-    
     TestCase(
         test_id="API-02",
         description="Missing mock API key in environment",
         command=[THOTH_EXECUTABLE, "test", "--provider", "mock"],
         env={"MOCK_API_KEY": ""},
         expected_stdout_patterns=[r"mock API key not found"],
-        expected_exit_code=1
+        expected_exit_code=1,
     ),
-    
     TestCase(
         test_id="API-03",
         description="Invalid mock API key format",
         command=[THOTH_EXECUTABLE, "test", "--provider", "mock"],
         env={"MOCK_API_KEY": "invalid"},
         expected_stdout_patterns=[r"Invalid mock API key format"],
-        expected_exit_code=1
+        expected_exit_code=1,
     ),
-    
     # Additional Edge Cases
     TestCase(
         test_id="EDGE-01",
         description="Empty query shows error",
         command=[THOTH_EXECUTABLE, ""],
         expected_stderr_patterns=[r"Query cannot be empty"],
-        expected_exit_code=2
+        expected_exit_code=2,
     ),
-    
     TestCase(
         test_id="EDGE-02",
         description="Very long query is handled",
@@ -1327,22 +1456,25 @@ all_tests = [
         cleanup_files=["*_mock_*.md"],
         expected_exit_code=0,
         provider="mock",
-        api_key_method="env"
+        api_key_method="env",
     ),
-    
     # Combined Report Tests
     TestCase(
         test_id="COMB-01",
         description="Combined report generation with --combined flag",
         command=[THOTH_EXECUTABLE, "test combined", "--combined"],
         expected_stdout_patterns=[r"Research completed"],
-        expected_files=["*_mock_*.md", "*_openai_*.md", "*_perplexity_*.md", "*_combined_*.md"],
+        expected_files=[
+            "*_mock_*.md",
+            "*_openai_*.md",
+            "*_perplexity_*.md",
+            "*_combined_*.md",
+        ],
         cleanup_files=["*_*.md"],
         expected_exit_code=0,
         skip=True,
-        skip_reason="Requires multiple providers to be configured"
+        skip_reason="Requires multiple providers to be configured",
     ),
-    
     TestCase(
         test_id="COMB-02",
         description="No combined report without --combined flag",
@@ -1353,26 +1485,39 @@ all_tests = [
         cleanup_files=["*_mock_*.md"],
         expected_exit_code=0,
         provider="mock",
-        api_key_method="env"
+        api_key_method="env",
     ),
-    
     # Query File Tests
     TestCase(
         test_id="QFILE-01",
         description="Read query from file",
-        command=[THOTH_EXECUTABLE, "--query-file", "test_query.txt", "--provider", "mock"],
+        command=[
+            THOTH_EXECUTABLE,
+            "--query-file",
+            "test_query.txt",
+            "--provider",
+            "mock",
+        ],
         expected_stdout_patterns=[r"Research completed"],
         expected_files=["*_mock_*.md"],
         cleanup_files=["*_mock_*.md", "test_query.txt"],
         expected_exit_code=0,
         provider="mock",
-        api_key_method="env"
+        api_key_method="env",
     ),
-    
     TestCase(
         test_id="QFILE-02",
         description="Read query from stdin",
-        command=["echo", "test query from stdin", "|", THOTH_EXECUTABLE, "--query-file", "-", "--provider", "mock"],
+        command=[
+            "echo",
+            "test query from stdin",
+            "|",
+            THOTH_EXECUTABLE,
+            "--query-file",
+            "-",
+            "--provider",
+            "mock",
+        ],
         expected_stdout_patterns=[r"Research completed"],
         expected_files=["*_mock_*.md"],
         cleanup_files=["*_mock_*.md"],
@@ -1380,22 +1525,27 @@ all_tests = [
         provider="mock",
         api_key_method="env",
         skip=True,
-        skip_reason="Stdin piping requires shell execution"
+        skip_reason="Stdin piping requires shell execution",
     ),
-    
     # Config File Tests
     TestCase(
         test_id="CFG-01",
         description="Custom config file with --config",
-        command=[THOTH_EXECUTABLE, "test config", "--config", "custom_config.toml", "--provider", "mock"],
+        command=[
+            THOTH_EXECUTABLE,
+            "test config",
+            "--config",
+            "custom_config.toml",
+            "--provider",
+            "mock",
+        ],
         expected_stdout_patterns=[r"Research completed"],
         expected_files=["*_mock_*.md"],
         cleanup_files=["*_mock_*.md", "custom_config.toml"],
         expected_exit_code=0,
         provider="mock",
-        api_key_method="env"
+        api_key_method="env",
     ),
-    
     # Quiet Mode Tests
     TestCase(
         test_id="QUIET-01",
@@ -1406,9 +1556,8 @@ all_tests = [
         cleanup_files=["*_mock_*.md"],
         expected_exit_code=0,
         provider="mock",
-        api_key_method="env"
+        api_key_method="env",
     ),
-    
     TestCase(
         test_id="QUIET-02",
         description="Quiet mode short form -Q",
@@ -1418,48 +1567,50 @@ all_tests = [
         cleanup_files=["*_mock_*.md"],
         expected_exit_code=0,
         provider="mock",
-        api_key_method="env"
+        api_key_method="env",
     ),
-    
     # Project Mode Tests
     TestCase(
         test_id="PROJ-01",
         description="Project mode creates subdirectory structure",
-        command=[THOTH_EXECUTABLE, "test project", "--project", "test_project", "--provider", "mock"],
+        command=[
+            THOTH_EXECUTABLE,
+            "test project",
+            "--project",
+            "test_project",
+            "--provider",
+            "mock",
+        ],
         expected_stdout_patterns=[r"Research completed"],
         expected_files=["research-outputs/test_project/*_mock_*.md"],
         cleanup_files=["research-outputs/test_project/*"],
         expected_exit_code=0,
         provider="mock",
-        api_key_method="env"
+        api_key_method="env",
     ),
-    
     # Exit Code Tests
     TestCase(
         test_id="EXIT-01",
         description="Missing required argument returns exit code 2",
         command=[THOTH_EXECUTABLE, "--mode"],
         expected_stderr_patterns=[r"Error: Option '--mode' requires an argument"],
-        expected_exit_code=2
+        expected_exit_code=2,
     ),
-    
     TestCase(
         test_id="EXIT-02",
         description="Invalid command returns exit code 2",
         command=[THOTH_EXECUTABLE, "--invalid-flag"],
         expected_stderr_patterns=[r"Error: No such option"],
-        expected_exit_code=2
+        expected_exit_code=2,
     ),
-    
     TestCase(
         test_id="EXIT-03",
         description="General error returns exit code 1",
         command=[THOTH_EXECUTABLE, "test", "--provider", "openai"],
         env={"OPENAI_API_KEY": ""},
         expected_stdout_patterns=[r"openai API key not found"],
-        expected_exit_code=1
+        expected_exit_code=1,
     ),
-    
     # Real Provider Tests (require actual API keys)
     TestCase(
         test_id="REAL-01",
@@ -1470,9 +1621,8 @@ all_tests = [
         cleanup_files=["*_openai_*.md"],
         expected_exit_code=0,
         provider="openai",
-        api_key_method="env"
+        api_key_method="env",
     ),
-    
     TestCase(
         test_id="REAL-02",
         description="Perplexity provider with real API key",
@@ -1482,9 +1632,8 @@ all_tests = [
         cleanup_files=["*_perplexity_*.md"],
         expected_exit_code=0,
         provider="perplexity",
-        api_key_method="env"
+        api_key_method="env",
     ),
-    
     # Signal handling tests
     TestCase(
         test_id="T-SIG-01",
@@ -1492,7 +1641,7 @@ all_tests = [
         command=[THOTH_EXECUTABLE, "test interrupt handling", "--provider", "mock"],
         expected_stdout_patterns=[
             r"Interrupt received\. Saving checkpoint",
-            r"Checkpoint saved\. Resume with: thoth --resume"
+            r"Checkpoint saved\. Resume with: thoth --resume",
         ],
         expected_exit_code=1,
         provider="mock",
@@ -1500,9 +1649,8 @@ all_tests = [
         signal_after=0.05,  # Send SIGINT after 0.05 seconds
         cleanup_files=["*_mock_*.md", "~/.thoth/checkpoints/*.json"],
         skip=True,
-        skip_reason="Timing issues make this test unreliable"
+        skip_reason="Timing issues make this test unreliable",
     ),
-    
     # Provider discovery tests
     TestCase(
         test_id="T-PROV-06",
@@ -1510,38 +1658,28 @@ all_tests = [
         command=[THOTH_EXECUTABLE, "providers"],
         expected_stdout_patterns=[
             r"Usage:.*thoth providers -- --models",
-            r"Show available models from each provider"
+            r"Show available models from each provider",
         ],
-        expected_exit_code=0
+        expected_exit_code=0,
     ),
-    
     TestCase(
         test_id="T-PROV-07",
         description="List mock provider models",
         command=[THOTH_EXECUTABLE, "providers", "--", "--models", "--provider", "mock"],
-        expected_stdout_patterns=[
-            r"Mock Models",
-            r"mock-model-v1",
-            r"mock-model-v2"
-        ],
+        expected_stdout_patterns=[r"Mock Models", r"mock-model-v1", r"mock-model-v2"],
         expected_exit_code=0,
         provider="mock",
-        api_key_method="env"
+        api_key_method="env",
     ),
-    
     TestCase(
         test_id="T-PROV-08",
         description="List all available models (mock only when no API keys)",
         command=[THOTH_EXECUTABLE, "providers", "--", "--models"],
-        expected_stdout_patterns=[
-            r"Fetching available models",
-            r"Mock Models"
-        ],
+        expected_stdout_patterns=[r"Fetching available models", r"Mock Models"],
         expected_exit_code=0,
         provider="mock",
-        api_key_method="env"
+        api_key_method="env",
     ),
-    
     TestCase(
         test_id="T-PROV-09",
         description="Help for providers command",
@@ -1550,26 +1688,30 @@ all_tests = [
             r"thoth providers.*List available models",
             r"OpenAI models are fetched dynamically",
             r"--models.*List available models",
-            r"--provider.*Filter by specific provider"
+            r"--provider.*Filter by specific provider",
         ],
-        expected_exit_code=0
+        expected_exit_code=0,
     ),
-    
     TestCase(
         test_id="T-PROV-10",
         description="Invalid provider name shows error",
-        command=[THOTH_EXECUTABLE, "providers", "--", "--models", "--provider", "invalid"],
+        command=[
+            THOTH_EXECUTABLE,
+            "providers",
+            "--",
+            "--models",
+            "--provider",
+            "invalid",
+        ],
         expected_stderr_patterns=[
             r"Unknown provider: invalid",
-            r"Available providers: openai, perplexity, mock"
+            r"Available providers: openai, perplexity, mock",
         ],
-        expected_exit_code=1
+        expected_exit_code=1,
     ),
-    
     # ============================================================================
     # Interactive Mode Tests (require pexpect)
     # ============================================================================
-    
     TestCase(
         test_id="INT-01",
         description="Interactive mode slash commands",
@@ -1578,28 +1720,24 @@ all_tests = [
         is_interactive=True,
         interactive_scenario=[
             # Test /help command
-            (None, '/help' + Keys.ENTER),
-            ('Available commands:', None),
-            ('/keybindings', None),  # Should see keybindings in help
-            
+            (None, "/help" + Keys.ENTER),
+            ("Available commands:", None),
+            ("/keybindings", None),  # Should see keybindings in help
             # Test /keybindings command
-            (None, '/keybindings' + Keys.ENTER),
-            ('Keyboard shortcuts:', None),
-            ('Enter.*Submit query', None),
-            
+            (None, "/keybindings" + Keys.ENTER),
+            ("Keyboard shortcuts:", None),
+            ("Enter.*Submit query", None),
             # Test /mode command (list)
-            (None, '/mode' + Keys.ENTER),
-            ('Available modes:', None),
-            ('deep_research', None),
-            
+            (None, "/mode" + Keys.ENTER),
+            ("Available modes:", None),
+            ("deep_research", None),
             # Test /mode command (set)
-            (None, '/mode deep_research' + Keys.ENTER),
-            ('Mode set to: deep_research', None),
+            (None, "/mode deep_research" + Keys.ENTER),
+            ("Mode set to: deep_research", None),
         ],
         provider="mock",
-        expected_exit_code=0
+        expected_exit_code=0,
     ),
-    
     TestCase(
         test_id="INT-02",
         description="Multiline input using Ctrl+J",
@@ -1608,22 +1746,21 @@ all_tests = [
         is_interactive=True,
         interactive_scenario=[
             # Type first line
-            (None, 'First line'),
+            (None, "First line"),
             # Press Ctrl+J for newline
             (None, Keys.CTRL_J),
             # Type second line
-            (None, 'Second line'),
+            (None, "Second line"),
             # Submit with Enter
             (None, Keys.ENTER),
-            ('Processing query:', None),
+            ("Processing query:", None),
             # Should see both lines in the query
-            ('First line', None),
-            ('Second line', None),
+            ("First line", None),
+            ("Second line", None),
         ],
         provider="mock",
-        expected_exit_code=0
+        expected_exit_code=0,
     ),
-    
     TestCase(
         test_id="INT-03",
         description="Multiline input using Alt+Enter",
@@ -1632,43 +1769,41 @@ all_tests = [
         is_interactive=True,
         interactive_scenario=[
             # Type first line
-            (None, 'Line one'),
+            (None, "Line one"),
             # Press Alt+Enter for newline
             (None, Keys.ALT_ENTER),
             # Type second line
-            (None, 'Line two'),
+            (None, "Line two"),
             # Submit with Enter
             (None, Keys.ENTER),
-            ('Processing query:', None),
-            ('Line one', None),
-            ('Line two', None),
+            ("Processing query:", None),
+            ("Line one", None),
+            ("Line two", None),
         ],
         provider="mock",
-        expected_exit_code=0
+        expected_exit_code=0,
     ),
-    
     TestCase(
         test_id="INT-04",
         description="Multiline input using Shift+Enter (CSI-u)",
         command=[THOTH_EXECUTABLE, "-i", "--provider", "mock"],
         test_type="interactive",
         is_interactive=True,
-        terminal_env={'TERM': 'xterm-256color'},  # Enable CSI-u support detection
+        terminal_env={"TERM": "xterm-256color"},  # Enable CSI-u support detection
         interactive_scenario=[
             # Type first line
-            (None, 'Hello'),
+            (None, "Hello"),
             # Try Shift+Enter via CSI-u sequence
             (None, Keys.SHIFT_ENTER_CSI),
             # Type second line
-            (None, 'World'),
+            (None, "World"),
             # Submit with Enter
             (None, Keys.ENTER),
-            ('Processing query:', None),
+            ("Processing query:", None),
         ],
         provider="mock",
-        expected_exit_code=0
+        expected_exit_code=0,
     ),
-    
     TestCase(
         test_id="INT-05",
         description="Tab completion for slash commands",
@@ -1677,19 +1812,18 @@ all_tests = [
         is_interactive=True,
         interactive_scenario=[
             # Type partial command
-            (None, '/hel'),
+            (None, "/hel"),
             # Press Tab
             (None, Keys.TAB),
             # Should complete to /help
-            ('help', None),
+            ("help", None),
             # Press Enter to execute
             (None, Keys.ENTER),
-            ('Available commands:', None),
+            ("Available commands:", None),
         ],
         provider="mock",
-        expected_exit_code=0
+        expected_exit_code=0,
     ),
-    
     TestCase(
         test_id="INT-06",
         description="Ctrl+C graceful abort",
@@ -1698,16 +1832,15 @@ all_tests = [
         is_interactive=True,
         interactive_scenario=[
             # Type something
-            (None, 'test query'),
+            (None, "test query"),
             # Send Ctrl+C
             (None, Keys.CTRL_C),
             # Should see cancellation or process termination
-            (['cancelled', 'aborted', 'exit', pexpect.EOF], None),
+            (["cancelled", "aborted", "exit", pexpect.EOF], None),
         ],
         provider="mock",
-        expected_exit_code=0
+        expected_exit_code=0,
     ),
-    
     TestCase(
         test_id="INT-07",
         description="Provider selection via slash command",
@@ -1716,19 +1849,17 @@ all_tests = [
         is_interactive=True,
         interactive_scenario=[
             # List providers
-            (None, '/provider' + Keys.ENTER),
-            ('Available providers:', None),
-            ('mock', None),
-            ('auto', None),
-            
+            (None, "/provider" + Keys.ENTER),
+            ("Available providers:", None),
+            ("mock", None),
+            ("auto", None),
             # Set provider
-            (None, '/provider mock' + Keys.ENTER),
-            ('Provider set to: mock', None),
+            (None, "/provider mock" + Keys.ENTER),
+            ("Provider set to: mock", None),
         ],
         provider="mock",
-        expected_exit_code=0
+        expected_exit_code=0,
     ),
-    
     TestCase(
         test_id="INT-08",
         description="Basic query submission",
@@ -1737,15 +1868,14 @@ all_tests = [
         is_interactive=True,
         interactive_scenario=[
             # Submit a simple query
-            (None, 'What is Python?' + Keys.ENTER),
-            ('Processing query:', None),
-            ('What is Python', None),
-            ('Mode: default', None),
+            (None, "What is Python?" + Keys.ENTER),
+            ("Processing query:", None),
+            ("What is Python", None),
+            ("Mode: default", None),
         ],
         provider="mock",
-        expected_exit_code=0
+        expected_exit_code=0,
     ),
-    
     TestCase(
         test_id="INT-09",
         description="Initial query population from CLI",
@@ -1757,29 +1887,34 @@ all_tests = [
             # Just press Enter to submit it
             (None, Keys.ENTER),
             # Should see the query being processed
-            ('Processing query:', None),
-            ('test query from CLI', None),
+            ("Processing query:", None),
+            ("test query from CLI", None),
         ],
         provider="mock",
-        expected_exit_code=0
+        expected_exit_code=0,
     ),
-    
     TestCase(
         test_id="INT-10",
         description="Initial mode setting from CLI",
-        command=[THOTH_EXECUTABLE, "-i", "--provider", "mock", "--mode", "deep_research"],
+        command=[
+            THOTH_EXECUTABLE,
+            "-i",
+            "--provider",
+            "mock",
+            "--mode",
+            "deep_research",
+        ],
         test_type="interactive",
         is_interactive=True,
         interactive_scenario=[
             # Send a test query
-            (None, 'test' + Keys.ENTER),
-            ('Processing query:', None),
-            ('Mode: deep_research', None),
+            (None, "test" + Keys.ENTER),
+            ("Processing query:", None),
+            ("Mode: deep_research", None),
         ],
         provider="mock",
-        expected_exit_code=0
+        expected_exit_code=0,
     ),
-    
     TestCase(
         test_id="INT-11",
         description="Initial provider setting from CLI",
@@ -1788,27 +1923,165 @@ all_tests = [
         is_interactive=True,
         interactive_scenario=[
             # Just verify mock provider is set
-            (None, 'test' + Keys.ENTER),
-            ('Processing query:', None),
+            (None, "test" + Keys.ENTER),
+            ("Processing query:", None),
         ],
         provider="mock",
-        expected_exit_code=0
+        expected_exit_code=0,
     ),
-    
     TestCase(
         test_id="INT-12",
         description="Combined initial settings from CLI",
-        command=[THOTH_EXECUTABLE, "-i", "--provider", "mock", "--mode", "exploration", "combined test query"],
+        command=[
+            THOTH_EXECUTABLE,
+            "-i",
+            "--provider",
+            "mock",
+            "--mode",
+            "exploration",
+            "combined test query",
+        ],
         test_type="interactive",
         is_interactive=True,
         interactive_scenario=[
             # Submit the pre-populated query
             (None, Keys.ENTER),
-            ('Processing query:', None),
-            ('combined test query', None),
+            ("Processing query:", None),
+            ("combined test query", None),
         ],
         provider="mock",
-        expected_exit_code=0
+        expected_exit_code=0,
+    ),
+    # Milestone 8: OpenAI Provider Tests
+    TestCase(
+        test_id="M8T-01",
+        description="OpenAI provider initialization with API key",
+        command=[THOTH_EXECUTABLE, "test openai init", "--provider", "openai", "-v"],
+        expected_stdout_patterns=[r"openai API Key: .*\.\.\.", r"Research completed"],
+        expected_exit_code=0,
+        provider="openai",
+        api_key_method="env",
+    ),
+    TestCase(
+        test_id="M8T-02",
+        description="OpenAI provider handles missing API key",
+        command=[THOTH_EXECUTABLE, "test no key", "--provider", "openai"],
+        env={"OPENAI_API_KEY": ""},
+        expected_stdout_patterns=[r"openai API key not found"],
+        expected_exit_code=1,
+    ),
+    TestCase(
+        test_id="M8T-03",
+        description="OpenAI provider handles invalid API key",
+        command=[
+            THOTH_EXECUTABLE,
+            "test invalid key",
+            "--provider",
+            "openai",
+            "--api-key-openai",
+            "invalid-key",
+        ],
+        expected_stdout_patterns=[r"Invalid OpenAI API key"],
+        expected_exit_code=1,
+        timeout=10,
+    ),
+    TestCase(
+        test_id="M8T-04",
+        description="OpenAI timeout configuration from CLI",
+        command=[
+            THOTH_EXECUTABLE,
+            "test timeout",
+            "--provider",
+            "openai",
+            "--timeout",
+            "30.0",
+            "-v",
+        ],
+        expected_stdout_patterns=[r"Timeout: 30\.0"],
+        expected_exit_code=0,
+        provider="openai",
+        api_key_method="env",
+    ),
+    TestCase(
+        test_id="M8T-05",
+        description="OpenAI provider async operation returns job ID",
+        command=[
+            THOTH_EXECUTABLE,
+            "test async openai",
+            "--provider",
+            "openai",
+            "--async",
+        ],
+        expected_stdout_patterns=[r"Operation ID: research-\d+-\w+"],
+        expected_exit_code=0,
+        timeout=5,
+        provider="openai",
+        api_key_method="env",
+    ),
+    TestCase(
+        test_id="M8T-06",
+        description="OpenAI provider creates output file",
+        command=[THOTH_EXECUTABLE, "test output", "--provider", "openai"],
+        expected_stdout_patterns=[r"Research completed"],
+        expected_files=["*_openai_*.md"],
+        cleanup_files=["*_openai_*.md"],
+        expected_exit_code=0,
+        provider="openai",
+        api_key_method="env",
+    ),
+    TestCase(
+        test_id="M8T-07",
+        description="OpenAI provider with verbose shows configuration",
+        command=[THOTH_EXECUTABLE, "test verbose", "--provider", "openai", "-v"],
+        expected_stdout_patterns=[r"openai API Key: .*\.\.\.", r"Research completed"],
+        expected_exit_code=0,
+        provider="openai",
+        api_key_method="env",
+    ),
+    TestCase(
+        test_id="M8T-08",
+        description="OpenAI provider handles rate limit gracefully",
+        command=[THOTH_EXECUTABLE, "test rate limit", "--provider", "openai"],
+        # This test expects normal completion (rate limits are retried)
+        expected_stdout_patterns=[r"Research completed|Rate limit"],
+        expected_exit_code=0,
+        provider="openai",
+        api_key_method="env",
+        timeout=60,  # Allow time for retries
+    ),
+    TestCase(
+        test_id="M8T-09",
+        description="OpenAI provider with custom config file",
+        command=[
+            THOTH_EXECUTABLE,
+            "test config",
+            "--provider",
+            "openai",
+            "--config",
+            "./test_config.toml",
+        ],
+        expected_stdout_patterns=[r"Research completed"],
+        expected_files=["*_openai_*.md"],
+        cleanup_files=["*_openai_*.md", "test_config.toml"],
+        expected_exit_code=0,
+        provider="openai",
+        api_key_method="config",
+    ),
+    TestCase(
+        test_id="M8T-10",
+        description="OpenAI provider handles network timeout",
+        command=[
+            THOTH_EXECUTABLE,
+            "test timeout",
+            "--provider",
+            "openai",
+            "--timeout",
+            "0.001",
+            "-v",
+        ],
+        expected_stdout_patterns=[r"Request timed out|Timeout|Connection error"],
+        expected_exit_code=3,
+        timeout=5,
     ),
 ]
 
@@ -1816,60 +2089,86 @@ all_tests = [
 # Main Test Execution
 # ============================================================================
 
+
 @click.command()
-@click.option('--run', '-r', is_flag=True, help='Run tests (required to execute tests)')
-@click.option('--all', '-a', is_flag=True, help='Run all tests with all providers (shorthand for -r --all-providers)')
-@click.option('--verbose', '-v', is_flag=True, help='Show full output for each test')
-@click.option('--test', '-t', help='Run only tests matching this pattern')
-@click.option('--provider', '-p', help='Run tests for specific provider(s), comma-separated (e.g., mock,openai)')
-@click.option('--all-providers', is_flag=True, help='Run tests for all providers (requires all API keys)')
-@click.option('--interactive', is_flag=True, help='Run only interactive mode tests')
-@click.option('--no-cleanup', is_flag=True, help='Do not clean up test files')
-@click.option('--save-output', is_flag=True, help='Save test output to files for debugging')
-def main(run, all, verbose, test, provider, all_providers, interactive, no_cleanup, save_output):
+@click.option("--run", "-r", is_flag=True, help="Run tests (required to execute tests)")
+@click.option(
+    "--all",
+    "-a",
+    is_flag=True,
+    help="Run all tests with all providers (shorthand for -r --all-providers)",
+)
+@click.option("--verbose", "-v", is_flag=True, help="Show full output for each test")
+@click.option("--test", "-t", help="Run only tests matching this pattern")
+@click.option(
+    "--provider",
+    "-p",
+    help="Run tests for specific provider(s), comma-separated (e.g., mock,openai)",
+)
+@click.option(
+    "--all-providers",
+    is_flag=True,
+    help="Run tests for all providers (requires all API keys)",
+)
+@click.option("--interactive", is_flag=True, help="Run only interactive mode tests")
+@click.option("--no-cleanup", is_flag=True, help="Do not clean up test files")
+@click.option(
+    "--save-output", is_flag=True, help="Save test output to files for debugging"
+)
+def main(
+    run,
+    all,
+    verbose,
+    test,
+    provider,
+    all_providers,
+    interactive,
+    no_cleanup,
+    save_output,
+):
     """Thoth Test Suite - Comprehensive regression tests for Thoth CLI
-    
+
     \b
     Examples:
       # Show help (default when no options given)
       ./thoth_test
-      
+
       # Run all tests with all providers (requires all API keys)
       ./thoth_test -a
-      
+
       # Run all tests with available providers
       ./thoth_test -r
-      
+
       # Run only mock provider tests (no API keys needed)
       ./thoth_test -r --provider mock
-      
+
       # Run tests for specific provider (requires API key)
       ./thoth_test -r --provider openai
-      
+
       # Run tests for multiple providers
       ./thoth_test -r --provider mock,perplexity
-      
+
       # Run all provider tests (long form)
       ./thoth_test -r --all-providers
-      
+
       # Run specific test with mock provider
       ./thoth_test -r --provider mock -t M4T-01
-      
+
       # Run tests matching pattern with verbose output
       ./thoth_test -r -t "async" -v
-      
+
       # Run only interactive mode tests
       ./thoth_test -r --interactive
-      
+
       # Save test outputs for debugging
       ./thoth_test -r --provider mock --save-output
-    
+
     \b
     Provider Test Matrix:
       - mock: Always available (auto-generates API key)
       - openai: Requires OPENAI_API_KEY environment variable
       - perplexity: Requires PERPLEXITY_API_KEY environment variable
-    
+
     \b
     Notes:
       - Use -r or --run to execute tests (otherwise shows help)
@@ -1879,63 +2178,71 @@ def main(run, all, verbose, test, provider, all_providers, interactive, no_clean
       - Default -r behavior runs tests for all available providers
     """
     global CLEANUP_ENABLED
-    
+
     # Handle -a shorthand
     if all:
         run = True
         all_providers = True
-    
+
     # If no run flag, show help and exit
     if not run:
         ctx = click.get_current_context()
         click.echo(ctx.get_help())
         ctx.exit()
-    
+
     if no_cleanup:
         CLEANUP_ENABLED = False
-    
+
     console.print("[bold cyan]Thoth Test Suite[/bold cyan]")
     console.print(f"Testing executable: {THOTH_EXECUTABLE}")
-    
+
     # Parse provider selection
     requested_providers = None
     if provider and all_providers:
-        console.print("[red]Error: Cannot specify both --provider and --all-providers[/red]")
+        console.print(
+            "[red]Error: Cannot specify both --provider and --all-providers[/red]"
+        )
         sys.exit(1)
-    
+
     if provider:
-        requested_providers = [p.strip() for p in provider.split(',')]
+        requested_providers = [p.strip() for p in provider.split(",")]
         # Validate provider names
         valid_providers = ["mock", "openai", "perplexity"]
         invalid = [p for p in requested_providers if p not in valid_providers]
         if invalid:
-            console.print(f"[red]Error: Invalid provider(s): {', '.join(invalid)}[/red]")
+            console.print(
+                f"[red]Error: Invalid provider(s): {', '.join(invalid)}[/red]"
+            )
             console.print(f"Valid providers: {', '.join(valid_providers)}")
             sys.exit(1)
     elif all_providers:
         requested_providers = ["mock", "openai", "perplexity"]
-    
+
     # Filter tests if pattern provided or interactive mode requested
     tests_to_run = all_tests
-    
+
     # Filter by interactive mode if requested
     if interactive:
-        tests_to_run = [t for t in tests_to_run if getattr(t, 'is_interactive', False)]
+        tests_to_run = [t for t in tests_to_run if getattr(t, "is_interactive", False)]
         console.print(f"Running {len(tests_to_run)} interactive mode tests")
-    
+
     # Further filter by test pattern if provided
     if test:
-        tests_to_run = [t for t in tests_to_run if test in t.test_id or test.lower() in t.description.lower()]
+        tests_to_run = [
+            t
+            for t in tests_to_run
+            if test in t.test_id or test.lower() in t.description.lower()
+        ]
         console.print(f"Running {len(tests_to_run)} tests matching '{test}'")
     elif not interactive:
         console.print(f"Total tests: {len(tests_to_run)}")
-    
+
     # Filter by provider if requested
     if requested_providers:
         provider_filtered = []
         provider_counts = {p: 0 for p in requested_providers}
         provider_counts["none"] = 0
-        
+
         for t in tests_to_run:
             # Include tests with no provider (provider-agnostic tests)
             if not t.provider:
@@ -1945,10 +2252,12 @@ def main(run, all, verbose, test, provider, all_providers, interactive, no_clean
             elif t.provider in requested_providers:
                 provider_filtered.append(t)
                 provider_counts[t.provider] += 1
-        
+
         tests_to_run = provider_filtered
-        console.print(f"Filtered to {len(tests_to_run)} tests for provider(s): {', '.join(requested_providers)}")
-        
+        console.print(
+            f"Filtered to {len(tests_to_run)} tests for provider(s): {', '.join(requested_providers)}"
+        )
+
         # Show breakdown
         breakdown = []
         for p in requested_providers:
@@ -1958,25 +2267,32 @@ def main(run, all, verbose, test, provider, all_providers, interactive, no_clean
             breakdown.append(f"provider-agnostic: {provider_counts['none']}")
         if breakdown:
             console.print(f"Test breakdown: {', '.join(breakdown)}")
-    
+
     if verbose:
-        console.print("[yellow]Verbose mode enabled - showing full output for each test[/yellow]")
-    
+        console.print(
+            "[yellow]Verbose mode enabled - showing full output for each test[/yellow]"
+        )
+
     # Verify executable exists
     if not Path(THOTH_EXECUTABLE).exists():
         console.print(f"[red]Error: Executable '{THOTH_EXECUTABLE}' not found[/red]")
         sys.exit(1)
-    
+
     # Validate test environment
     test_api_keys = get_test_api_keys()
     validate_test_environment(test_api_keys, requested_providers)
-    
+
     # Create test runner and execute tests
-    runner = TestRunner(verbose=verbose, save_output=save_output, requested_providers=requested_providers)
+    runner = TestRunner(
+        verbose=verbose,
+        save_output=save_output,
+        requested_providers=requested_providers,
+    )
     runner.run_all_tests(tests_to_run)
-    
+
     if save_output and runner.output_dir:
         console.print(f"\n[green]Test outputs saved to: {runner.output_dir}[/green]")
+
 
 if __name__ == "__main__":
     main()

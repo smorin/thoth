@@ -72,6 +72,10 @@ thoth deep_research "your research query"
 thoth clarification "ambiguous topic needing clarity"
 thoth exploration "broad topic to explore"
 thoth thinking "quick analysis task"
+
+# Use specific provider
+thoth "explain quantum computing" --provider openai
+thoth deep_research "AI safety" --provider openai --timeout 120
 ```
 
 ### Project-Based Research
@@ -208,6 +212,96 @@ Configuration file is stored at `~/.thoth/config.toml`. Key settings:
 - `parallel_providers`: Enable parallel provider execution
 - `combine_reports`: Generate combined reports from multiple providers
 
+## Provider Configuration
+
+### OpenAI Provider
+
+The OpenAI provider integrates with OpenAI's Chat Completions API for AI-powered research.
+
+#### API Key Setup
+
+Configure your OpenAI API key using one of these methods (in order of precedence):
+
+1. **Command-line flag** (highest priority):
+   ```bash
+   thoth "query" --api-key-openai "sk-..." --provider openai
+   ```
+
+2. **Environment variable**:
+   ```bash
+   export OPENAI_API_KEY="sk-..."
+   ```
+
+3. **Configuration file** (`~/.thoth/config.toml`):
+   ```toml
+   [providers.openai]
+   api_key = "${OPENAI_API_KEY}"  # Reference env var
+   # Or directly:
+   api_key = "sk-..."
+   ```
+
+#### Configuration Options
+
+All OpenAI settings can be configured in `~/.thoth/config.toml`:
+
+```toml
+[providers.openai]
+api_key = "${OPENAI_API_KEY}"  # API key (required)
+model = "gpt-4o"                # Model to use (default: gpt-4o)
+timeout = 30.0                  # Request timeout in seconds (default: 30.0)
+temperature = 0.7               # Creativity/randomness (0.0-2.0, default: 0.7)
+max_tokens = 4000               # Maximum response tokens (default: 4000)
+```
+
+#### Available Models
+
+- `gpt-4o` (default) - Optimized GPT-4 model
+- `gpt-4o-mini` - Smaller, faster, cost-effective version
+- `gpt-3.5-turbo` - Fast and economical model
+
+#### CLI Options
+
+Override configuration via command-line:
+
+```bash
+# Set custom timeout
+thoth "query" --provider openai --timeout 60.0
+
+# Verbose mode shows configuration
+thoth "query" --provider openai -v
+```
+
+#### Performance Tuning
+
+**Temperature Settings:**
+- `0.0-0.3`: Factual, consistent responses
+- `0.4-0.7`: Balanced creativity (default)
+- `0.8-1.2`: Creative, varied responses
+
+**Timeout Recommendations:**
+- Short queries: 15-30 seconds
+- Deep research: 60-120 seconds
+- Complex analysis: 180+ seconds
+
+## Error Handling
+
+### Authentication Errors
+- **Invalid API Key**: Verify key at https://platform.openai.com/account/api-keys
+- **Missing API Key**: Set via environment variable or config file
+
+### Rate Limiting
+- Automatic retry with exponential backoff (up to 3 attempts)
+- Check usage at https://platform.openai.com/usage
+
+### Timeout Errors
+- Increase timeout: `--timeout 120`
+- Check network connection
+- Try simpler query first
+
+### Network Errors
+- Automatic connection retry
+- Check API status at https://status.openai.com/
+
 ## Output Structure
 
 ### Ad-hoc Mode (default)
@@ -273,21 +367,59 @@ User: explain kubernetes
 
 ## Development
 
+### Makefile Targets
+
+The Makefile provides separate targets for the main executable (`thoth`) and test suite (`thoth_test`) to ensure independent verification and fixes:
+
+#### Main Executable (thoth)
 ```bash
-# Run from source
-./thoth --help
+make lint        # Lint thoth executable
+make format      # Format thoth executable  
+make typecheck   # Type check thoth executable
+make check       # Run all checks on thoth (lint + typecheck)
+make fix         # Auto-fix lint issues and format thoth
+```
 
-# Run tests
-make test
+#### Test Suite (thoth_test)
+```bash
+make test-lint       # Lint test suite
+make test-format     # Format test suite
+make test-typecheck  # Type check test suite  
+make test-check      # Run all checks on test suite
+make test-fix        # Auto-fix lint issues and format test suite
+```
 
-# Lint code
-make lint
+#### Combined Operations
+```bash
+make lint-all    # Lint both thoth and thoth_test
+make format-all  # Format both thoth and thoth_test
+make check-all   # Check both thoth and thoth_test  
+make fix-all     # Fix and format both thoth and thoth_test
+```
 
-# Format code
-make format
+#### General Commands
+```bash
+make help        # Show all available commands
+make install     # Install thoth to /usr/local/bin
+make test        # Run test suite
+make clean       # Remove generated files
+make run         # Run example research query
+```
 
+### Running Tests
+
+```bash
 # Test with mock provider (no API keys needed)
 ./thoth "test query" --provider mock
+
+# Run OpenAI provider tests (requires API key)
+./thoth_test -r --provider openai -t M8T
+
+# Run all provider tests
+./thoth_test -r --all-providers
+
+# Run specific test pattern
+./thoth_test -r -t "async" -v
 ```
 
 ## Environment Variables
