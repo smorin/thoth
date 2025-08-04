@@ -436,6 +436,41 @@ $ ./thoth_test -r --provider mock
 
 ---
 
+## [ ] Milestone 32: Architecture Cleanup (v2.4.0)
+**Goal**: Refactor monolithic codebase into clean class-based architecture while maintaining single-file distribution
+
+### Tasks
+- [ ] [M32-T1] Create ConfigManager class with layered configuration support
+- [ ] [M32-T2] Implement configuration precedence (defaults < user < project < env < CLI)
+- [ ] [M32-T3] Create CommandHandler class for unified command execution
+- [ ] [M32-T4] Implement ProviderRegistry for better provider management  
+- [ ] [M32-T5] Add configuration schema and validation
+- [ ] [M32-T6] Reorganize code with clear section headers and class structure
+- [ ] [M32-T7] Simplify main CLI function using new classes
+- [ ] [M32-T8] Add support for project-level config files
+- [ ] [M32-T9] Test backward compatibility with existing commands
+- [ ] [M32-T10] Update documentation for new architecture
+
+### Deliverable
+```python
+# Clean architecture with class-based organization
+config_manager = ConfigManager()
+config_manager.load_all_layers(cli_args)
+config = config_manager.get_effective_config()
+
+handler = CommandHandler(config_manager)
+result = handler.execute(command, **params)
+```
+
+### Verification
+- [ ] Configuration precedence works correctly
+- [ ] All existing commands function as before
+- [ ] Project-level configs override user configs
+- [ ] Code is better organized with clear separation
+- [ ] Single file maintained for easy distribution
+
+---
+
 ## Current Status
 
 **Version**: 1.5.0 (in development)

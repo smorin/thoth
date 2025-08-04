@@ -1,17 +1,18 @@
 #!/usr/bin/env -S uv run --script
 # /// script
 # requires-python = ">=3.11"
-# dependencies = ["rich>=13.7", "click>=8.0"]
+# dependencies = ["rich>=13.7", "click>=8.0", "pexpect>=4.8"]
 # ///
 """
 Thoth Test Suite - Comprehensive regression tests for Thoth CLI
 
 This test suite validates all aspects of Thoth's functionality through
-black-box testing using subprocess. Each test validates:
+black-box testing using subprocess and pexpect. Each test validates:
 - Exit codes
 - Standard output patterns
 - Standard error patterns  
 - File creation and content
+- Interactive mode behavior
 """
 
 import subprocess
@@ -34,6 +35,14 @@ from rich.table import Table
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn
 import click
 
+# Try to import pexpect for interactive tests
+try:
+    import pexpect
+    PEXPECT_AVAILABLE = True
+except ImportError:
+    PEXPECT_AVAILABLE = False
+    pexpect = None
+
 # Initialize console for output
 console = Console()
 
@@ -42,6 +51,19 @@ THOTH_EXECUTABLE = "./thoth"
 TEST_TIMEOUT = 30
 CLEANUP_ENABLED = True
 VERBOSE_OUTPUT = False  # Global verbose flag
+
+# Terminal key sequences for interactive tests
+class Keys:
+    """ANSI escape sequences for special keys in terminal"""
+    UP = '\x1b[A'
+    DOWN = '\x1b[B'
+    TAB = '\t'
+    CTRL_C = '\x03'
+    CTRL_D = '\x04'
+    CTRL_J = '\x0a'  # Line feed - universal newline
+    ALT_ENTER = '\x1b\r'  # ESC + Enter
+    SHIFT_ENTER_CSI = '\x1b[13;2u'  # CSI-u sequence for Shift+Enter
+    ENTER = '\r'
 
 # ============================================================================
 # Data Models
@@ -80,6 +102,10 @@ class TestCase:
     provider: Optional[str] = None  # Which provider this test requires
     api_key_method: str = "env"  # "env", "cli", or "config"
     signal_after: Optional[float] = None  # Send signal after N seconds
+    test_type: str = "subprocess"  # "subprocess" or "interactive"
+    interactive_scenario: Optional[List[Tuple]] = None  # For pexpect tests: [(expect, send), ...]
+    terminal_env: Optional[Dict[str, str]] = None  # Terminal-specific env vars
+    is_interactive: bool = False  # Whether this is an interactive mode test
 
 # ============================================================================
 # Utility Functions
@@ -273,6 +299,183 @@ def validate_test_environment(test_api_keys: Dict[str, str], requested_providers
     console.print("")  # Blank line
 
 # ============================================================================
+# Interactive Test Runner
+# ============================================================================
+
+class InteractiveTestRunner:
+    """Handles pexpect-based interactive tests"""
+    
+    def __init__(self, verbose: bool = False):
+        self.verbose = verbose
+    
+    def strip_ansi(self, text: str) -> str:
+        """Remove ANSI escape codes from text for easier matching"""
+        return re.sub(r'\x1b\[[0-9;]*[A-Za-z]', '', text)
+    
+    def run_interactive_test(self, test_case: TestCase) -> TestResult:
+        """Execute an interactive test using pexpect"""
+        if not PEXPECT_AVAILABLE:
+            return TestResult(
+                test_id=test_case.test_id,
+                passed=True,
+                duration=0,
+                stdout="",
+                stderr="Skipped: pexpect not available",
+                exit_code=0
+            )
+        
+        start_time = time.time()
+        
+        # Set up environment
+        test_env = os.environ.copy()
+        test_env['COLUMNS'] = '80'  # Standard terminal width
+        
+        # Add test-specific environment variables
+        if test_case.env:
+            test_env.update(test_case.env)
+        
+        # Add terminal-specific environment if provided
+        if test_case.terminal_env:
+            test_env.update(test_case.terminal_env)
+        
+        # Set up API key if needed
+        if test_case.provider:
+            api_key = generate_mock_api_key() if test_case.provider == "mock" else ""
+            if test_case.provider == "mock":
+                test_env["MOCK_API_KEY"] = api_key
+            elif test_case.provider == "openai":
+                test_env["OPENAI_API_KEY"] = os.getenv("OPENAI_API_KEY", "")
+            elif test_case.provider == "perplexity":
+                test_env["PERPLEXITY_API_KEY"] = os.getenv("PERPLEXITY_API_KEY", "")
+        
+        try:
+            # Spawn the interactive process
+            child = pexpect.spawn(
+                test_case.command[0],
+                args=test_case.command[1:] if len(test_case.command) > 1 else [],
+                env=test_env,
+                encoding='utf-8',
+                timeout=test_case.timeout,
+                dimensions=(24, 80)  # Standard terminal size
+            )
+            
+            if self.verbose:
+                child.logfile = sys.stdout
+            
+            # Wait for initial prompt/ready state
+            # Most interactive tests should start with Thoth Interactive Mode
+            try:
+                child.expect('Thoth Interactive Mode', timeout=5)
+            except (pexpect.TIMEOUT, pexpect.EOF):
+                # Some tests might not show this, continue anyway
+                pass
+            
+            # Execute the interactive scenario
+            output_buffer = []
+            if test_case.interactive_scenario:
+                for i, (expect_pattern, send_input) in enumerate(test_case.interactive_scenario):
+                    if expect_pattern is not None:
+                        try:
+                            child.expect(expect_pattern, timeout=3)
+                            if self.verbose:
+                                console.print(f"✓ Step {i+1}: Found pattern: {expect_pattern[:50]}")
+                        except pexpect.TIMEOUT:
+                            error_msg = f"Step {i+1}: Timeout waiting for: {expect_pattern}"
+                            return TestResult(
+                                test_id=test_case.test_id,
+                                passed=False,
+                                duration=time.time() - start_time,
+                                stdout=child.before if hasattr(child, 'before') else "",
+                                stderr=error_msg,
+                                exit_code=-1,
+                                error_message=error_msg
+                            )
+                        except pexpect.EOF:
+                            # EOF might be expected for Ctrl+C tests
+                            if "exit" not in str(expect_pattern).lower() and "eof" not in str(expect_pattern).lower():
+                                error_msg = f"Step {i+1}: Unexpected EOF"
+                                return TestResult(
+                                    test_id=test_case.test_id,
+                                    passed=False,
+                                    duration=time.time() - start_time,
+                                    stdout=child.before if hasattr(child, 'before') else "",
+                                    stderr=error_msg,
+                                    exit_code=-1,
+                                    error_message=error_msg
+                                )
+                    
+                    if send_input is not None:
+                        child.send(send_input)
+                        if self.verbose:
+                            console.print(f"✓ Step {i+1}: Sent input: {repr(send_input[:20])}")
+                        time.sleep(0.1)  # Small delay for processing
+            
+            # Try to exit cleanly if not already done
+            try:
+                if child.isalive():
+                    child.send('/exit\r')
+                    child.expect(pexpect.EOF, timeout=2)
+            except:
+                pass  # Process might have already exited
+            
+            # Get final output
+            stdout = child.before if hasattr(child, 'before') else ""
+            
+            # Close the child process
+            child.close(force=True)
+            exit_code = child.exitstatus if hasattr(child, 'exitstatus') and child.exitstatus is not None else 0
+            
+            duration = time.time() - start_time
+            
+            # Create result
+            result = TestResult(
+                test_id=test_case.test_id,
+                passed=True,
+                duration=duration,
+                stdout=stdout,
+                stderr="",
+                exit_code=exit_code
+            )
+            
+            # Validate exit code if specified
+            if exit_code != test_case.expected_exit_code:
+                result.passed = False
+                result.error_message = f"Expected exit code {test_case.expected_exit_code}, got {exit_code}"
+            
+            # Validate expected patterns in output if specified
+            if test_case.expected_stdout_patterns:
+                for pattern in test_case.expected_stdout_patterns:
+                    if not re.search(pattern, stdout, re.MULTILINE | re.DOTALL):
+                        result.passed = False
+                        result.error_message = f"Pattern not found: {pattern}"
+                        break
+            
+            return result
+            
+        except Exception as e:
+            # Handle specific exceptions
+            if "Input/output error" in str(e) and test_case.test_id in ["INT-06"]:
+                # Expected for Ctrl+C test
+                return TestResult(
+                    test_id=test_case.test_id,
+                    passed=True,
+                    duration=time.time() - start_time,
+                    stdout="",
+                    stderr="Process terminated as expected",
+                    exit_code=0
+                )
+            
+            return TestResult(
+                test_id=test_case.test_id,
+                passed=False,
+                duration=time.time() - start_time,
+                stdout="",
+                stderr=str(e),
+                exit_code=-1,
+                error_message=f"Test failed with error: {e}"
+            )
+
+# ============================================================================
 # Test Runner
 # ============================================================================
 
@@ -335,6 +538,20 @@ class TestRunner:
                 stderr=f"Skipped: {skip_reason}",
                 exit_code=0
             )
+        
+        # Handle interactive tests
+        if test_case.test_type == "interactive":
+            if not PEXPECT_AVAILABLE:
+                return TestResult(
+                    test_id=test_case.test_id,
+                    passed=True,
+                    duration=0,
+                    stdout="",
+                    stderr="Skipped: pexpect not available for interactive tests",
+                    exit_code=0
+                )
+            interactive_runner = InteractiveTestRunner(self.verbose)
+            return interactive_runner.run_interactive_test(test_case)
         
         start_time = time.time()
         
@@ -1348,6 +1565,251 @@ all_tests = [
         ],
         expected_exit_code=1
     ),
+    
+    # ============================================================================
+    # Interactive Mode Tests (require pexpect)
+    # ============================================================================
+    
+    TestCase(
+        test_id="INT-01",
+        description="Interactive mode slash commands",
+        command=[THOTH_EXECUTABLE, "-i", "--provider", "mock"],
+        test_type="interactive",
+        is_interactive=True,
+        interactive_scenario=[
+            # Test /help command
+            (None, '/help' + Keys.ENTER),
+            ('Available commands:', None),
+            ('/keybindings', None),  # Should see keybindings in help
+            
+            # Test /keybindings command
+            (None, '/keybindings' + Keys.ENTER),
+            ('Keyboard shortcuts:', None),
+            ('Enter.*Submit query', None),
+            
+            # Test /mode command (list)
+            (None, '/mode' + Keys.ENTER),
+            ('Available modes:', None),
+            ('deep_research', None),
+            
+            # Test /mode command (set)
+            (None, '/mode deep_research' + Keys.ENTER),
+            ('Mode set to: deep_research', None),
+        ],
+        provider="mock",
+        expected_exit_code=0
+    ),
+    
+    TestCase(
+        test_id="INT-02",
+        description="Multiline input using Ctrl+J",
+        command=[THOTH_EXECUTABLE, "-i", "--provider", "mock"],
+        test_type="interactive",
+        is_interactive=True,
+        interactive_scenario=[
+            # Type first line
+            (None, 'First line'),
+            # Press Ctrl+J for newline
+            (None, Keys.CTRL_J),
+            # Type second line
+            (None, 'Second line'),
+            # Submit with Enter
+            (None, Keys.ENTER),
+            ('Processing query:', None),
+            # Should see both lines in the query
+            ('First line', None),
+            ('Second line', None),
+        ],
+        provider="mock",
+        expected_exit_code=0
+    ),
+    
+    TestCase(
+        test_id="INT-03",
+        description="Multiline input using Alt+Enter",
+        command=[THOTH_EXECUTABLE, "-i", "--provider", "mock"],
+        test_type="interactive",
+        is_interactive=True,
+        interactive_scenario=[
+            # Type first line
+            (None, 'Line one'),
+            # Press Alt+Enter for newline
+            (None, Keys.ALT_ENTER),
+            # Type second line
+            (None, 'Line two'),
+            # Submit with Enter
+            (None, Keys.ENTER),
+            ('Processing query:', None),
+            ('Line one', None),
+            ('Line two', None),
+        ],
+        provider="mock",
+        expected_exit_code=0
+    ),
+    
+    TestCase(
+        test_id="INT-04",
+        description="Multiline input using Shift+Enter (CSI-u)",
+        command=[THOTH_EXECUTABLE, "-i", "--provider", "mock"],
+        test_type="interactive",
+        is_interactive=True,
+        terminal_env={'TERM': 'xterm-256color'},  # Enable CSI-u support detection
+        interactive_scenario=[
+            # Type first line
+            (None, 'Hello'),
+            # Try Shift+Enter via CSI-u sequence
+            (None, Keys.SHIFT_ENTER_CSI),
+            # Type second line
+            (None, 'World'),
+            # Submit with Enter
+            (None, Keys.ENTER),
+            ('Processing query:', None),
+        ],
+        provider="mock",
+        expected_exit_code=0
+    ),
+    
+    TestCase(
+        test_id="INT-05",
+        description="Tab completion for slash commands",
+        command=[THOTH_EXECUTABLE, "-i", "--provider", "mock"],
+        test_type="interactive",
+        is_interactive=True,
+        interactive_scenario=[
+            # Type partial command
+            (None, '/hel'),
+            # Press Tab
+            (None, Keys.TAB),
+            # Should complete to /help
+            ('help', None),
+            # Press Enter to execute
+            (None, Keys.ENTER),
+            ('Available commands:', None),
+        ],
+        provider="mock",
+        expected_exit_code=0
+    ),
+    
+    TestCase(
+        test_id="INT-06",
+        description="Ctrl+C graceful abort",
+        command=[THOTH_EXECUTABLE, "-i", "--provider", "mock"],
+        test_type="interactive",
+        is_interactive=True,
+        interactive_scenario=[
+            # Type something
+            (None, 'test query'),
+            # Send Ctrl+C
+            (None, Keys.CTRL_C),
+            # Should see cancellation or process termination
+            (['cancelled', 'aborted', 'exit', pexpect.EOF], None),
+        ],
+        provider="mock",
+        expected_exit_code=0
+    ),
+    
+    TestCase(
+        test_id="INT-07",
+        description="Provider selection via slash command",
+        command=[THOTH_EXECUTABLE, "-i", "--provider", "mock"],
+        test_type="interactive",
+        is_interactive=True,
+        interactive_scenario=[
+            # List providers
+            (None, '/provider' + Keys.ENTER),
+            ('Available providers:', None),
+            ('mock', None),
+            ('auto', None),
+            
+            # Set provider
+            (None, '/provider mock' + Keys.ENTER),
+            ('Provider set to: mock', None),
+        ],
+        provider="mock",
+        expected_exit_code=0
+    ),
+    
+    TestCase(
+        test_id="INT-08",
+        description="Basic query submission",
+        command=[THOTH_EXECUTABLE, "-i", "--provider", "mock"],
+        test_type="interactive",
+        is_interactive=True,
+        interactive_scenario=[
+            # Submit a simple query
+            (None, 'What is Python?' + Keys.ENTER),
+            ('Processing query:', None),
+            ('What is Python', None),
+            ('Mode: default', None),
+        ],
+        provider="mock",
+        expected_exit_code=0
+    ),
+    
+    TestCase(
+        test_id="INT-09",
+        description="Initial query population from CLI",
+        command=[THOTH_EXECUTABLE, "-i", "--provider", "mock", "test query from CLI"],
+        test_type="interactive",
+        is_interactive=True,
+        interactive_scenario=[
+            # The initial query should be in the text area
+            # Just press Enter to submit it
+            (None, Keys.ENTER),
+            # Should see the query being processed
+            ('Processing query:', None),
+            ('test query from CLI', None),
+        ],
+        provider="mock",
+        expected_exit_code=0
+    ),
+    
+    TestCase(
+        test_id="INT-10",
+        description="Initial mode setting from CLI",
+        command=[THOTH_EXECUTABLE, "-i", "--provider", "mock", "--mode", "deep_research"],
+        test_type="interactive",
+        is_interactive=True,
+        interactive_scenario=[
+            # Send a test query
+            (None, 'test' + Keys.ENTER),
+            ('Processing query:', None),
+            ('Mode: deep_research', None),
+        ],
+        provider="mock",
+        expected_exit_code=0
+    ),
+    
+    TestCase(
+        test_id="INT-11",
+        description="Initial provider setting from CLI",
+        command=[THOTH_EXECUTABLE, "-i", "--provider", "mock"],
+        test_type="interactive",
+        is_interactive=True,
+        interactive_scenario=[
+            # Just verify mock provider is set
+            (None, 'test' + Keys.ENTER),
+            ('Processing query:', None),
+        ],
+        provider="mock",
+        expected_exit_code=0
+    ),
+    
+    TestCase(
+        test_id="INT-12",
+        description="Combined initial settings from CLI",
+        command=[THOTH_EXECUTABLE, "-i", "--provider", "mock", "--mode", "exploration", "combined test query"],
+        test_type="interactive",
+        is_interactive=True,
+        interactive_scenario=[
+            # Submit the pre-populated query
+            (None, Keys.ENTER),
+            ('Processing query:', None),
+            ('combined test query', None),
+        ],
+        provider="mock",
+        expected_exit_code=0
+    ),
 ]
 
 # ============================================================================
@@ -1361,9 +1823,10 @@ all_tests = [
 @click.option('--test', '-t', help='Run only tests matching this pattern')
 @click.option('--provider', '-p', help='Run tests for specific provider(s), comma-separated (e.g., mock,openai)')
 @click.option('--all-providers', is_flag=True, help='Run tests for all providers (requires all API keys)')
+@click.option('--interactive', is_flag=True, help='Run only interactive mode tests')
 @click.option('--no-cleanup', is_flag=True, help='Do not clean up test files')
 @click.option('--save-output', is_flag=True, help='Save test output to files for debugging')
-def main(run, all, verbose, test, provider, all_providers, no_cleanup, save_output):
+def main(run, all, verbose, test, provider, all_providers, interactive, no_cleanup, save_output):
     """Thoth Test Suite - Comprehensive regression tests for Thoth CLI
     
     \b
@@ -1394,6 +1857,9 @@ def main(run, all, verbose, test, provider, all_providers, no_cleanup, save_outp
       
       # Run tests matching pattern with verbose output
       ./thoth_test -r -t "async" -v
+      
+      # Run only interactive mode tests
+      ./thoth_test -r --interactive
       
       # Save test outputs for debugging
       ./thoth_test -r --provider mock --save-output
@@ -1449,12 +1915,19 @@ def main(run, all, verbose, test, provider, all_providers, no_cleanup, save_outp
     elif all_providers:
         requested_providers = ["mock", "openai", "perplexity"]
     
-    # Filter tests if pattern provided
+    # Filter tests if pattern provided or interactive mode requested
     tests_to_run = all_tests
+    
+    # Filter by interactive mode if requested
+    if interactive:
+        tests_to_run = [t for t in tests_to_run if getattr(t, 'is_interactive', False)]
+        console.print(f"Running {len(tests_to_run)} interactive mode tests")
+    
+    # Further filter by test pattern if provided
     if test:
-        tests_to_run = [t for t in all_tests if test in t.test_id or test.lower() in t.description.lower()]
+        tests_to_run = [t for t in tests_to_run if test in t.test_id or test.lower() in t.description.lower()]
         console.print(f"Running {len(tests_to_run)} tests matching '{test}'")
-    else:
+    elif not interactive:
         console.print(f"Total tests: {len(tests_to_run)}")
     
     # Filter by provider if requested

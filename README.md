@@ -5,6 +5,7 @@ Thoth is a command-line tool that automates deep technical research using multip
 ## Features
 
 - **Multi-provider intelligence**: Parallel execution of OpenAI and Perplexity for comprehensive results
+- **Interactive query mode**: Enhanced terminal UI with slash commands, tab completion, and multiline input
 - **Provider discovery**: List available providers, models, and API key configuration
 - **Zero-configuration deployment**: UV inline script dependencies eliminate setup complexity
 - **Flexible operation modes**: Support both interactive (wait) and background (submit and exit) workflows
@@ -114,6 +115,48 @@ thoth "query" --no-metadata
 # Quiet mode for minimal output
 thoth "query" --quiet
 ```
+
+### Interactive Mode
+```bash
+# Enter interactive query mode with enhanced UI
+thoth -i
+# or
+thoth --interactive
+
+# Interactive mode with specific provider
+thoth -i --provider openai --api-key-openai "sk-..."
+
+# Start with pre-configured settings and initial query
+thoth -i --mode deep_research --provider openai "initial query text"
+
+# Pipe query into interactive mode
+echo "query from stdin" | thoth -i --query-file -
+
+# Combined settings - all CLI arguments initialize the session
+thoth -i --mode exploration --provider perplexity --async "test query"
+```
+
+Interactive mode features:
+- **Command-line initialization**: All CLI arguments (mode, provider, query, async) initialize the session
+- **Pre-populated query**: Initial query text appears in the input area, ready to edit or submit
+- **Bordered text box**: Input appears in a blue-bordered frame with clear visual separation
+- **Multiline input**: Enter to submit, multiple options for new lines:
+  - **Shift+Return** - Works in modern terminals with CSI-u support (iTerm2, Warp, Windows Terminal, VSCode)
+  - **Ctrl+J** - Universal option that works in all terminals (recommended)
+  - **Option+Return** (Mac) or **Alt+Enter** (Linux/Windows) - Traditional fallback
+- **Slash commands**: 
+  - `/help` - Show available commands
+  - `/keybindings` - Show keyboard shortcuts
+  - `/mode [<name>]` - Change research mode or list available modes
+  - `/provider [<name>]` - Set provider or list available providers
+  - `/async` - Toggle async mode on/off
+  - `/status` - Check last operation status
+  - `/exit` or `/quit` - Exit interactive mode
+- **Tab completion**: Start typing a slash command and press Tab for auto-completion
+- **Unix shortcuts**: Ctrl+A (start), Ctrl+E (end), Ctrl+K (kill to end), Ctrl+U (kill to start)
+- **Status bar**: Shows current mode and provider settings in help text
+- **Override capability**: All CLI settings can be overridden using slash commands
+- **Fallback mode**: Automatically switches to basic input when not in a terminal (e.g., piped input)
 
 ### Async Operations
 ```bash

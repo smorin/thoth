@@ -21,6 +21,11 @@
 - Support for placeholder text in input box (implementation-dependent)
 - Added Unix line editing shortcuts (Ctrl+A, Ctrl+E, Ctrl+K)
 - Single query per interactive session with automatic exit after submission
+- Added model caching for OpenAI provider with automatic refresh after 1 week
+- Implemented `--refresh-cache` flag to force refresh model lists
+- Enhanced `--list` output to show cache age and status
+- Added ModelCache class for managing cached model lists in ~/.thoth/model_cache/
+- Added `--no-cache` flag to bypass model cache without updating it
 
 ### Changes in Version 22.0
 - Updated version to v2.2 based on v2.1
@@ -111,6 +116,8 @@ Create the simplest yet most powerful research tool where users can get comprehe
 | Mode chaining | Automatic flow from one mode to another using --auto flag |
 | Adaptive polling | Dynamic adjustment of status check intervals based on operation characteristics |
 | Provider fallback | Automatic failover to alternate provider on failure |
+| Model cache | Local storage of provider model lists to reduce API calls and improve performance. Stored in ~/.thoth/model_cache/ |
+| Cache refresh | Process of updating cached model lists, either automatically (after 1 week) or manually via --refresh-cache flag |
 
 ---
 
@@ -335,27 +342,33 @@ Create the simplest yet most powerful research tool where users can get comprehe
 | ID | Requirement | Priority | Test ID |
 |----|-------------|----------|---------|
 | F-101 | Implement `providers` command to list available models | Must | T-PROV-06 |
-| F-102 | Fetch OpenAI models dynamically via API endpoint | Must | T-PROV-07 |
+| F-102 | Fetch OpenAI models dynamically via API endpoint and cache locally for 1 week | Must | T-PROV-07 |
 | F-103 | Return hardcoded model list for Perplexity provider | Must | T-PROV-08 |
 | F-104 | Support --models flag to display available models | Must | T-PROV-09 |
 | F-105 | Support filtering by provider with --provider flag | Must | T-PROV-10 |
 | F-106 | Format model list output using Rich tables with dynamic column width | Should | T-PROV-11 |
 | F-107 | Handle API errors gracefully when fetching models | Must | T-PROV-12 |
-| F-108 | Show list of available providers when `thoth providers -- --list` is run | Must | T-PROV-13 |
+| F-108 | Show list of available providers with cache status when `thoth providers -- --list` is run | Must | T-PROV-13 |
 | F-109 | Automatically detect available providers from the provider registry | Must | T-PROV-14 |
 | F-110 | Display provider status (configured/not configured) based on API key presence | Must | T-PROV-15 |
 | F-111 | Support both `--list` and `--models` flags after `--` separator | Must | T-PROV-16 |
 | F-112 | Update help text to show both provider listing and model listing options | Must | T-PROV-17 |
 | F-113 | Show API key configuration with --keys flag displaying env vars and provider-specific CLI args | Must | T-PROV-18 |
+| F-114 | Implement model caching for OpenAI provider with 1-week expiration | Must | T-CACHE-02 |
+| F-115 | Support --refresh-cache flag to force model list refresh | Must | T-CACHE-03 |
+| F-116 | Display cache age and status in provider list output | Must | T-CACHE-04 |
+| F-117 | Auto-refresh cache when older than 1 week | Must | T-CACHE-05 |
+| F-118 | Store model cache in ~/.thoth/model_cache/ directory | Must | T-CACHE-06 |
+| F-123 | Support --no-cache flag to bypass model cache without updating it | Must | T-CACHE-07 |
 
 ### Output Format Requirements (v2.2)
 
 | ID | Requirement | Priority | Test ID |
 |----|-------------|----------|---------|
-| F-114 | Metadata headers must include the model used by each provider | Must | T-OUT-06 |
-| F-115 | Mock provider must show "None" as the model in metadata | Must | T-OUT-07 |
-| F-116 | Output files must include the prompt section showing system prompt and user query | Must | T-OUT-08 |
-| F-117 | Support --no-metadata flag to disable metadata headers and prompt section in output files | Must | T-OUT-09 |
+| F-119 | Metadata headers must include the model used by each provider | Must | T-OUT-06 |
+| F-120 | Mock provider must show "None" as the model in metadata | Must | T-OUT-07 |
+| F-121 | Output files must include the prompt section showing system prompt and user query | Must | T-OUT-08 |
+| F-122 | Support --no-metadata flag to disable metadata headers and prompt section in output files | Must | T-OUT-09 |
 
 ### Interactive Mode Requirements (v2.3)
 
@@ -565,6 +578,12 @@ thoth import research-backup.json
 thoth providers --models                      # List all models for all providers
 thoth providers --models --provider openai    # List OpenAI models only
 thoth providers --models -P perplexity        # List Perplexity models only
+
+# Model cache management
+thoth providers -- --list                     # Show providers with cache status
+thoth providers -- --models --refresh-cache   # Force refresh model cache
+thoth providers -- --models --provider openai --refresh-cache  # Refresh specific provider
+thoth providers -- --models --no-cache        # Bypass cache completely without updating it
 ```
 
 ### 10.3 Options Reference
@@ -589,6 +608,8 @@ thoth providers --models -P perplexity        # List Perplexity models only
 | --auto | | flag | Use previous output automatically (mode chaining) |
 | --force | -f | flag | Force operation without confirmation |
 | --dry-run | | flag | Preview operation without executing |
+| --refresh-cache | | flag | Force refresh of cached model lists (providers command) |
+| --no-cache | | flag | Bypass model cache without updating it (providers command) |
 
 ### 10.4 Commands Reference
 
@@ -787,15 +808,16 @@ Cleaning up...
 $ thoth providers -- --list
 
 Available Providers:
-┌─────────────┬──────────┬─────────────────────────┐
-│ Provider    │ Status   │ Description             │
-├─────────────┼──────────┼─────────────────────────┤
-│ openai      │ ✓ Ready  │ OpenAI GPT models       │
-│ perplexity  │ ✗ No key │ Perplexity search AI    │
-│ mock        │ ✓ Ready  │ Mock provider for tests │
-└─────────────┴──────────┴─────────────────────────┘
+┌─────────────┬──────────┬─────────────────────────┬──────────────────────────────┐
+│ Provider    │ Status   │ Description             │ Model Cache                  │
+├─────────────┼──────────┼─────────────────────────┼──────────────────────────────┤
+│ openai      │ ✓ Ready  │ OpenAI GPT models       │ 3 days old (refresh in 4 days) │
+│ perplexity  │ ✗ No key │ Perplexity search AI    │ N/A                          │
+│ mock        │ ✓ Ready  │ Mock provider for tests │ N/A                          │
+└─────────────┴──────────┴─────────────────────────┴──────────────────────────────┘
 
 To see available models, use: thoth providers -- --models
+To refresh model cache, use: thoth providers -- --models --refresh-cache
 
 $ thoth providers -- --models
 
@@ -862,6 +884,21 @@ Examples:
 
   # Set multiple API keys for multi-provider modes
   $ thoth deep_research "query" --api-key-openai "sk-..." --api-key-perplexity "pplx-..."
+
+$ thoth providers -- --models --refresh-cache
+
+Fetching available models (refreshing cache)...
+
+OpenAI Models:
+┌─────────────────────────┬──────────────┬─────────────┐
+│ Model ID                │ Created      │ Owned By    │
+├─────────────────────────┼──────────────┼─────────────┤
+│ gpt-4-turbo-preview     │ 2024-01-25   │ openai      │
+│ gpt-4o                  │ 2024-05-13   │ openai      │
+│ gpt-4o-mini             │ 2024-07-18   │ openai      │
+└─────────────────────────┴──────────────┴─────────────┘
+
+[Cache refreshed and saved locally]
 ```
 
 ### 11.6 Progress Display Details

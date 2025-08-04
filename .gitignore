@@ -53,6 +53,8 @@ openai.env
 !temp.*.md
 !references.md
 !manual_testing_instructions.md
+!planning/*.md
+!MILESTONES.md
 
 # Logs
 *.log

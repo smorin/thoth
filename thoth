@@ -9,7 +9,8 @@
 #   "platformdirs>=3.0",
 #   "aiofiles>=23.0",
 #   "tenacity>=8.0",
-#   "python-dateutil>=2.8"
+#   "python-dateutil>=2.8",
+#   "prompt-toolkit>=3.0"
 # ]
 # ///
 """
@@ -288,6 +289,15 @@ class OperationStatus:
     project: Optional[str] = None
     input_files: List[Path] = field(default_factory=list)
 
+@dataclass
+class InteractiveInitialSettings:
+    """Initial settings for interactive mode from command-line arguments"""
+    mode: Optional[str] = None
+    provider: Optional[str] = None
+    query: Optional[str] = None
+    async_mode: bool = False
+    cli_api_keys: Optional[Dict[str, Optional[str]]] = None
+
 # ============================================================================
 # Exception Classes
 # ============================================================================
@@ -467,9 +477,10 @@ def build_epilog():
 @click.option('--quiet', '-Q', is_flag=True, help='Minimal output during execution')
 @click.option('--no-metadata', is_flag=True, help='Disable metadata headers and prompt section in output files')
 @click.option('--timeout', '-T', type=float, help='Override request timeout in seconds')
+@click.option('--interactive', '-i', is_flag=True, help='Enter interactive query mode')
 def cli(ctx, args, mode_opt, query_opt, query_file, async_mode, resume_id, 
         project, output_dir, provider, input_file, auto, verbose, version, 
-        api_key_openai, api_key_perplexity, api_key_mock, config_path, combined, quiet, no_metadata, timeout):
+        api_key_openai, api_key_perplexity, api_key_mock, config_path, combined, quiet, no_metadata, timeout, interactive):
     """Thoth - AI-Powered Research Assistant
     
     Quick usage: thoth "QUERY"
@@ -492,6 +503,82 @@ def cli(ctx, args, mode_opt, query_opt, query_file, async_mode, resume_id,
     if version:
         console.print(f"Thoth v{THOTH_VERSION}")
         sys.exit(0)
+    
+    # Determine mode and query early (for both interactive and non-interactive)
+    final_mode = None
+    final_query = None
+    
+    # Skip special commands for mode/query determination
+    if not (args and args[0] in ['init', 'status', 'list', 'help', 'providers']):
+        if len(args) >= 2:
+            # Two or more args: First is potentially a mode, rest is query
+            if args[0] in BUILTIN_MODES:
+                final_mode = args[0]
+                final_query = " ".join(args[1:])
+            else:
+                # Check if it looks like a mode but is invalid
+                if len(args[0].split()) == 1 and not args[0].startswith("-"):
+                    # Might be an invalid mode
+                    console.print(f"[red]Error:[/red] Unknown mode: {args[0]}")
+                    console.print(f"[yellow]Available modes:[/yellow] {', '.join(BUILTIN_MODES.keys())}")
+                    sys.exit(1)
+                # Not a mode, treat entire args as query
+                final_mode = "default"
+                final_query = " ".join(args)
+        elif len(args) == 1:
+            # One arg: could be just QUERY or MODE (with --query)
+            if query_opt:
+                final_mode = args[0]
+                final_query = query_opt
+            else:
+                final_mode = "default"
+                final_query = args[0]
+        else:
+            # No positional args, check options
+            final_mode = mode_opt or "default"
+            final_query = query_opt
+    
+    # Handle query file
+    if query_file:
+        if query_file == '-':
+            # Read from stdin with size limit
+            stdin_data = sys.stdin.read(1024 * 1024)  # 1MB limit
+            if len(stdin_data) >= 1024 * 1024:
+                raise click.BadParameter("Stdin input exceeds 1MB limit")
+            final_query = stdin_data.strip()
+        else:
+            with open(query_file, 'r') as f:
+                final_query = f.read().strip()
+    
+    # Handle interactive mode with initial settings
+    if interactive:
+        # Prepare CLI API keys dictionary
+        cli_api_keys = {
+            'openai': api_key_openai,
+            'perplexity': api_key_perplexity,
+            'mock': api_key_mock
+        }
+        
+        # Create initial settings from command-line arguments
+        initial_settings = InteractiveInitialSettings(
+            mode=final_mode,
+            provider=provider,
+            query=final_query,
+            async_mode=async_mode,
+            cli_api_keys=cli_api_keys
+        )
+        
+        asyncio.run(enter_interactive_mode(
+            initial_settings=initial_settings,
+            project=project,
+            output_dir=output_dir,
+            config_path=config_path,
+            verbose=verbose,
+            quiet=quiet,
+            no_metadata=no_metadata,
+            timeout=timeout
+        ))
+        return
     
     # Handle special commands
     if args and args[0] in ['init', 'status', 'list', 'help', 'providers']:
@@ -516,7 +603,16 @@ def cli(ctx, args, mode_opt, query_opt, query_file, async_mode, resume_id,
             show_models = '--models' in all_args or '--models' in sys.argv
             show_list = '--list' in all_args or '--list' in sys.argv
             show_keys = '--keys' in all_args or '--keys' in sys.argv
+            refresh_cache = '--refresh-cache' in all_args or '--refresh-cache' in sys.argv
+            no_cache = '--no-cache' in all_args or '--no-cache' in sys.argv
             filter_provider = None
+            
+            # Validate mutually exclusive options
+            if refresh_cache and no_cache:
+                console.print("[red]Error:[/red] Cannot use --refresh-cache and --no-cache together")
+                console.print("  --refresh-cache: Updates the cache with fresh data")
+                console.print("  --no-cache: Bypasses cache without updating it")
+                sys.exit(1)
             
             # Check for --provider flag in multiple places
             for arg_list in [args, ctx.args, sys.argv]:
@@ -531,7 +627,8 @@ def cli(ctx, args, mode_opt, query_opt, query_file, async_mode, resume_id,
             if not filter_provider and provider:
                 filter_provider = provider
                 
-            asyncio.run(providers_command(show_models=show_models, show_list=show_list, show_keys=show_keys, filter_provider=filter_provider))
+            asyncio.run(providers_command(show_models=show_models, show_list=show_list, show_keys=show_keys, 
+                                          filter_provider=filter_provider, refresh_cache=refresh_cache, no_cache=no_cache))
             return
         elif command == 'help':
             # Check if there's a specific command to get help for
@@ -555,52 +652,7 @@ def cli(ctx, args, mode_opt, query_opt, query_file, async_mode, resume_id,
             return
     
     # For all other cases, treat as research query
-    # Resolve mode and query from positional or options
-    final_mode = None
-    final_query = None
-    
-    if len(args) >= 2:
-        # Two or more args: First is potentially a mode, rest is query
-        # Check if first arg is a known mode
-        if args[0] in BUILTIN_MODES:
-            final_mode = args[0]
-            final_query = " ".join(args[1:])
-        else:
-            # Check if it looks like a mode but is invalid
-            # (heuristic: single word followed by more args)
-            if len(args[0].split()) == 1 and not args[0].startswith("-"):
-                # Might be an invalid mode
-                console.print(f"[red]Error:[/red] Unknown mode: {args[0]}")
-                console.print(f"[yellow]Available modes:[/yellow] {', '.join(BUILTIN_MODES.keys())}")
-                sys.exit(1)
-            # Not a mode, treat entire args as query
-            final_mode = "default"
-            final_query = " ".join(args)
-    elif len(args) == 1:
-        # One arg: could be just QUERY (default to default mode) or MODE (with --query)
-        if query_opt:
-            # If --query provided, arg is MODE
-            final_mode = args[0]
-            final_query = query_opt
-        else:
-            # Single arg is QUERY, use default mode
-            final_mode = "default"
-            final_query = args[0]
-    else:
-        # No positional args, check options
-        final_mode = mode_opt or "default"
-        final_query = query_opt
-    # Handle query file
-    if query_file:
-        if query_file == '-':
-            # Read from stdin with size limit
-            stdin_data = sys.stdin.read(1024 * 1024)  # 1MB limit
-            if len(stdin_data) >= 1024 * 1024:
-                raise click.BadParameter("Stdin input exceeds 1MB limit")
-            final_query = stdin_data.strip()
-        else:
-            with open(query_file, 'r') as f:
-                final_query = f.read().strip()
+    # Mode and query already determined above
     
     # Validation
     if async_mode and resume_id:
@@ -802,7 +854,8 @@ def show_providers_help():
     console.print("  Shows available providers and their configuration status,")
     console.print("  lists available models from each LLM provider,")
     console.print("  or displays API key configuration information.")
-    console.print("  OpenAI models are fetched dynamically via API.")
+    console.print("  OpenAI models are fetched dynamically via API and cached locally.")
+    console.print("  Model cache auto-refreshes after 1 week.")
     console.print("  Perplexity models are returned from a predefined list.")
     console.print("\n[bold]Usage:[/bold]")
     console.print("  thoth providers -- [OPTIONS]")
@@ -811,10 +864,12 @@ def show_providers_help():
     console.print("  --models              List available models from providers")
     console.print("  --keys                Show API key configuration for each provider")
     console.print("  --provider, -P        Filter by specific provider (with --models)")
+    console.print("  --refresh-cache       Force refresh of cached model lists")
+    console.print("  --no-cache            Bypass cache without updating it")
     console.print("\n[bold]Note:[/bold]")
     console.print("  Use -- before options to prevent parsing conflicts")
     console.print("\n[bold]Available providers:[/bold]")
-    console.print("  • openai     - OpenAI GPT models")
+    console.print("  • openai     - OpenAI GPT models (cached)")
     console.print("  • perplexity - Perplexity Sonar models")
     console.print("  • mock       - Mock provider for testing")
     console.print("\n[bold]Examples:[/bold]")
@@ -826,6 +881,10 @@ def show_providers_help():
     console.print("  $ thoth providers -- --models")
     console.print("\n  # List only OpenAI models")
     console.print("  $ thoth providers -- --models --provider openai")
+    console.print("\n  # Force refresh cached models")
+    console.print("  $ thoth providers -- --models --refresh-cache")
+    console.print("\n  # Bypass cache without updating it")
+    console.print("  $ thoth providers -- --models --no-cache")
     console.print("  $ thoth providers -- --models -P openai")
     console.print("\n[bold]Related commands:[/bold]")
     console.print("  thoth help       - Show general help")
@@ -1066,6 +1125,116 @@ created_at: {operation.created_at.isoformat()}
                                      model="Multiple", system_prompt=system_prompt)
 
 # ============================================================================
+# Model Cache Implementation
+# ============================================================================
+
+class ModelCache:
+    """Manages cached model lists for providers"""
+    
+    def __init__(self, provider_name: str, cache_dir: Optional[Path] = None):
+        """Initialize model cache for a specific provider
+        
+        Args:
+            provider_name: Name of the provider (openai, perplexity, etc.)
+            cache_dir: Optional cache directory, defaults to ~/.thoth/model_cache/
+        """
+        self.provider_name = provider_name
+        if cache_dir:
+            self.cache_dir = cache_dir
+        else:
+            self.cache_dir = Path(user_config_dir("thoth")) / "model_cache"
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
+        self.cache_file = self.cache_dir / f"{provider_name}_models.json"
+        self.cache_max_age_days = 7  # Cache expires after 1 week
+    
+    def get_cache_path(self) -> Path:
+        """Get the cache file path for this provider"""
+        return self.cache_file
+    
+    def is_cache_valid(self, force_refresh: bool = False) -> bool:
+        """Check if cache exists and is still valid
+        
+        Args:
+            force_refresh: If True, cache is always considered invalid
+            
+        Returns:
+            True if cache is valid and can be used, False otherwise
+        """
+        if force_refresh:
+            return False
+            
+        if not self.cache_file.exists():
+            return False
+        
+        try:
+            with open(self.cache_file, 'r') as f:
+                cache_data = json.load(f)
+            
+            cached_at = datetime.fromisoformat(cache_data.get('cached_at', ''))
+            age = datetime.now() - cached_at
+            
+            return age.days < self.cache_max_age_days
+        except (json.JSONDecodeError, ValueError, KeyError):
+            # Cache file is corrupted or invalid
+            return False
+    
+    def load_cache(self) -> Optional[List[Dict[str, Any]]]:
+        """Load models from cache if valid
+        
+        Returns:
+            List of model dictionaries if cache is valid, None otherwise
+        """
+        if not self.cache_file.exists():
+            return None
+        
+        try:
+            with open(self.cache_file, 'r') as f:
+                cache_data = json.load(f)
+            return cache_data.get('models', [])
+        except (json.JSONDecodeError, FileNotFoundError):
+            return None
+    
+    def save_cache(self, models: List[Dict[str, Any]]) -> None:
+        """Save models to cache with timestamp
+        
+        Args:
+            models: List of model dictionaries to cache
+        """
+        cache_data = {
+            'provider': self.provider_name,
+            'cached_at': datetime.now().isoformat(),
+            'models': models
+        }
+        
+        # Save atomically with temp file
+        temp_file = self.cache_file.with_suffix('.tmp')
+        with open(temp_file, 'w') as f:
+            json.dump(cache_data, f, indent=2)
+        temp_file.replace(self.cache_file)
+    
+    def clear_cache(self) -> None:
+        """Remove the cache file for this provider"""
+        if self.cache_file.exists():
+            self.cache_file.unlink()
+    
+    def get_cache_age(self) -> Optional[timedelta]:
+        """Get the age of the cache
+        
+        Returns:
+            timedelta object representing cache age, or None if cache doesn't exist
+        """
+        if not self.cache_file.exists():
+            return None
+        
+        try:
+            with open(self.cache_file, 'r') as f:
+                cache_data = json.load(f)
+            cached_at = datetime.fromisoformat(cache_data.get('cached_at', ''))
+            return datetime.now() - cached_at
+        except (json.JSONDecodeError, ValueError, KeyError):
+            return None
+
+# ============================================================================
 # Provider Base Classes and Implementations
 # ============================================================================
 
@@ -1091,6 +1260,22 @@ class ResearchProvider:
     async def list_models(self) -> List[Dict[str, Any]]:
         """List available models for this provider"""
         raise NotImplementedError
+    
+    async def list_models_cached(self, force_refresh: bool = False, no_cache: bool = False) -> List[Dict[str, Any]]:
+        """List available models with caching support
+        
+        Args:
+            force_refresh: If True, bypass cache and update with fresh data
+            no_cache: If True, bypass cache without updating it
+            
+        Returns:
+            List of model dictionaries
+        """
+        # Default implementation without caching - subclasses can override
+        if no_cache:
+            # Bypass cache completely without updating
+            return await self.list_models()
+        return await self.list_models()
 
 class MockProvider(ResearchProvider):
     """Mock provider for testing and development"""
@@ -1175,6 +1360,7 @@ class OpenAIProvider(ResearchProvider):
         self.config = config or {}
         self.model = self.config.get("model", "gpt-4o")  # Store model from config
         self.responses = {}  # Store responses by job_id
+        self.model_cache = ModelCache("openai")  # Initialize cache for OpenAI
         
         # Add timeout configuration
         timeout = self.config.get("timeout", 30.0)
@@ -1297,6 +1483,35 @@ class OpenAIProvider(ResearchProvider):
             return sorted(models, key=lambda x: x['created'], reverse=True)
         except Exception as e:
             raise ProviderError("openai", f"Failed to fetch models: {str(e)}")
+    
+    async def list_models_cached(self, force_refresh: bool = False, no_cache: bool = False) -> List[Dict[str, Any]]:
+        """List OpenAI models with caching support
+        
+        Args:
+            force_refresh: If True, bypass cache and fetch fresh data
+            no_cache: If True, bypass cache without updating it
+            
+        Returns:
+            List of model dictionaries from cache or API
+        """
+        # If no_cache is True, bypass cache without updating
+        if no_cache:
+            return await self.list_models()
+        
+        # Check if cache is valid
+        if not force_refresh and self.model_cache.is_cache_valid():
+            # Try to load from cache
+            cached_models = self.model_cache.load_cache()
+            if cached_models is not None:
+                return cached_models
+        
+        # Fetch fresh models from API
+        models = await self.list_models()
+        
+        # Save to cache (only when not using no_cache)
+        self.model_cache.save_cache(models)
+        
+        return models
 
 class PerplexityProvider(ResearchProvider):
     """Perplexity research implementation"""
@@ -1505,8 +1720,7 @@ async def run_research(mode: str, query: str, async_mode: bool,
         status="queued",
         created_at=datetime.now(),
         updated_at=datetime.now(),
-        project=project,
-        input_files=input_files
+        project=project
     )
     
     # Initialize managers
@@ -1829,7 +2043,8 @@ async def list_operations(show_all: bool):
     console.print(table)
     console.print("\nUse 'thoth status <ID>' for details")
 
-async def providers_command(show_models: bool = False, show_list: bool = False, show_keys: bool = False, filter_provider: str = None):
+async def providers_command(show_models: bool = False, show_list: bool = False, show_keys: bool = False, 
+                           filter_provider: str = None, refresh_cache: bool = False, no_cache: bool = False):
     """Show provider information and available models"""
     if not show_models and not show_list and not show_keys:
         console.print("[yellow]Usage:[/yellow] thoth providers -- [OPTIONS]")
@@ -1839,6 +2054,8 @@ async def providers_command(show_models: bool = False, show_list: bool = False, 
         console.print("  --models              List available models from providers")
         console.print("  --keys                Show API key configuration for each provider")
         console.print("  --provider, -P        Filter by specific provider (with --models)")
+        console.print("  --refresh-cache       Force refresh of cached model lists")
+        console.print("  --no-cache            Bypass cache without updating it")
         console.print("\n[dim]Note: Use -- before options to prevent parsing conflicts[/dim]")
         console.print("\nExamples:")
         console.print("  # List all available providers")
@@ -1849,6 +2066,10 @@ async def providers_command(show_models: bool = False, show_list: bool = False, 
         console.print("  $ thoth providers -- --models")
         console.print("\n  # List only OpenAI models")
         console.print("  $ thoth providers -- --models --provider openai")
+        console.print("\n  # Force refresh cached models")
+        console.print("  $ thoth providers -- --models --refresh-cache")
+        console.print("\n  # Check current models without updating cache")
+        console.print("  $ thoth providers -- --models --no-cache")
         return
     
     config = get_config()
@@ -1869,22 +2090,47 @@ async def providers_command(show_models: bool = False, show_list: bool = False, 
         table.add_column("Provider", style="cyan", width=13)
         table.add_column("Status", width=10)
         table.add_column("Description", style="dim", width=25)
+        table.add_column("Model Cache", style="dim", width=30)
         
         for provider_name in all_providers:
             try:
                 # Try to create provider instance to check if configured
                 provider = create_provider(provider_name, config)
                 status = "[green]✓ Ready[/green]"
+                
+                # Check cache status for providers that support it
+                cache_info = "N/A"
+                if provider_name == 'openai':
+                    cache = ModelCache(provider_name)
+                    age = cache.get_cache_age()
+                    if age:
+                        days = age.days
+                        if days == 0:
+                            cache_info = "Cached today"
+                        elif days == 1:
+                            cache_info = "1 day old"
+                        else:
+                            refresh_in = 7 - days
+                            if refresh_in > 0:
+                                cache_info = f"{days} days old (refresh in {refresh_in} days)"
+                            else:
+                                cache_info = f"{days} days old (needs refresh)"
+                    else:
+                        cache_info = "Not cached"
+                
             except APIKeyError:
                 status = "[red]✗ No key[/red]"
+                cache_info = "N/A"
             except Exception:
                 status = "[yellow]⚠ Error[/yellow]"
+                cache_info = "N/A"
             
             description = provider_descriptions.get(provider_name, "Unknown provider")
-            table.add_row(provider_name, status, description)
+            table.add_row(provider_name, status, description, cache_info)
         
         console.print(table)
         console.print("\nTo see available models, use: thoth providers -- --models")
+        console.print("To refresh model cache, use: thoth providers -- --models --refresh-cache")
         return
     
     if show_keys:
@@ -1926,15 +2172,21 @@ async def providers_command(show_models: bool = False, show_list: bool = False, 
             sys.exit(1)
         providers = [filter_provider]
     
-    console.print("Fetching available models...\n")
+    if refresh_cache:
+        console.print("Fetching available models (refreshing cache)...\n")
+    else:
+        console.print("Fetching available models...\n")
     
     for provider_name in providers:
         try:
             # Create provider instance
             provider = create_provider(provider_name, config)
             
-            # Fetch models
-            models = await provider.list_models()
+            # Fetch models - use cached version if available
+            if hasattr(provider, 'list_models_cached'):
+                models = await provider.list_models_cached(force_refresh=refresh_cache, no_cache=no_cache)
+            else:
+                models = await provider.list_models()
             
             # Calculate dynamic column width based on longest model ID
             if models:
@@ -1980,6 +2232,752 @@ async def providers_command(show_models: bool = False, show_list: bool = False, 
         except Exception as e:
             console.print(f"[red]Error fetching models from {provider_name}:[/red] {str(e)}")
             console.print()
+
+# ============================================================================
+# Interactive Mode Implementation
+# ============================================================================
+
+from rich.panel import Panel
+from rich.align import Align
+
+# Prompt Toolkit imports for enhanced interactive mode
+try:
+    from prompt_toolkit import Application
+    from prompt_toolkit.formatted_text import HTML
+    from prompt_toolkit.key_binding import KeyBindings
+    from prompt_toolkit.styles import Style
+    from prompt_toolkit.layout import Layout, HSplit
+    from prompt_toolkit.widgets import TextArea, Frame, Label
+    from prompt_toolkit.completion import WordCompleter, Completer, Completion
+    from prompt_toolkit.document import Document
+    from prompt_toolkit.application import run_in_terminal
+    from prompt_toolkit.shortcuts import radiolist_dialog
+    PROMPT_TOOLKIT_AVAILABLE = True
+except ImportError:
+    PROMPT_TOOLKIT_AVAILABLE = False
+
+
+
+class SlashCommandRegistry:
+    """Registry and handler for slash commands"""
+    
+    def __init__(self, console: Console):
+        self.console = console
+        self.commands = {
+            '/help': self.show_help,
+            '/mode': self.set_mode,
+            '/provider': self.set_provider,
+            '/async': self.toggle_async,
+            '/status': self.check_status,
+            '/exit': self.exit_interactive,
+            '/quit': self.exit_interactive,
+            '/multiline': self.toggle_multiline
+        }
+        # Current settings
+        self.current_mode = "default"
+        self.current_provider = None
+        self.async_mode = False
+        self.multiline_mode = True  # Default to multiline mode
+        self.last_operation_id = None
+    
+    def parse_and_execute(self, input_text: str) -> str:
+        """Parse and execute slash command, return action to take"""
+        if not input_text.startswith('/'):
+            return 'continue'
+        
+        parts = input_text.split(maxsplit=1)
+        command = parts[0].lower()
+        args = parts[1] if len(parts) > 1 else ""
+        
+        if command in self.commands:
+            return self.commands[command](args)
+        else:
+            self.console.print(f"[red]Unknown command:[/red] {command}")
+            self.console.print("Type /help for available commands")
+            return 'continue'
+    
+    def show_help(self, args: str) -> str:
+        """Show available commands"""
+        self.console.print("[cyan]Available commands:[/cyan]")
+        self.console.print("  /help              - Show this help")
+        self.console.print("  /mode <mode>       - Change research mode")
+        self.console.print("  /provider <name>   - Set provider (openai, perplexity, mock)")
+        self.console.print("  /async             - Toggle async mode")
+        self.console.print("  /multiline         - Toggle multiline input mode")
+        self.console.print("  /status            - Check last operation status")
+        self.console.print("  /exit, /quit       - Exit interactive mode")
+        self.console.print()
+        self.console.print("[cyan]Unix shortcuts (always available):[/cyan]")
+        self.console.print("  Ctrl+A             - Move to start of line")
+        self.console.print("  Ctrl+E             - Move to end of line")
+        self.console.print("  Ctrl+K             - Delete to end of line")
+        self.console.print("  Ctrl+U             - Delete to start of line")
+        self.console.print("  Ctrl+W             - Delete word backward")
+        self.console.print()
+        self.console.print("[dim]Current settings:[/dim]")
+        self.console.print(f"  Mode: {self.current_mode}")
+        self.console.print(f"  Provider: {self.current_provider or 'auto'}")
+        self.console.print(f"  Async: {self.async_mode}")
+        self.console.print(f"  Multiline: {self.multiline_mode}")
+        self.console.print()
+        return 'continue'
+    
+    def set_mode(self, args: str) -> str:
+        """Set research mode"""
+        if not args:
+            # Show available modes with descriptions
+            self.console.print("[cyan]Available modes:[/cyan]")
+            modes = list(BUILTIN_MODES.keys())
+            for i, mode_name in enumerate(modes, 1):
+                mode_config = BUILTIN_MODES[mode_name]
+                desc = mode_config.get('description', 'No description')[:60]
+                current = " [green]← current[/green]" if mode_name == self.current_mode else ""
+                self.console.print(f"  {i}. {mode_name:<15} - {desc}{current}")
+            self.console.print(f"\n[dim]Usage: /mode <name> or /mode <number>[/dim]")
+            self.console.print(f"[dim]Current mode: {self.current_mode}[/dim]")
+        else:
+            arg = args.strip()
+            # Check if it's a number
+            if arg.isdigit():
+                modes = list(BUILTIN_MODES.keys())
+                idx = int(arg) - 1
+                if 0 <= idx < len(modes):
+                    mode = modes[idx]
+                    self.current_mode = mode
+                    self.console.print(f"[green]Mode set to:[/green] {mode}")
+                else:
+                    self.console.print(f"[red]Invalid mode number:[/red] {arg}")
+                    self.console.print(f"Please choose 1-{len(modes)}")
+            else:
+                mode = arg.lower()
+                if mode in BUILTIN_MODES:
+                    self.current_mode = mode
+                    self.console.print(f"[green]Mode set to:[/green] {mode}")
+                else:
+                    self.console.print(f"[red]Unknown mode:[/red] {mode}")
+                    self.console.print("Use /mode without arguments to see available modes")
+        self.console.print()
+        return 'continue'
+    
+    def set_provider(self, args: str) -> str:
+        """Set provider"""
+        providers = ['openai', 'perplexity', 'mock', 'auto']
+        if not args:
+            self.console.print("[cyan]Available providers:[/cyan]")
+            for i, provider in enumerate(providers, 1):
+                current = " [green]← current[/green]" if provider == (self.current_provider or 'auto') else ""
+                desc = {
+                    'openai': 'OpenAI GPT models',
+                    'perplexity': 'Perplexity search AI',
+                    'mock': 'Mock provider for testing',
+                    'auto': 'Automatic provider selection'
+                }.get(provider, '')
+                self.console.print(f"  {i}. {provider:<12} - {desc}{current}")
+            self.console.print(f"\n[dim]Usage: /provider <name> or /provider <number>[/dim]")
+            self.console.print(f"[dim]Current provider: {self.current_provider or 'auto'}[/dim]")
+        else:
+            arg = args.strip()
+            # Check if it's a number
+            if arg.isdigit():
+                idx = int(arg) - 1
+                if 0 <= idx < len(providers):
+                    provider = providers[idx]
+                    self.current_provider = None if provider == 'auto' else provider
+                    self.console.print(f"[green]Provider set to:[/green] {provider}")
+                else:
+                    self.console.print(f"[red]Invalid provider number:[/red] {arg}")
+                    self.console.print(f"Please choose 1-{len(providers)}")
+            else:
+                provider = arg.lower()
+                if provider == 'auto':
+                    self.current_provider = None
+                    self.console.print(f"[green]Provider set to:[/green] auto")
+                elif provider in ['openai', 'perplexity', 'mock']:
+                    self.current_provider = provider
+                    self.console.print(f"[green]Provider set to:[/green] {provider}")
+                else:
+                    self.console.print(f"[red]Unknown provider:[/red] {provider}")
+                    self.console.print("Valid providers: openai, perplexity, mock, auto")
+        self.console.print()
+        return 'continue'
+    
+    def toggle_async(self, args: str) -> str:
+        """Toggle async mode"""
+        self.async_mode = not self.async_mode
+        self.console.print(f"[green]Async mode:[/green] {'enabled' if self.async_mode else 'disabled'}")
+        self.console.print()
+        return 'continue'
+    
+    def check_status(self, args: str) -> str:
+        """Check operation status"""
+        if not self.last_operation_id:
+            self.console.print("[yellow]No operations run in this session[/yellow]")
+        else:
+            self.console.print(f"[cyan]Last operation:[/cyan] {self.last_operation_id}")
+            # TODO: Actually check status using existing status_command
+        self.console.print()
+        return 'continue'
+    
+    def toggle_multiline(self, args: str) -> str:
+        """Toggle multiline mode"""
+        import platform
+        self.multiline_mode = not self.multiline_mode
+        if self.multiline_mode:
+            newline_key = "Option+Return" if platform.system() == "Darwin" else "Alt+Enter"
+            mode_text = f"enabled (Enter submits, {newline_key} for new line)"
+        else:
+            mode_text = "disabled (Enter submits immediately)"
+        self.console.print(f"[green]Multiline mode:[/green] {mode_text}")
+        self.console.print()
+        return 'continue'
+    
+    def exit_interactive(self, args: str) -> str:
+        """Exit interactive mode"""
+        return 'exit'
+
+class SlashCommandCompleter(Completer):
+    """Custom completer for slash commands with better partial matching"""
+    
+    def __init__(self, commands: List[str], meta_dict: Dict[str, str] = None):
+        self.commands = sorted(commands)
+        self.meta_dict = meta_dict or {}
+    
+    def get_completions(self, document: Document, complete_event):
+        """Get completions for the current document"""
+        text = document.text_before_cursor
+        
+        # Only complete if we're at the start or after a space
+        if not text or text[-1] == ' ':
+            return
+        
+        # Get the current word being typed
+        word = document.get_word_before_cursor(WORD=True)
+        
+        # If it doesn't start with /, don't complete
+        if not word.startswith('/'):
+            return
+        
+        # Find matching commands
+        for cmd in self.commands:
+            if cmd.lower().startswith(word.lower()):
+                # Calculate the completion text (what to add)
+                completion_text = cmd[len(word):]
+                
+                # Get metadata for this command
+                meta = self.meta_dict.get(cmd, '')
+                
+                yield Completion(
+                    text=completion_text,
+                    start_position=0,
+                    display=cmd,
+                    display_meta=meta
+                )
+
+class InteractiveSession:
+    """Interactive mode session using Prompt Toolkit Application"""
+    
+    def __init__(self, console: Console, config: Config, initial_settings: InteractiveInitialSettings):
+        self.console = console
+        self.config = config
+        self.initial_settings = initial_settings
+        self.result = None
+        self.should_exit = False
+        
+        # Initialize slash command registry with settings from command line
+        self.slash_registry = SlashCommandRegistry(console)
+        self.slash_registry.current_mode = initial_settings.mode or config.data["general"].get("default_mode", "default")
+        self.slash_registry.current_provider = initial_settings.provider
+        self.slash_registry.async_mode = initial_settings.async_mode
+        
+        # State management
+        self.current_provider = initial_settings.provider
+        self.current_model = None
+        self.pending_command = None  # For multi-step commands
+        
+        # Store CLI API keys
+        self.cli_api_keys = initial_settings.cli_api_keys
+        
+        # Detect and enable extended keyboard support
+        self.supports_shift_enter = self._enable_extended_keyboard()
+        
+        # Set key label for newline based on terminal capabilities
+        import platform
+        if self.supports_shift_enter:
+            self.newline_key = "Shift+Return"
+        else:
+            # Fallback to Option/Alt+Enter
+            self.newline_key = "Option+Return" if platform.system() == "Darwin" else "Alt+Enter"
+        
+        # Create help text
+        help_html = self._create_help_text()
+        
+        # Create widgets
+        self.help_label = Label(HTML(help_html), style="class:help")
+        
+        # Create TextArea for input with multiline support
+        # Pre-populate with initial query if provided
+        self.input_area = TextArea(
+            text=initial_settings.query or "",
+            multiline=True,
+            prompt="❯ ",
+            wrap_lines=True,
+            scrollbar=False,
+            height=5,
+            completer=self._create_completer()
+        )
+        
+        # Create Frame around TextArea for border
+        self.input_frame = Frame(
+            self.input_area,
+            title=" Query ",
+            style="class:input-frame"
+        )
+        
+        # Create layout
+        self.layout = Layout(
+            HSplit([
+                self.help_label,
+                self.input_frame
+            ])
+        )
+        
+        # Create key bindings
+        self.kb = self._create_key_bindings()
+        
+        # Create style
+        self.style = Style.from_dict({
+            'help': '#888888',  # Dim gray for help text
+            'input-frame': '#0080ff',  # Bright blue for border
+            'prompt': '#00aa00 bold',  # Green for prompt
+        })
+        
+        # Create Application
+        self.app = Application(
+            layout=self.layout,
+            key_bindings=self.kb,
+            style=self.style,
+            enable_page_navigation_bindings=False,
+            mouse_support=True,
+            full_screen=False  # Don't take full screen, just display inline
+        )
+    
+    def _enable_extended_keyboard(self) -> bool:
+        """
+        Try to enable CSI-u extended keyboard mode for modern terminals.
+        This allows capturing Shift+Enter as a distinct key combination.
+        """
+        if not sys.stdin.isatty():
+            return False  # Not in a real terminal
+        
+        try:
+            # Try to enable modifyOtherKeys mode (level 2)
+            # This sends unique codes for modified keys like Shift+Enter
+            sys.stdout.write('\x1b[>4;2m')
+            sys.stdout.flush()
+            
+            # Check terminal type for known support
+            term = os.environ.get('TERM', '').lower()
+            term_program = os.environ.get('TERM_PROGRAM', '').lower()
+            
+            # Known terminals with good CSI-u support
+            if any(t in term for t in ['xterm-256color', 'screen-256color', 'tmux']):
+                return True
+            if any(t in term_program for t in ['iterm', 'warp', 'vscode']):
+                return True
+            if 'WT_SESSION' in os.environ:  # Windows Terminal
+                return True
+                
+            # Optimistically enable for other modern terminals
+            # The key binding will simply not trigger if unsupported
+            return True
+            
+        except Exception:
+            return False
+    
+    def _create_help_text(self) -> str:
+        """Create the help text HTML"""
+        mode_text = f"Mode: <b>{self.slash_registry.current_mode}</b>"
+        provider_text = f"Provider: <b>{self.current_provider or 'auto'}</b>"
+        
+        newline_help = f"<b>{self.newline_key}</b>" if self.supports_shift_enter else "<b>Ctrl+J</b>"
+        return (
+            f"<b>Thoth Interactive Mode</b> | {mode_text} | {provider_text}\n"
+            f"Enter query • <b>Enter</b>: submit • {newline_help}: new line • "
+            f"<b>/help</b>: commands • <b>/keybindings</b>: shortcuts"
+        )
+    
+    def _update_help_text(self):
+        """Update help text with current state"""
+        self.help_label.text = HTML(self._create_help_text())
+    
+    def _create_completer(self) -> Completer:
+        """Create completer for slash commands"""
+        commands = [
+            '/help', '/keybindings', '/mode', '/provider', '/async', '/status', '/exit', '/quit'
+        ]
+        
+        meta_dict = {
+            '/help': 'Show available commands',
+            '/keybindings': 'Show keyboard shortcuts',
+            '/mode': 'Change research mode',
+            '/provider': 'Set provider',
+            '/async': 'Toggle async mode',
+            '/status': 'Check operation status',
+            '/exit': 'Exit interactive mode',
+            '/quit': 'Exit interactive mode'
+        }
+        
+        return SlashCommandCompleter(commands, meta_dict)
+    
+    def _create_key_bindings(self) -> KeyBindings:
+        """Create custom key bindings"""
+        kb = KeyBindings()
+        
+        @kb.add('enter')
+        def handle_enter(event):
+            """Enter key: submit or process commands"""
+            buffer = event.app.current_buffer
+            text = buffer.text.strip()
+            
+            if not text:
+                return  # Ignore empty input
+            
+            # Check for slash commands
+            if text.startswith('/'):
+                self._handle_slash_command(text)
+                buffer.text = ""  # Clear input
+                return
+            
+            # Check if we're in a multi-step command
+            if self.pending_command:
+                self._handle_command_continuation(text)
+                buffer.text = ""
+                return
+            
+            # Normal query submission
+            self.result = text
+            event.app.exit()
+        
+        # Try to bind Shift+Enter via CSI-u extended keyboard protocol
+        if self.supports_shift_enter:
+            try:
+                # CSI-u sequence for Shift+Enter: ESC[13;2u
+                @kb.add('\x1b[13;2u')
+                def handle_shift_enter(event):
+                    """Shift+Enter: insert newline (CSI-u mode)"""
+                    event.current_buffer.insert_text('\n')
+            except ValueError:
+                # If the binding fails, we'll rely on fallbacks
+                self.supports_shift_enter = False
+        
+        # Universal fallback: Ctrl+J (works in all terminals)
+        @kb.add('c-j')
+        def handle_ctrl_j(event):
+            """Ctrl+J: insert newline (universal)"""
+            event.current_buffer.insert_text('\n')
+        
+        # Alt+Enter for newline (Option+Return on Mac)
+        @kb.add('escape', 'enter')  # Alt+Enter
+        def handle_alt_enter(event):
+            """Alt+Enter: insert newline (fallback)"""
+            event.current_buffer.insert_text('\n')
+        
+        @kb.add('c-c')
+        def handle_abort(event):
+            """Ctrl+C: abort interactive mode"""
+            self.result = None
+            event.app.exit()
+        
+        @kb.add('tab')
+        def handle_tab(event):
+            """Tab: trigger completion"""
+            event.current_buffer.complete_next()
+        
+        return kb
+    
+    def _handle_slash_command(self, text: str):
+        """Handle slash commands"""
+        parts = text.split(maxsplit=1)
+        command = parts[0].lower()
+        args = parts[1] if len(parts) > 1 else ""
+        
+        if command == '/help':
+            self._show_help()
+        elif command == '/keybindings':
+            self._show_keybindings()
+        elif command == '/mode':
+            if args:
+                # Direct mode setting
+                if args in BUILTIN_MODES:
+                    self.slash_registry.current_mode = args
+                    self._update_help_text()
+                    run_in_terminal(lambda: print(f"Mode set to: {args}"))
+            else:
+                # Show mode selection
+                self._show_mode_selection()
+        elif command == '/provider':
+            if args:
+                # Direct provider setting
+                self.current_provider = args
+                self._update_help_text()
+                run_in_terminal(lambda: print(f"Provider set to: {args}"))
+            else:
+                # Show provider selection
+                self._show_provider_selection()
+        elif command == '/async':
+            self.slash_registry.async_mode = not self.slash_registry.async_mode
+            status = "enabled" if self.slash_registry.async_mode else "disabled"
+            run_in_terminal(lambda: print(f"Async mode: {status}"))
+        elif command == '/status':
+            if self.slash_registry.last_operation_id:
+                run_in_terminal(lambda: print(f"Last operation: {self.slash_registry.last_operation_id}"))
+            else:
+                run_in_terminal(lambda: print("No operations yet"))
+        elif command in ['/exit', '/quit']:
+            self.result = None
+            self.app.exit()
+        else:
+            run_in_terminal(lambda: print(f"Unknown command: {command}"))
+    
+    def _show_help(self):
+        """Display help information"""
+        def print_help():
+            print("\nAvailable commands:")
+            print("  /help              - Show this help")
+            print("  /keybindings       - Show keyboard shortcuts")
+            print("  /mode [<mode>]     - Change or show research modes")
+            print("  /provider [<name>] - Set or show providers")
+            print("  /async             - Toggle async mode")
+            print("  /status            - Check last operation status")
+            print("  /exit, /quit       - Exit interactive mode")
+            print("\nType /keybindings to see keyboard shortcuts")
+            print()
+        
+        run_in_terminal(print_help)
+    
+    def _show_keybindings(self):
+        """Display keyboard shortcuts"""
+        def print_keybindings():
+            print("\nKeyboard shortcuts:")
+            print(f"  Enter              - Submit query")
+            
+            # Show newline options based on terminal support
+            if self.supports_shift_enter:
+                print(f"  Shift+Return       - Insert new line (detected support)")
+            print(f"  {self.newline_key:18} - Insert new line")
+            print(f"  Ctrl+J             - Insert new line (universal)")
+            
+            print(f"  Tab                - Complete slash commands")
+            print(f"  Ctrl+A             - Go to line start")
+            print(f"  Ctrl+E             - Go to line end")
+            print(f"  Ctrl+K             - Delete to end of line")
+            print(f"  Ctrl+U             - Delete to start of line")
+            print(f"  Ctrl+W             - Delete word before cursor")
+            print(f"  Ctrl+C             - Exit without submitting")
+            print(f"  Arrow keys         - Navigate text")
+            print()
+            
+            if self.supports_shift_enter:
+                print("Note: Your terminal supports Shift+Return!")
+                print("You can also use Ctrl+J or Option+Return as alternatives.")
+            else:
+                print("Note: Shift+Return is not supported by your terminal.")
+                print("Use Ctrl+J (recommended) or Option+Return (Mac) / Alt+Enter (Linux/Windows).")
+            print()
+        
+        run_in_terminal(print_keybindings)
+    
+    def _show_mode_selection(self):
+        """Show available modes for selection"""
+        def print_modes():
+            print("\nAvailable modes:")
+            for i, (name, config) in enumerate(BUILTIN_MODES.items(), 1):
+                desc = config.get('description', 'No description')[:60]
+                current = " ← current" if name == self.slash_registry.current_mode else ""
+                print(f"  {i}. {name:15} - {desc}{current}")
+            print("\nType: /mode <name> to select a mode")
+            print()
+        
+        run_in_terminal(print_modes)
+    
+    def _show_provider_selection(self):
+        """Show available providers for selection"""
+        def print_providers():
+            print("\nAvailable providers:")
+            providers = [
+                ("openai", "OpenAI GPT models"),
+                ("perplexity", "Perplexity search AI"),
+                ("mock", "Mock provider for testing"),
+                ("auto", "Automatic provider selection")
+            ]
+            for i, (name, desc) in enumerate(providers, 1):
+                current = " ← current" if name == (self.current_provider or "auto") else ""
+                print(f"  {i}. {name:12} - {desc}{current}")
+            print("\nType: /provider <name> to select a provider")
+            print()
+        
+        run_in_terminal(print_providers)
+    
+    def _handle_command_continuation(self, text: str):
+        """Handle continuation of multi-step commands"""
+        # This would be used for future enhancements where commands
+        # require multiple inputs
+        self.pending_command = None
+    
+    async def run_async(self) -> Optional[str]:
+        """Run the interactive application asynchronously and return the query"""
+        # Check if we're in a terminal
+        if not sys.stdin.isatty():
+            # Fall back to simple input for piped/non-terminal input
+            console = self.console
+            console.print("[yellow]Warning: Not in terminal, using basic input mode[/yellow]")
+            
+            while True:
+                try:
+                    query = input("> ")
+                    if not query:
+                        continue
+                        
+                    # Handle slash commands in basic mode
+                    if query.startswith('/'):
+                        if query in ['/exit', '/quit']:
+                            return None
+                        elif query == '/help':
+                            print("Available commands:")
+                            print("  /help - Show this help")
+                            print("  /keybindings - Show keyboard shortcuts")
+                            print("  /exit, /quit - Exit")
+                            print("  (Other commands not available in basic mode)")
+                            continue
+                        elif query == '/keybindings':
+                            print("Keyboard shortcuts (basic mode):")
+                            print("  Enter - Submit query")
+                            print("  Ctrl+C - Exit")
+                            print("  (Advanced shortcuts not available in basic mode)")
+                            continue
+                        else:
+                            print(f"Command not available in basic mode: {query}")
+                            continue
+                    
+                    # Return the query
+                    return query
+                    
+                except (EOFError, KeyboardInterrupt):
+                    return None
+        
+        # Run the full Application in terminal mode (async version)
+        await self.app.run_async()
+        return self.result
+    
+    def run(self) -> Optional[str]:
+        """Run the interactive application synchronously"""
+        import asyncio
+        
+        # Check if we're already in an event loop
+        try:
+            loop = asyncio.get_running_loop()
+            # We're in an async context, can't use run()
+            raise RuntimeError("Cannot use run() in async context, use run_async() instead")
+        except RuntimeError:
+            # No running loop, we can use asyncio.run()
+            return asyncio.run(self.run_async())
+
+
+async def enter_interactive_mode(initial_settings: InteractiveInitialSettings,
+                                    project: Optional[str], output_dir: Optional[str], 
+                                    config_path: Optional[str], verbose: bool, 
+                                    quiet: bool, no_metadata: bool, 
+                                    timeout: Optional[float]):
+    """Enter interactive query mode with Prompt Toolkit"""
+    if not PROMPT_TOOLKIT_AVAILABLE:
+        console.print("[yellow]Warning: prompt_toolkit not available, falling back to basic input[/yellow]")
+        # Fall back to basic input mode
+        config = get_config()
+        console.print("[bold cyan]Interactive Mode (Basic)[/bold cyan]")
+        console.print("[dim]Enter query • /help: commands • /exit: quit[/dim]")
+        console.print()
+        
+        slash_registry = SlashCommandRegistry(console)
+        # Initialize with settings from command line
+        slash_registry.current_mode = initial_settings.mode or config.data["general"].get("default_mode", "default")
+        slash_registry.current_provider = initial_settings.provider
+        slash_registry.async_mode = initial_settings.async_mode
+        
+        try:
+            while True:
+                query = input("> ")
+                
+                if query.startswith('/'):
+                    action = slash_registry.parse_and_execute(query)
+                    if action == 'exit':
+                        console.print("[yellow]Exiting interactive mode[/yellow]")
+                        return
+                    continue
+                
+                if query.strip():
+                    console.print(f"[green]Processing query:[/green] {query}")
+                    await run_research(
+                        mode=slash_registry.current_mode,
+                        query=query,
+                        project=project,
+                        output_dir=output_dir,
+                        provider=slash_registry.current_provider,
+                        input_file=None,
+                        auto=False,
+                        verbose=verbose,
+                        async_mode=slash_registry.async_mode,
+                        cli_api_keys=initial_settings.cli_api_keys if initial_settings.cli_api_keys else {},
+                        combined=False,
+                        quiet=quiet,
+                        no_metadata=no_metadata,
+                        timeout_override=timeout
+                    )
+                    break
+        except (KeyboardInterrupt, EOFError):
+            console.print("\n[yellow]Interactive mode cancelled[/yellow]")
+        return
+    
+    config = get_config()
+    
+    # Create and run the new Application-based session with initial settings
+    session = InteractiveSession(console, config, initial_settings)
+    
+    # Run the interactive application (async version since we're in async context)
+    query = await session.run_async()
+    
+    if query is None:
+        console.print("\n[yellow]Interactive mode cancelled[/yellow]")
+        return
+    
+    # Process the query
+    console.print(f"\n[green]Processing query:[/green] {query}")
+    console.print(f"[dim]Mode: {session.slash_registry.current_mode} | Provider: {session.current_provider or 'auto'} | Async: {session.slash_registry.async_mode}[/dim]")
+    console.print()
+    
+    # Run the research with collected settings
+    try:
+        # Use CLI API keys from initial settings if provided, otherwise empty dict
+        api_keys = initial_settings.cli_api_keys if initial_settings.cli_api_keys else {}
+        
+        await run_research(
+            mode=session.slash_registry.current_mode,
+            query=query,
+            project=project,
+            output_dir=output_dir,
+            provider=session.current_provider,
+            input_file=None,
+            auto=False,
+            verbose=verbose,
+            async_mode=session.slash_registry.async_mode,
+            cli_api_keys=api_keys,
+            combined=False,
+            quiet=quiet,
+            no_metadata=no_metadata,
+            timeout_override=timeout
+        )
+        
+    except Exception as e:
+        console.print(f"[red]Error:[/red] {str(e)}")
 
 # ============================================================================
 # Signal Handlers
