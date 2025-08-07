@@ -708,14 +708,14 @@ api_key = "{api_key}"
                 with open("test_config.toml", "w") as f:
                     f.write(config_content)
 
-        # Create test query file if needed
-        if "--query-file" in test_command:
-            idx = test_command.index("--query-file")
+        # Create test prompt file if needed
+        if "--prompt-file" in test_command:
+            idx = test_command.index("--prompt-file")
             if idx + 1 < len(test_command) and test_command[idx + 1] != "-":
-                query_file = test_command[idx + 1]
-                if query_file == "test_query.txt":
-                    with open(query_file, "w") as f:
-                        f.write("test query from file")
+                prompt_file = test_command[idx + 1]
+                if prompt_file == "test_prompt.txt":
+                    with open(prompt_file, "w") as f:
+                        f.write("test prompt from file")
 
         # Run the command
         exit_code, stdout, stderr = run_command(
@@ -864,11 +864,11 @@ api_key = "{api_key}"
         ) as progress:
             task = progress.add_task("Running tests...", total=total_tests)
 
-            for test_case in test_cases:
-                # Update progress
+            for current_num, test_case in enumerate(test_cases, 1):
+                # Update progress with test number
                 progress.update(
                     task,
-                    description=f"Running {test_case.test_id}: {test_case.description}",
+                    description=f"Running test {current_num}/{total_tests}: {test_case.test_id}: {test_case.description}",
                 )
 
                 # Run test
@@ -1078,7 +1078,7 @@ all_tests = [
     TestCase(
         test_id="M1T-02",
         description="Quick mode with mock provider creates output file",
-        command=[THOTH_EXECUTABLE, "test query", "--provider", "mock"],
+        command=[THOTH_EXECUTABLE, "test prompt", "--provider", "mock"],
         expected_stdout_patterns=[r"Research completed", r"Results saved to:"],
         expected_files=["*_*_*_mock_*.md"],
         cleanup_files=["*_*_*_mock_*.md"],
@@ -1451,14 +1451,14 @@ all_tests = [
     # Additional Edge Cases
     TestCase(
         test_id="EDGE-01",
-        description="Empty query shows error",
+        description="Empty prompt shows error",
         command=[THOTH_EXECUTABLE, ""],
-        expected_stderr_patterns=[r"Query cannot be empty"],
+        expected_stderr_patterns=[r"Prompt cannot be empty"],
         expected_exit_code=2,
     ),
     TestCase(
         test_id="EDGE-02",
-        description="Very long query is handled",
+        description="Very long prompt is handled",
         command=[THOTH_EXECUTABLE, "a" * 1000, "--provider", "mock"],
         expected_stdout_patterns=[r"Research completed"],
         expected_files=["*_mock_*.md"],
@@ -1496,33 +1496,33 @@ all_tests = [
         provider="mock",
         api_key_method="env",
     ),
-    # Query File Tests
+    # Prompt File Tests
     TestCase(
         test_id="QFILE-01",
-        description="Read query from file",
+        description="Read prompt from file",
         command=[
             THOTH_EXECUTABLE,
-            "--query-file",
-            "test_query.txt",
+            "--prompt-file",
+            "test_prompt.txt",
             "--provider",
             "mock",
         ],
         expected_stdout_patterns=[r"Research completed"],
         expected_files=["*_mock_*.md"],
-        cleanup_files=["*_mock_*.md", "test_query.txt"],
+        cleanup_files=["*_mock_*.md", "test_prompt.txt"],
         expected_exit_code=0,
         provider="mock",
         api_key_method="env",
     ),
     TestCase(
         test_id="QFILE-02",
-        description="Read query from stdin",
+        description="Read prompt from stdin",
         command=[
             "echo",
-            "test query from stdin",
+            "test prompt from stdin",
             "|",
             THOTH_EXECUTABLE,
-            "--query-file",
+            "--prompt-file",
             "-",
             "--provider",
             "mock",
@@ -1735,7 +1735,7 @@ all_tests = [
             # Test /keybindings command
             (None, "/keybindings" + Keys.ENTER),
             ("Keyboard shortcuts:", None),
-            ("Enter.*Submit query", None),
+            ("Enter.*Submit prompt", None),
             # Test /mode command (list)
             (None, "/mode" + Keys.ENTER),
             ("Available modes:", None),
@@ -1762,8 +1762,8 @@ all_tests = [
             (None, "Second line"),
             # Submit with Enter
             (None, Keys.ENTER),
-            ("Processing query:", None),
-            # Should see both lines in the query
+            ("Processing prompt:", None),
+            # Should see both lines in the prompt
             ("First line", None),
             ("Second line", None),
         ],
@@ -1785,7 +1785,7 @@ all_tests = [
             (None, "Line two"),
             # Submit with Enter
             (None, Keys.ENTER),
-            ("Processing query:", None),
+            ("Processing prompt:", None),
             ("Line one", None),
             ("Line two", None),
         ],
@@ -1808,7 +1808,7 @@ all_tests = [
             (None, "World"),
             # Submit with Enter
             (None, Keys.ENTER),
-            ("Processing query:", None),
+            ("Processing prompt:", None),
         ],
         provider="mock",
         expected_exit_code=0,
@@ -1841,7 +1841,7 @@ all_tests = [
         is_interactive=True,
         interactive_scenario=[
             # Type something
-            (None, "test query"),
+            (None, "test prompt"),
             # Send Ctrl+C
             (None, Keys.CTRL_C),
             # Should see cancellation or process termination
@@ -1871,14 +1871,14 @@ all_tests = [
     ),
     TestCase(
         test_id="INT-08",
-        description="Basic query submission",
+        description="Basic prompt submission",
         command=[THOTH_EXECUTABLE, "-i", "--provider", "mock"],
         test_type="interactive",
         is_interactive=True,
         interactive_scenario=[
-            # Submit a simple query
+            # Submit a simple prompt
             (None, "What is Python?" + Keys.ENTER),
-            ("Processing query:", None),
+            ("Processing prompt:", None),
             ("What is Python", None),
             ("Mode: default", None),
         ],
@@ -1887,17 +1887,17 @@ all_tests = [
     ),
     TestCase(
         test_id="INT-09",
-        description="Initial query population from CLI",
-        command=[THOTH_EXECUTABLE, "-i", "--provider", "mock", "test query from CLI"],
+        description="Initial prompt population from CLI",
+        command=[THOTH_EXECUTABLE, "-i", "--provider", "mock", "test prompt from CLI"],
         test_type="interactive",
         is_interactive=True,
         interactive_scenario=[
-            # The initial query should be in the text area
+            # The initial prompt should be in the text area
             # Just press Enter to submit it
             (None, Keys.ENTER),
-            # Should see the query being processed
-            ("Processing query:", None),
-            ("test query from CLI", None),
+            # Should see the prompt being processed
+            ("Processing prompt:", None),
+            ("test prompt from CLI", None),
         ],
         provider="mock",
         expected_exit_code=0,
@@ -1916,12 +1916,36 @@ all_tests = [
         test_type="interactive",
         is_interactive=True,
         interactive_scenario=[
-            # Send a test query
+            # Send a test prompt
             (None, "test" + Keys.ENTER),
-            ("Processing query:", None),
+            ("Processing prompt:", None),
             ("Mode: deep_research", None),
         ],
         provider="mock",
+        expected_exit_code=0,
+    ),
+    TestCase(
+        test_id="INT-12",
+        description="Interactive mode with prompt and CLI API key",
+        command=[
+            THOTH_EXECUTABLE,
+            "test prompt",
+            "--provider",
+            "openai",
+            "-i",
+            "--api-key-openai",
+            "sk-test-key-12345",
+        ],
+        test_type="interactive",
+        is_interactive=True,
+        interactive_scenario=[
+            # Should see the initial prompt pre-populated
+            ("test prompt", None),
+            # Exit immediately
+            (None, "/exit" + Keys.ENTER),
+        ],
+        provider="openai",
+        api_key_method="cli",
         expected_exit_code=0,
     ),
     TestCase(
@@ -1933,7 +1957,7 @@ all_tests = [
         interactive_scenario=[
             # Just verify mock provider is set
             (None, "test" + Keys.ENTER),
-            ("Processing query:", None),
+            ("Processing prompt:", None),
         ],
         provider="mock",
         expected_exit_code=0,
@@ -1948,15 +1972,15 @@ all_tests = [
             "mock",
             "--mode",
             "exploration",
-            "combined test query",
+            "combined test prompt",
         ],
         test_type="interactive",
         is_interactive=True,
         interactive_scenario=[
-            # Submit the pre-populated query
+            # Submit the pre-populated prompt
             (None, Keys.ENTER),
-            ("Processing query:", None),
-            ("combined test query", None),
+            ("Processing prompt:", None),
+            ("combined test prompt", None),
         ],
         provider="mock",
         expected_exit_code=0,
@@ -2046,6 +2070,7 @@ all_tests = [
         expected_exit_code=0,
         provider="openai",
         api_key_method="env",
+        timeout=120,  # Allow time for OpenAI research to complete
     ),
     TestCase(
         test_id="M8T-08",

@@ -16,9 +16,9 @@
 - Updated version to v2.6 based on v2.5
 - Integrated clarification mode directly into interactive mode
 - Added Shift+Tab key binding to toggle between Edit Mode and Clarification Mode
-- Implemented query refinement workflow within interactive session
+- Implemented prompt refinement workflow within interactive session
 - Added --clarify flag to start interactive mode in Clarification Mode
-- Query interception and clarification in Clarification Mode before submission
+- Prompt interception and clarification in Clarification Mode before submission
 - Support for multiple clarification rounds within same session
 - Visual mode indicators and context-sensitive help text
 
@@ -48,13 +48,13 @@
 
 ### Changes in Version 23.0
 - Updated version to v2.3 based on v2.2
-- Added interactive query mode with `-i` or `--interactive` flag
+- Added interactive prompt mode with `-i` or `--interactive` flag
 - Implemented bordered input box with multi-line support
 - Added slash commands for dynamic option modification
 - Added help text display above input box in dim color
 - Support for placeholder text in input box (implementation-dependent)
 - Added Unix line editing shortcuts (Ctrl+A, Ctrl+E, Ctrl+K)
-- Single query per interactive session with automatic exit after submission
+- Single prompt per interactive session with automatic exit after submission
 - Added model caching for OpenAI provider with automatic refresh after 1 week
 - Implemented `--refresh-cache` flag to force refresh model lists
 - Enhanced `--list` output to show cache age and status
@@ -97,10 +97,10 @@
 
 ## 2. Executive Summary
 
-Thoth is a command-line interface (CLI) tool that automates deep technical research using multiple LLM providers. **The primary use case is simple: just give it a query and get comprehensive research results in your current directory.** While Thoth supports advanced features like mode selection, project organization, and async operations, the default experience is optimized for immediate, zero-configuration research.
+Thoth is a command-line interface (CLI) tool that automates deep technical research using multiple LLM providers. **The primary use case is simple: just give it a prompt and get comprehensive research results in your current directory.** While Thoth supports advanced features like mode selection, project organization, and async operations, the default experience is optimized for immediate, zero-configuration research.
 
 ### Core Value Propositions
-- **Instant research**: Just `thoth "your query"` – no mode selection needed
+- **Instant research**: Just `thoth "your prompt"` – no mode selection needed
 - **Multi-provider intelligence**: Automatic parallel execution of OpenAI and Perplexity
 - **Zero-configuration deployment**: Works immediately with API keys
 - **Current directory output**: Results appear right where you are working
@@ -136,8 +136,8 @@ Create the simplest yet most powerful research tool where users can get comprehe
 
 | Term | Definition |
 |------|------------|
-| Default mode | When no mode is specified, uses a special 'default' mode that passes queries directly to the LLM without any system prompt. Files created with this mode include 'default' in the filename pattern. NOTE: Quick mode (`thoth "query"`) uses "default" mode, NOT "deep_research" |
-| Quick mode | Simplified invocation with just a query, using all defaults |
+| Default mode | When no mode is specified, uses a special 'default' mode that passes prompts directly to the LLM without any system prompt. Files created with this mode include 'default' in the filename pattern. NOTE: Quick mode (`thoth "prompt"`) uses "default" mode, NOT "deep_research" |
+| Quick mode | Simplified invocation with just a prompt, using all defaults |
 | Mode | Workflow phase (clarification, exploration, deep_research, thinking) with its own prompt template |
 | Provider | LLM backend (openai, perplexity, mock) |
 | Mock provider | Test provider that returns static responses WITHOUT requiring API keys (accepts any value as dummy key for testing) |
@@ -157,7 +157,7 @@ Create the simplest yet most powerful research tool where users can get comprehe
 
 ## 5. Objectives
 
-1. **Zero-friction research** – just query and go
+1. **Zero-friction research** – just prompt and go
 2. **One-command simplicity** with sensible defaults
 3. **Current directory convenience** – results appear where you work
 4. **Progressive disclosure** – advanced features available but not required
@@ -175,7 +175,7 @@ Create the simplest yet most powerful research tool where users can get comprehe
 - Private data integration (MCP)
 - Citation verification system
 - Streaming token output display
-- Concurrent multi-query execution
+- Concurrent multi-prompt execution
 - Rich TUI with live visualizations
 - Cloud storage integration
 - Real-time collaboration features
@@ -206,7 +206,7 @@ Create the simplest yet most powerful research tool where users can get comprehe
 | ID | Requirement | Priority | Test ID |
 |----|-------------|----------|---------|
 | F-01 | When no mode specified, use 'default' mode with no system prompt and include 'default' in filename | Must | T-MODE-01 |
-| F-02 | Accept query as single positional argument: `thoth "query"` | Must | T-CLI-01 |
+| F-02 | Accept prompt as single positional argument: `thoth "prompt"` | Must | T-CLI-01 |
 | F-03 | Save outputs to current directory by default | Must | T-OUT-01 |
 | F-04 | Support full mode specification for advanced users | Must | T-MODE-02 |
 | F-05 | Single config file `~/.thoth/config.toml` with all settings | Must | T-CFG-01 |
@@ -235,12 +235,12 @@ Create the simplest yet most powerful research tool where users can get comprehe
 
 | ID | Requirement | Priority | Test ID |
 |----|-------------|----------|---------|
-| F-26 | `thoth "query"` executes deep research in current directory | Must | T-QUICK-01 |
+| F-26 | `thoth "prompt"` executes deep research in current directory | Must | T-QUICK-01 |
 | F-27 | Show simple progress indicator for quick mode (includes operation ID in verbose mode) | Must | T-QUICK-02 |
 | F-28 | Display final output filenames prominently | Must | T-QUICK-03 |
 | F-29 | Minimal output during execution unless --verbose | Must | T-QUICK-04 |
 | F-30 | Help text shows quick mode as primary usage pattern | Must | T-HELP-01 |
-| F-31 | Default mode must pass user query directly to LLM without any system prompt modifications | Must | T-MODE-03 |
+| F-31 | Default mode must pass user prompt directly to LLM without any system prompt modifications | Must | T-MODE-03 |
 
 ### Testing and Error Handling Requirements
 
@@ -371,7 +371,7 @@ Create the simplest yet most powerful research tool where users can get comprehe
 |----|-------------|----------|---------|
 | F-100 | Provider load balancing | Should | T-MULTI-07 |
 | F-101 | Circuit breaker pattern for provider failures | Must | T-MULTI-08 |
-| F-102 | Dynamic provider selection based on query type | Should | T-MULTI-09 |
+| F-102 | Dynamic provider selection based on prompt type | Should | T-MULTI-09 |
 | F-103 | Partial result handling across providers | Must | T-MULTI-10 |
 | F-104 | Provider capability matching | Should | T-MULTI-11 |
 | F-105 | Cross-provider performance monitoring | Should | T-MULTI-12 |
@@ -406,14 +406,14 @@ Create the simplest yet most powerful research tool where users can get comprehe
 |----|-------------|----------|---------|
 | F-125 | Metadata headers must include the model used by each provider | Must | T-OUT-06 |
 | F-126 | Mock provider must show "None" as the model in metadata | Must | T-OUT-07 |
-| F-127 | Output files must include the prompt section showing system prompt and user query | Must | T-OUT-08 |
+| F-127 | Output files must include the prompt section showing system prompt and user prompt | Must | T-OUT-08 |
 | F-128 | Support --no-metadata flag to disable metadata headers and prompt section in output files | Must | T-OUT-09 |
 
 ### Interactive Mode Requirements (v2.3)
 
 | ID | Requirement | Priority | Test ID |
 |----|-------------|----------|---------|
-| F-129 | Support `-i` or `--interactive` flag to enter interactive query mode | Must | T-INT-01 |
+| F-129 | Support `-i` or `--interactive` flag to enter interactive prompt mode | Must | T-INT-01 |
 | F-130 | Display bordered input box with configurable width (default 80% terminal width) | Must | T-INT-02 |
 | F-131 | Support multi-line input with Shift+Enter for new lines, Enter to submit | Must | T-INT-03 |
 | F-132 | Display prompt character ">" at beginning of each input line | Must | T-INT-04 |
@@ -424,7 +424,7 @@ Create the simplest yet most powerful research tool where users can get comprehe
 | F-137 | Implement `/provider <provider>` command to set provider | Must | T-INT-09 |
 | F-138 | Implement `/async` toggle command for async submission | Must | T-INT-10 |
 | F-139 | Support standard Unix line editing shortcuts (Ctrl+A, Ctrl+E, Ctrl+K) | Must | T-INT-11 |
-| F-140 | Execute query with same behavior as non-interactive mode after submission | Must | T-INT-12 |
+| F-140 | Execute prompt with same behavior as non-interactive mode after submission | Must | T-INT-12 |
 | F-141 | Implement `/status` command to check operation status | Must | T-INT-13 |
 | F-142 | Display help text above input box in dimmed/light color with key commands | Must | T-INT-14 |
 
@@ -461,14 +461,14 @@ Create the simplest yet most powerful research tool where users can get comprehe
 |----|-------------|----------|---------|
 | F-160 | Support Shift+Tab to toggle between Edit Mode and Clarification Mode in interactive mode | Must | T-CLAR-01 |
 | F-161 | Display current mode (Edit Mode/Clarification Mode) in interactive UI | Must | T-CLAR-02 |
-| F-162 | In Clarification Mode, intercept query submission for refinement | Must | T-CLAR-03 |
-| F-163 | Send query to clarification prompt for improvement suggestions | Must | T-CLAR-04 |
+| F-162 | In Clarification Mode, intercept prompt submission for refinement | Must | T-CLAR-03 |
+| F-163 | Send prompt to clarification prompt for improvement suggestions | Must | T-CLAR-04 |
 | F-164 | Display clarification questions/suggestions in interactive box | Must | T-CLAR-05 |
-| F-165 | Allow user to edit refined query before final submission | Must | T-CLAR-06 |
+| F-165 | Allow user to edit refined prompt before final submission | Must | T-CLAR-06 |
 | F-166 | Support multiple clarification rounds within same session | Must | T-CLAR-07 |
 | F-167 | Add --clarify flag to force Clarification Mode on startup | Should | T-CLAR-08 |
 | F-168 | Show mode toggle instructions below input box | Must | T-CLAR-09 |
-| F-169 | Preserve original query when switching modes | Must | T-CLAR-10 |
+| F-169 | Preserve original prompt when switching modes | Must | T-CLAR-10 |
 | F-170 | Support Enter to accept clarification, Shift+Tab to return to edit | Must | T-CLAR-11 |
 
 ---
@@ -496,15 +496,15 @@ Create the simplest yet most powerful research tool where users can get comprehe
 
 ```bash
 # PRIMARY USAGE - Quick Mode
-thoth "QUERY"                    # Deep research with output to current directory
+thoth "PROMPT"                   # Deep research with output to current directory
 
-# INTERACTIVE MODE - Visual Query Input
+# INTERACTIVE MODE - Visual Prompt Input
 thoth -i                         # Enter interactive mode (Edit Mode)
 thoth --interactive              # Same as above
 thoth -i --clarify              # Start in Clarification Mode
 
 # ADVANCED USAGE - Full Control  
-thoth MODE QUERY [OPTIONS]       # Specify mode and options
+thoth MODE PROMPT [OPTIONS]      # Specify mode and options
 thoth [COMMAND] [OPTIONS]        # Run specific commands
 
 Commands:
@@ -526,7 +526,7 @@ Interactive Mode Commands:
   /provider <p> Set provider (openai, perplexity, mock)
   /async        Toggle async submission mode
   /status       Check operation status
-  /exit, /quit  Exit without submitting query
+  /exit, /quit  Exit without submitting prompt
 
 Interactive Mode Controls:
   Shift+Tab     Toggle between Edit Mode and Clarification Mode
@@ -540,9 +540,9 @@ Interactive Mode Controls:
 #### Quick Mode (Primary Use Case)
 
 ```bash
-# SIMPLEST USAGE - just provide a query (no system prompt added)
+# SIMPLEST USAGE - just provide a prompt (no system prompt added)
 thoth "impact of quantum computing on cryptography"
-# This sends your exact query to the LLM without modification
+# This sends your exact prompt to the LLM without modification
 # Creates in current directory:
 #   ./2024-08-03_143022_default_openai_impact-of-quantum-computing.md
 #   ./2024-08-03_143022_default_perplexity_impact-of-quantum-computing.md  
@@ -562,8 +562,8 @@ thoth "kubernetes networking explained" --provider openai
 thoth "kubernetes networking explained" -P openai  # Short form
 
 # Testing with mock provider (no API key needed)
-thoth "test query" --provider mock
-thoth "test query" -P mock  # Short form
+thoth "test prompt" --provider mock
+thoth "test prompt" -P mock  # Short form
 ```
 
 #### Interactive Mode Examples
@@ -577,7 +577,7 @@ thoth --interactive
 # Interactive session example:
 $ thoth -i
 
-[dim]Enter query • Shift+Enter: new line • Enter: submit • /help: commands[/dim]
+[dim]Enter prompt • Shift+Enter: new line • Enter: submit • /help: commands[/dim]
 ┌────────────────────────────────────────────────────────────────────┐
 │ > /mode deep_research                                              │
 └────────────────────────────────────────────────────────────────────┘
@@ -587,7 +587,7 @@ $ thoth -i
 │ > What are the security implications of                            │
 │   quantum computing on current encryption methods?                 │
 └────────────────────────────────────────────────────────────────────┘
-[Submits query and exits to normal processing]
+[Submits prompt and exits to normal processing]
 
 # Interactive mode with provider change
 $ thoth -i
@@ -623,11 +623,11 @@ thoth clarification "building scalable microservices"
 thoth exploration --auto  # Uses previous output automatically
 thoth deep_research --auto  # Full research based on exploration
 
-# Read query from file
-thoth --query-file ./complex_research_query.txt
+# Read prompt from file
+thoth --prompt-file ./complex_research_prompt.txt
 
-# Pipe query from another command
-echo "analyze security implications of WebAssembly" | thoth --query-file -
+# Pipe prompt from another command
+echo "analyze security implications of WebAssembly" | thoth --prompt-file -
 
 # Quiet mode for minimal output
 thoth "database optimization techniques" -Q
@@ -679,11 +679,11 @@ thoth providers -- --models --no-cache        # Bypass cache completely without 
 
 | Long | Short | Type | Description |
 |------|-------|------|-------------|
-| --interactive | -i | flag | Enter interactive query mode with visual input box |
+| --interactive | -i | flag | Enter interactive prompt mode with visual input box |
 | --clarify | | flag | Start interactive mode in Clarification Mode (use with -i) |
 | --mode | -m | TEXT | Research mode (defaults to 'default' when not specified) |
-| --query | -q | TEXT | Research query (alternative to positional) |
-| --query-file | -Q | PATH | Read query from file (use '-' for stdin) |
+| --prompt | -q | TEXT | Research prompt (alternative to positional) |
+| --prompt-file | -Q | PATH | Read prompt from file (use '-' for stdin) |
 | --async | -A | flag | Submit and exit immediately |
 | --resume | -R | ID | Resume existing operation by ID |
 | --project | -p | TEXT | Project name for output organization |
@@ -705,7 +705,7 @@ thoth providers -- --models --no-cache        # Bypass cache completely without 
 
 | Command | Description | Example |
 |---------|-------------|---------|  
-| (default) | Run research with query | `thoth "your research query"` |
+| (default) | Run research with prompt | `thoth "your research prompt"` |
 | init | Setup wizard for API keys | `thoth init` |
 | status ID | Show operation details | `thoth status research-20240803-143022-xxx` |
 | list | Show recent operations | `thoth list` |
@@ -730,8 +730,8 @@ thoth providers -- --models --no-cache        # Bypass cache completely without 
 Thoth - AI-Powered Research Assistant
 
 USAGE:
-    thoth "QUERY"                    # Quick research (recommended)
-    thoth MODE QUERY [OPTIONS]       # Advanced usage
+    thoth "PROMPT"                   # Quick research (recommended)
+    thoth MODE PROMPT [OPTIONS]      # Advanced usage
     thoth COMMAND [OPTIONS]          # Run commands
 
 QUICK START:
@@ -747,7 +747,7 @@ EXAMPLES:
     thoth "machine learning optimization" -P openai
     
     # Test with mock provider (no API key needed)
-    thoth "test query" --provider mock
+    thoth "test prompt" --provider mock
     thoth "test query" -P mock
     
     # Async for long research
@@ -970,10 +970,10 @@ Examples:
   $ export OPENAI_API_KEY="your-key-here"
 
   # Set via command line for single provider
-  $ thoth "query" --api-key-openai "your-key-here" --provider openai
+  $ thoth "prompt" --api-key-openai "your-key-here" --provider openai
 
   # Set multiple API keys for multi-provider modes
-  $ thoth deep_research "query" --api-key-openai "sk-..." --api-key-perplexity "pplx-..."
+  $ thoth deep_research "prompt" --api-key-openai "sk-..." --api-key-perplexity "pplx-..."
 
 $ thoth providers -- --models --refresh-cache
 
@@ -1019,11 +1019,11 @@ $ thoth -i
 │ > help with database performance                                   │
 └────────────────────────────────────────────────────────────────────┘
 
-[User presses Enter - query sent for clarification]
+[User presses Enter - prompt sent for clarification]
 
 [dim]Clarification Mode • Review suggestions • Enter: accept • Shift+Tab: edit[/dim]
 ┌────────────────────────────────────────────────────────────────────┐
-│ Your query could be more specific. Consider:                       │
+│ Your prompt could be more specific. Consider:                      │
 │                                                                     │
 │ 1. PostgreSQL query optimization for slow SELECT statements with   │
 │    complex JOINs on large tables (100GB+)                         │
@@ -1032,13 +1032,13 @@ $ thoth -i
 │                                                                     │
 │ 3. MongoDB index optimization for aggregation pipeline queries     │
 │                                                                     │
-│ Refined query:                                                     │
+│ Refined prompt:                                                    │
 │ > PostgreSQL performance optimization techniques for slow queries  │
 │   involving multiple table JOINs                                   │
 └────────────────────────────────────────────────────────────────────┘
 
-[User can edit the refined query or press Enter to accept]
-[User presses Enter - switches to Edit Mode with refined query]
+[User can edit the refined prompt or press Enter to accept]
+[User presses Enter - switches to Edit Mode with refined prompt]
 
 [dim]Edit Mode • Shift+Tab: switch to Clarification Mode • Enter: submit[/dim]
 ┌────────────────────────────────────────────────────────────────────┐
@@ -1046,7 +1046,7 @@ $ thoth -i
 │   involving multiple table JOINs                                   │
 └────────────────────────────────────────────────────────────────────┘
 
-[User presses Enter - submits refined query for research]
+[User presses Enter - submits refined prompt for research]
 
 $ thoth -i --clarify
 
@@ -1158,7 +1158,7 @@ export PERPLEXITY_API_KEY="pplx-..."
    export PERPLEXITY_API_KEY="your-key"
    
    # For testing
-   thoth "test query" --provider mock
+   thoth "test prompt" --provider mock
    ```
 3. **Research**: 
    ```bash
@@ -1243,18 +1243,18 @@ Falling back to Perplexity provider
 
 ### Default Output (Current Directory)
 
-When you run `thoth "your query"`, files are created in your current directory:
+When you run `thoth "your prompt"`, files are created in your current directory:
 
 ```
 ./
-├── 2024-08-03_143022_default_openai_your-query.md
-└── 2024-08-03_143022_default_perplexity_your-query.md
+├── 2024-08-03_143022_default_openai_your-prompt.md
+└── 2024-08-03_143022_default_perplexity_your-prompt.md
 
 # With --combined flag:
 ./
-├── 2024-08-03_143022_default_openai_your-query.md
+├── 2024-08-03_143022_default_openai_your-prompt.md
 ├── 2024-08-03_143022_default_perplexity_your-query.md
-└── 2024-08-03_143022_default_combined_your-query.md
+└── 2024-08-03_143022_default_combined_your-prompt.md
 ```
 
 ### Mock Provider Output
@@ -1263,7 +1263,7 @@ When testing with `--provider mock`:
 
 ```
 ./
-└── 2024-08-03_143022_default_mock_your-query.md  # Static test content
+└── 2024-08-03_143022_default_mock_your-prompt.md  # Static test content
 ```
 
 ### Mode Chaining Output (v2.1)
@@ -1272,13 +1272,13 @@ When using `--auto` for mode chaining:
 
 ```
 ./
-├── 2024-08-03_143022_clarification_openai_your-query.md
-├── 2024-08-03_143525_exploration_openai_your-query.md
-├── 2024-08-03_143525_exploration_perplexity_your-query.md
-├── 2024-08-03_143525_exploration_combined_your-query.md
-├── 2024-08-03_144230_deep_research_openai_your-query.md
-├── 2024-08-03_144230_deep_research_perplexity_your-query.md
-└── 2024-08-03_144230_deep_research_combined_your-query.md
+├── 2024-08-03_143022_clarification_openai_your-prompt.md
+├── 2024-08-03_143525_exploration_openai_your-prompt.md
+├── 2024-08-03_143525_exploration_perplexity_your-prompt.md
+├── 2024-08-03_143525_exploration_combined_your-prompt.md
+├── 2024-08-03_144230_deep_research_openai_your-prompt.md
+├── 2024-08-03_144230_deep_research_perplexity_your-prompt.md
+└── 2024-08-03_144230_deep_research_combined_your-prompt.md
 ```
 
 ### Example Output File Formats
@@ -1286,7 +1286,7 @@ When using `--auto` for mode chaining:
 **Default mode with OpenAI:**
 ```yaml
 ---
-query: What is Python?
+prompt: What is Python?
 mode: default
 provider: openai
 model: gpt-4o
@@ -1306,7 +1306,7 @@ What is Python?
 **Deep research mode with system prompt:**
 ```yaml
 ---
-query: explain kubernetes
+prompt: explain kubernetes
 mode: deep_research
 provider: openai
 model: gpt-4o
@@ -1329,7 +1329,7 @@ User: explain kubernetes
 **Mock provider output:**
 ```yaml
 ---
-query: test query
+prompt: test prompt
 mode: default
 provider: mock
 model: None
@@ -1351,7 +1351,7 @@ test query
 Each file includes (unless --no-metadata is used):
 
 1. **Metadata header** (YAML front matter, hidden in most Markdown viewers):
-   - query: The user's research query
+   - prompt: The user's research prompt
    - mode: The research mode used
    - provider: The LLM provider used
    - model: The specific model used (e.g., gpt-4o, sonar-pro, None for mock)
@@ -1362,7 +1362,7 @@ Each file includes (unless --no-metadata is used):
 2. **Prompt section** (visible in markdown):
    - Shows the exact prompt sent to the LLM
    - For modes with system prompts: displays both system and user prompts
-   - For default mode: shows only the user query
+   - For default mode: shows only the user prompt
 
 3. **Research content**:
    - Comprehensive findings
@@ -1377,7 +1377,7 @@ Each file includes (unless --no-metadata is used):
 While the primary use case is simple, power users can access:
 
 ### Mode Selection
-- `default` - Direct query pass-through (no system prompt) - used when no mode specified
+- `default` - Direct prompt pass-through (no system prompt) - used when no mode specified
 - `thinking` - Quick analysis with system prompt
 - `clarification` - Refine questions with system prompt
 - `exploration` - Survey options with system prompt
@@ -1426,8 +1426,8 @@ While the primary use case is simple, power users can access:
 ## 18. Future Enhancements
 
 ### Version 2.1
-- Smart query suggestions based on clarity
-- Automatic mode selection based on query type
+- Smart prompt suggestions based on clarity
+- Automatic mode selection based on prompt type
 - Research templates for common topics
 - Integration with local knowledge bases
 - Plugin system for extensibility
@@ -1482,7 +1482,7 @@ Standards implemented:
 
 ### Validation Order
 The tool validates in this order (fully implemented):
-1. Command structure (missing query = exit 2) ✓
+1. Command structure (missing prompt = exit 2) ✓
 2. Mode validity (invalid mode = exit 1) ✓
 3. Provider validity (invalid provider = exit 1) ✓
 4. API key presence (missing key = exit 1) ✓
@@ -1565,10 +1565,10 @@ These manual tests should be documented in a separate testing guide and performe
 
 ## End of Thoth v2.1 PRD
 
-This specification prioritizes the simplest possible user experience while maintaining all advanced capabilities. The primary innovation is making `thoth "query"` the default interaction pattern, removing friction for users who just want quick, comprehensive research results in their current directory.
+This specification prioritizes the simplest possible user experience while maintaining all advanced capabilities. The primary innovation is making `thoth "prompt"` the default interaction pattern, removing friction for users who just want quick, comprehensive research results in their current directory.
 
 Key principles:
-- **Simple by default**: Just query and go
+- **Simple by default**: Just prompt and go
 - **Progressive disclosure**: Advanced features available when needed  
 - **Current directory convenience**: Results appear where you work
 - **Clear communication**: Simple progress and obvious output locations

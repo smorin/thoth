@@ -35,7 +35,7 @@ SECTION 12: PROVIDER ARCHITECTURE        - Provider base classes and implementat
 SECTION 13: PROVIDER REGISTRY            - Central provider management
 SECTION 14: RESEARCH OPERATIONS - UTILS  - Research operation utilities
 SECTION 15: RESEARCH OPERATIONS - MAIN   - Core research execution
-SECTION 16: INTERACTIVE MODE             - Interactive query interface
+SECTION 16: INTERACTIVE MODE             - Interactive prompt interface
 SECTION 17: SIGNAL HANDLING              - System signal handlers
 SECTION 18: MAIN ENTRY POINT             - Application entry point
 """
@@ -101,8 +101,8 @@ BUILTIN_MODES = {
     "default": {
         "provider": "openai",
         "model": "o3",  # Use standard o3 for default
-        "system_prompt": None,  # No system prompt - pass query directly
-        "description": "Default mode - passes query directly to LLM without any system prompt",
+        "system_prompt": None,  # No system prompt - pass prompt directly
+        "description": "Default mode - passes prompt directly to LLM without any system prompt",
         "auto_input": False,
     },
     "clarification": {
@@ -508,7 +508,7 @@ class OperationStatus:
     """Status of a research operation"""
 
     id: str
-    query: str
+    prompt: str
     mode: str
     status: str  # "queued", "running", "completed", "failed", "cancelled"
     created_at: datetime
@@ -527,7 +527,7 @@ class InteractiveInitialSettings:
 
     mode: Optional[str] = None
     provider: Optional[str] = None
-    query: Optional[str] = None
+    prompt: Optional[str] = None
     async_mode: bool = False
     cli_api_keys: Optional[Dict[str, Optional[str]]] = None
 
@@ -681,7 +681,7 @@ def build_epilog():
 
     # Examples section
     lines.append("Examples:")
-    lines.append("  # Simple query (uses default mode)")
+    lines.append("  # Simple prompt (uses default mode)")
     lines.append('  $ thoth "how does DNS work"')
     lines.append("")
     lines.append("  # Specify a research mode")
@@ -711,8 +711,8 @@ def build_epilog():
 @click.pass_context
 @click.argument("args", nargs=-1)
 @click.option("--mode", "-m", "mode_opt", help="Research mode")
-@click.option("--query", "-q", "query_opt", help="Research query")
-@click.option("--query-file", "-F", help="Read query from file (use - for stdin)")
+@click.option("--prompt", "-q", "prompt_opt", help="Research prompt")
+@click.option("--prompt-file", "-F", help="Read prompt from file (use - for stdin)")
 @click.option("--async", "-A", "async_mode", is_flag=True, help="Submit and exit")
 @click.option("--resume", "-R", "resume_id", help="Resume operation by ID")
 @click.option("--project", "-p", help="Project name")
@@ -743,13 +743,13 @@ def build_epilog():
     help="Disable metadata headers and prompt section in output files",
 )
 @click.option("--timeout", "-T", type=float, help="Override request timeout in seconds")
-@click.option("--interactive", "-i", is_flag=True, help="Enter interactive query mode")
+@click.option("--interactive", "-i", is_flag=True, help="Enter interactive prompt mode")
 def cli(
     ctx,
     args,
     mode_opt,
-    query_opt,
-    query_file,
+    prompt_opt,
+    prompt_file,
     async_mode,
     resume_id,
     project,
@@ -771,8 +771,8 @@ def cli(
 ):
     """Thoth - AI-Powered Research Assistant
 
-    Quick usage: thoth "QUERY"
-    Advanced: thoth MODE "QUERY"
+    Quick usage: thoth "PROMPT"
+    Advanced: thoth MODE "PROMPT"
     Commands: init, status, list, providers, help [COMMAND]
 
     Examples:
@@ -792,17 +792,17 @@ def cli(
         console.print(f"Thoth v{THOTH_VERSION}")
         sys.exit(0)
 
-    # Determine mode and query early (for both interactive and non-interactive)
+    # Determine mode and prompt early (for both interactive and non-interactive)
     final_mode = None
-    final_query = None
+    final_prompt = None
 
-    # Skip special commands for mode/query determination
+    # Skip special commands for mode/prompt determination
     if not (args and args[0] in ["init", "status", "list", "help", "providers"]):
         if len(args) >= 2:
-            # Two or more args: First is potentially a mode, rest is query
+            # Two or more args: First is potentially a mode, rest is prompt
             if args[0] in BUILTIN_MODES:
                 final_mode = args[0]
-                final_query = " ".join(args[1:])
+                final_prompt = " ".join(args[1:])
             else:
                 # Check if it looks like a mode but is invalid
                 if len(args[0].split()) == 1 and not args[0].startswith("-"):
@@ -812,33 +812,33 @@ def cli(
                         f"[yellow]Available modes:[/yellow] {', '.join(BUILTIN_MODES.keys())}"
                     )
                     sys.exit(1)
-                # Not a mode, treat entire args as query
+                # Not a mode, treat entire args as prompt
                 final_mode = "default"
-                final_query = " ".join(args)
+                final_prompt = " ".join(args)
         elif len(args) == 1:
-            # One arg: could be just QUERY or MODE (with --query)
-            if query_opt:
+            # One arg: could be just PROMPT or MODE (with --prompt)
+            if prompt_opt:
                 final_mode = args[0]
-                final_query = query_opt
+                final_prompt = prompt_opt
             else:
                 final_mode = "default"
-                final_query = args[0]
+                final_prompt = args[0]
         else:
             # No positional args, check options
             final_mode = mode_opt or "default"
-            final_query = query_opt
+            final_prompt = prompt_opt
 
-    # Handle query file
-    if query_file:
-        if query_file == "-":
+    # Handle prompt file
+    if prompt_file:
+        if prompt_file == "-":
             # Read from stdin with size limit
             stdin_data = sys.stdin.read(1024 * 1024)  # 1MB limit
             if len(stdin_data) >= 1024 * 1024:
                 raise click.BadParameter("Stdin input exceeds 1MB limit")
-            final_query = stdin_data.strip()
+            final_prompt = stdin_data.strip()
         else:
-            with open(query_file, "r") as f:
-                final_query = f.read().strip()
+            with open(prompt_file, "r") as f:
+                final_prompt = f.read().strip()
 
     # Handle interactive mode with initial settings
     if interactive:
@@ -853,7 +853,7 @@ def cli(
         initial_settings = InteractiveInitialSettings(
             mode=final_mode,
             provider=provider,
-            query=final_query,
+            prompt=final_prompt,
             async_mode=async_mode,
             cli_api_keys=cli_api_keys,
         )
@@ -964,27 +964,27 @@ def cli(
                 console.print(ctx.get_help())
             return
 
-    # For all other cases, treat as research query
-    # Mode and query already determined above
+    # For all other cases, treat as research prompt
+    # Mode and prompt already determined above
 
     # Validation
     if async_mode and resume_id:
         raise click.BadParameter("Cannot use --async with --resume")
 
-    if query_file and query_opt:
-        raise click.BadParameter("Cannot use --query-file with --query")
+    if prompt_file and prompt_opt:
+        raise click.BadParameter("Cannot use --prompt-file with --prompt")
 
     if input_file and auto:
         raise click.BadParameter("Cannot use --input-file with --auto")
 
-    # Check for empty query
-    if final_query is not None and final_query.strip() == "":
-        raise click.BadParameter("Query cannot be empty")
+    # Check for empty prompt
+    if final_prompt is not None and final_prompt.strip() == "":
+        raise click.BadParameter("Prompt cannot be empty")
 
     if resume_id:
         # Resume existing operation
         asyncio.run(resume_operation(resume_id, verbose))
-    elif final_mode and final_query:
+    elif final_mode and final_prompt:
         # Run new research
         # Create provider-specific API keys dictionary
         cli_api_keys = {
@@ -995,7 +995,7 @@ def cli(
         asyncio.run(
             run_research(
                 mode=final_mode,
-                query=final_query,
+                prompt=final_prompt,
                 async_mode=async_mode,
                 project=project,
                 output_dir=output_dir,
@@ -1100,7 +1100,7 @@ class CommandHandler:
             f.write('api_key = "${PERPLEXITY_API_KEY}"\n')
 
         console.print(f"\n[green]✓[/green] Configuration saved to {config_path}")
-        console.print('\nYou can now run: thoth deep_research "your query"')
+        console.print('\nYou can now run: thoth deep_research "your prompt"')
 
     def status_command(self, operation_id: str, **params):
         """Check status of a research operation"""
@@ -1120,15 +1120,15 @@ class CommandHandler:
         """Execute research operation - delegate to run_research"""
         # Extract needed parameters
         mode = params.get("mode", "default")
-        query = params.get("query")
-        if not query:
-            raise ThothError("Query is required for research command")
+        prompt = params.get("prompt")
+        if not prompt:
+            raise ThothError("Prompt is required for research command")
 
         # Delegate to existing run_research function
         return asyncio.run(
             run_research(
                 mode=mode,
-                query=query,
+                prompt=prompt,
                 async_mode=params.get("async_mode", False),
                 project=params.get("project"),
                 output_dir=params.get("output_dir"),
@@ -1218,7 +1218,7 @@ def show_status_help():
     console.print("  OPERATION_ID    The unique identifier for the operation")
     console.print("                  (e.g., research-20240803-143022-abc123...)")
     console.print("\n[bold]Information displayed:[/bold]")
-    console.print("  • Operation ID and query")
+    console.print("  • Operation ID and prompt")
     console.print("  • Current status (queued/running/completed/failed)")
     console.print("  • Start time and elapsed duration")
     console.print("  • Provider status for each LLM")
@@ -1247,7 +1247,7 @@ def show_list_help():
     console.print("  • Sorted by creation time (newest first)")
     console.print("\n[bold]Table columns:[/bold]")
     console.print("  • ID       - Unique operation identifier")
-    console.print("  • Query    - Research query (truncated if long)")
+    console.print("  • Prompt   - Research prompt (truncated if long)")
     console.print("  • Status   - Current status with color coding")
     console.print("  • Elapsed  - Time since operation started")
     console.print("  • Mode     - Research mode used")
@@ -1314,10 +1314,10 @@ def show_general_help(ctx):
     console.print(f"Version {THOTH_VERSION}")
     console.print("\n[bold]Usage:[/bold]")
     console.print("  thoth [COMMAND] [OPTIONS]")
-    console.print('  thoth [MODE] "QUERY" [OPTIONS]')
-    console.print('  thoth "QUERY" [OPTIONS]')
+    console.print('  thoth [MODE] "PROMPT" [OPTIONS]')
+    console.print('  thoth "PROMPT" [OPTIONS]')
     console.print("\n[bold]Quick Start:[/bold]")
-    console.print("  # Simple query (uses default mode)")
+    console.print("  # Simple prompt (uses default mode)")
     console.print('  $ thoth "how does DNS work"')
     console.print("\n  # Specify a research mode")
     console.print('  $ thoth deep_research "explain kubernetes networking"')
@@ -1335,7 +1335,7 @@ def show_general_help(ctx):
         console.print(f"  {mode_name:<15} {desc}")
     console.print("\n[bold]Common Options:[/bold]")
     console.print("  --mode, -m      Research mode to use")
-    console.print("  --query, -q     Research query")
+    console.print("  --prompt, -q     Research prompt")
     console.print("  --async, -A     Submit and exit immediately")
     console.print("  --project, -p   Project name for organized output")
     console.print("  --verbose, -v   Show debug output")
@@ -1447,7 +1447,7 @@ class OutputManager:
         timestamp = operation.created_at.strftime(
             self.config.data["output"]["timestamp_format"]
         )
-        slug = sanitize_slug(operation.query)
+        slug = sanitize_slug(operation.prompt)
 
         # Determine output directory
         if output_dir:
@@ -1505,7 +1505,7 @@ class OutputManager:
         ):
             # Add metadata header
             metadata = f"""---
-query: {operation.query}
+prompt: {operation.prompt}
 mode: {operation.mode}
 provider: {provider}
 model: {model if model else "Unknown"}
@@ -1521,9 +1521,9 @@ created_at: {operation.created_at.isoformat()}
             # Add prompt section
             metadata += "### Prompt\n\n```\n"
             if system_prompt:
-                metadata += f"System: {system_prompt}\n\nUser: {operation.query}\n"
+                metadata += f"System: {system_prompt}\n\nUser: {operation.prompt}\n"
             else:
-                metadata += operation.query + "\n"
+                metadata += operation.prompt + "\n"
             metadata += "```\n\n"
 
             content = metadata + content
@@ -1543,7 +1543,7 @@ created_at: {operation.created_at.isoformat()}
     ) -> Path:
         """Generate a combined report from multiple provider results"""
         # Create synthesized content
-        combined_content = f"# Combined Research Report: {operation.query}\n\n"
+        combined_content = f"# Combined Research Report: {operation.prompt}\n\n"
         combined_content += f"Generated: {datetime.now().isoformat()}\n\n"
 
         for provider, content in contents.items():
@@ -1690,7 +1690,7 @@ class ModelCache:
 class ResearchProvider:
     """Base class for research providers"""
 
-    async def submit(self, query: str, mode: str, system_prompt: str = None, verbose: bool = False) -> str:
+    async def submit(self, prompt: str, mode: str, system_prompt: str = None, verbose: bool = False) -> str:
         """Submit research and return job ID"""
         raise NotImplementedError
 
@@ -1739,11 +1739,11 @@ class MockProvider(ResearchProvider):
         self.model = "None"  # Mock provider has no model
         self.jobs = {}
 
-    async def submit(self, query: str, mode: str, system_prompt: str = None, verbose: bool = False) -> str:
+    async def submit(self, prompt: str, mode: str, system_prompt: str = None, verbose: bool = False) -> str:
         """Submit mock research and return job ID"""
         job_id = f"mock-{generate_operation_id()}"
         self.jobs[job_id] = {
-            "query": query,
+            "prompt": prompt,
             "mode": mode,
             "status": "running",
             "progress": 0.0,
@@ -1779,7 +1779,7 @@ class MockProvider(ResearchProvider):
         job = self.jobs[job_id]
         return f"""# {self.name.title()} Research Results
 
-## Query: {job["query"]}
+## Prompt: {job["prompt"]}
 ## Mode: {job["mode"]}
 
 This is a mock research result from the {self.name} provider.
@@ -1827,7 +1827,7 @@ class OpenAIProvider(ResearchProvider):
         wait=wait_exponential(multiplier=1, min=4, max=10),
         retry=retry_if_exception_type((httpx.TimeoutException, httpx.ConnectError)),
     )
-    async def submit(self, query: str, mode: str, system_prompt: str = None, verbose: bool = False) -> str:
+    async def submit(self, prompt: str, mode: str, system_prompt: str = None, verbose: bool = False) -> str:
         """Submit research using OpenAI Responses API"""
         try:
             # Build structured input format for Responses API
@@ -1842,7 +1842,7 @@ class OpenAIProvider(ResearchProvider):
                 )
 
             input_messages.append(
-                {"role": "user", "content": [{"type": "input_text", "text": query}]}
+                {"role": "user", "content": [{"type": "input_text", "text": prompt}]}
             )
 
             # Configure tools based on model type
@@ -2213,7 +2213,7 @@ class PerplexityProvider(ResearchProvider):
         self.config = config or {}
         self.model = self.config.get("model", "sonar-pro")  # Store model from config
 
-    async def submit(self, query: str, mode: str, system_prompt: str = None, verbose: bool = False) -> str:
+    async def submit(self, prompt: str, mode: str, system_prompt: str = None, verbose: bool = False) -> str:
         """Submit to Perplexity"""
         # TODO: Implement actual Perplexity submission
         raise NotImplementedError("Perplexity provider not yet implemented")
@@ -2479,7 +2479,7 @@ def get_estimated_duration(mode: str, provider: Optional[str]) -> float:
 
 async def run_research(
     mode: str,
-    query: str,
+    prompt: str,
     async_mode: bool,
     project: Optional[str],
     output_dir: Optional[str],
@@ -2508,10 +2508,10 @@ async def run_research(
     if not check_disk_space(output_path):
         raise DiskSpaceError("Insufficient disk space", "Free up at least 100MB")
 
-    # Validate that mode and query are provided
-    if not mode or not query:
+    # Validate that mode and prompt are provided
+    if not mode or not prompt:
         raise click.BadParameter(
-            "Both mode and query are required for research operations"
+            "Both mode and prompt are required for research operations"
         )
 
     # Create operation
@@ -2546,7 +2546,7 @@ async def run_research(
     # Create operation status
     operation = OperationStatus(
         id=operation_id,
-        query=query,
+        prompt=prompt,
         mode=mode,
         status="queued",
         created_at=datetime.now(),
@@ -2656,7 +2656,7 @@ async def run_research(
         for provider_name, provider_instance in providers.items():
             try:
                 system_prompt = mode_config.get("system_prompt", "")
-                job_id = await provider_instance.submit(query, mode, system_prompt, verbose=verbose)
+                job_id = await provider_instance.submit(prompt, mode, system_prompt, verbose=verbose)
                 jobs[provider_name] = {
                     "provider": provider_instance,
                     "job_id": job_id,
@@ -2797,7 +2797,7 @@ async def resume_operation(operation_id: str, verbose: bool):
         sys.exit(6)
 
     console.print(f"[yellow]Resuming operation {operation_id}...[/yellow]")
-    console.print(f"Query: {operation.query}")
+    console.print(f"Prompt: {operation.prompt}")
     console.print(f"Mode: {operation.mode}")
     console.print(f"Status: {operation.status}")
 
@@ -2820,7 +2820,7 @@ async def show_status(operation_id: str):
     console.print("\nOperation Details:")
     console.print("─────────────────")
     console.print(f"ID:        {operation.id}")
-    console.print(f"Query:     {operation.query}")
+    console.print(f"Prompt:    {operation.prompt}")
     console.print(f"Mode:      {operation.mode}")
     console.print(f"Status:    {operation.status}")
     console.print(f"Started:   {operation.created_at.strftime('%Y-%m-%d %H:%M:%S')}")
@@ -2899,17 +2899,17 @@ async def list_operations(show_all: bool):
 
     table = Table(title="Research Operations")
     table.add_column("ID", style="dim", width=40)
-    table.add_column("Query", width=25)
+    table.add_column("Prompt", width=25)
     table.add_column("Status", width=10)
     table.add_column("Elapsed", width=8)
     table.add_column("Mode", width=15)
 
     for operation in operations:
-        # Truncate query if too long
-        query_display = (
-            operation.query[:22] + "..."
-            if len(operation.query) > 25
-            else operation.query
+        # Truncate prompt if too long
+        prompt_display = (
+            operation.prompt[:22] + "..."
+            if len(operation.prompt) > 25
+            else operation.prompt
         )
 
         # Calculate elapsed time
@@ -2930,7 +2930,7 @@ async def list_operations(show_all: bool):
 
         table.add_row(
             operation.id,
-            query_display,
+            prompt_display,
             f"[{status_style}]{operation.status}[/{status_style}]",
             elapsed_str,
             operation.mode,
@@ -3073,11 +3073,11 @@ async def providers_command(
         console.print('  $ export OPENAI_API_KEY="your-key-here"')
         console.print("\n  # Set via command line for single provider")
         console.print(
-            '  $ thoth "query" --api-key-openai "your-key-here" --provider openai'
+            '  $ thoth "prompt" --api-key-openai "your-key-here" --provider openai'
         )
         console.print("\n  # Set multiple API keys for multi-provider modes")
         console.print(
-            '  $ thoth deep_research "query" --api-key-openai "sk-..." --api-key-perplexity "pplx-..."'
+            '  $ thoth deep_research "prompt" --api-key-openai "sk-..." --api-key-perplexity "pplx-..."'
         )
         return
 
@@ -3158,7 +3158,7 @@ async def providers_command(
 # ============================================================================
 # SECTION 16: INTERACTIVE MODE
 # ============================================================================
-# Interactive query interface with slash commands and UI components:
+# Interactive prompt interface with slash commands and UI components:
 # - SlashCommandRegistry: Manages slash commands
 # - InteractiveSession: Main interactive session handler
 # - UI components and keyboard handling
@@ -3474,9 +3474,9 @@ class InteractiveSession:
         self.help_label = Label(HTML(help_html), style="class:help")
 
         # Create TextArea for input with multiline support
-        # Pre-populate with initial query if provided
+        # Pre-populate with initial prompt if provided
         self.input_area = TextArea(
-            text=initial_settings.query or "",
+            text=initial_settings.prompt or "",
             multiline=True,
             prompt="❯ ",
             wrap_lines=True,
@@ -3487,7 +3487,7 @@ class InteractiveSession:
 
         # Create Frame around TextArea for border
         self.input_frame = Frame(
-            self.input_area, title=" Query ", style="class:input-frame"
+            self.input_area, title=" Prompt ", style="class:input-frame"
         )
 
         # Create layout
@@ -3560,7 +3560,7 @@ class InteractiveSession:
         )
         return (
             f"<b>Thoth Interactive Mode</b> | {mode_text} | {provider_text}\n"
-            f"Enter query • <b>Enter</b>: submit • {newline_help}: new line • "
+            f"Enter prompt • <b>Enter</b>: submit • {newline_help}: new line • "
             f"<b>/help</b>: commands • <b>/keybindings</b>: shortcuts"
         )
 
@@ -3619,7 +3619,7 @@ class InteractiveSession:
                 buffer.text = ""
                 return
 
-            # Normal query submission
+            # Normal prompt submission
             self.result = text
             event.app.exit()
 
@@ -3730,7 +3730,7 @@ class InteractiveSession:
 
         def print_keybindings():
             print("\nKeyboard shortcuts:")
-            print("  Enter              - Submit query")
+            print("  Enter              - Submit prompt")
 
             # Show newline options based on terminal support
             if self.supports_shift_enter:
@@ -3804,7 +3804,7 @@ class InteractiveSession:
         self.pending_command = None
 
     async def run_async(self) -> Optional[str]:
-        """Run the interactive application asynchronously and return the query"""
+        """Run the interactive application asynchronously and return the prompt"""
         # Check if we're in a terminal
         if not sys.stdin.isatty():
             # Fall back to simple input for piped/non-terminal input
@@ -3815,33 +3815,33 @@ class InteractiveSession:
 
             while True:
                 try:
-                    query = input("> ")
-                    if not query:
+                    prompt = input("> ")
+                    if not prompt:
                         continue
 
                     # Handle slash commands in basic mode
-                    if query.startswith("/"):
-                        if query in ["/exit", "/quit"]:
+                    if prompt.startswith("/"):
+                        if prompt in ["/exit", "/quit"]:
                             return None
-                        elif query == "/help":
+                        elif prompt == "/help":
                             print("Available commands:")
                             print("  /help - Show this help")
                             print("  /keybindings - Show keyboard shortcuts")
                             print("  /exit, /quit - Exit")
                             print("  (Other commands not available in basic mode)")
                             continue
-                        elif query == "/keybindings":
+                        elif prompt == "/keybindings":
                             print("Keyboard shortcuts (basic mode):")
-                            print("  Enter - Submit query")
+                            print("  Enter - Submit prompt")
                             print("  Ctrl+C - Exit")
                             print("  (Advanced shortcuts not available in basic mode)")
                             continue
                         else:
-                            print(f"Command not available in basic mode: {query}")
+                            print(f"Command not available in basic mode: {prompt}")
                             continue
 
-                    # Return the query
-                    return query
+                    # Return the prompt
+                    return prompt
 
                 except (EOFError, KeyboardInterrupt):
                     return None
@@ -3876,7 +3876,7 @@ async def enter_interactive_mode(
     no_metadata: bool,
     timeout: Optional[float],
 ):
-    """Enter interactive query mode with Prompt Toolkit"""
+    """Enter interactive prompt mode with Prompt Toolkit"""
     if not PROMPT_TOOLKIT_AVAILABLE:
         console.print(
             "[yellow]Warning: prompt_toolkit not available, falling back to basic input[/yellow]"
@@ -3884,7 +3884,7 @@ async def enter_interactive_mode(
         # Fall back to basic input mode
         config = get_config()
         console.print("[bold cyan]Interactive Mode (Basic)[/bold cyan]")
-        console.print("[dim]Enter query • /help: commands • /exit: quit[/dim]")
+        console.print("[dim]Enter prompt • /help: commands • /exit: quit[/dim]")
         console.print()
 
         slash_registry = SlashCommandRegistry(console)
@@ -3897,20 +3897,20 @@ async def enter_interactive_mode(
 
         try:
             while True:
-                query = input("> ")
+                prompt = input("> ")
 
-                if query.startswith("/"):
-                    action = slash_registry.parse_and_execute(query)
+                if prompt.startswith("/"):
+                    action = slash_registry.parse_and_execute(prompt)
                     if action == "exit":
                         console.print("[yellow]Exiting interactive mode[/yellow]")
                         return
                     continue
 
-                if query.strip():
-                    console.print(f"[green]Processing query:[/green] {query}")
+                if prompt.strip():
+                    console.print(f"[green]Processing prompt:[/green] {prompt}")
                     await run_research(
                         mode=slash_registry.current_mode,
-                        query=query,
+                        prompt=prompt,
                         project=project,
                         output_dir=output_dir,
                         provider=slash_registry.current_provider,
@@ -3937,14 +3937,14 @@ async def enter_interactive_mode(
     session = InteractiveSession(console, config, initial_settings)
 
     # Run the interactive application (async version since we're in async context)
-    query = await session.run_async()
+    prompt = await session.run_async()
 
-    if query is None:
+    if prompt is None:
         console.print("\n[yellow]Interactive mode cancelled[/yellow]")
         return
 
-    # Process the query
-    console.print(f"\n[green]Processing query:[/green] {query}")
+    # Process the prompt
+    console.print(f"\n[green]Processing prompt:[/green] {prompt}")
     console.print(
         f"[dim]Mode: {session.slash_registry.current_mode} | Provider: {session.current_provider or 'auto'} | Async: {session.slash_registry.async_mode}[/dim]"
     )
@@ -3959,7 +3959,7 @@ async def enter_interactive_mode(
 
         await run_research(
             mode=session.slash_registry.current_mode,
-            query=query,
+            prompt=prompt,
             project=project,
             output_dir=output_dir,
             provider=session.current_provider,

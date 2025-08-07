@@ -157,8 +157,8 @@ clean: ## Remove generated files and caches
 	@echo "✓ Cleaned"
 
 # Example run
-run: ## Run example research query
-	@echo "Running example research query..."
+run: ## Run example research prompt
+	@echo "Running example research prompt..."
 	@./thoth clarification "What is quantum computing?"
 
 # Check if UV is installed

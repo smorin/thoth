@@ -3,7 +3,7 @@
   # First, source the API key
   source openai.env
 
-  # Test 1: Basic query
+  # Test 1: Basic prompt
   ./thoth "What is Python?" --provider openai -v
 
   # Test 2: Verify file creation
@@ -12,9 +12,9 @@
   # Test 3: Check file content has response
   cat *_openai_*.md
 
-  # Test 4: Multiple queries (simulating concurrent operations)
-  ./thoth "Query 1: What is REST API?" --provider openai
-  ./thoth "Query 2: What is GraphQL?" --provider openai
+  # Test 4: Multiple prompts (simulating concurrent operations)
+  ./thoth "Prompt 1: What is REST API?" --provider openai
+  ./thoth "Prompt 2: What is GraphQL?" --provider openai
 
   # Check both files have different content
   ls -la *_openai_*.md
@@ -25,7 +25,7 @@
 
   Part A: Config-based Timeout Tests
 
-  # Test 1: Normal query (should complete with default 30s timeout)
+  # Test 1: Normal prompt (should complete with default 30s timeout)
   source openai.env
   ./thoth "Brief answer: What is 2+2?" --provider openai
 

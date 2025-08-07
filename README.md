@@ -5,7 +5,7 @@ Thoth is a command-line tool that automates deep technical research using multip
 ## Features
 
 - **Multi-provider intelligence**: Parallel execution of OpenAI and Perplexity for comprehensive results
-- **Interactive query mode**: Enhanced terminal UI with slash commands, tab completion, and multiline input
+- **Interactive prompt mode**: Enhanced terminal UI with slash commands, tab completion, and multiline input
 - **Provider discovery**: List available providers, models, and API key configuration
 - **Zero-configuration deployment**: UV inline script dependencies eliminate setup complexity
 - **Flexible operation modes**: Support both interactive (wait) and background (submit and exit) workflows
@@ -65,10 +65,10 @@ sudo make install
 ### Basic Research
 ```bash
 # Quick research (uses default mode)
-thoth "your research query"
+thoth "your research prompt"
 
 # Run research with a specific mode
-thoth deep_research "your research query"
+thoth deep_research "your research prompt"
 thoth clarification "ambiguous topic needing clarity"
 thoth exploration "broad topic to explore"
 thoth thinking "quick analysis task"
@@ -99,30 +99,30 @@ thoth deep_research --auto
 ### Provider-Specific API Keys
 ```bash
 # Use specific API key for a provider
-thoth "query" --api-key-openai "sk-..." --provider openai
+thoth "prompt" --api-key-openai "sk-..." --provider openai
 
 # Multiple provider keys for multi-provider modes
-thoth deep_research "query" --api-key-openai "sk-..." --api-key-perplexity "pplx-..."
+thoth deep_research "prompt" --api-key-openai "sk-..." --api-key-perplexity "pplx-..."
 
 # Testing with mock provider
-thoth "test query" --api-key-mock "test-key" --provider mock
+thoth "test prompt" --api-key-mock "test-key" --provider mock
 ```
 
 ### Output Control
 ```bash
 # Generate combined report from multiple providers
-thoth "query" --combined
+thoth "prompt" --combined
 
 # Disable metadata headers and prompt section
-thoth "query" --no-metadata
+thoth "prompt" --no-metadata
 
 # Quiet mode for minimal output
-thoth "query" --quiet
+thoth "prompt" --quiet
 ```
 
 ### Interactive Mode
 ```bash
-# Enter interactive query mode with enhanced UI
+# Enter interactive prompt mode with enhanced UI
 thoth -i
 # or
 thoth --interactive
@@ -130,19 +130,19 @@ thoth --interactive
 # Interactive mode with specific provider
 thoth -i --provider openai --api-key-openai "sk-..."
 
-# Start with pre-configured settings and initial query
-thoth -i --mode deep_research --provider openai "initial query text"
+# Start with pre-configured settings and initial prompt
+thoth -i --mode deep_research --provider openai "initial prompt text"
 
-# Pipe query into interactive mode
-echo "query from stdin" | thoth -i --query-file -
+# Pipe prompt into interactive mode
+echo "prompt from stdin" | thoth -i --prompt-file -
 
 # Combined settings - all CLI arguments initialize the session
-thoth -i --mode exploration --provider perplexity --async "test query"
+thoth -i --mode exploration --provider perplexity --async "test prompt"
 ```
 
 Interactive mode features:
-- **Command-line initialization**: All CLI arguments (mode, provider, query, async) initialize the session
-- **Pre-populated query**: Initial query text appears in the input area, ready to edit or submit
+- **Command-line initialization**: All CLI arguments (mode, provider, prompt, async) initialize the session
+- **Pre-populated prompt**: Initial prompt text appears in the input area, ready to edit or submit
 - **Bordered text box**: Input appears in a blue-bordered frame with clear visual separation
 - **Multiline input**: Enter to submit, multiple options for new lines:
   - **Shift+Return** - Works in modern terminals with CSI-u support (iTerm2, Warp, Windows Terminal, VSCode)
@@ -224,7 +224,7 @@ Configure your OpenAI API key using one of these methods (in order of precedence
 
 1. **Command-line flag** (highest priority):
    ```bash
-   thoth "query" --api-key-openai "sk-..." --provider openai
+   thoth "prompt" --api-key-openai "sk-..." --provider openai
    ```
 
 2. **Environment variable**:
@@ -265,10 +265,10 @@ Override configuration via command-line:
 
 ```bash
 # Set custom timeout
-thoth "query" --provider openai --timeout 60.0
+thoth "prompt" --provider openai --timeout 60.0
 
 # Verbose mode shows configuration
-thoth "query" --provider openai -v
+thoth "prompt" --provider openai -v
 ```
 
 #### Performance Tuning
@@ -279,7 +279,7 @@ thoth "query" --provider openai -v
 - `0.8-1.2`: Creative, varied responses
 
 **Timeout Recommendations:**
-- Short queries: 15-30 seconds
+- Short prompts: 15-30 seconds
 - Deep research: 60-120 seconds
 - Complex analysis: 180+ seconds
 
@@ -296,7 +296,7 @@ thoth "query" --provider openai -v
 ### Timeout Errors
 - Increase timeout: `--timeout 120`
 - Check network connection
-- Try simpler query first
+- Try simpler prompt first
 
 ### Network Errors
 - Automatic connection retry
@@ -317,7 +317,7 @@ Each output file includes (unless `--no-metadata` is used):
 
 ```yaml
 ---
-query: What is Python?
+prompt: What is Python?
 mode: default
 provider: openai
 model: gpt-4o
@@ -403,14 +403,14 @@ make help        # Show all available commands
 make install     # Install thoth to /usr/local/bin
 make test        # Run test suite
 make clean       # Remove generated files
-make run         # Run example research query
+make run         # Run example research prompt
 ```
 
 ### Running Tests
 
 ```bash
 # Test with mock provider (no API keys needed)
-./thoth "test query" --provider mock
+./thoth "test prompt" --provider mock
 
 # Run OpenAI provider tests (requires API key)
 ./thoth_test -r --provider openai -t M8T
@@ -459,7 +459,7 @@ API keys are resolved in the following order (highest to lowest priority):
 
 | Command | Description | Example |
 |---------|-------------|---------|  
-| (default) | Run research with query | `thoth "your research query"` |
+| (default) | Run research with prompt | `thoth "your research prompt"` |
 | init | Setup wizard for API keys | `thoth init` |
 | status | Show operation details | `thoth status research-20240803-143022-xxx` |
 | list | Show recent operations | `thoth list` |
