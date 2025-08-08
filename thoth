@@ -53,6 +53,7 @@ from uuid import uuid4
 import re
 import shutil
 import signal
+from enum import Enum
 
 import click
 from rich.console import Console
@@ -89,6 +90,12 @@ _current_operation = None
 
 # Global config path
 _config_path = None
+
+
+class InputMode(Enum):
+    """Interactive input mode states"""
+    EDIT_MODE = "edit"
+    CLARIFICATION_MODE = "clarification"
 
 
 def get_config():
@@ -530,6 +537,7 @@ class InteractiveInitialSettings:
     prompt: Optional[str] = None
     async_mode: bool = False
     cli_api_keys: Optional[Dict[str, Optional[str]]] = None
+    clarify_mode: bool = False  # Start in clarification mode if True
 
 
 # ============================================================================
@@ -744,6 +752,7 @@ def build_epilog():
 )
 @click.option("--timeout", "-T", type=float, help="Override request timeout in seconds")
 @click.option("--interactive", "-i", is_flag=True, help="Enter interactive prompt mode")
+@click.option("--clarify", is_flag=True, help="Start interactive mode in Clarification Mode")
 def cli(
     ctx,
     args,
@@ -768,6 +777,7 @@ def cli(
     no_metadata,
     timeout,
     interactive,
+    clarify,
 ):
     """Thoth - AI-Powered Research Assistant
 
@@ -856,6 +866,7 @@ def cli(
             prompt=final_prompt,
             async_mode=async_mode,
             cli_api_keys=cli_api_keys,
+            clarify_mode=clarify,
         )
 
         asyncio.run(
@@ -2096,7 +2107,7 @@ class OpenAIProvider(ResearchProvider):
                     content = f"[Debug] Response structure: {response.model_dump_json()}"
                 elif hasattr(response, "__dict__"):
                     content = f"[Debug] Response attributes: {json.dumps({k: str(v)[:100] for k, v in response.__dict__.items() if not k.startswith('_')}, indent=2)}"
-            except:
+            except Exception:
                 content = f"[Debug] Response type: {type(response).__name__}"
 
         # Extract reasoning from the new format if available
@@ -3452,6 +3463,15 @@ class InteractiveSession:
 
         # Store CLI API keys
         self.cli_api_keys = initial_settings.cli_api_keys
+        
+        # Clarification mode state
+        self.current_input_mode = (
+            InputMode.CLARIFICATION_MODE if initial_settings.clarify_mode 
+            else InputMode.EDIT_MODE
+        )
+        self.original_query = None  # Store original query during clarification
+        self.clarification_response = None  # Store clarification suggestions
+        self.clarification_in_progress = False  # Track if clarification is happening
 
         # Detect and enable extended keyboard support
         self.supports_shift_enter = self._enable_extended_keyboard()
@@ -3558,10 +3578,25 @@ class InteractiveSession:
             if self.supports_shift_enter
             else "<b>Ctrl+J</b>"
         )
+        
+        # Show different help based on current input mode
+        if self.current_input_mode == InputMode.CLARIFICATION_MODE:
+            if self.clarification_response:
+                # Showing clarification suggestions
+                mode_indicator = "<b style='color:orange'>📝 Clarification Mode</b>"
+                action_help = "<b>Enter</b>: accept • <b>Shift+Tab</b>: edit mode"
+            else:
+                # Ready to clarify
+                mode_indicator = "<b style='color:yellow'>🔍 Clarification Mode</b>"
+                action_help = "<b>Enter</b>: clarify • <b>Shift+Tab</b>: edit mode"
+        else:
+            # Edit mode
+            mode_indicator = "<b style='color:green'>✏️ Edit Mode</b>"
+            action_help = f"<b>Enter</b>: submit • {newline_help}: new line • <b>Shift+Tab</b>: clarify"
+        
         return (
-            f"<b>Thoth Interactive Mode</b> | {mode_text} | {provider_text}\n"
-            f"Enter prompt • <b>Enter</b>: submit • {newline_help}: new line • "
-            f"<b>/help</b>: commands • <b>/keybindings</b>: shortcuts"
+            f"{mode_indicator} | {mode_text} | {provider_text}\n"
+            f"{action_help} • <b>/help</b>: commands"
         )
 
     def _update_help_text(self):
@@ -3619,9 +3654,49 @@ class InteractiveSession:
                 buffer.text = ""
                 return
 
-            # Normal prompt submission
-            self.result = text
-            event.app.exit()
+            # Handle based on current input mode
+            if self.current_input_mode == InputMode.CLARIFICATION_MODE:
+                if self.clarification_response:
+                    # Accept the refined query and switch to edit mode
+                    self.current_input_mode = InputMode.EDIT_MODE
+                    self.clarification_response = None
+                    self._update_help_text()
+                else:
+                    # Process clarification
+                    self._process_clarification(text)
+            else:
+                # Normal prompt submission in edit mode
+                self.result = text
+                event.app.exit()
+        
+        # Add Shift+Tab binding for mode toggle
+        # Using s-tab which is the standard notation for Shift+Tab
+        @kb.add("s-tab")
+        def handle_shift_tab(event):
+            """Shift+Tab: Toggle between Edit and Clarification modes"""
+            if self.current_input_mode == InputMode.EDIT_MODE:
+                self.current_input_mode = InputMode.CLARIFICATION_MODE
+                # Store the current text as original query
+                self.original_query = event.current_buffer.text
+            else:
+                self.current_input_mode = InputMode.EDIT_MODE
+                # If we have a clarification response, keep it in the buffer
+                # Otherwise restore original query if it exists
+                if not self.clarification_response and self.original_query:
+                    event.current_buffer.text = self.original_query
+            
+            self.clarification_response = None  # Clear any existing clarification
+            self._update_help_text()
+        
+        # Also bind backtab as a fallback for terminals that use this notation
+        try:
+            @kb.add("backtab")
+            def handle_shift_tab_alt(event):
+                """Shift+Tab alternative: Toggle between Edit and Clarification modes"""
+                handle_shift_tab(event)
+        except Exception:
+            # Some terminals may not support backtab
+            pass
 
         # Try to bind Shift+Enter via CSI-u extended keyboard protocol
         if self.supports_shift_enter:
@@ -3720,6 +3795,9 @@ class InteractiveSession:
             print("  /async             - Toggle async mode")
             print("  /status            - Check last operation status")
             print("  /exit, /quit       - Exit interactive mode")
+            print("\nInput Modes:")
+            print("  Edit Mode          - Write and submit prompts for research")
+            print("  Clarification Mode - Get AI suggestions to refine your prompt")
             print("\nType /keybindings to see keyboard shortcuts")
             print()
 
@@ -3730,7 +3808,8 @@ class InteractiveSession:
 
         def print_keybindings():
             print("\nKeyboard shortcuts:")
-            print("  Enter              - Submit prompt")
+            print("  Enter              - Submit prompt (Edit) / Accept clarification (Clarify)")
+            print("  Shift+Tab          - Toggle between Edit and Clarification modes")
 
             # Show newline options based on terminal support
             if self.supports_shift_enter:
@@ -3746,6 +3825,16 @@ class InteractiveSession:
             print("  Ctrl+W             - Delete word before cursor")
             print("  Ctrl+C             - Exit without submitting")
             print("  Arrow keys         - Navigate text")
+            print()
+            
+            print("Mode-specific behavior:")
+            print("  Edit Mode:")
+            print("    - Enter submits prompt for research")
+            print("    - Shift+Tab switches to Clarification Mode")
+            print("  Clarification Mode:")
+            print("    - Enter processes clarification")
+            print("    - After clarification, Enter accepts refined query")
+            print("    - Shift+Tab returns to Edit Mode")
             print()
 
             if self.supports_shift_enter:
@@ -3802,6 +3891,108 @@ class InteractiveSession:
         # This would be used for future enhancements where commands
         # require multiple inputs
         self.pending_command = None
+    
+    def _process_clarification(self, query: str):
+        """Process query through clarification mode"""
+        from prompt_toolkit.application import get_app
+        
+        # Store the original query
+        self.original_query = query
+        self.clarification_in_progress = True
+        
+        # Run clarification in background
+        async def run_clarification():
+            try:
+                # Get clarification suggestions from LLM
+                clarification_text = await self._get_clarification_suggestions(query)
+                
+                # Update the buffer with clarification response
+                app = get_app()
+                if app and app.current_buffer:
+                    app.current_buffer.text = clarification_text
+                    self.clarification_response = clarification_text
+                    self.clarification_in_progress = False
+                    self._update_help_text()
+                    
+            except Exception as e:
+                # On error, show error message and switch back to edit mode
+                app = get_app()
+                if app and app.current_buffer:
+                    app.current_buffer.text = f"Error getting clarification: {str(e)}\n\nOriginal query: {query}"
+                    self.current_input_mode = InputMode.EDIT_MODE
+                    self.clarification_in_progress = False
+                    self._update_help_text()
+        
+        # Schedule the async operation
+        import asyncio
+        
+        # Show loading message
+        app = get_app()
+        app.current_buffer.text = "🔍 Getting clarification suggestions..."
+        
+        # Run the clarification task
+        asyncio.create_task(run_clarification())
+    
+    async def _get_clarification_suggestions(self, query: str) -> str:
+        """Get clarification suggestions from the LLM"""
+        # Use the clarification mode configuration
+        clarification_config = BUILTIN_MODES.get("clarification", {})
+        system_prompt = clarification_config.get("system_prompt", "")
+        
+        # Get API keys from config or CLI
+        config = self.config
+        api_keys = self.cli_api_keys or {}
+        
+        # Try to get OpenAI API key
+        openai_key = (
+            api_keys.get("openai")
+            or config.data.get("providers", {}).get("openai", {}).get("api_key")
+            or os.environ.get("OPENAI_API_KEY")
+        )
+        
+        if not openai_key:
+            raise ValueError("OpenAI API key not found. Please set OPENAI_API_KEY or configure in ~/.thoth/config.toml")
+        
+        # Create a lightweight OpenAI call for clarification
+        try:
+            from openai import AsyncOpenAI
+            import httpx
+            
+            client = AsyncOpenAI(
+                api_key=openai_key,
+                timeout=httpx.Timeout(30.0, connect=5.0)
+            )
+            
+            # Build messages for clarification
+            messages = []
+            if system_prompt:
+                messages.append({"role": "system", "content": system_prompt})
+            messages.append({"role": "user", "content": query})
+            
+            # Make the API call
+            response = await client.chat.completions.create(
+                model="gpt-4o-mini",  # Use a fast model for clarification
+                messages=messages,
+                temperature=0.7,
+                max_tokens=500,
+            )
+            
+            # Extract and format the response
+            clarification_text = response.choices[0].message.content
+            
+            # Format the response nicely
+            formatted_response = f"""📝 Clarification Suggestions:
+            
+{clarification_text}
+
+---
+✏️ Refined query (edit as needed):
+{query}"""
+            
+            return formatted_response
+            
+        except Exception as e:
+            raise Exception(f"Failed to get clarification: {str(e)}")
 
     async def run_async(self) -> Optional[str]:
         """Run the interactive application asynchronously and return the prompt"""

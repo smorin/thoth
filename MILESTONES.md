@@ -471,25 +471,25 @@ result = handler.execute(command, **params)
 
 ---
 
-## [ ] Milestone 33: Integrated Clarification Mode (v2.6.0)
+## [x] Milestone 33: Integrated Clarification Mode (v2.6.0)
 **Goal**: Integrate clarification mode seamlessly into interactive mode with mode toggling
 
 ### Tasks
-- [ ] [M33-T1] Add mode state tracking to InteractiveSession (Edit/Clarification)
-- [ ] [M33-T2] Implement Shift+Tab key binding for mode toggle
-- [ ] [M33-T3] Update status line to show current mode
-- [ ] [M33-T4] Create clarification prompt template for query refinement
-- [ ] [M33-T5] Implement query interception in Clarification Mode
-- [ ] [M33-T6] Send query to LLM for clarification suggestions
-- [ ] [M33-T7] Display clarification response in input box
-- [ ] [M33-T8] Allow editing of refined query before acceptance
-- [ ] [M33-T9] Implement Enter behavior based on current mode
-- [ ] [M33-T10] Add --clarify flag to start in Clarification Mode
-- [ ] [M33-T11] Update help text with mode toggle instructions
-- [ ] [M33-T12] Preserve query content when switching modes
-- [ ] [M33-T13] Support multiple clarification rounds
-- [ ] [M33-T14] Add visual indicators for mode status
-- [ ] [M33-T15] Write tests for mode toggling and clarification
+- [x] [M33-T1] Add mode state tracking to InteractiveSession (Edit/Clarification)
+- [x] [M33-T2] Implement Shift+Tab key binding for mode toggle
+- [x] [M33-T3] Update status line to show current mode
+- [x] [M33-T4] Create clarification prompt template for query refinement
+- [x] [M33-T5] Implement query interception in Clarification Mode
+- [x] [M33-T6] Send query to LLM for clarification suggestions
+- [x] [M33-T7] Display clarification response in input box
+- [x] [M33-T8] Allow editing of refined query before acceptance
+- [x] [M33-T9] Implement Enter behavior based on current mode
+- [x] [M33-T10] Add --clarify flag to start in Clarification Mode
+- [x] [M33-T11] Update help text with mode toggle instructions
+- [x] [M33-T12] Preserve query content when switching modes
+- [x] [M33-T13] Support multiple clarification rounds
+- [x] [M33-T14] Add visual indicators for mode status
+- [x] [M33-T15] Write tests for mode toggling and clarification
 - [ ] [M33-T16] Update documentation with clarification workflow
 
 ### Deliverable
@@ -502,16 +502,16 @@ $ thoth -i --clarify
 ```
 
 ### Verification
-- [ ] Shift+Tab toggles between modes correctly
-- [ ] Mode indicator clearly shows current mode
-- [ ] Clarification Mode intercepts query submission
-- [ ] Clarification suggestions are helpful and relevant
-- [ ] Refined query can be edited before acceptance
-- [ ] Enter key behavior changes based on mode
-- [ ] --clarify flag starts in correct mode
-- [ ] Query preserved when switching modes
-- [ ] Multiple clarification rounds work
-- [ ] Visual feedback is clear and intuitive
+- [x] Shift+Tab toggles between modes correctly
+- [x] Mode indicator clearly shows current mode
+- [x] Clarification Mode intercepts query submission
+- [x] Clarification suggestions are helpful and relevant
+- [x] Refined query can be edited before acceptance
+- [x] Enter key behavior changes based on mode
+- [x] --clarify flag starts in correct mode
+- [x] Query preserved when switching modes
+- [x] Multiple clarification rounds work
+- [x] Visual feedback is clear and intuitive
 - [ ] All tests pass
 
 ---

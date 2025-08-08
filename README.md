@@ -397,12 +397,40 @@ make check-all   # Check both thoth and thoth_test
 make fix-all     # Fix and format both thoth and thoth_test
 ```
 
+#### Virtual Environment Management
+```bash
+make venv         # Create virtual environment with Python 3.11
+make venv-install # Install thoth's embedded dependencies into venv
+make venv-sync    # Sync exact dependencies (replaces all packages)
+make venv-clean   # Remove virtual environment
+```
+
+The virtual environment commands use UV to extract dependencies directly from the `thoth` script's embedded dependency declarations. This ensures the development environment matches the runtime dependencies exactly.
+
+Example workflow:
+```bash
+# Create and set up virtual environment
+make venv-install
+
+# Activate the virtual environment
+source .venv/bin/activate
+
+# Work with the exact dependencies thoth uses
+python -c "import openai, rich, click"  # All available
+
+# When done, deactivate
+deactivate
+
+# Or clean up completely
+make venv-clean
+```
+
 #### General Commands
 ```bash
 make help        # Show all available commands
 make install     # Install thoth to /usr/local/bin
 make test        # Run test suite
-make clean       # Remove generated files
+make clean       # Remove generated files and venv
 make run         # Run example research prompt
 ```
 

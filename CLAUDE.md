@@ -103,3 +103,6 @@ Please check @planning/references.md URLs to look up detail about the openai, pe
 
 ## OpenAI API Key
 get the openai api key from @openai.env
+
+# Test-driven development.
+- Always when creating an implementation plan, make the first thing to design the tests for each task and the milestone. The testing design should be the first step. Then, in the implementation, either a test should be created and then the code updated to pass, or a series of tests should be created and then implementation should pass them all. But it should be test-driven development.

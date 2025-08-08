@@ -21,6 +21,9 @@
 - Prompt interception and clarification in Clarification Mode before submission
 - Support for multiple clarification rounds within same session
 - Visual mode indicators and context-sensitive help text
+- Added virtual environment management to Makefile (venv, venv-install, venv-sync, venv-clean)
+- Integrated UV export for extracting embedded dependencies from thoth script
+- Implemented process substitution for direct dependency installation without temp files
 
 ### Changes in Version 25.0
 - Updated version to v2.5 based on v2.4
@@ -454,22 +457,28 @@ Create the simplest yet most powerful research tool where users can get comprehe
 | F-157 | Ty integration for type checking via UV | Must | - | ✓ Implemented |
 | F-158 | Independent verification of main code vs test code | Must | - | ✓ Implemented |
 | F-159 | Comprehensive help target showing all available commands | Must | - | ✓ Implemented |
+| F-160 | Virtual environment creation with Python 3.11 via make venv | Must | - | ✓ Implemented |
+| F-161 | Extract and install embedded dependencies via make venv-install | Must | - | ✓ Implemented |
+| F-162 | Sync exact dependencies via make venv-sync | Must | - | ✓ Implemented |
+| F-163 | Clean virtual environment via make venv-clean | Must | - | ✓ Implemented |
+| F-164 | UV export integration for dependency extraction | Must | - | ✓ Implemented |
+| F-165 | Process substitution for direct pip install without temp files | Must | - | ✓ Implemented |
 
 ### Interactive Clarification Mode Requirements (v2.6)
 
 | ID | Requirement | Priority | Test ID |
 |----|-------------|----------|---------|
-| F-160 | Support Shift+Tab to toggle between Edit Mode and Clarification Mode in interactive mode | Must | T-CLAR-01 |
-| F-161 | Display current mode (Edit Mode/Clarification Mode) in interactive UI | Must | T-CLAR-02 |
-| F-162 | In Clarification Mode, intercept prompt submission for refinement | Must | T-CLAR-03 |
-| F-163 | Send prompt to clarification prompt for improvement suggestions | Must | T-CLAR-04 |
-| F-164 | Display clarification questions/suggestions in interactive box | Must | T-CLAR-05 |
-| F-165 | Allow user to edit refined prompt before final submission | Must | T-CLAR-06 |
-| F-166 | Support multiple clarification rounds within same session | Must | T-CLAR-07 |
-| F-167 | Add --clarify flag to force Clarification Mode on startup | Should | T-CLAR-08 |
-| F-168 | Show mode toggle instructions below input box | Must | T-CLAR-09 |
-| F-169 | Preserve original prompt when switching modes | Must | T-CLAR-10 |
-| F-170 | Support Enter to accept clarification, Shift+Tab to return to edit | Must | T-CLAR-11 |
+| F-166 | Support Shift+Tab to toggle between Edit Mode and Clarification Mode in interactive mode | Must | T-CLAR-01 |
+| F-167 | Display current mode (Edit Mode/Clarification Mode) in interactive UI | Must | T-CLAR-02 |
+| F-168 | In Clarification Mode, intercept prompt submission for refinement | Must | T-CLAR-03 |
+| F-169 | Send prompt to clarification prompt for improvement suggestions | Must | T-CLAR-04 |
+| F-170 | Display clarification questions/suggestions in interactive box | Must | T-CLAR-05 |
+| F-171 | Allow user to edit refined prompt before final submission | Must | T-CLAR-06 |
+| F-172 | Support multiple clarification rounds within same session | Must | T-CLAR-07 |
+| F-173 | Add --clarify flag to force Clarification Mode on startup | Should | T-CLAR-08 |
+| F-174 | Show mode toggle instructions below input box | Must | T-CLAR-09 |
+| F-175 | Preserve original prompt when switching modes | Must | T-CLAR-10 |
+| F-176 | Support Enter to accept clarification, Shift+Tab to return to edit | Must | T-CLAR-11 |
 
 ---
 

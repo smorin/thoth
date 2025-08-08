@@ -1985,6 +1985,117 @@ all_tests = [
         provider="mock",
         expected_exit_code=0,
     ),
+    # ============================================================================
+    # Milestone 33: Clarification Mode Tests
+    # ============================================================================
+    TestCase(
+        test_id="INT-13",
+        description="Start in clarification mode with --clarify flag",
+        command=[
+            THOTH_EXECUTABLE,
+            "-i",
+            "--clarify",
+            "--provider",
+            "mock",
+        ],
+        test_type="interactive",
+        is_interactive=True,
+        interactive_scenario=[
+            # Should start in clarification mode
+            ("Clarification Mode", None),
+            # Exit without submitting
+            (None, "/exit"),
+            (None, Keys.ENTER),
+        ],
+        provider="mock",
+        expected_exit_code=0,
+    ),
+    TestCase(
+        test_id="INT-14",
+        description="Toggle between Edit and Clarification modes with Shift+Tab",
+        command=[
+            THOTH_EXECUTABLE,
+            "-i",
+            "--provider",
+            "mock",
+        ],
+        test_type="interactive",
+        is_interactive=True,
+        interactive_scenario=[
+            # Should start in Edit mode
+            ("Edit Mode", None),
+            # Type some text
+            (None, "test prompt"),
+            # Toggle to Clarification mode (escape+tab is Shift+Tab)
+            (None, "\x1b\t"),
+            ("Clarification Mode", None),
+            # Toggle back to Edit mode
+            (None, "\x1b\t"),
+            ("Edit Mode", None),
+            # Exit
+            (None, "/exit"),
+            (None, Keys.ENTER),
+        ],
+        provider="mock",
+        expected_exit_code=0,
+    ),
+    TestCase(
+        test_id="INT-15",
+        description="Preserve query when switching modes",
+        command=[
+            THOTH_EXECUTABLE,
+            "-i",
+            "--provider",
+            "mock",
+        ],
+        test_type="interactive",
+        is_interactive=True,
+        interactive_scenario=[
+            # Type a query
+            (None, "original query text"),
+            # Toggle to Clarification mode
+            (None, "\x1b\t"),
+            ("Clarification Mode", None),
+            # Toggle back - should preserve text
+            (None, "\x1b\t"),
+            ("Edit Mode", None),
+            # Submit the preserved text
+            (None, Keys.ENTER),
+            ("Processing prompt:", None),
+            ("original query text", None),
+        ],
+        provider="mock",
+        expected_exit_code=0,
+    ),
+    TestCase(
+        test_id="INT-16",
+        description="Help shows clarification mode instructions",
+        command=[
+            THOTH_EXECUTABLE,
+            "-i",
+            "--provider",
+            "mock",
+        ],
+        test_type="interactive",
+        is_interactive=True,
+        interactive_scenario=[
+            # Show help
+            (None, "/help"),
+            (None, Keys.ENTER),
+            ("Edit Mode", None),
+            ("Clarification Mode", None),
+            # Show keybindings
+            (None, "/keybindings"),
+            (None, Keys.ENTER),
+            ("Shift+Tab", None),
+            ("Toggle between Edit and Clarification", None),
+            # Exit
+            (None, "/exit"),
+            (None, Keys.ENTER),
+        ],
+        provider="mock",
+        expected_exit_code=0,
+    ),
     # Milestone 8: OpenAI Provider Tests
     TestCase(
         test_id="M8T-01",

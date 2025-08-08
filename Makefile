@@ -18,7 +18,7 @@ DIM := \033[2m
 ITALIC := \033[3m
 UNDERLINE := \033[4m
 
-.PHONY: help install dev test lint format typecheck check fix clean run test-lint test-format test-typecheck test-check test-fix lint-all format-all check-all fix-all install-uv install-uv-force set-path check-uv init smoke-test
+.PHONY: help install dev test lint format typecheck check fix clean run test-lint test-format test-typecheck test-check test-fix lint-all format-all check-all fix-all install-uv install-uv-force set-path check-uv init smoke-test venv venv-install venv-sync venv-clean
 
 # Default target
 help: ## Show this help message
@@ -46,6 +46,9 @@ help: ## Show this help message
 	@echo ""
 	@echo "$(YELLOW)UV Installation:$(NC)"
 	@grep -h -E '^(install-uv|install-uv-force|set-path):.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(CYAN)%-28s$(NC) %s\n", $$1, $$2}'
+	@echo ""
+	@echo "$(YELLOW)Virtual Environment:$(NC)"
+	@grep -h -E '^venv(-install|-sync|-clean)?:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(CYAN)%-28s$(NC) %s\n", $$1, $$2}'
 	@echo ""
 
 # Install thoth to system
@@ -154,6 +157,7 @@ clean: ## Remove generated files and caches
 	@find . -type f -name ".DS_Store" -delete 2>/dev/null || true
 	@rm -rf .pytest_cache 2>/dev/null || true
 	@rm -rf .ruff_cache 2>/dev/null || true
+	@rm -rf .venv 2>/dev/null || true
 	@echo "✓ Cleaned"
 
 # Example run
@@ -175,6 +179,7 @@ smoke-test: check-uv ## Run basic functionality tests
 	@./thoth --version
 	@./thoth --help
 	@echo "✓ Basic functionality working"
+
 
 # UV INSTALLATION TARGETS
 
@@ -230,3 +235,46 @@ set-path: ## Add UV to PATH in shell config
 	@echo "Then reload your shell configuration:"
 	@echo "  $(CYAN)source ~/.zshrc$(NC)  # or ~/.bashrc"
 	@echo ""
+
+# VIRTUAL ENVIRONMENT TARGETS
+
+# Create virtual environment
+venv: ## Create virtual environment if it doesn't exist
+	@if [ ! -d ".venv" ]; then \
+		echo "$(BOLD)Creating virtual environment...$(NC)"; \
+		uv venv --python 3.11; \
+		echo ""; \
+		echo "$(GREEN)✓ Virtual environment created$(NC)"; \
+		echo ""; \
+		echo "To activate the virtual environment, run:"; \
+		echo "  $(CYAN)source .venv/bin/activate$(NC)"; \
+	else \
+		echo "$(DIM)Virtual environment already exists$(NC)"; \
+		echo "To activate, run: $(CYAN)source .venv/bin/activate$(NC)"; \
+	fi
+
+# Install dependencies from thoth script
+venv-install: venv ## Install thoth dependencies into virtual environment
+	@echo "$(BOLD)Installing dependencies from thoth script...$(NC)"
+	@bash -c 'uv pip install -r <(uv export --script thoth --format requirements-txt --no-hashes)'
+	@echo ""
+	@echo "$(GREEN)✓ Dependencies installed successfully$(NC)"
+	@echo ""
+	@echo "Virtual environment is ready. Activate with:"
+	@echo "  $(CYAN)source .venv/bin/activate$(NC)"
+
+# Sync exact dependencies
+venv-sync: venv ## Sync exact thoth dependencies (replaces all packages)
+	@echo "$(BOLD)Syncing exact dependencies from thoth script...$(NC)"
+	@bash -c 'uv pip sync <(uv export --script thoth --format requirements-txt --no-hashes)'
+	@echo ""
+	@echo "$(GREEN)✓ Dependencies synchronized successfully$(NC)"
+	@echo ""
+	@echo "Virtual environment is ready. Activate with:"
+	@echo "  $(CYAN)source .venv/bin/activate$(NC)"
+
+# Clean virtual environment
+venv-clean: ## Remove virtual environment
+	@echo "$(BOLD)Removing virtual environment...$(NC)"
+	@rm -rf .venv
+	@echo "$(GREEN)✓ Virtual environment removed$(NC)"
