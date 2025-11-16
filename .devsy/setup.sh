@@ -17,72 +17,16 @@ echo "🔧 Running Devsy setup..."
 # PYTHON PROJECTS
 # ============================================================================
 
-# Install Python dependencies (uncomment ONE of these based on your project)
-# pip install -r requirements.txt
-# pip install -r requirements-dev.txt
-# pip install -e .
-# poetry install
-# pipenv install --dev
+# Install Python dependencies using UV
+echo "📦 Installing Python dependencies with pip..."
+pip install -r requirements.txt
 
-# ============================================================================
-# NODE.JS / JAVASCRIPT / TYPESCRIPT PROJECTS
-# ============================================================================
+# Make scripts executable
+echo "🔐 Making scripts executable..."
+chmod +x thoth thoth_test 2>/dev/null || true
 
-# Install Node dependencies (uncomment as needed)
-# npm install
-# npm ci  # For faster, reproducible builds
-# yarn install
-# pnpm install
-
-# Build if needed (uncomment as needed)
-# npm run build
-# npm run compile
-
-# ============================================================================
-# RUBY PROJECTS
-# ============================================================================
-
-# Install Ruby dependencies (uncomment as needed)
-# bundle install
-# gem install bundler && bundle install
-
-# ============================================================================
-# GO PROJECTS
-# ============================================================================
-
-# Download Go dependencies (uncomment as needed)
-# go mod download
-# go mod tidy
-
-# ============================================================================
-# RUST PROJECTS
-# ============================================================================
-
-# Build Rust dependencies (uncomment as needed)
-# cargo build
-# cargo fetch
-
-# ============================================================================
-# JAVA PROJECTS
-# ============================================================================
-
-# Build Java projects (uncomment based on your build tool)
-# mvn compile
-# mvn install -DskipTests
-# ./gradlew build
-# ./gradlew assemble
-
-# ============================================================================
-# ENVIRONMENT SETUP
-# ============================================================================
-
-# Create .env file from example (uncomment if needed)
-# if [ -f ".env.example" ] && [ ! -f ".env" ]; then
-#     cp .env.example .env
-# fi
-
-# Make scripts executable (uncomment if you have scripts)
-# chmod +x scripts/*.sh 2>/dev/null || true
-# chmod +x bin/* 2>/dev/null || true
+# Run basic checks
+echo "✔️  Running basic checks..."
+make check-uv || echo "⚠️  UV not found - install with: curl -LsSf https://astral.sh/uv/install.sh | sh"
 
 echo "✅ Devsy setup completed!"

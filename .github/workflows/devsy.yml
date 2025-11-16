@@ -66,8 +66,7 @@ jobs:
           model: ${{ inputs.model }}
 
           # === Setup Script ===
-          # Uncomment if you have a setup script:
-          # setup_script: '.devsy/setup.sh'
+          setup_script: '.devsy/setup.sh'
 
           # === Tool Configuration ===
           # Uncomment and modify these based on your project needs:
