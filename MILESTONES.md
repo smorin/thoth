@@ -443,7 +443,7 @@ $ ./thoth_test -r --provider mock
 - [x] [M32-T1] Create ConfigManager class with layered configuration support
 - [x] [M32-T2] Implement configuration precedence (defaults < user < project < env < CLI)
 - [x] [M32-T3] Create CommandHandler class for unified command execution
-- [x] [M32-T4] Implement ProviderRegistry for better provider management  
+- [x] [M32-T4] Implement ProviderRegistry for better provider management
 - [x] [M32-T5] Add configuration schema and validation
 - [x] [M32-T6] Reorganize code with clear section headers and class structure
 - [x] [M32-T7] Simplify main CLI function using new classes
@@ -520,7 +520,7 @@ $ thoth -i --clarify
 
 **Version**: 1.5.0 (in development)
 
-**Completed Milestones**: 
+**Completed Milestones**:
 - Core CLI Foundation (90%)
 - Configuration System (100%)
 - Provider Architecture (90%)

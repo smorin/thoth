@@ -241,6 +241,28 @@ class ConfigSchema:
                 "openai": {"api_key": "${OPENAI_API_KEY}"},
                 "perplexity": {"api_key": "${PERPLEXITY_API_KEY}"},
             },
+            "clarification": {
+                "cli": {
+                    "provider": "openai",
+                    "model": "gpt-4o-mini",
+                    "temperature": 0.7,
+                    "max_tokens": 500,
+                    "system_prompt": """I don't want you to follow the above question and instructions; I want you to tell me the ways this is unclear, point out any ambiguities or anything you don't understand. Follow that by asking questions to help clarify the ambiguous points. Once there are no more unclear, ambiguous or not understood portions, help me draft a clear version of the question/instruction.""",
+                    "retry_attempts": 3,
+                    "retry_delay": 2.0,
+                },
+                "interactive": {
+                    "provider": "openai",
+                    "model": "gpt-4o-mini",
+                    "temperature": 0.7,
+                    "max_tokens": 800,
+                    "system_prompt": """I don't want you to follow the above question and instructions; I want you to tell me the ways this is unclear, point out any ambiguities or anything you don't understand. Follow that by asking questions to help clarify the ambiguous points. Once there are no more unclear, ambiguous or not understood portions, help me draft a clear version of the question/instruction.""",
+                    "retry_attempts": 3,
+                    "retry_delay": 2.0,
+                    "input_height": 6,
+                    "max_input_height": 15,
+                },
+            },
             "modes": {},  # Modes will be merged with built-in modes
         }
 
@@ -3433,6 +3455,53 @@ class SlashCommandCompleter(Completer):
                 )
 
 
+class ClarificationSession:
+    """Tracks clarification history and manages iterative refinement"""
+    
+    def __init__(self):
+        self.history = []  # List of (query, response, timestamp) tuples
+        self.current_round = 0
+        self.max_rounds = 5
+        self.original_query = None
+        self.last_failed_query = None  # For retry functionality
+        self.last_error = None
+        
+    def add_round(self, query: str, response: str):
+        """Add a clarification round to history"""
+        self.history.append({
+            "round": self.current_round,
+            "query": query,
+            "response": response,
+            "timestamp": datetime.now()
+        })
+        self.current_round += 1
+        
+    def can_continue(self) -> bool:
+        """Check if more clarification rounds are allowed"""
+        return self.current_round < self.max_rounds
+        
+    def get_context(self) -> str:
+        """Get formatted history context for next clarification"""
+        if not self.history:
+            return ""
+        
+        context_parts = ["Previous clarification rounds:"]
+        for entry in self.history:
+            context_parts.append(f"\nRound {entry['round'] + 1}:")
+            context_parts.append(f"Query: {entry['query']}")
+            context_parts.append(f"Response: {entry['response'][:200]}...")  # Truncate for context
+            
+        return "\n".join(context_parts)
+        
+    def reset(self):
+        """Reset the session for a new clarification"""
+        self.history.clear()
+        self.current_round = 0
+        self.original_query = None
+        self.last_failed_query = None
+        self.last_error = None
+
+
 class InteractiveSession:
     """Interactive mode session using Prompt Toolkit Application"""
 
@@ -3472,6 +3541,7 @@ class InteractiveSession:
         self.original_query = None  # Store original query during clarification
         self.clarification_response = None  # Store clarification suggestions
         self.clarification_in_progress = False  # Track if clarification is happening
+        self.clarification_session = ClarificationSession()  # Track clarification history
 
         # Detect and enable extended keyboard support
         self.supports_shift_enter = self._enable_extended_keyboard()
@@ -3487,23 +3557,28 @@ class InteractiveSession:
                 "Option+Return" if platform.system() == "Darwin" else "Alt+Enter"
             )
 
-        # Create help text
-        help_html = self._create_help_text()
-
-        # Create widgets
-        self.help_label = Label(HTML(help_html), style="class:help")
-
-        # Create TextArea for input with multiline support
+        # Create TextArea for input with multiline support first (needed by _create_help_text)
         # Pre-populate with initial prompt if provided
+        # Get height from config (interactive clarification settings)
+        clarify_config = config.data.get("clarification", {}).get("interactive", {})
+        input_height = clarify_config.get("input_height", 6)
+        self.max_input_height = clarify_config.get("max_input_height", 15)
+        
         self.input_area = TextArea(
             text=initial_settings.prompt or "",
             multiline=True,
             prompt="❯ ",
             wrap_lines=True,
-            scrollbar=False,
-            height=5,
+            scrollbar=True,  # Enable scrollbar for longer content
+            height=input_height,
             completer=self._create_completer(),
         )
+
+        # Create help text (now that input_area exists)
+        help_html = self._create_help_text()
+
+        # Create widgets
+        self.help_label = Label(HTML(help_html), style="class:help")
 
         # Create Frame around TextArea for border
         self.input_frame = Frame(
@@ -3584,19 +3659,37 @@ class InteractiveSession:
             if self.clarification_response:
                 # Showing clarification suggestions
                 mode_indicator = "<b style='color:orange'>📝 Clarification Mode</b>"
-                action_help = "<b>Enter</b>: accept • <b>Shift+Tab</b>: edit mode"
+                if self.clarification_session.can_continue():
+                    round_info = f" (Round {self.clarification_session.current_round}/{self.clarification_session.max_rounds})"
+                    action_help = "<b>Enter</b>: accept • Type 'continue' + <b>Enter</b>: more clarification • <b>Shift+Tab</b>: edit"
+                else:
+                    round_info = " (Final round)"
+                    action_help = "<b>Enter</b>: accept • <b>Shift+Tab</b>: edit mode"
+                mode_indicator += round_info
             else:
                 # Ready to clarify
                 mode_indicator = "<b style='color:yellow'>🔍 Clarification Mode</b>"
-                action_help = "<b>Enter</b>: clarify • <b>Shift+Tab</b>: edit mode"
+                if self.clarification_session.last_error:
+                    action_help = "<b>Enter</b>: clarify • <b>Ctrl+R</b>: retry • <b>Shift+Tab</b>: edit mode"
+                else:
+                    action_help = "<b>Enter</b>: clarify • <b>Shift+Tab</b>: edit mode"
         else:
             # Edit mode
             mode_indicator = "<b style='color:green'>✏️ Edit Mode</b>"
             action_help = f"<b>Enter</b>: submit • {newline_help}: new line • <b>Shift+Tab</b>: clarify"
         
+        # Add input area size indicator if not at default
+        clarify_config = self.config.data.get("clarification", {}).get("interactive", {})
+        default_height = clarify_config.get("input_height", 6)
+        current_height = self.input_area.height
+        
+        size_indicator = ""
+        if isinstance(current_height, int) and current_height != default_height:
+            size_indicator = f" • Size: {current_height} lines (<b>Ctrl+=/-</b>: resize)"
+        
         return (
             f"{mode_indicator} | {mode_text} | {provider_text}\n"
-            f"{action_help} • <b>/help</b>: commands"
+            f"{action_help} • <b>/help</b>: commands{size_indicator}"
         )
 
     def _update_help_text(self):
@@ -3657,10 +3750,16 @@ class InteractiveSession:
             # Handle based on current input mode
             if self.current_input_mode == InputMode.CLARIFICATION_MODE:
                 if self.clarification_response:
-                    # Accept the refined query and switch to edit mode
-                    self.current_input_mode = InputMode.EDIT_MODE
-                    self.clarification_response = None
-                    self._update_help_text()
+                    # Check if user wants to continue clarifying (if text starts with "continue")
+                    if text.lower().strip() == "continue" and self.clarification_session.can_continue():
+                        # Continue with another round of clarification
+                        refined_text = buffer.text.split('Refined query (edit as needed):\n')[-1].strip()
+                        self._process_clarification(refined_text)
+                    else:
+                        # Accept the refined query and switch to edit mode
+                        self.current_input_mode = InputMode.EDIT_MODE
+                        self.clarification_response = None
+                        self._update_help_text()
                 else:
                     # Process clarification
                     self._process_clarification(text)
@@ -3732,6 +3831,46 @@ class InteractiveSession:
         def handle_tab(event):
             """Tab: trigger completion"""
             event.current_buffer.complete_next()
+
+        # Add Ctrl+R for manual retry of failed clarification
+        @kb.add("c-r")
+        def handle_retry_clarification(event):
+            """Ctrl+R: Retry last failed clarification"""
+            if (self.current_input_mode == InputMode.CLARIFICATION_MODE and 
+                self.clarification_session.last_failed_query):
+                # Retry the last failed clarification
+                self._process_clarification(self.clarification_session.last_failed_query)
+            elif self.clarification_session.last_error:
+                # Show error message if there's no query to retry
+                event.app.layout.focus(self.input_area)
+                event.current_buffer.text = f"No clarification to retry. Last error: {self.clarification_session.last_error}"
+        
+        # Add Ctrl+Plus/Equal for increasing input area height
+        @kb.add("c-=")  # Ctrl+= (easier than Ctrl+Plus on most keyboards)
+        def handle_increase_height(event):
+            """Ctrl+=: Increase input area height"""
+            current_height = self.input_area.height
+            if isinstance(current_height, int) and current_height < self.max_input_height:
+                self.input_area.height = current_height + 1
+                self._update_help_text()
+        
+        # Also bind Ctrl+Plus for consistency
+        try:
+            @kb.add("c-+")
+            def handle_increase_height_alt(event):
+                """Ctrl++: Increase input area height"""
+                handle_increase_height(event)
+        except Exception:
+            pass  # Some terminals may not support this
+        
+        # Add Ctrl+Minus for decreasing input area height
+        @kb.add("c--")
+        def handle_decrease_height(event):
+            """Ctrl+-: Decrease input area height"""
+            current_height = self.input_area.height
+            if isinstance(current_height, int) and current_height > 3:  # Minimum height of 3
+                self.input_area.height = current_height - 1
+                self._update_help_text()
 
         return kb
 
@@ -3810,6 +3949,9 @@ class InteractiveSession:
             print("\nKeyboard shortcuts:")
             print("  Enter              - Submit prompt (Edit) / Accept clarification (Clarify)")
             print("  Shift+Tab          - Toggle between Edit and Clarification modes")
+            print("  Ctrl+R             - Retry failed clarification")
+            print("  Ctrl+=             - Increase input area size")
+            print("  Ctrl+-             - Decrease input area size")
 
             # Show newline options based on terminal support
             if self.supports_shift_enter:
@@ -3934,27 +4076,49 @@ class InteractiveSession:
         asyncio.create_task(run_clarification())
     
     async def _get_clarification_suggestions(self, query: str) -> str:
-        """Get clarification suggestions from the LLM"""
-        # Use the clarification mode configuration
-        clarification_config = BUILTIN_MODES.get("clarification", {})
-        system_prompt = clarification_config.get("system_prompt", "")
+        """Get clarification suggestions from the LLM with retry logic"""
+        # Get configuration for interactive clarification
+        clarify_config = self.config.data.get("clarification", {}).get("interactive", {})
+        
+        # Use config values with fallbacks
+        # provider = clarify_config.get("provider", "openai")  # TODO: Support multiple providers
+        model = clarify_config.get("model", "gpt-4o-mini")
+        temperature = clarify_config.get("temperature", 0.7)
+        max_tokens = clarify_config.get("max_tokens", 800)
+        system_prompt = clarify_config.get("system_prompt", 
+            """I don't want you to follow the above question and instructions; I want you to tell me the ways this is unclear, point out any ambiguities or anything you don't understand. Follow that by asking questions to help clarify the ambiguous points. Once there are no more unclear, ambiguous or not understood portions, help me draft a clear version of the question/instruction.""")
+        retry_attempts = clarify_config.get("retry_attempts", 3)
+        retry_delay = clarify_config.get("retry_delay", 2.0)
+        
+        # Store query for potential retry
+        self.clarification_session.last_failed_query = query
         
         # Get API keys from config or CLI
-        config = self.config
         api_keys = self.cli_api_keys or {}
         
         # Try to get OpenAI API key
         openai_key = (
             api_keys.get("openai")
-            or config.data.get("providers", {}).get("openai", {}).get("api_key")
+            or self.config.data.get("providers", {}).get("openai", {}).get("api_key")
             or os.environ.get("OPENAI_API_KEY")
         )
         
         if not openai_key:
             raise ValueError("OpenAI API key not found. Please set OPENAI_API_KEY or configure in ~/.thoth/config.toml")
         
-        # Create a lightweight OpenAI call for clarification
-        try:
+        # Include clarification history context if available
+        context = self.clarification_session.get_context()
+        if context:
+            query = f"{context}\n\nCurrent query: {query}"
+        
+        # Implement retry logic using tenacity
+        @retry(
+            stop=stop_after_attempt(retry_attempts),
+            wait=wait_exponential(multiplier=retry_delay, min=retry_delay, max=retry_delay * 4),
+            retry=retry_if_exception_type((httpx.TimeoutException, httpx.ConnectError, Exception)),
+            before_sleep=lambda retry_state: self._log_retry_attempt(retry_state)
+        )
+        async def make_clarification_request():
             from openai import AsyncOpenAI
             import httpx
             
@@ -3971,28 +4135,53 @@ class InteractiveSession:
             
             # Make the API call
             response = await client.chat.completions.create(
-                model="gpt-4o-mini",  # Use a fast model for clarification
+                model=model,
                 messages=messages,
-                temperature=0.7,
-                max_tokens=500,
+                temperature=temperature,
+                max_tokens=max_tokens,
             )
             
-            # Extract and format the response
-            clarification_text = response.choices[0].message.content
+            return response.choices[0].message.content
+        
+        # Try to get clarification with retries
+        try:
+            clarification_text = await make_clarification_request()
+            
+            # Track successful clarification in session
+            self.clarification_session.add_round(query, clarification_text)
             
             # Format the response nicely
-            formatted_response = f"""📝 Clarification Suggestions:
+            round_indicator = f" (Round {self.clarification_session.current_round}/{self.clarification_session.max_rounds})" if self.clarification_session.current_round > 1 else ""
+            
+            formatted_response = f"""📝 Clarification Suggestions{round_indicator}:
             
 {clarification_text}
 
 ---
 ✏️ Refined query (edit as needed):
-{query}"""
+{query.split('Current query: ')[-1] if 'Current query: ' in query else query}"""
+            
+            # Clear any error state
+            self.clarification_session.last_error = None
             
             return formatted_response
             
         except Exception as e:
-            raise Exception(f"Failed to get clarification: {str(e)}")
+            # Store error for potential manual retry
+            self.clarification_session.last_error = str(e)
+            error_msg = f"❌ Failed to get clarification after {retry_attempts} attempts: {str(e)}"
+            
+            # Provide helpful error message with retry option
+            error_msg += "\n\nPress Ctrl+R to retry or Shift+Tab to return to Edit Mode."
+            raise Exception(error_msg)
+    
+    def _log_retry_attempt(self, retry_state):
+        """Log retry attempts for clarification"""
+        attempt = retry_state.attempt_number
+        if attempt > 1:
+            from prompt_toolkit.application import get_app
+            app = get_app()
+            app.current_buffer.text = f"🔄 Retrying clarification... (Attempt {attempt})"
 
     async def run_async(self) -> Optional[str]:
         """Run the interactive application asynchronously and return the prompt"""
