@@ -86,7 +86,7 @@
 
 ### Changes in Version 20.0
 - Updated version to v2.1 to reflect comprehensive feature additions
-- Added new commands: update, clean, config, export, import
+- Added new commands: update, clean, config
 - Added advanced provider features from implementation plan
 - Added multi-provider coordination features
 - Added missing core features as new requirements
@@ -265,9 +265,7 @@ Create the simplest yet most powerful research tool where users can get comprehe
 |----|-------------|----------|---------|
 | F-41 | Implement `update` command to fix stale operation statuses | Must | T-CMD-04 |
 | F-42 | Implement `clean` command with filtering options for checkpoint management | Must | T-CMD-05 |
-| F-43 | Implement `config` command for configuration management | Must | T-CMD-06 |
-| F-44 | Implement `export` command to export research results | Must | T-CMD-07 |
-| F-45 | Implement `import` command to import research data | Must | T-CMD-08 |
+| F-43 | Implement `config` command for configuration management (validate, set, get subcommands) | Must | T-CMD-06 |
 | F-46 | Add --force flag support where applicable | Must | T-CLI-04 |
 | F-47 | Add --dry-run flag for preview operations | Must | T-CLI-05 |
 
@@ -313,16 +311,19 @@ Create the simplest yet most powerful research tool where users can get comprehe
 | F-68 | Create first-time setup flow improvements | Should | T-UX-06 |
 | F-69 | Add helpful tips for new users | Should | T-UX-07 |
 | F-70 | Implement shell completion support | Should | T-CLI-06 |
+| F-70a | `list` command automatically detects and flags stale operations (in_progress too long) | Must | T-STALE-01 |
+| F-70b | `status` command automatically detects and flags stale operations | Must | T-STALE-02 |
 
 ### Configuration Enhancements (v2.1)
 
 | ID | Requirement | Priority | Test ID |
 |----|-------------|----------|---------|
-| F-71 | Add config validation command | Must | T-CFG-07 |
+| F-71 | Add config validation command (`config validate`) | Must | T-CFG-07 |
 | F-72 | Support per-project configuration | Should | T-CFG-08 |
 | F-73 | Implement config migration for version updates | Must | T-CFG-09 |
-| F-74 | Add config export/import functionality | Should | T-CFG-10 |
-| F-75 | Support environment-specific configs | Should | T-CFG-11 |
+| F-74 | Implement `config get <key>` to read individual config values (dot-notation) | Must | T-CFG-10 |
+| F-75 | Implement `config set <key> <value>` to write individual config values (dot-notation) | Must | T-CFG-11 |
+| F-75a | Support environment-specific configs | Should | T-CFG-12 |
 
 ### Clean Command Features (v2.1)
 
@@ -330,8 +331,6 @@ Create the simplest yet most powerful research tool where users can get comprehe
 |----|-------------|----------|---------|
 | F-76 | Support --in-progress, --completed, --failed filters | Must | T-CLEAN-01 |
 | F-77 | Add --days filter for age-based cleanup | Must | T-CLEAN-02 |
-| F-78 | Implement --pattern filter for pattern matching | Should | T-CLEAN-03 |
-| F-79 | Add --keep-recent option to preserve N most recent | Must | T-CLEAN-04 |
 | F-80 | Detect and clean orphaned output files | Should | T-CLEAN-05 |
 
 ### Critical Infrastructure Requirements (v2.1)
@@ -524,8 +523,6 @@ Commands:
   update        Fix stale operation statuses
   clean         Clean up old checkpoints and files
   config        Manage configuration
-  export        Export research results
-  import        Import research data
   providers     List available models from each provider
   help          Show help for commands
 
@@ -655,8 +652,6 @@ thoth update --dry-run          # Preview what would be updated
 # Clean old checkpoints
 thoth clean --days 30           # Remove operations older than 30 days
 thoth clean --failed            # Remove only failed operations
-thoth clean --keep-recent 10    # Keep 10 most recent operations
-thoth clean --pattern "test*"   # Remove operations matching pattern
 
 # List with filters
 thoth list --in-progress        # Show only active operations
@@ -665,12 +660,8 @@ thoth list --days 7             # Show operations from last 7 days
 
 # Configuration management
 thoth config validate           # Validate current configuration
-thoth config export > backup.toml  # Export configuration
-thoth config import backup.toml    # Import configuration
-
-# Export/Import results
-thoth export research-20240803-143022-xxx --format json
-thoth import research-backup.json
+thoth config get providers.openai.model  # Get a config value
+thoth config set providers.openai.model gpt-4o  # Set a config value
 
 # List available models
 thoth providers --models                      # List all models for all providers
@@ -721,8 +712,6 @@ thoth providers -- --models --no-cache        # Bypass cache completely without 
 | update | Fix stale operation statuses | `thoth update --dry-run` |
 | clean | Clean up old checkpoints | `thoth clean --days 30` |
 | config | Manage configuration | `thoth config validate` |
-| export | Export research results | `thoth export operation-id` |
-| import | Import research data | `thoth import file.json` |
 | providers | List available models | `thoth providers --models` |
 
 ### 10.5 Exit Codes
@@ -1441,10 +1430,9 @@ While the primary use case is simple, power users can access:
 - Integration with local knowledge bases
 - Plugin system for extensibility
 
-### Version 2.2  
+### Version 2.2
 - Real-time streaming of research progress
 - Web dashboard for operation monitoring
-- Export to multiple formats (JSON, CSV)
 - Collaborative research sessions
 - Batch processing support
 - Long operation warnings with async suggestions
@@ -1531,7 +1519,7 @@ Key features implemented in v2.1:
   - Minimum width of 20 characters for consistent formatting
 - Graceful error handling for invalid providers (F-107)
 - Note: Due to Click option parsing, providers command requires -- separator: `thoth providers -- --models`
-- New commands: update, clean, config, export, import
+- New commands: update, clean, config
 - Provider fallback and health monitoring
 - Adaptive polling intervals
 - Shell completion support

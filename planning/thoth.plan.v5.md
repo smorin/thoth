@@ -495,11 +495,9 @@ This plan reflects the comprehensive restructuring of milestones to properly seq
 - [ ] **M15-01**: Complete resume command implementation
 - [ ] **M15-02**: Implement update command (new)
 - [ ] **M15-03**: Implement clean command (new)
-- [ ] **M15-04**: Add config command (new)
-- [ ] **M15-05**: Add export command (new)
-- [ ] **M15-06**: Add import command (new)
-- [ ] **M15-07**: Add --force flags where needed
-- [ ] **M15-08**: Add --dry-run support
+- [ ] **M15-04**: Add config command with validate, set, get subcommands (new)
+- [ ] **M15-05**: Add --force flags where needed
+- [ ] **M15-06**: Add --dry-run support
 
 ### Test Plan (M15T-01 to M15T-50)
 
@@ -569,13 +567,14 @@ This plan reflects the comprehensive restructuring of milestones to properly seq
 ### Implementation Tasks
 
 - [ ] **M18-01**: Implement --config flag (high priority) [T-CFG-06]
-- [ ] **M18-02**: Add config validation command
+- [ ] **M18-02**: Add config validation command (`config validate`)
 - [ ] **M18-03**: Config migration for version updates
 - [ ] **M18-04**: Per-project configuration support
-- [ ] **M18-05**: Config export/import functionality
-- [ ] **M18-06**: Environment-specific configs
-- [ ] **M18-07**: Config encryption for API keys
-- [ ] **M18-08**: Interactive config editor
+- [ ] **M18-05**: Implement `config get <key>` to read config values (dot-notation paths)
+- [ ] **M18-06**: Implement `config set <key> <value>` to write config values (dot-notation paths)
+- [ ] **M18-07**: Environment-specific configs
+- [ ] **M18-08**: Config encryption for API keys
+- [ ] **M18-09**: Interactive config editor
 
 ### Missing Tests
 
@@ -704,14 +703,12 @@ This plan reflects the comprehensive restructuring of milestones to properly seq
 
 - [ ] **M24-01**: Add 'clean' to CLI command list
 - [ ] **M24-02**: Create `clean_command()` function with option parsing
-- [ ] **M24-03**: Implement filter logic (--in-progress, --completed, --failed, --days, --pattern)
-- [ ] **M24-04**: Add --keep-recent logic to preserve N most recent operations
-- [ ] **M24-05**: Implement dry-run mode showing what would be deleted
-- [ ] **M24-06**: Add confirmation prompts with deletion summary
-- [ ] **M24-07**: Create safe deletion with error handling
-- [ ] **M24-08**: Add cleanup statistics reporting
-- [ ] **M24-09**: Implement orphaned output file detection
-- [ ] **M24-10**: Add configuration options for default cleanup behavior
+- [ ] **M24-03**: Implement filter logic (--in-progress, --completed, --failed, --days)
+- [ ] **M24-04**: Implement dry-run mode showing what would be deleted
+- [ ] **M24-05**: Add confirmation prompts with deletion summary
+- [ ] **M24-06**: Create safe deletion with error handling
+- [ ] **M24-07**: Add cleanup statistics reporting
+- [ ] **M24-08**: Implement orphaned output file detection
 
 ### Test Plan (M24T-01 to M24T-08)
 
@@ -719,10 +716,8 @@ This plan reflects the comprehensive restructuring of milestones to properly seq
 - [ ] **M24T-02**: Verify clean --completed filter works correctly
 - [ ] **M24T-03**: Verify clean --failed filter works correctly
 - [ ] **M24T-04**: Verify clean --days filter works correctly
-- [ ] **M24T-05**: Verify clean --pattern filter works correctly
-- [ ] **M24T-06**: Verify clean --keep-recent preserves correct operations
-- [ ] **M24T-07**: Verify clean dry-run mode shows preview without deletion
-- [ ] **M24T-08**: Verify clean confirmation and cancellation work
+- [ ] **M24T-05**: Verify clean dry-run mode shows preview without deletion
+- [ ] **M24T-06**: Verify clean confirmation and cancellation work
 
 ---
 
@@ -738,7 +733,9 @@ This plan reflects the comprehensive restructuring of milestones to properly seq
 - [ ] **M25-02**: Add --in-progress filter (show only queued/running operations)
 - [ ] **M25-03**: Add --completed and --failed filters
 - [ ] **M25-04**: Add --days filter to show operations older than N days
-- [ ] **M25-05**: Update help text and command documentation
+- [ ] **M25-05**: Add automatic stale operation detection and flagging in list output
+- [ ] **M25-06**: Add automatic stale operation detection and flagging in status output
+- [ ] **M25-07**: Update help text and command documentation
 
 ### Test Plan (M25T-01 to M25T-04)
 
@@ -746,6 +743,8 @@ This plan reflects the comprehensive restructuring of milestones to properly seq
 - [ ] **M25T-02**: Verify list --completed shows only completed operations
 - [ ] **M25T-03**: Verify list --failed shows only failed operations
 - [ ] **M25T-04**: Verify list --days filter works correctly
+- [ ] **M25T-05**: Verify list automatically flags stale operations
+- [ ] **M25T-06**: Verify status automatically flags stale operations
 
 ---
 
@@ -762,11 +761,12 @@ This plan reflects the comprehensive restructuring of milestones to properly seq
 - [ ] **M26-03**: Test update dry-run mode output format
 - [ ] **M26-04**: Test clean command with various filter combinations
 - [ ] **M26-05**: Test clean --in-progress filter specifically
-- [ ] **M26-06**: Test clean --keep-recent logic with edge cases
-- [ ] **M26-07**: Test clean confirmation prompts and cancellation
-- [ ] **M26-08**: Test list command with all new filters
-- [ ] **M26-09**: Test edge cases (empty checkpoints, corrupted files, permission errors)
-- [ ] **M26-10**: Test help text completeness for all new commands
+- [ ] **M26-06**: Test clean confirmation prompts and cancellation
+- [ ] **M26-07**: Test list command with all new filters
+- [ ] **M26-08**: Test stale detection in list and status commands
+- [ ] **M26-09**: Test config get/set with dot-notation keys
+- [ ] **M26-10**: Test edge cases (empty checkpoints, corrupted files, permission errors)
+- [ ] **M26-11**: Test help text completeness for all new commands
 
 ---
 
@@ -832,7 +832,6 @@ This plan reflects the comprehensive restructuring of milestones to properly seq
 - Test list with hundreds of operations
 - Test list sorting options
 - Test list with corrupted checkpoints
-- Test list CSV/JSON export
 
 ### Help Command:
 - Test help with abbreviations
