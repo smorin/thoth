@@ -2129,17 +2129,16 @@ class OpenAIProvider(ResearchProvider):
             # Responses API format
             if isinstance(response.output, list):
                 # New o3 format: output is a list with reasoning and message items
+                texts = []
                 for item in response.output:
                     if hasattr(item, "type") and item.type == "message":
                         if hasattr(item, "content") and isinstance(item.content, list):
-                            # Extract text from content items
                             for content_item in item.content:
                                 if hasattr(content_item, "text"):
-                                    content = content_item.text
-                                    break
+                                    texts.append(content_item.text)
                         elif hasattr(item, "content"):
-                            content = item.content
-                        break
+                            texts.append(item.content)
+                content = "\n".join(texts) if texts else ""
             elif isinstance(response.output, dict):
                 content = response.output.get("content", "")
             elif isinstance(response.output, str):
@@ -2587,7 +2586,7 @@ async def run_research(
         output_path.mkdir(parents=True, exist_ok=True)
 
     if not check_disk_space(output_path):
-        raise DiskSpaceError("Insufficient disk space", "Free up at least 100MB")
+        raise DiskSpaceError("Insufficient disk space. Free up at least 100MB")
 
     # Validate that mode and prompt are provided
     if not mode or not prompt:
@@ -2878,8 +2877,8 @@ async def _execute_research(
     if len(operation.output_paths) > 1 and combined:
         contents = {}
         for provider_name, path in operation.output_paths.items():
-            with open(path, "r") as f:
-                contents[provider_name] = f.read()
+            async with aiofiles.open(path, "r") as f:
+                contents[provider_name] = await f.read()
 
         combined_path = await output_manager.generate_combined_report(
             operation,
@@ -4205,7 +4204,7 @@ class InteractiveSession:
         app.current_buffer.text = "🔍 Getting clarification suggestions..."
 
         # Run the clarification task
-        asyncio.create_task(run_clarification())
+        asyncio.ensure_future(run_clarification())
 
     async def _get_clarification_suggestions(self, query: str) -> str:
         """Get clarification suggestions from the LLM with retry logic"""
@@ -4255,9 +4254,7 @@ class InteractiveSession:
             wait=wait_exponential(
                 multiplier=retry_delay, min=retry_delay, max=retry_delay * 4
             ),
-            retry=retry_if_exception_type(
-                (httpx.TimeoutException, httpx.ConnectError, Exception)
-            ),
+            retry=retry_if_exception_type((httpx.TimeoutException, httpx.ConnectError)),
             before_sleep=lambda retry_state: self._log_retry_attempt(retry_state),
         )
         async def make_clarification_request():
@@ -4387,13 +4384,11 @@ class InteractiveSession:
         # Check if we're already in an event loop
         try:
             asyncio.get_running_loop()
-            # We're in an async context, can't use run()
-            raise RuntimeError(
-                "Cannot use run() in async context, use run_async() instead"
-            )
         except RuntimeError:
             # No running loop, we can use asyncio.run()
             return asyncio.run(self.run_async())
+        # We're in an async context, can't use run()
+        raise RuntimeError("Cannot use run() in async context, use run_async() instead")
 
 
 async def enter_interactive_mode(
@@ -4523,21 +4518,29 @@ def handle_sigint(signum, frame):
         # Update operation status (cancelled per PRD lifecycle states)
         _current_operation.transition_to("cancelled")
 
-        # Save checkpoint synchronously
+        # Save checkpoint synchronously (no event loop needed in signal handler)
         try:
-            # Run async save in sync context
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            loop.run_until_complete(
-                _current_checkpoint_manager.save(_current_operation)
-            )
+            checkpoint_dir = _current_checkpoint_manager.checkpoint_dir
+            checkpoint_file = checkpoint_dir / f"{_current_operation.id}.json"
+            temp_file = checkpoint_file.with_suffix(".tmp")
+
+            data = asdict(_current_operation)
+            data["created_at"] = _current_operation.created_at.isoformat()
+            data["updated_at"] = _current_operation.updated_at.isoformat()
+            data["output_paths"] = {
+                k: str(v) for k, v in _current_operation.output_paths.items()
+            }
+            data["input_files"] = [str(p) for p in _current_operation.input_files]
+
+            with open(temp_file, "w") as f:
+                f.write(json.dumps(data, indent=2))
+            temp_file.replace(checkpoint_file)
+
             console.print(
                 f"[green]✓[/green] Checkpoint saved. Resume with: thoth --resume {_current_operation.id}"
             )
         except Exception as e:
             console.print(f"[red]Error saving checkpoint:[/red] {e}")
-        finally:
-            loop.close()
 
     console.print("[red]Exiting...[/red]")
     sys.exit(1)

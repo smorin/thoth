@@ -1,4 +1,4 @@
-# Product Requirements Document – Thoth v2.4
+# Product Requirements Document – Thoth v2.5
 
 ---
 
@@ -143,7 +143,7 @@ Create the simplest yet most powerful research tool where users can get comprehe
 | Quick mode | Simplified invocation with just a prompt, using all defaults |
 | Mode | Workflow phase (clarification, exploration, deep_research, thinking) with its own prompt template |
 | Provider | LLM backend (openai, perplexity, mock) |
-| Mock provider | Test provider that returns static responses WITHOUT requiring API keys (accepts any value as dummy key for testing) |
+| Mock provider | Test provider that returns static responses (accepts any non-empty value as API key; no real key required) |
 | Operation ID | Unique identifier for each research operation (format: research-YYYYMMDD-HHMMSS-xxxxxxxxxxxxxxxx) |
 | Background mode | Asynchronous execution where job is submitted and CLI exits immediately |
 | Ad-hoc mode | Default mode where files are saved to current working directory |
@@ -222,7 +222,7 @@ Create the simplest yet most powerful research tool where users can get comprehe
 | F-12 | `list` command shows all active/recent operations | Must | T-CMD-01 |
 | F-13 | `status` command shows detailed status of specific operation | Must | T-CMD-02 |
 | F-14 | `init` command runs interactive setup wizard | Must | T-CMD-03 |
-| F-15 | Dual-provider execution for deep_research mode by default | Must | T-PROV-01 |
+| F-15 | Dual-provider execution for deep_research mode by default (Note: Perplexity pending implementation in M11-M13) | Must | T-PROV-01 |
 | F-16 | Files created by default; filename pattern: `YYYY-MM-DD_HHMMSS_<mode>_<provider>_<slug>.md` | Must | T-OUT-02 |
 | F-17 | Show clear progress during research execution | Must | T-UX-01 |
 | F-18 | Display output file locations upon completion | Must | T-UX-02 |
@@ -238,7 +238,7 @@ Create the simplest yet most powerful research tool where users can get comprehe
 
 | ID | Requirement | Priority | Test ID |
 |----|-------------|----------|---------|
-| F-26 | `thoth "prompt"` executes deep research in current directory | Must | T-QUICK-01 |
+| F-26 | `thoth "prompt"` executes in default mode in current directory | Must | T-QUICK-01 |
 | F-27 | Show simple progress indicator for quick mode (includes operation ID in verbose mode) | Must | T-QUICK-02 |
 | F-28 | Display final output filenames prominently | Must | T-QUICK-03 |
 | F-29 | Minimal output during execution unless --verbose | Must | T-QUICK-04 |
@@ -249,7 +249,7 @@ Create the simplest yet most powerful research tool where users can get comprehe
 
 | ID | Requirement | Priority | Test ID |
 |----|-------------|----------|---------|
-| F-32 | Mock provider must work without any API keys for testing | Must | T-MOCK-01 |
+| F-32 | Mock provider must work with any non-empty API key value (no real key required) | Must | T-MOCK-01 |
 | F-33 | All error messages must go to stderr, not stdout (Rich console UI to stdout is correct) | Must | T-ERR-02 |
 | F-34 | Mode and provider validation must happen before API key checks | Must | T-VAL-01 |
 | F-35 | Commands must return proper exit codes: 0=success, 1=general error, 2=usage error | Must | T-EXIT-01 |

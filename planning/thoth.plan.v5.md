@@ -1,4 +1,4 @@
-# Thoth v2.2 Implementation Plan - Version 5.0
+# Thoth v2.5 Implementation Plan - Version 5.0
 
 ## Overview
 

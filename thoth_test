@@ -86,6 +86,7 @@ class TestResult:
     error_message: Optional[str] = None
     created_files: List[Path] = field(default_factory=list)
     is_api_key_failure: bool = False
+    skipped: bool = False
 
 
 @dataclass
@@ -192,6 +193,7 @@ def run_command(
                         process.send_signal(signal.SIGINT)
 
                 signal_thread = threading.Thread(target=send_signal)
+                signal_thread.daemon = True
                 signal_thread.start()
 
             stdout, stderr = process.communicate(timeout=timeout)
@@ -665,6 +667,7 @@ class TestRunner:
                 stdout="",
                 stderr=f"Skipped: {test_case.skip_reason}",
                 exit_code=0,
+                skipped=True,
             )
 
         # Check for provider-based skip
@@ -677,6 +680,7 @@ class TestRunner:
                 stdout="",
                 stderr=f"Skipped: {skip_reason}",
                 exit_code=0,
+                skipped=True,
             )
 
         # Handle interactive tests
@@ -689,6 +693,7 @@ class TestRunner:
                     stdout="",
                     stderr="Skipped: pexpect not available for interactive tests",
                     exit_code=0,
+                    skipped=True,
                 )
             interactive_runner = InteractiveTestRunner(self.verbose)
             return interactive_runner.run_interactive_test(test_case)
@@ -865,54 +870,52 @@ api_key = "{api_key}"
                     indent=2,
                 )
 
-        # Validate exit code
-        if exit_code != test_case.expected_exit_code:
-            result.passed = False
-            result.error_message = (
-                f"Expected exit code {test_case.expected_exit_code}, got {exit_code}"
-            )
-            result.is_api_key_failure = is_api_key_error(stdout, stderr)
-            return result
-
-        # Validate stdout
-        passed, error = validate_output(
-            stdout,
-            test_case.expected_stdout_patterns,
-            test_case.not_expected_stdout_patterns,
-        )
-        if not passed:
-            result.passed = False
-            result.error_message = f"Stdout validation failed: {error}"
-            return result
-
-        # Validate stderr
-        passed, error = validate_output(
-            stderr,
-            test_case.expected_stderr_patterns,
-            test_case.not_expected_stderr_patterns,
-        )
-        if not passed:
-            result.passed = False
-            result.error_message = f"Stderr validation failed: {error}"
-            return result
-
-        # Validate file creation
-        if test_case.expected_files:
-            passed, created_files, error = validate_file_creation(
-                test_case.expected_files
-            )
-            result.created_files = created_files
-            if not passed:
+        try:
+            # Validate exit code
+            if exit_code != test_case.expected_exit_code:
                 result.passed = False
-                result.error_message = f"File validation failed: {error}"
+                result.error_message = f"Expected exit code {test_case.expected_exit_code}, got {exit_code}"
                 return result
 
-        # Run teardown function if provided
-        if test_case.teardown_func:
-            try:
-                test_case.teardown_func()
-            except Exception:
-                pass
+            # Validate stdout
+            passed, error = validate_output(
+                stdout,
+                test_case.expected_stdout_patterns,
+                test_case.not_expected_stdout_patterns,
+            )
+            if not passed:
+                result.passed = False
+                result.error_message = f"Stdout validation failed: {error}"
+                return result
+
+            # Validate stderr
+            passed, error = validate_output(
+                stderr,
+                test_case.expected_stderr_patterns,
+                test_case.not_expected_stderr_patterns,
+            )
+            if not passed:
+                result.passed = False
+                result.error_message = f"Stderr validation failed: {error}"
+                return result
+
+            # Validate file creation
+            if test_case.expected_files:
+                passed, created_files, error = validate_file_creation(
+                    test_case.expected_files
+                )
+                result.created_files = created_files
+                if not passed:
+                    result.passed = False
+                    result.error_message = f"File validation failed: {error}"
+                    return result
+        finally:
+            # Always run teardown function if provided
+            if test_case.teardown_func:
+                try:
+                    test_case.teardown_func()
+                except Exception:
+                    pass
 
         # Clean up after successful test
         if result.passed and CLEANUP_ENABLED:
@@ -932,6 +935,7 @@ api_key = "{api_key}"
 
     def run_all_tests(self, test_cases: List[TestCase]):
         """Run all test cases and generate report"""
+        self.filtered_tests = test_cases
         total_tests = len(test_cases)
 
         with Progress(
@@ -963,12 +967,8 @@ api_key = "{api_key}"
     def generate_report(self):
         """Generate and display test report"""
         total_time = time.time() - self.start_time
-        passed_tests = sum(
-            1 for r in self.results if r.passed and "Skipped" not in r.stderr
-        )
-        skipped_tests = sum(
-            1 for r in self.results if r.passed and "Skipped" in r.stderr
-        )
+        passed_tests = sum(1 for r in self.results if r.passed and not r.skipped)
+        skipped_tests = sum(1 for r in self.results if r.skipped)
         failed_tests = sum(1 for r in self.results if not r.passed)
         api_key_failures = sum(
             1 for r in self.results if not r.passed and r.is_api_key_failure
@@ -1001,21 +1001,18 @@ api_key = "{api_key}"
         provider_test_counts = {"mock": 0, "openai": 0, "perplexity": 0, "none": 0}
         provider_run_counts = {"mock": 0, "openai": 0, "perplexity": 0, "none": 0}
 
-        for test_case in all_tests:
+        for test_case in self.filtered_tests:
             provider_key = test_case.provider or "none"
             if provider_key in provider_test_counts:
                 provider_test_counts[provider_key] += 1
 
         for result in self.results:
             test_case = next(
-                (tc for tc in all_tests if tc.test_id == result.test_id), None
+                (tc for tc in self.filtered_tests if tc.test_id == result.test_id), None
             )
             if test_case:
                 provider_key = test_case.provider or "none"
-                if (
-                    provider_key in provider_run_counts
-                    and "Skipped" not in result.stderr
-                ):
+                if provider_key in provider_run_counts and not result.skipped:
                     provider_run_counts[provider_key] += 1
 
         # Display provider matrix
@@ -1080,7 +1077,7 @@ api_key = "{api_key}"
 
             # Find matching test case for description and provider
             test_case = next(
-                (tc for tc in all_tests if tc.test_id == result.test_id), None
+                (tc for tc in self.filtered_tests if tc.test_id == result.test_id), None
             )
             description = test_case.description if test_case else "Unknown test"
             if len(description) > 45:
@@ -1273,7 +1270,7 @@ all_tests = [
         env={"XDG_CONFIG_HOME": "./test_temp_config"},
         expected_stdout_patterns=[r"Configuration saved to"],
         expected_exit_code=0,
-        cleanup_files=["./test_temp_config/*"],
+        cleanup_files=["./test_temp_config/*", "./test_temp_config"],
     ),
     # Config flag test (F-40/T-CFG-06)
     TestCase(
@@ -1527,7 +1524,7 @@ all_tests = [
         ],
         expected_stdout_patterns=[r"Results saved to:"],
         expected_files=["test_output/*_mock_*.md"],
-        cleanup_files=["test_output/*"],
+        cleanup_files=["test_output/*", "test_output"],
         expected_exit_code=0,
         provider="mock",
         api_key_method="env",
@@ -1713,7 +1710,11 @@ all_tests = [
         ],
         expected_stdout_patterns=[r"Research completed"],
         expected_files=["research-outputs/test_project/*_mock_*.md"],
-        cleanup_files=["research-outputs/test_project/*"],
+        cleanup_files=[
+            "research-outputs/test_project/*",
+            "research-outputs/test_project",
+            "research-outputs",
+        ],
         expected_exit_code=0,
         provider="mock",
         api_key_method="env",
@@ -2084,7 +2085,7 @@ all_tests = [
         expected_exit_code=0,
     ),
     TestCase(
-        test_id="INT-12",
+        test_id="INT-12a",
         description="Combined initial settings from CLI",
         command=[
             THOTH_EXECUTABLE,
