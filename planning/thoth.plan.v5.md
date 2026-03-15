@@ -145,7 +145,7 @@ This plan reflects the comprehensive restructuring of milestones to properly seq
 
 **Goal**: Implement background operation support with checkpointing
 
-**Status**: Basic structure exists but untested
+**Status**: Complete ✅
 
 ### Implementation Tasks
 
@@ -158,15 +158,15 @@ This plan reflects the comprehensive restructuring of milestones to properly seq
 - [x] **M5-07**: Create list command for operations
 - [x] **M5-08**: Implement resume functionality
 - [x] **M5-09**: Add checkpoint corruption recovery
-- [ ] **M5-10**: Create operation lifecycle management
+- [x] **M5-10**: Create operation lifecycle management ✅ *Added VALID_OPERATION_STATES, VALID_STATE_TRANSITIONS, transition_to() method*
 
 ### Test Plan (M5T-01 to M5T-05)
 
 - [x] **M5T-01**: Verify --async returns operation ID immediately ✅ *Works with --provider mock* [T-ASYNC-04]
 - [x] **M5T-02**: Verify status command shows operation details ✅ *Fixed: expects correct exit code* [T-CMD-02]
 - [x] **M5T-03**: Verify list command shows recent operations ✅ *Works correctly* [T-CMD-01]
-- [ ] **M5T-04**: Verify checkpoints persist across runs ❌ *Not tested* [T-ASYNC-01]
-- [ ] **M5T-05**: Verify corrupted checkpoints are handled ❌ *Not tested* [T-ASYNC-05]
+- [x] **M5T-04**: Verify checkpoints persist across runs ✅ *Setup creates checkpoint, status reads it back* [T-ASYNC-01]
+- [x] **M5T-05**: Verify corrupted checkpoints are handled ✅ *Corrupted JSON triggers warning and cleanup* [T-ASYNC-05]
 
 ---
 

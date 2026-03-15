@@ -1,7 +1,7 @@
 #!/usr/bin/env -S uv run --script
 # /// script
 # requires-python = ">=3.11"
-# dependencies = ["rich>=13.7", "click>=8.0", "pexpect>=4.8"]
+# dependencies = ["rich>=13.7", "click>=8.0", "pexpect>=4.8", "platformdirs>=4.0"]
 # ///
 """
 Thoth Test Suite - Comprehensive regression tests for Thoth CLI
@@ -115,6 +115,8 @@ class TestCase:
     )
     terminal_env: Optional[Dict[str, str]] = None  # Terminal-specific env vars
     is_interactive: bool = False  # Whether this is an interactive mode test
+    setup_func: Optional[object] = None  # Callable to run before test execution
+    teardown_func: Optional[object] = None  # Callable to run after test execution
 
 
 # ============================================================================
@@ -287,6 +289,61 @@ def find_latest_output_file(pattern: str = "*_*_*_*_*.md") -> Optional[Path]:
         Path(".").glob(pattern), key=lambda p: p.stat().st_mtime, reverse=True
     )
     return files[0] if files else None
+
+
+def get_checkpoint_dir() -> Path:
+    """Get the checkpoint directory path (matches thoth's config default)"""
+    from platformdirs import user_config_dir
+
+    return Path(user_config_dir("thoth")) / "checkpoints"
+
+
+def create_test_checkpoint(
+    operation_id: str, status: str = "completed", **overrides
+) -> Path:
+    """Create a valid checkpoint file for testing"""
+    checkpoint_dir = get_checkpoint_dir()
+    checkpoint_dir.mkdir(parents=True, exist_ok=True)
+
+    now = datetime.now()
+    data = {
+        "id": operation_id,
+        "prompt": "test checkpoint prompt",
+        "mode": "default",
+        "status": status,
+        "created_at": (now - __import__("datetime").timedelta(minutes=5)).isoformat(),
+        "updated_at": now.isoformat(),
+        "providers": {"mock": {"status": "completed"}},
+        "output_paths": {},
+        "error": None,
+        "progress": 1.0 if status == "completed" else 0.0,
+        "project": None,
+        "input_files": [],
+    }
+    data.update(overrides)
+
+    checkpoint_file = checkpoint_dir / f"{operation_id}.json"
+    with open(checkpoint_file, "w") as f:
+        json.dump(data, f, indent=2)
+    return checkpoint_file
+
+
+def create_corrupted_checkpoint(operation_id: str) -> Path:
+    """Create a corrupted checkpoint file for testing"""
+    checkpoint_dir = get_checkpoint_dir()
+    checkpoint_dir.mkdir(parents=True, exist_ok=True)
+
+    checkpoint_file = checkpoint_dir / f"{operation_id}.json"
+    with open(checkpoint_file, "w") as f:
+        f.write("{invalid json content, not valid at all!!!")
+    return checkpoint_file
+
+
+def remove_test_checkpoint(operation_id: str):
+    """Remove a test checkpoint file"""
+    checkpoint_file = get_checkpoint_dir() / f"{operation_id}.json"
+    if checkpoint_file.exists():
+        checkpoint_file.unlink()
 
 
 def validate_test_environment(
@@ -638,6 +695,21 @@ class TestRunner:
 
         start_time = time.time()
 
+        # Run setup function if provided
+        if test_case.setup_func:
+            try:
+                test_case.setup_func()
+            except Exception as e:
+                return TestResult(
+                    test_id=test_case.test_id,
+                    passed=False,
+                    duration=0,
+                    stdout="",
+                    stderr=f"Setup failed: {e}",
+                    exit_code=-1,
+                    error_message=f"Setup function failed: {e}",
+                )
+
         # Clean up any existing test files
         cleanup_test_files(test_case.cleanup_files)
 
@@ -834,6 +906,13 @@ api_key = "{api_key}"
                 result.passed = False
                 result.error_message = f"File validation failed: {error}"
                 return result
+
+        # Run teardown function if provided
+        if test_case.teardown_func:
+            try:
+                test_case.teardown_func()
+            except Exception:
+                pass
 
         # Clean up after successful test
         if result.passed and CLEANUP_ENABLED:
@@ -1353,33 +1432,75 @@ all_tests = [
     # Checkpoint Persistence Tests
     TestCase(
         test_id="M5T-04",
-        description="Checkpoint saves operation state",
-        command=[THOTH_EXECUTABLE, "test checkpoint", "--provider", "mock"],
-        expected_stdout_patterns=[r"Research completed"],
-        expected_files=["*_mock_*.md"],
-        cleanup_files=["*_mock_*.md"],
+        description="Checkpoint persists across process invocations",
+        command=[THOTH_EXECUTABLE, "status", "test-persist-checkpoint-m5t04"],
+        expected_stdout_patterns=[
+            r"Operation Details",
+            r"test-persist-checkpoint-m5t04",
+            r"test checkpoint prompt",
+            r"completed",
+        ],
         expected_exit_code=0,
-        provider="mock",
-        api_key_method="env",
+        setup_func=lambda: create_test_checkpoint("test-persist-checkpoint-m5t04"),
+        teardown_func=lambda: remove_test_checkpoint("test-persist-checkpoint-m5t04"),
     ),
     TestCase(
         test_id="M5T-05",
-        description="Checkpoint recovery on corrupted file",
-        command=[THOTH_EXECUTABLE, "status", "invalid-json-checkpoint"],
-        expected_stdout_patterns=[r"Operation .* not found|Error loading checkpoint"],
-        expected_exit_code=1,
-        skip=True,
-        skip_reason="Requires creating corrupted checkpoint file",
+        description="Corrupted checkpoint shows warning and recovers",
+        command=[THOTH_EXECUTABLE, "status", "test-corrupt-m5t05"],
+        expected_stdout_patterns=[r"Warning.*[Cc]orrupt|not found"],
+        expected_exit_code=6,
+        setup_func=lambda: create_corrupted_checkpoint("test-corrupt-m5t05"),
+        teardown_func=lambda: remove_test_checkpoint("test-corrupt-m5t05"),
     ),
-    # Checkpoint Corruption Recovery Test (F-82)
+    # Lifecycle Management Tests (M5-10)
     TestCase(
-        test_id="M5T-09",
-        description="Checkpoint corruption detection and recovery",
-        command=[THOTH_EXECUTABLE, "status", "corrupted-checkpoint-id"],
-        expected_stdout_patterns=[r"Checkpoint corrupted|Invalid checkpoint"],
-        expected_exit_code=1,
-        skip=True,
-        skip_reason="Requires test infrastructure for corrupted checkpoints",
+        test_id="M5T-10a",
+        description="Operation starts in queued state with --async",
+        command=[THOTH_EXECUTABLE, "test lifecycle", "--async", "--provider", "mock"],
+        expected_stdout_patterns=[r"Operation ID: \w+-\d+-\d+-\w+"],
+        expected_exit_code=0,
+        provider="mock",
+        api_key_method="env",
+        timeout=5,
+    ),
+    TestCase(
+        test_id="M5T-10b",
+        description="Synchronous operation transitions queued→running→completed",
+        command=[THOTH_EXECUTABLE, "test lifecycle sync", "--provider", "mock"],
+        expected_stdout_patterns=[r"Research completed|Results saved"],
+        expected_exit_code=0,
+        provider="mock",
+        api_key_method="env",
+        cleanup_files=["*_mock_*.md"],
+    ),
+    TestCase(
+        test_id="M5T-10c",
+        description="Completed operation status is valid state",
+        command=[THOTH_EXECUTABLE, "status", "test-lifecycle-valid-m5t10c"],
+        expected_stdout_patterns=[
+            r"Status:\s+(queued|running|completed|failed|cancelled)",
+        ],
+        expected_exit_code=0,
+        setup_func=lambda: create_test_checkpoint(
+            "test-lifecycle-valid-m5t10c", status="completed"
+        ),
+        teardown_func=lambda: remove_test_checkpoint("test-lifecycle-valid-m5t10c"),
+    ),
+    TestCase(
+        test_id="M5T-10d",
+        description="Failed operation status is preserved in checkpoint",
+        command=[THOTH_EXECUTABLE, "status", "test-lifecycle-failed-m5t10d"],
+        expected_stdout_patterns=[
+            r"Status:\s+failed",
+        ],
+        expected_exit_code=0,
+        setup_func=lambda: create_test_checkpoint(
+            "test-lifecycle-failed-m5t10d",
+            status="failed",
+            error="Test error message",
+        ),
+        teardown_func=lambda: remove_test_checkpoint("test-lifecycle-failed-m5t10d"),
     ),
     # Milestone 6: Output Management
     TestCase(

@@ -137,17 +137,17 @@ Mode system allowing different research workflows.
 - [x] [M5-T7] Create list command for operations
 - [x] [M5-T8] Implement resume functionality
 - [x] [M5-T9] Add checkpoint corruption recovery
-- [ ] [M5-T10] Create operation lifecycle management
+- [x] [M5-T10] Create operation lifecycle management
 
 ### Deliverable
 Async operations with checkpoint/resume capability.
 
 ### Verification
-- [ ] --async returns operation ID immediately
-- [ ] status command shows operation details
-- [ ] list command shows recent operations
-- [ ] Checkpoints persist across runs
-- [ ] Corrupted checkpoints are handled
+- [x] --async returns operation ID immediately
+- [x] status command shows operation details
+- [x] list command shows recent operations
+- [x] Checkpoints persist across runs
+- [x] Corrupted checkpoints are handled
 
 ---
 

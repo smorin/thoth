@@ -94,6 +94,7 @@ _config_path = None
 
 class InputMode(Enum):
     """Interactive input mode states"""
+
     EDIT_MODE = "edit"
     CLARIFICATION_MODE = "clarification"
 
@@ -532,6 +533,19 @@ def check_disk_space(path: Path, required_mb: int = 100) -> bool:
 # ============================================================================
 
 
+# Valid operation states
+VALID_OPERATION_STATES = {"queued", "running", "completed", "failed", "cancelled"}
+
+# Valid state transitions: source → allowed targets
+VALID_STATE_TRANSITIONS = {
+    "queued": {"running", "cancelled", "failed"},
+    "running": {"completed", "failed", "cancelled"},
+    "completed": set(),  # terminal state
+    "failed": set(),  # terminal state
+    "cancelled": set(),  # terminal state
+}
+
+
 @dataclass
 class OperationStatus:
     """Status of a research operation"""
@@ -548,6 +562,28 @@ class OperationStatus:
     progress: float = 0.0  # 0.0 to 1.0
     project: Optional[str] = None
     input_files: List[Path] = field(default_factory=list)
+
+    def transition_to(self, new_status: str, error: Optional[str] = None) -> None:
+        """Transition to a new status with validation.
+
+        Validates that the transition is allowed per the state machine.
+        Updates updated_at timestamp automatically.
+        """
+        if new_status not in VALID_OPERATION_STATES:
+            raise ValueError(
+                f"Invalid operation status: '{new_status}'. "
+                f"Valid states: {VALID_OPERATION_STATES}"
+            )
+        allowed = VALID_STATE_TRANSITIONS.get(self.status, set())
+        if new_status not in allowed:
+            raise ValueError(
+                f"Invalid state transition: '{self.status}' → '{new_status}'. "
+                f"Allowed transitions from '{self.status}': {allowed}"
+            )
+        self.status = new_status
+        self.updated_at = datetime.now()
+        if error is not None:
+            self.error = error
 
 
 @dataclass
@@ -774,7 +810,9 @@ def build_epilog():
 )
 @click.option("--timeout", "-T", type=float, help="Override request timeout in seconds")
 @click.option("--interactive", "-i", is_flag=True, help="Enter interactive prompt mode")
-@click.option("--clarify", is_flag=True, help="Start interactive mode in Clarification Mode")
+@click.option(
+    "--clarify", is_flag=True, help="Start interactive mode in Clarification Mode"
+)
 def cli(
     ctx,
     args,
@@ -1723,7 +1761,9 @@ class ModelCache:
 class ResearchProvider:
     """Base class for research providers"""
 
-    async def submit(self, prompt: str, mode: str, system_prompt: str = None, verbose: bool = False) -> str:
+    async def submit(
+        self, prompt: str, mode: str, system_prompt: str = None, verbose: bool = False
+    ) -> str:
         """Submit research and return job ID"""
         raise NotImplementedError
 
@@ -1772,7 +1812,9 @@ class MockProvider(ResearchProvider):
         self.model = "None"  # Mock provider has no model
         self.jobs = {}
 
-    async def submit(self, prompt: str, mode: str, system_prompt: str = None, verbose: bool = False) -> str:
+    async def submit(
+        self, prompt: str, mode: str, system_prompt: str = None, verbose: bool = False
+    ) -> str:
         """Submit mock research and return job ID"""
         job_id = f"mock-{generate_operation_id()}"
         self.jobs[job_id] = {
@@ -1860,7 +1902,9 @@ class OpenAIProvider(ResearchProvider):
         wait=wait_exponential(multiplier=1, min=4, max=10),
         retry=retry_if_exception_type((httpx.TimeoutException, httpx.ConnectError)),
     )
-    async def submit(self, prompt: str, mode: str, system_prompt: str = None, verbose: bool = False) -> str:
+    async def submit(
+        self, prompt: str, mode: str, system_prompt: str = None, verbose: bool = False
+    ) -> str:
         """Submit research using OpenAI Responses API"""
         try:
             # Build structured input format for Responses API
@@ -1892,7 +1936,7 @@ class OpenAIProvider(ResearchProvider):
 
             # Get configuration parameters
             temperature = self.config.get("temperature", 0.7)
-            
+
             # Build request parameters
             request_params = {
                 "model": self.model,
@@ -1901,7 +1945,7 @@ class OpenAIProvider(ResearchProvider):
                 "tools": tools,
                 "background": use_background,
             }
-            
+
             # Only add temperature for models that support it
             # Response models (o3, o3-deep-research, o4-mini-deep-research) don't support temperature
             if not self.model.startswith("o"):
@@ -1926,15 +1970,15 @@ class OpenAIProvider(ResearchProvider):
 
         except httpx.TimeoutException as e:
             raise ProviderError(
-                "openai", 
+                "openai",
                 "Request timed out. Try increasing timeout in config.",
-                raw_error=str(e) if verbose else None
+                raw_error=str(e) if verbose else None,
             )
         except httpx.ConnectError as e:
             raise ProviderError(
                 "openai",
                 "Failed to connect to OpenAI API. Check your internet connection.",
-                raw_error=str(e) if verbose else None
+                raw_error=str(e) if verbose else None,
             )
         except Exception as e:
             error_msg = str(e)
@@ -1960,25 +2004,26 @@ class OpenAIProvider(ResearchProvider):
                     raise ProviderError(
                         "openai",
                         f"Model '{self.model}' does not support temperature parameter. This is likely a response model (o3, o3-deep-research, etc.)",
-                        raw_error=str(e) if verbose else None
+                        raw_error=str(e) if verbose else None,
                     )
                 else:
                     # Extract parameter name from error message
                     import re
+
                     param_match = re.search(r"'(\w+)'", error_msg)
                     param_name = param_match.group(1) if param_match else "unknown"
                     raise ProviderError(
                         "openai",
                         f"Model '{self.model}' does not support parameter '{param_name}'",
-                        raw_error=str(e) if verbose else None
+                        raw_error=str(e) if verbose else None,
                     )
-            
+
             # Check for rate limit errors (429)
             elif "rate limit" in error_msg_lower or "429" in error_msg:
                 raise ProviderError(
-                    "openai", 
+                    "openai",
                     "Rate limit exceeded. Please wait a moment and try again.",
-                    raw_error=str(e) if verbose else None
+                    raw_error=str(e) if verbose else None,
                 )
 
             # Check for model not found errors (404)
@@ -1988,7 +2033,7 @@ class OpenAIProvider(ResearchProvider):
                 raise ProviderError(
                     "openai",
                     f"Model '{self.model}' not found. Please check available models with 'thoth providers -- --models --provider openai'",
-                    raw_error=str(e) if verbose else None
+                    raw_error=str(e) if verbose else None,
                 )
 
             # Check for quota exceeded errors
@@ -1996,23 +2041,21 @@ class OpenAIProvider(ResearchProvider):
                 raise ProviderError(
                     "openai",
                     "API quota exceeded. Please check your OpenAI account billing.",
-                    raw_error=str(e) if verbose else None
+                    raw_error=str(e) if verbose else None,
                 )
 
             # Check for invalid request errors (400)
             elif "invalid" in error_msg_lower or "400" in error_msg:
                 raise ProviderError(
-                    "openai", 
+                    "openai",
                     f"Invalid request: {error_msg}",
-                    raw_error=str(e) if verbose else None
+                    raw_error=str(e) if verbose else None,
                 )
 
             # Generic error
             else:
                 raise ProviderError(
-                    "openai", 
-                    str(e),
-                    raw_error=str(e) if verbose else None
+                    "openai", str(e), raw_error=str(e) if verbose else None
                 )
 
     async def check_status(self, job_id: str) -> Dict[str, Any]:
@@ -2118,15 +2161,18 @@ class OpenAIProvider(ResearchProvider):
             content = response.content
         elif hasattr(response, "text"):
             content = response.text
-        
+
         # If still no content, try to debug the response structure
         if not content and response:
             # Debug: log response structure for troubleshooting
             import json
+
             try:
                 # Try to serialize the response to understand its structure
                 if hasattr(response, "model_dump_json"):
-                    content = f"[Debug] Response structure: {response.model_dump_json()}"
+                    content = (
+                        f"[Debug] Response structure: {response.model_dump_json()}"
+                    )
                 elif hasattr(response, "__dict__"):
                     content = f"[Debug] Response attributes: {json.dumps({k: str(v)[:100] for k, v in response.__dict__.items() if not k.startswith('_')}, indent=2)}"
             except Exception:
@@ -2144,7 +2190,7 @@ class OpenAIProvider(ResearchProvider):
                         else:
                             reasoning_content = str(item.summary)
                     break
-        
+
         # Include reasoning summary if available (either from new format or old format)
         if reasoning_content:
             content = f"## Reasoning Summary\n{reasoning_content}\n\n{content}"
@@ -2246,7 +2292,9 @@ class PerplexityProvider(ResearchProvider):
         self.config = config or {}
         self.model = self.config.get("model", "sonar-pro")  # Store model from config
 
-    async def submit(self, prompt: str, mode: str, system_prompt: str = None, verbose: bool = False) -> str:
+    async def submit(
+        self, prompt: str, mode: str, system_prompt: str = None, verbose: bool = False
+    ) -> str:
         """Submit to Perplexity"""
         # TODO: Implement actual Perplexity submission
         raise NotImplementedError("Perplexity provider not yet implemented")
@@ -2639,7 +2687,7 @@ async def run_research(
         except ProviderError as e:
             console.print(f"[red]Error:[/red] {e.message}")
             console.print(f"[yellow]Suggestion:[/yellow] {e.suggestion}")
-            if verbose and hasattr(e, 'raw_error') and e.raw_error:
+            if verbose and hasattr(e, "raw_error") and e.raw_error:
                 console.print(f"[dim]Raw error: {e.raw_error}[/dim]")
             raise click.Abort()
         except ThothError as e:
@@ -2673,7 +2721,52 @@ async def run_research(
         return
 
     # Synchronous execution with progress
+    try:
+        await _execute_research(
+            operation,
+            checkpoint_manager,
+            output_manager,
+            config,
+            mode_config,
+            providers,
+            quiet,
+            verbose,
+            output_dir,
+            combined,
+            project,
+            mode,
+            prompt,
+            timeout_override=timeout_override,
+        )
+    except (click.Abort, KeyboardInterrupt):
+        # User cancellation — status already set by signal handler or will be set here
+        if operation.status not in ("cancelled", "failed", "completed"):
+            operation.transition_to("cancelled")
+            await checkpoint_manager.save(operation)
+        raise
+    except Exception as e:
+        operation.transition_to("failed", error=str(e))
+        await checkpoint_manager.save(operation)
+        raise
 
+
+async def _execute_research(
+    operation: OperationStatus,
+    checkpoint_manager: "CheckpointManager",
+    output_manager: "OutputManager",
+    config: Config,
+    mode_config: Dict,
+    providers: Dict,
+    quiet: bool,
+    verbose: bool,
+    output_dir: Optional[str],
+    combined: bool,
+    project: Optional[str],
+    mode: str,
+    prompt: str,
+    timeout_override: Optional[float] = None,
+):
+    """Execute research with providers and track progress."""
     with Progress(
         SpinnerColumn(),
         TextColumn("[progress.description]{task.description}"),
@@ -2689,7 +2782,9 @@ async def run_research(
         for provider_name, provider_instance in providers.items():
             try:
                 system_prompt = mode_config.get("system_prompt", "")
-                job_id = await provider_instance.submit(prompt, mode, system_prompt, verbose=verbose)
+                job_id = await provider_instance.submit(
+                    prompt, mode, system_prompt, verbose=verbose
+                )
                 jobs[provider_name] = {
                     "provider": provider_instance,
                     "job_id": job_id,
@@ -2697,21 +2792,26 @@ async def run_research(
                         f"{provider_name.title()} Research", total=100, next_poll=30
                     ),
                 }
-                operation.providers[provider_name] = {"status": "running", "job_id": job_id}
+                operation.providers[provider_name] = {
+                    "status": "running",
+                    "job_id": job_id,
+                }
             except ProviderError as e:
                 console.print(f"\n[red]Error:[/red] {e.message}")
                 console.print(f"[yellow]Suggestion:[/yellow] {e.suggestion}")
-                if verbose and hasattr(e, 'raw_error') and e.raw_error:
+                if verbose and hasattr(e, "raw_error") and e.raw_error:
                     console.print(f"[dim]Raw error: {e.raw_error}[/dim]")
                 raise click.Abort()
             except Exception as e:
-                console.print(f"\n[red]Unexpected error during submission:[/red] {str(e)}")
+                console.print(
+                    f"\n[red]Unexpected error during submission:[/red] {str(e)}"
+                )
                 if verbose:
                     console.print(f"[dim]Full error: {repr(e)}[/dim]")
                 raise click.Abort()
 
         # Update checkpoint
-        operation.status = "running"
+        operation.transition_to("running")
         await checkpoint_manager.save(operation)
 
         # Poll for completion
@@ -2763,7 +2863,11 @@ async def run_research(
                 console.print(
                     f"\n[red]Timeout exceeded ({max_wait / 60} minutes)[/red]"
                 )
-                break
+                operation.transition_to(
+                    "failed", error=f"Timeout exceeded ({max_wait / 60} minutes)"
+                )
+                await checkpoint_manager.save(operation)
+                return
 
             if not all_completed:
                 await asyncio.sleep(
@@ -2786,8 +2890,7 @@ async def run_research(
         operation.output_paths["combined"] = combined_path
 
     # Final checkpoint
-    operation.status = "completed"
-    operation.updated_at = datetime.now()
+    operation.transition_to("completed")
     await checkpoint_manager.save(operation)
 
     if not quiet:
@@ -3457,7 +3560,7 @@ class SlashCommandCompleter(Completer):
 
 class ClarificationSession:
     """Tracks clarification history and manages iterative refinement"""
-    
+
     def __init__(self):
         self.history = []  # List of (query, response, timestamp) tuples
         self.current_round = 0
@@ -3465,34 +3568,38 @@ class ClarificationSession:
         self.original_query = None
         self.last_failed_query = None  # For retry functionality
         self.last_error = None
-        
+
     def add_round(self, query: str, response: str):
         """Add a clarification round to history"""
-        self.history.append({
-            "round": self.current_round,
-            "query": query,
-            "response": response,
-            "timestamp": datetime.now()
-        })
+        self.history.append(
+            {
+                "round": self.current_round,
+                "query": query,
+                "response": response,
+                "timestamp": datetime.now(),
+            }
+        )
         self.current_round += 1
-        
+
     def can_continue(self) -> bool:
         """Check if more clarification rounds are allowed"""
         return self.current_round < self.max_rounds
-        
+
     def get_context(self) -> str:
         """Get formatted history context for next clarification"""
         if not self.history:
             return ""
-        
+
         context_parts = ["Previous clarification rounds:"]
         for entry in self.history:
             context_parts.append(f"\nRound {entry['round'] + 1}:")
             context_parts.append(f"Query: {entry['query']}")
-            context_parts.append(f"Response: {entry['response'][:200]}...")  # Truncate for context
-            
+            context_parts.append(
+                f"Response: {entry['response'][:200]}..."
+            )  # Truncate for context
+
         return "\n".join(context_parts)
-        
+
     def reset(self):
         """Reset the session for a new clarification"""
         self.history.clear()
@@ -3532,16 +3639,19 @@ class InteractiveSession:
 
         # Store CLI API keys
         self.cli_api_keys = initial_settings.cli_api_keys
-        
+
         # Clarification mode state
         self.current_input_mode = (
-            InputMode.CLARIFICATION_MODE if initial_settings.clarify_mode 
+            InputMode.CLARIFICATION_MODE
+            if initial_settings.clarify_mode
             else InputMode.EDIT_MODE
         )
         self.original_query = None  # Store original query during clarification
         self.clarification_response = None  # Store clarification suggestions
         self.clarification_in_progress = False  # Track if clarification is happening
-        self.clarification_session = ClarificationSession()  # Track clarification history
+        self.clarification_session = (
+            ClarificationSession()
+        )  # Track clarification history
 
         # Detect and enable extended keyboard support
         self.supports_shift_enter = self._enable_extended_keyboard()
@@ -3563,7 +3673,7 @@ class InteractiveSession:
         clarify_config = config.data.get("clarification", {}).get("interactive", {})
         input_height = clarify_config.get("input_height", 6)
         self.max_input_height = clarify_config.get("max_input_height", 15)
-        
+
         self.input_area = TextArea(
             text=initial_settings.prompt or "",
             multiline=True,
@@ -3653,7 +3763,7 @@ class InteractiveSession:
             if self.supports_shift_enter
             else "<b>Ctrl+J</b>"
         )
-        
+
         # Show different help based on current input mode
         if self.current_input_mode == InputMode.CLARIFICATION_MODE:
             if self.clarification_response:
@@ -3677,16 +3787,20 @@ class InteractiveSession:
             # Edit mode
             mode_indicator = "<b style='color:green'>✏️ Edit Mode</b>"
             action_help = f"<b>Enter</b>: submit • {newline_help}: new line • <b>Shift+Tab</b>: clarify"
-        
+
         # Add input area size indicator if not at default
-        clarify_config = self.config.data.get("clarification", {}).get("interactive", {})
+        clarify_config = self.config.data.get("clarification", {}).get(
+            "interactive", {}
+        )
         default_height = clarify_config.get("input_height", 6)
         current_height = self.input_area.height
-        
+
         size_indicator = ""
         if isinstance(current_height, int) and current_height != default_height:
-            size_indicator = f" • Size: {current_height} lines (<b>Ctrl+=/-</b>: resize)"
-        
+            size_indicator = (
+                f" • Size: {current_height} lines (<b>Ctrl+=/-</b>: resize)"
+            )
+
         return (
             f"{mode_indicator} | {mode_text} | {provider_text}\n"
             f"{action_help} • <b>/help</b>: commands{size_indicator}"
@@ -3751,9 +3865,14 @@ class InteractiveSession:
             if self.current_input_mode == InputMode.CLARIFICATION_MODE:
                 if self.clarification_response:
                     # Check if user wants to continue clarifying (if text starts with "continue")
-                    if text.lower().strip() == "continue" and self.clarification_session.can_continue():
+                    if (
+                        text.lower().strip() == "continue"
+                        and self.clarification_session.can_continue()
+                    ):
                         # Continue with another round of clarification
-                        refined_text = buffer.text.split('Refined query (edit as needed):\n')[-1].strip()
+                        refined_text = buffer.text.split(
+                            "Refined query (edit as needed):\n"
+                        )[-1].strip()
                         self._process_clarification(refined_text)
                     else:
                         # Accept the refined query and switch to edit mode
@@ -3767,7 +3886,7 @@ class InteractiveSession:
                 # Normal prompt submission in edit mode
                 self.result = text
                 event.app.exit()
-        
+
         # Add Shift+Tab binding for mode toggle
         # Using s-tab which is the standard notation for Shift+Tab
         @kb.add("s-tab")
@@ -3783,12 +3902,13 @@ class InteractiveSession:
                 # Otherwise restore original query if it exists
                 if not self.clarification_response and self.original_query:
                     event.current_buffer.text = self.original_query
-            
+
             self.clarification_response = None  # Clear any existing clarification
             self._update_help_text()
-        
+
         # Also bind backtab as a fallback for terminals that use this notation
         try:
+
             @kb.add("backtab")
             def handle_shift_tab_alt(event):
                 """Shift+Tab alternative: Toggle between Edit and Clarification modes"""
@@ -3836,39 +3956,49 @@ class InteractiveSession:
         @kb.add("c-r")
         def handle_retry_clarification(event):
             """Ctrl+R: Retry last failed clarification"""
-            if (self.current_input_mode == InputMode.CLARIFICATION_MODE and 
-                self.clarification_session.last_failed_query):
+            if (
+                self.current_input_mode == InputMode.CLARIFICATION_MODE
+                and self.clarification_session.last_failed_query
+            ):
                 # Retry the last failed clarification
-                self._process_clarification(self.clarification_session.last_failed_query)
+                self._process_clarification(
+                    self.clarification_session.last_failed_query
+                )
             elif self.clarification_session.last_error:
                 # Show error message if there's no query to retry
                 event.app.layout.focus(self.input_area)
                 event.current_buffer.text = f"No clarification to retry. Last error: {self.clarification_session.last_error}"
-        
+
         # Add Ctrl+Plus/Equal for increasing input area height
         @kb.add("c-=")  # Ctrl+= (easier than Ctrl+Plus on most keyboards)
         def handle_increase_height(event):
             """Ctrl+=: Increase input area height"""
             current_height = self.input_area.height
-            if isinstance(current_height, int) and current_height < self.max_input_height:
+            if (
+                isinstance(current_height, int)
+                and current_height < self.max_input_height
+            ):
                 self.input_area.height = current_height + 1
                 self._update_help_text()
-        
+
         # Also bind Ctrl+Plus for consistency
         try:
+
             @kb.add("c-+")
             def handle_increase_height_alt(event):
                 """Ctrl++: Increase input area height"""
                 handle_increase_height(event)
         except Exception:
             pass  # Some terminals may not support this
-        
+
         # Add Ctrl+Minus for decreasing input area height
         @kb.add("c--")
         def handle_decrease_height(event):
             """Ctrl+-: Decrease input area height"""
             current_height = self.input_area.height
-            if isinstance(current_height, int) and current_height > 3:  # Minimum height of 3
+            if (
+                isinstance(current_height, int) and current_height > 3
+            ):  # Minimum height of 3
                 self.input_area.height = current_height - 1
                 self._update_help_text()
 
@@ -3947,7 +4077,9 @@ class InteractiveSession:
 
         def print_keybindings():
             print("\nKeyboard shortcuts:")
-            print("  Enter              - Submit prompt (Edit) / Accept clarification (Clarify)")
+            print(
+                "  Enter              - Submit prompt (Edit) / Accept clarification (Clarify)"
+            )
             print("  Shift+Tab          - Toggle between Edit and Clarification modes")
             print("  Ctrl+R             - Retry failed clarification")
             print("  Ctrl+=             - Increase input area size")
@@ -3968,7 +4100,7 @@ class InteractiveSession:
             print("  Ctrl+C             - Exit without submitting")
             print("  Arrow keys         - Navigate text")
             print()
-            
+
             print("Mode-specific behavior:")
             print("  Edit Mode:")
             print("    - Enter submits prompt for research")
@@ -4033,21 +4165,21 @@ class InteractiveSession:
         # This would be used for future enhancements where commands
         # require multiple inputs
         self.pending_command = None
-    
+
     def _process_clarification(self, query: str):
         """Process query through clarification mode"""
         from prompt_toolkit.application import get_app
-        
+
         # Store the original query
         self.original_query = query
         self.clarification_in_progress = True
-        
+
         # Run clarification in background
         async def run_clarification():
             try:
                 # Get clarification suggestions from LLM
                 clarification_text = await self._get_clarification_suggestions(query)
-                
+
                 # Update the buffer with clarification response
                 app = get_app()
                 if app and app.current_buffer:
@@ -4055,7 +4187,7 @@ class InteractiveSession:
                     self.clarification_response = clarification_text
                     self.clarification_in_progress = False
                     self._update_help_text()
-                    
+
             except Exception as e:
                 # On error, show error message and switch back to edit mode
                 app = get_app()
@@ -4064,75 +4196,84 @@ class InteractiveSession:
                     self.current_input_mode = InputMode.EDIT_MODE
                     self.clarification_in_progress = False
                     self._update_help_text()
-        
+
         # Schedule the async operation
         import asyncio
-        
+
         # Show loading message
         app = get_app()
         app.current_buffer.text = "🔍 Getting clarification suggestions..."
-        
+
         # Run the clarification task
         asyncio.create_task(run_clarification())
-    
+
     async def _get_clarification_suggestions(self, query: str) -> str:
         """Get clarification suggestions from the LLM with retry logic"""
         # Get configuration for interactive clarification
-        clarify_config = self.config.data.get("clarification", {}).get("interactive", {})
-        
+        clarify_config = self.config.data.get("clarification", {}).get(
+            "interactive", {}
+        )
+
         # Use config values with fallbacks
         # provider = clarify_config.get("provider", "openai")  # TODO: Support multiple providers
         model = clarify_config.get("model", "gpt-4o-mini")
         temperature = clarify_config.get("temperature", 0.7)
         max_tokens = clarify_config.get("max_tokens", 800)
-        system_prompt = clarify_config.get("system_prompt", 
-            """I don't want you to follow the above question and instructions; I want you to tell me the ways this is unclear, point out any ambiguities or anything you don't understand. Follow that by asking questions to help clarify the ambiguous points. Once there are no more unclear, ambiguous or not understood portions, help me draft a clear version of the question/instruction.""")
+        system_prompt = clarify_config.get(
+            "system_prompt",
+            """I don't want you to follow the above question and instructions; I want you to tell me the ways this is unclear, point out any ambiguities or anything you don't understand. Follow that by asking questions to help clarify the ambiguous points. Once there are no more unclear, ambiguous or not understood portions, help me draft a clear version of the question/instruction.""",
+        )
         retry_attempts = clarify_config.get("retry_attempts", 3)
         retry_delay = clarify_config.get("retry_delay", 2.0)
-        
+
         # Store query for potential retry
         self.clarification_session.last_failed_query = query
-        
+
         # Get API keys from config or CLI
         api_keys = self.cli_api_keys or {}
-        
+
         # Try to get OpenAI API key
         openai_key = (
             api_keys.get("openai")
             or self.config.data.get("providers", {}).get("openai", {}).get("api_key")
             or os.environ.get("OPENAI_API_KEY")
         )
-        
+
         if not openai_key:
-            raise ValueError("OpenAI API key not found. Please set OPENAI_API_KEY or configure in ~/.thoth/config.toml")
-        
+            raise ValueError(
+                "OpenAI API key not found. Please set OPENAI_API_KEY or configure in ~/.thoth/config.toml"
+            )
+
         # Include clarification history context if available
         context = self.clarification_session.get_context()
         if context:
             query = f"{context}\n\nCurrent query: {query}"
-        
+
         # Implement retry logic using tenacity
         @retry(
             stop=stop_after_attempt(retry_attempts),
-            wait=wait_exponential(multiplier=retry_delay, min=retry_delay, max=retry_delay * 4),
-            retry=retry_if_exception_type((httpx.TimeoutException, httpx.ConnectError, Exception)),
-            before_sleep=lambda retry_state: self._log_retry_attempt(retry_state)
+            wait=wait_exponential(
+                multiplier=retry_delay, min=retry_delay, max=retry_delay * 4
+            ),
+            retry=retry_if_exception_type(
+                (httpx.TimeoutException, httpx.ConnectError, Exception)
+            ),
+            before_sleep=lambda retry_state: self._log_retry_attempt(retry_state),
         )
         async def make_clarification_request():
             from openai import AsyncOpenAI
             import httpx
-            
+
             client = AsyncOpenAI(
-                api_key=openai_key,
-                timeout=httpx.Timeout(30.0, connect=5.0)
+                api_key=openai_key, timeout=httpx.Timeout(30.0, connect=5.0)
             )
-            
+
             # Build messages for clarification
             messages = []
             if system_prompt:
                 messages.append({"role": "system", "content": system_prompt})
             messages.append({"role": "user", "content": query})
-            
+
             # Make the API call
             response = await client.chat.completions.create(
                 model=model,
@@ -4140,48 +4281,57 @@ class InteractiveSession:
                 temperature=temperature,
                 max_tokens=max_tokens,
             )
-            
+
             return response.choices[0].message.content
-        
+
         # Try to get clarification with retries
         try:
             clarification_text = await make_clarification_request()
-            
+
             # Track successful clarification in session
             self.clarification_session.add_round(query, clarification_text)
-            
+
             # Format the response nicely
-            round_indicator = f" (Round {self.clarification_session.current_round}/{self.clarification_session.max_rounds})" if self.clarification_session.current_round > 1 else ""
-            
+            round_indicator = (
+                f" (Round {self.clarification_session.current_round}/{self.clarification_session.max_rounds})"
+                if self.clarification_session.current_round > 1
+                else ""
+            )
+
             formatted_response = f"""📝 Clarification Suggestions{round_indicator}:
             
 {clarification_text}
 
 ---
 ✏️ Refined query (edit as needed):
-{query.split('Current query: ')[-1] if 'Current query: ' in query else query}"""
-            
+{query.split("Current query: ")[-1] if "Current query: " in query else query}"""
+
             # Clear any error state
             self.clarification_session.last_error = None
-            
+
             return formatted_response
-            
+
         except Exception as e:
             # Store error for potential manual retry
             self.clarification_session.last_error = str(e)
             error_msg = f"❌ Failed to get clarification after {retry_attempts} attempts: {str(e)}"
-            
+
             # Provide helpful error message with retry option
-            error_msg += "\n\nPress Ctrl+R to retry or Shift+Tab to return to Edit Mode."
+            error_msg += (
+                "\n\nPress Ctrl+R to retry or Shift+Tab to return to Edit Mode."
+            )
             raise Exception(error_msg)
-    
+
     def _log_retry_attempt(self, retry_state):
         """Log retry attempts for clarification"""
         attempt = retry_state.attempt_number
         if attempt > 1:
             from prompt_toolkit.application import get_app
+
             app = get_app()
-            app.current_buffer.text = f"🔄 Retrying clarification... (Attempt {attempt})"
+            app.current_buffer.text = (
+                f"🔄 Retrying clarification... (Attempt {attempt})"
+            )
 
     async def run_async(self) -> Optional[str]:
         """Run the interactive application asynchronously and return the prompt"""
@@ -4370,9 +4520,8 @@ def handle_sigint(signum, frame):
     console.print("\n[yellow]Interrupt received. Saving checkpoint...[/yellow]")
 
     if _current_checkpoint_manager and _current_operation:
-        # Update operation status
-        _current_operation.status = "interrupted"
-        _current_operation.updated_at = datetime.now()
+        # Update operation status (cancelled per PRD lifecycle states)
+        _current_operation.transition_to("cancelled")
 
         # Save checkpoint synchronously
         try:
