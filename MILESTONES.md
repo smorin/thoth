@@ -37,10 +37,10 @@ Files created:
 
 ### Verification
 - [x] `thoth --version` displays version
-- [ ] `thoth "test query"` creates output file
-- [ ] Filename follows correct pattern
-- [ ] Ctrl-C exits cleanly
-- [ ] Help text shows quick mode prominently
+- [x] `thoth "test query"` creates output file
+- [x] Filename follows correct pattern
+- [x] Ctrl-C exits cleanly
+- [x] Help text shows quick mode prominently
 
 ---
 
@@ -56,15 +56,15 @@ Files created:
 - [x] [M2-T6] Add path expansion for file paths
 - [x] [M2-T7] Create init command skeleton
 - [x] [M2-T8] Add API key validation and masking
-- [ ] [M2-T9] Implement two-level help system with command-specific help
+- [x] [M2-T9] Implement two-level help system with command-specific help
 
 ### Deliverable
 Configuration system that reads from environment, config file, and CLI args with proper precedence.
 
 ### Verification
-- [ ] Environment variables are read correctly
-- [ ] Config file overrides defaults
-- [ ] CLI args override config file
+- [x] Environment variables are read correctly
+- [x] Config file overrides defaults
+- [x] CLI args override config file
 - [x] API keys are masked in output
 
 ---
@@ -81,18 +81,18 @@ Configuration system that reads from environment, config file, and CLI args with
 - [x] [M3-T6] Add provider status checking mechanism
 - [x] [M3-T7] Implement result retrieval interface
 - [x] [M3-T8] Add provider-specific error handling
-- [ ] [M3-T9] Create provider factory/registry
+- [x] [M3-T9] Create provider factory/registry
 - [x] [M3-T10] Implement parallel provider execution
 
 ### Deliverable
 Working provider system with mock provider for testing.
 
 ### Verification
-- [ ] Mock provider completes after delay
-- [ ] Multiple providers run in parallel
-- [ ] Provider errors are handled gracefully
-- [ ] --provider flag limits execution
-- [ ] Progress shows all active providers
+- [x] Mock provider completes after delay
+- [x] Multiple providers run in parallel
+- [x] Provider errors are handled gracefully
+- [x] --provider flag limits execution
+- [x] Progress shows all active providers
 
 ---
 
@@ -105,7 +105,7 @@ Working provider system with mock provider for testing.
 - [x] [M4-T3] Add default mode selection (deep_research)
 - [x] [M4-T4] Create mode-specific system prompts
 - [x] [M4-T5] Implement mode command parsing
-- [ ] [M4-T6] Add mode validation
+- [x] [M4-T6] Add mode validation
 - [x] [M4-T7] Create mode-specific provider selection
 - [x] [M4-T8] Implement mode chaining metadata
 - [x] [M4-T9] Create special "default" mode with no system prompt
@@ -115,12 +115,12 @@ Working provider system with mock provider for testing.
 Mode system allowing different research workflows.
 
 ### Verification
-- [ ] Default mode is "default" (not deep_research)
-- [ ] All built-in modes are accessible
-- [ ] Mode-specific prompts are used
-- [ ] Unknown modes show helpful error
-- [ ] Default mode passes query without system prompt
-- [ ] `thoth "query"` uses default mode, not deep_research
+- [x] Default mode is "default" (not deep_research)
+- [x] All built-in modes are accessible
+- [x] Mode-specific prompts are used
+- [x] Unknown modes show helpful error
+- [x] Default mode passes query without system prompt
+- [x] `thoth "query"` uses default mode, not deep_research
 
 ---
 
@@ -162,16 +162,16 @@ Async operations with checkpoint/resume capability.
 - [x] [M6-T5] Implement combined report generation
 - [x] [M6-T6] Add disk space checking
 - [x] [M6-T7] Create output file organization
-- [ ] [M6-T8] Implement --no-combined flag
+- [x] [M6-T8] Implement --combined flag (opt-in combined reports)
 
 ### Deliverable
 Robust output file management with combined reports.
 
 ### Verification
-- [ ] Files are created in current directory by default
-- [ ] Project mode creates subdirectories
-- [ ] Combined reports merge all providers
-- [ ] Duplicate filenames are handled
+- [x] Files are created in current directory by default
+- [x] Project mode creates subdirectories
+- [x] Combined reports merge all providers
+- [x] Duplicate filenames are handled
 
 ---
 
@@ -192,48 +192,48 @@ Robust output file management with combined reports.
 Professional progress display and improved UX.
 
 ### Verification
-- [ ] Progress shows percentage and time
-- [ ] Quiet mode suppresses output
-- [ ] Verbose mode shows detailed info
+- [x] Progress shows percentage and time
+- [x] Quiet mode suppresses output
+- [x] Verbose mode shows detailed info
 - [ ] First-time users see setup prompt
 
 ---
 
-## [ ] Milestone 8: Real Provider Integration (v1.0.0)
+## [-] Milestone 8: Real Provider Integration (v1.0.0)
 **Goal**: Implement actual OpenAI and Perplexity provider connections
 
 ### Tasks
-- [ ] [M8-T1] Implement OpenAI API client setup
-- [ ] [M8-T2] Create OpenAI job submission logic
-- [ ] [M8-T3] Add OpenAI status polling
-- [ ] [M8-T4] Implement OpenAI result retrieval
-- [ ] [M8-T5] Create Perplexity API integration
-- [ ] [M8-T6] Add retry logic with exponential backoff
-- [ ] [M8-T7] Implement rate limiting handling
-- [ ] [M8-T8] Add quota exceeded error handling
-- [ ] [M8-T9] Create provider-specific timeout logic
-- [ ] [M8-T10] Implement network error recovery
+- [x] [M8-T1] Implement OpenAI API client setup
+- [x] [M8-T2] Create OpenAI job submission logic
+- [x] [M8-T3] Add OpenAI status polling
+- [x] [M8-T4] Implement OpenAI result retrieval
+- [ ] [M8-T5] Create Perplexity API integration (pending M11-M13 per plan v5)
+- [x] [M8-T6] Add retry logic with exponential backoff
+- [x] [M8-T7] Implement rate limiting handling
+- [x] [M8-T8] Add quota exceeded error handling
+- [x] [M8-T9] Create provider-specific timeout logic
+- [x] [M8-T10] Implement network error recovery
 
 ### Deliverable
 Working integration with real LLM providers.
 
 ### Verification
-- [ ] OpenAI provider submits real requests
-- [ ] Perplexity returns search results
-- [ ] Network errors trigger retries
-- [ ] API errors show helpful messages
-- [ ] Long operations complete successfully
+- [x] OpenAI provider submits real requests
+- [ ] Perplexity returns search results (pending M11-M13)
+- [x] Network errors trigger retries
+- [x] API errors show helpful messages
+- [ ] Long operations complete successfully (needs end-to-end testing)
 
 ---
 
-## [-] Milestone 9: Advanced Features (v1.2.0)
+## [x] Milestone 9: Advanced Features (v1.2.0)
 **Goal**: Implement mode chaining, auto-input, and other advanced features
 
 ### Tasks
 - [x] [M9-T1] Implement --auto flag for mode chaining
 - [x] [M9-T2] Create previous output detection logic
 - [x] [M9-T3] Add --query-file support with stdin
-- [ ] [M9-T4] Implement input file content inclusion
+- [x] [M9-T4] Implement input file content inclusion (--input-file flag)
 - [x] [M9-T5] Add mode-specific auto-input config
 - [x] [M9-T6] Create operation metadata tracking
 - [x] [M9-T7] Implement max file size limits
@@ -243,10 +243,10 @@ Working integration with real LLM providers.
 Advanced features for power users.
 
 ### Verification
-- [ ] --auto finds previous outputs
-- [ ] stdin input works with size limit
-- [ ] Mode chains work correctly
-- [ ] Input files are tracked in metadata
+- [x] --auto finds previous outputs
+- [x] stdin input works with size limit
+- [x] Mode chains work correctly
+- [x] Input files are tracked in metadata
 
 ---
 
@@ -267,9 +267,9 @@ Advanced features for power users.
 Production-ready Thoth v1.5 with all features implemented and tested.
 
 ### Verification
-- [ ] All error paths show helpful messages
+- [x] All error paths show helpful messages
 - [ ] Performance meets requirements
-- [ ] Security (API key masking, etc)
+- [x] Security (API key masking, sanitize_slug)
 - [ ] Full end-to-end integration tests
 - [ ] Cross-platform compatibility tests
 
@@ -490,7 +490,7 @@ result = handler.execute(command, **params)
 - [x] [M33-T13] Support multiple clarification rounds
 - [x] [M33-T14] Add visual indicators for mode status
 - [x] [M33-T15] Write tests for mode toggling and clarification
-- [ ] [M33-T16] Update documentation with clarification workflow
+- [ ] [M33-T16] Update documentation with clarification workflow (help text done, external docs pending)
 
 ### Deliverable
 ```bash
@@ -518,26 +518,31 @@ $ thoth -i --clarify
 
 ## Current Status
 
-**Version**: 1.5.0 (in development)
+**Version**: 2.5.0
 
 **Completed Milestones**:
-- Core CLI Foundation (90%)
-- Configuration System (100%)
-- Provider Architecture (90%)
-- Mode System (87%)
-- Async Operations (90%)
-- Output Management (87%)
+- Milestone 1: Core CLI Foundation (100%)
+- Milestone 2: Configuration System (100%)
+- Milestone 3: Provider Architecture (100%)
+- Milestone 4: Mode System (100%)
+- Milestone 5: Async Operations (100%)
+- Milestone 6: Output Management (100%)
+- Milestone 9: Advanced Features (100%)
+- Milestone 28: Interactive Query Mode (100%)
+- Milestone 29: Interactive Mode CLI Initialization (100%)
+- Milestone 30: Model Cache Control (100%)
+- Milestone 31: Interactive Test Framework (100%)
+- Milestone 32: Architecture Cleanup (100%)
+- Milestone 33: Clarification Mode (95% — docs pending)
 
 **In Progress**:
-- Progress and UX (62%)
-- Advanced Features (75%)
-- Polish and Production (25%)
-
-**Not Started**:
-- Real Provider Integration (0%)
+- Milestone 7: Progress and UX (62% — adaptive polling, first-time setup, tips remaining)
+- Milestone 8: Real Provider Integration (80% — OpenAI done, Perplexity pending M11-M13)
+- Milestone 10: Polish and Production (30% — checkpoint cleanup, shell completion, perf remaining)
 
 **Key Remaining Tasks**:
-1. Fix quick mode command parsing (`thoth "query"`)
-2. Implement real OpenAI provider
-3. Complete remaining UX improvements
-4. Run comprehensive test suite
+1. Complete M7: adaptive polling, first-time setup wizard, new user tips
+2. Implement Perplexity provider (M11-M13 in plan v5)
+3. Add checkpoint cleanup for old operations
+4. Fix interactive tests (pexpect EOF in headless environments)
+5. End-to-end integration testing with real API keys
