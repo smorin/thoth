@@ -516,6 +516,61 @@ $ thoth -i --clarify
 
 ---
 
+## [ ] Milestone 34: Gemini Deep Research Provider (v3.0.0)
+**Goal**: Integrate Google Gemini Deep Research agent as a provider using the Interactions API
+
+### Tasks
+- [ ] [M34-T1] Research Gemini Interactions API documentation and constraints
+- [ ] [M34-T2] Design test cases for Gemini provider (TDD)
+- [ ] [M34-T3] Create GeminiProvider class extending ResearchProvider base
+- [ ] [M34-T4] Implement Gemini API client setup with `x-goog-api-key` authentication
+- [ ] [M34-T5] Implement job submission via Interactions API (`background=True`)
+- [ ] [M34-T6] Implement async status polling (Interaction status: `in_progress` → `completed`/`failed`)
+- [ ] [M34-T7] Implement result retrieval and response parsing
+- [ ] [M34-T8] Add Gemini-specific error handling (auth, quota, network)
+- [ ] [M34-T9] Register Gemini provider in ProviderRegistry
+- [ ] [M34-T10] Add `GEMINI_API_KEY` environment variable support and config
+- [ ] [M34-T11] Add `--provider gemini` CLI flag support
+- [ ] [M34-T12] Implement retry logic with exponential backoff
+- [ ] [M34-T13] Add citation extraction from Gemini Deep Research responses
+- [ ] [M34-T14] Integrate with existing progress display (Rich progress bars)
+- [ ] [M34-T15] Add Gemini to multi-provider modes (parallel execution)
+- [ ] [M34-T16] Update documentation and help text
+
+### Deliverable
+```bash
+# Single provider deep research with Gemini
+$ thoth --mode deep_research --provider gemini "explain quantum computing"
+
+# Multi-provider research including Gemini
+$ thoth --mode deep_research "explain quantum computing"
+# Runs OpenAI, Perplexity, and Gemini in parallel
+
+# Gemini-specific usage
+$ thoth providers -- --models --provider gemini
+```
+
+### Verification
+- [ ] `thoth --provider gemini "test query"` submits and retrieves research
+- [ ] Gemini provider polls Interactions API correctly
+- [ ] Citations are extracted and included in output
+- [ ] Invalid/missing GEMINI_API_KEY shows helpful error
+- [ ] Network errors trigger retries with backoff
+- [ ] Provider integrates with parallel multi-provider execution
+- [ ] Progress display shows Gemini provider status
+- [ ] Output files follow existing filename pattern with `gemini` provider name
+- [ ] All existing tests continue to pass
+
+### Technical Notes
+- **Agent ID**: `deep-research-pro-preview-12-2025`
+- **API**: Interactions API at `https://generativelanguage.googleapis.com/v1beta/interactions`
+- **Auth**: `x-goog-api-key` header (not Bearer token)
+- **Async**: All requests require `background=True`; results retrieved via polling
+- **Default tools**: Google Search, URL context (built-in)
+- **Limitations**: No custom Function Calling tools or MCP servers supported
+
+---
+
 ## Current Status
 
 **Version**: 2.5.0
@@ -540,9 +595,13 @@ $ thoth -i --clarify
 - Milestone 8: Real Provider Integration (80% — OpenAI done, Perplexity pending M11-M13)
 - Milestone 10: Polish and Production (30% — checkpoint cleanup, shell completion, perf remaining)
 
+**Not Started**:
+- Milestone 34: Gemini Deep Research Provider (0%)
+
 **Key Remaining Tasks**:
 1. Complete M7: adaptive polling, first-time setup wizard, new user tips
 2. Implement Perplexity provider (M11-M13 in plan v5)
-3. Add checkpoint cleanup for old operations
-4. Fix interactive tests (pexpect EOF in headless environments)
-5. End-to-end integration testing with real API keys
+3. Implement Gemini Deep Research provider (M34)
+4. Add checkpoint cleanup for old operations
+5. Fix interactive tests (pexpect EOF in headless environments)
+6. End-to-end integration testing with real API keys

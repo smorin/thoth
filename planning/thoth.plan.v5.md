@@ -849,16 +849,122 @@ This plan reflects the comprehensive restructuring of milestones to properly seq
 
 ---
 
+## Milestone 34: Gemini Deep Research Provider - Basic Implementation
+
+**Goal**: Basic Gemini Deep Research functionality via the Interactions API
+
+**Status**: Not started
+
+### Implementation Tasks
+
+- [ ] **M34-01**: Research Gemini Interactions API documentation and constraints
+- [ ] **M34-02**: Design test cases for Gemini provider (TDD)
+- [ ] **M34-03**: Create GeminiProvider class extending ResearchProvider
+- [ ] **M34-04**: Implement API client setup (`x-goog-api-key` auth, not Bearer)
+- [ ] **M34-05**: Implement job submission via Interactions API (`background=True`)
+- [ ] **M34-06**: Implement async status polling (`in_progress` → `completed`/`failed`)
+- [ ] **M34-07**: Implement result retrieval and response parsing
+- [ ] **M34-08**: Add Gemini-specific error handling (auth, quota, network)
+
+### Test Plan (M34T-01 to M34T-10)
+
+- [ ] **M34T-01**: Basic query with Gemini provider returns results
+- [ ] **M34T-02**: Invalid API key shows helpful error
+- [ ] **M34T-03**: Network timeout handled properly
+- [ ] **M34T-04**: Response saved to correct file with `gemini` in filename
+- [ ] **M34T-05**: Filename follows expected pattern
+- [ ] **M34T-06**: Empty/failed response handled gracefully
+- [ ] **M34T-07**: Citations extracted from response
+- [ ] **M34T-08**: Metadata header included in output
+- [ ] **M34T-09**: Provider registered in ProviderRegistry
+- [ ] **M34T-10**: `--provider gemini` flag works correctly
+
+### Technical Notes
+
+- **Agent ID**: `deep-research-pro-preview-12-2025`
+- **API**: Interactions API at `https://generativelanguage.googleapis.com/v1beta/interactions`
+- **Auth**: `x-goog-api-key` header (NOT Bearer token like OpenAI)
+- **Async**: All requests require `background=True`; results retrieved via polling
+- **Default tools**: Google Search, URL context (built-in)
+- **Limitations**: No custom Function Calling tools or MCP servers
+
+---
+
+## Milestone 35: Gemini Deep Research Provider - Advanced Features
+
+**Goal**: Production-ready Gemini integration with citations and multi-provider support
+
+**Status**: Not started
+
+### Implementation Tasks
+
+- [ ] **M35-01**: Implement retry logic with exponential backoff
+- [ ] **M35-02**: Add citation extraction and formatting
+- [ ] **M35-03**: Integrate with Rich progress display
+- [ ] **M35-04**: Register in ProviderRegistry for multi-provider modes
+- [ ] **M35-05**: Add `GEMINI_API_KEY` to config system and env var support
+- [ ] **M35-06**: Support parallel execution alongside OpenAI/Perplexity
+- [ ] **M35-07**: Add Gemini to `thoth providers -- --models` listing
+- [ ] **M35-08**: Handle Gemini-specific rate limits
+- [ ] **M35-09**: Add Gemini provider to mode definitions
+- [ ] **M35-10**: Update documentation and help text
+
+### Test Plan (M35T-01 to M35T-10)
+
+- [ ] **M35T-01**: Retry on transient errors works
+- [ ] **M35T-02**: Citations formatted correctly in output
+- [ ] **M35T-03**: Progress bar shows Gemini provider status
+- [ ] **M35T-04**: Parallel execution with other providers
+- [ ] **M35T-05**: Config file GEMINI_API_KEY works
+- [ ] **M35T-06**: Rate limit handling with backoff
+- [ ] **M35T-07**: Provider listed in `thoth providers`
+- [ ] **M35T-08**: Mode-specific Gemini selection works
+- [ ] **M35T-09**: All existing tests still pass
+- [ ] **M35T-10**: End-to-end integration with real API key
+
+---
+
+## Milestone 36: Gemini Deep Research Provider - Async Operations
+
+**Goal**: Full async support for Gemini Deep Research
+
+**Status**: Not started
+
+### Implementation Tasks
+
+- [ ] **M36-01**: Implement async job tracking with Interactions API polling
+- [ ] **M36-02**: Add progress estimation from interaction status
+- [ ] **M36-03**: Support operation cancellation
+- [ ] **M36-04**: Integrate with checkpoint system
+- [ ] **M36-05**: Implement resume functionality for interrupted research
+- [ ] **M36-06**: Handle parallel Gemini research requests
+- [ ] **M36-07**: Coordinate rate limits across async operations
+- [ ] **M36-08**: Create meaningful status updates from polling responses
+
+### Test Plan (M36T-01 to M36T-08)
+
+- [ ] **M36T-01**: --async returns operation ID immediately
+- [ ] **M36T-02**: Status shows Gemini research progress
+- [ ] **M36T-03**: Cancel operation works
+- [ ] **M36T-04**: Checkpoint saves Gemini interaction state
+- [ ] **M36T-05**: Resume continues Gemini research
+- [ ] **M36T-06**: Parallel Gemini requests work
+- [ ] **M36T-07**: Async timeout handling
+- [ ] **M36T-08**: Error recovery for async operations
+
+---
+
 ## Recommendations
 
 Based on the comprehensive gap analysis:
 
 1. **Priority 1**: Complete OpenAI provider (Milestones 8-10)
 2. **Priority 2**: Complete Perplexity provider (Milestones 11-13)
-3. **Priority 3**: Implement multi-provider coordination (Milestone 14)
-4. **Priority 4**: Complete all commands (Milestones 15-18)
-5. **Priority 5**: Address security and production gaps
-6. **Priority 6**: Improve performance and UX
+3. **Priority 3**: Implement Gemini Deep Research provider (Milestones 34-36)
+4. **Priority 4**: Implement multi-provider coordination (Milestone 14)
+5. **Priority 5**: Complete all commands (Milestones 15-18)
+6. **Priority 6**: Address security and production gaps
+7. **Priority 7**: Improve performance and UX
 
 
 ---
