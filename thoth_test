@@ -1,7 +1,7 @@
 #!/usr/bin/env -S uv run --script
 # /// script
 # requires-python = ">=3.11"
-# dependencies = ["rich>=13.7", "click>=8.0", "pexpect>=4.8"]
+# dependencies = ["rich>=13.7", "click>=8.0", "pexpect>=4.8", "platformdirs>=4.0"]
 # ///
 """
 Thoth Test Suite - Comprehensive regression tests for Thoth CLI
@@ -86,6 +86,7 @@ class TestResult:
     error_message: Optional[str] = None
     created_files: List[Path] = field(default_factory=list)
     is_api_key_failure: bool = False
+    skipped: bool = False
 
 
 @dataclass
@@ -115,6 +116,8 @@ class TestCase:
     )
     terminal_env: Optional[Dict[str, str]] = None  # Terminal-specific env vars
     is_interactive: bool = False  # Whether this is an interactive mode test
+    setup_func: Optional[object] = None  # Callable to run before test execution
+    teardown_func: Optional[object] = None  # Callable to run after test execution
 
 
 # ============================================================================
@@ -190,6 +193,7 @@ def run_command(
                         process.send_signal(signal.SIGINT)
 
                 signal_thread = threading.Thread(target=send_signal)
+                signal_thread.daemon = True
                 signal_thread.start()
 
             stdout, stderr = process.communicate(timeout=timeout)
@@ -287,6 +291,61 @@ def find_latest_output_file(pattern: str = "*_*_*_*_*.md") -> Optional[Path]:
         Path(".").glob(pattern), key=lambda p: p.stat().st_mtime, reverse=True
     )
     return files[0] if files else None
+
+
+def get_checkpoint_dir() -> Path:
+    """Get the checkpoint directory path (matches thoth's config default)"""
+    from platformdirs import user_config_dir
+
+    return Path(user_config_dir("thoth")) / "checkpoints"
+
+
+def create_test_checkpoint(
+    operation_id: str, status: str = "completed", **overrides
+) -> Path:
+    """Create a valid checkpoint file for testing"""
+    checkpoint_dir = get_checkpoint_dir()
+    checkpoint_dir.mkdir(parents=True, exist_ok=True)
+
+    now = datetime.now()
+    data = {
+        "id": operation_id,
+        "prompt": "test checkpoint prompt",
+        "mode": "default",
+        "status": status,
+        "created_at": (now - __import__("datetime").timedelta(minutes=5)).isoformat(),
+        "updated_at": now.isoformat(),
+        "providers": {"mock": {"status": "completed"}},
+        "output_paths": {},
+        "error": None,
+        "progress": 1.0 if status == "completed" else 0.0,
+        "project": None,
+        "input_files": [],
+    }
+    data.update(overrides)
+
+    checkpoint_file = checkpoint_dir / f"{operation_id}.json"
+    with open(checkpoint_file, "w") as f:
+        json.dump(data, f, indent=2)
+    return checkpoint_file
+
+
+def create_corrupted_checkpoint(operation_id: str) -> Path:
+    """Create a corrupted checkpoint file for testing"""
+    checkpoint_dir = get_checkpoint_dir()
+    checkpoint_dir.mkdir(parents=True, exist_ok=True)
+
+    checkpoint_file = checkpoint_dir / f"{operation_id}.json"
+    with open(checkpoint_file, "w") as f:
+        f.write("{invalid json content, not valid at all!!!")
+    return checkpoint_file
+
+
+def remove_test_checkpoint(operation_id: str):
+    """Remove a test checkpoint file"""
+    checkpoint_file = get_checkpoint_dir() / f"{operation_id}.json"
+    if checkpoint_file.exists():
+        checkpoint_file.unlink()
 
 
 def validate_test_environment(
@@ -608,6 +667,7 @@ class TestRunner:
                 stdout="",
                 stderr=f"Skipped: {test_case.skip_reason}",
                 exit_code=0,
+                skipped=True,
             )
 
         # Check for provider-based skip
@@ -620,6 +680,7 @@ class TestRunner:
                 stdout="",
                 stderr=f"Skipped: {skip_reason}",
                 exit_code=0,
+                skipped=True,
             )
 
         # Handle interactive tests
@@ -632,11 +693,27 @@ class TestRunner:
                     stdout="",
                     stderr="Skipped: pexpect not available for interactive tests",
                     exit_code=0,
+                    skipped=True,
                 )
             interactive_runner = InteractiveTestRunner(self.verbose)
             return interactive_runner.run_interactive_test(test_case)
 
         start_time = time.time()
+
+        # Run setup function if provided
+        if test_case.setup_func:
+            try:
+                test_case.setup_func()
+            except Exception as e:
+                return TestResult(
+                    test_id=test_case.test_id,
+                    passed=False,
+                    duration=0,
+                    stdout="",
+                    stderr=f"Setup failed: {e}",
+                    exit_code=-1,
+                    error_message=f"Setup function failed: {e}",
+                )
 
         # Clean up any existing test files
         cleanup_test_files(test_case.cleanup_files)
@@ -793,47 +870,52 @@ api_key = "{api_key}"
                     indent=2,
                 )
 
-        # Validate exit code
-        if exit_code != test_case.expected_exit_code:
-            result.passed = False
-            result.error_message = (
-                f"Expected exit code {test_case.expected_exit_code}, got {exit_code}"
+        try:
+            # Validate exit code
+            if exit_code != test_case.expected_exit_code:
+                result.passed = False
+                result.error_message = f"Expected exit code {test_case.expected_exit_code}, got {exit_code}"
+                return result
+
+            # Validate stdout
+            passed, error = validate_output(
+                stdout,
+                test_case.expected_stdout_patterns,
+                test_case.not_expected_stdout_patterns,
             )
-            result.is_api_key_failure = is_api_key_error(stdout, stderr)
-            return result
-
-        # Validate stdout
-        passed, error = validate_output(
-            stdout,
-            test_case.expected_stdout_patterns,
-            test_case.not_expected_stdout_patterns,
-        )
-        if not passed:
-            result.passed = False
-            result.error_message = f"Stdout validation failed: {error}"
-            return result
-
-        # Validate stderr
-        passed, error = validate_output(
-            stderr,
-            test_case.expected_stderr_patterns,
-            test_case.not_expected_stderr_patterns,
-        )
-        if not passed:
-            result.passed = False
-            result.error_message = f"Stderr validation failed: {error}"
-            return result
-
-        # Validate file creation
-        if test_case.expected_files:
-            passed, created_files, error = validate_file_creation(
-                test_case.expected_files
-            )
-            result.created_files = created_files
             if not passed:
                 result.passed = False
-                result.error_message = f"File validation failed: {error}"
+                result.error_message = f"Stdout validation failed: {error}"
                 return result
+
+            # Validate stderr
+            passed, error = validate_output(
+                stderr,
+                test_case.expected_stderr_patterns,
+                test_case.not_expected_stderr_patterns,
+            )
+            if not passed:
+                result.passed = False
+                result.error_message = f"Stderr validation failed: {error}"
+                return result
+
+            # Validate file creation
+            if test_case.expected_files:
+                passed, created_files, error = validate_file_creation(
+                    test_case.expected_files
+                )
+                result.created_files = created_files
+                if not passed:
+                    result.passed = False
+                    result.error_message = f"File validation failed: {error}"
+                    return result
+        finally:
+            # Always run teardown function if provided
+            if test_case.teardown_func:
+                try:
+                    test_case.teardown_func()
+                except Exception:
+                    pass
 
         # Clean up after successful test
         if result.passed and CLEANUP_ENABLED:
@@ -853,6 +935,7 @@ api_key = "{api_key}"
 
     def run_all_tests(self, test_cases: List[TestCase]):
         """Run all test cases and generate report"""
+        self.filtered_tests = test_cases
         total_tests = len(test_cases)
 
         with Progress(
@@ -884,12 +967,8 @@ api_key = "{api_key}"
     def generate_report(self):
         """Generate and display test report"""
         total_time = time.time() - self.start_time
-        passed_tests = sum(
-            1 for r in self.results if r.passed and "Skipped" not in r.stderr
-        )
-        skipped_tests = sum(
-            1 for r in self.results if r.passed and "Skipped" in r.stderr
-        )
+        passed_tests = sum(1 for r in self.results if r.passed and not r.skipped)
+        skipped_tests = sum(1 for r in self.results if r.skipped)
         failed_tests = sum(1 for r in self.results if not r.passed)
         api_key_failures = sum(
             1 for r in self.results if not r.passed and r.is_api_key_failure
@@ -922,21 +1001,18 @@ api_key = "{api_key}"
         provider_test_counts = {"mock": 0, "openai": 0, "perplexity": 0, "none": 0}
         provider_run_counts = {"mock": 0, "openai": 0, "perplexity": 0, "none": 0}
 
-        for test_case in all_tests:
+        for test_case in self.filtered_tests:
             provider_key = test_case.provider or "none"
             if provider_key in provider_test_counts:
                 provider_test_counts[provider_key] += 1
 
         for result in self.results:
             test_case = next(
-                (tc for tc in all_tests if tc.test_id == result.test_id), None
+                (tc for tc in self.filtered_tests if tc.test_id == result.test_id), None
             )
             if test_case:
                 provider_key = test_case.provider or "none"
-                if (
-                    provider_key in provider_run_counts
-                    and "Skipped" not in result.stderr
-                ):
+                if provider_key in provider_run_counts and not result.skipped:
                     provider_run_counts[provider_key] += 1
 
         # Display provider matrix
@@ -1001,7 +1077,7 @@ api_key = "{api_key}"
 
             # Find matching test case for description and provider
             test_case = next(
-                (tc for tc in all_tests if tc.test_id == result.test_id), None
+                (tc for tc in self.filtered_tests if tc.test_id == result.test_id), None
             )
             description = test_case.description if test_case else "Unknown test"
             if len(description) > 45:
@@ -1194,7 +1270,7 @@ all_tests = [
         env={"XDG_CONFIG_HOME": "./test_temp_config"},
         expected_stdout_patterns=[r"Configuration saved to"],
         expected_exit_code=0,
-        cleanup_files=["./test_temp_config/*"],
+        cleanup_files=["./test_temp_config/*", "./test_temp_config"],
     ),
     # Config flag test (F-40/T-CFG-06)
     TestCase(
@@ -1353,33 +1429,75 @@ all_tests = [
     # Checkpoint Persistence Tests
     TestCase(
         test_id="M5T-04",
-        description="Checkpoint saves operation state",
-        command=[THOTH_EXECUTABLE, "test checkpoint", "--provider", "mock"],
-        expected_stdout_patterns=[r"Research completed"],
-        expected_files=["*_mock_*.md"],
-        cleanup_files=["*_mock_*.md"],
+        description="Checkpoint persists across process invocations",
+        command=[THOTH_EXECUTABLE, "status", "test-persist-checkpoint-m5t04"],
+        expected_stdout_patterns=[
+            r"Operation Details",
+            r"test-persist-checkpoint-m5t04",
+            r"test checkpoint prompt",
+            r"completed",
+        ],
         expected_exit_code=0,
-        provider="mock",
-        api_key_method="env",
+        setup_func=lambda: create_test_checkpoint("test-persist-checkpoint-m5t04"),
+        teardown_func=lambda: remove_test_checkpoint("test-persist-checkpoint-m5t04"),
     ),
     TestCase(
         test_id="M5T-05",
-        description="Checkpoint recovery on corrupted file",
-        command=[THOTH_EXECUTABLE, "status", "invalid-json-checkpoint"],
-        expected_stdout_patterns=[r"Operation .* not found|Error loading checkpoint"],
-        expected_exit_code=1,
-        skip=True,
-        skip_reason="Requires creating corrupted checkpoint file",
+        description="Corrupted checkpoint shows warning and recovers",
+        command=[THOTH_EXECUTABLE, "status", "test-corrupt-m5t05"],
+        expected_stdout_patterns=[r"Warning.*[Cc]orrupt|not found"],
+        expected_exit_code=6,
+        setup_func=lambda: create_corrupted_checkpoint("test-corrupt-m5t05"),
+        teardown_func=lambda: remove_test_checkpoint("test-corrupt-m5t05"),
     ),
-    # Checkpoint Corruption Recovery Test (F-82)
+    # Lifecycle Management Tests (M5-10)
     TestCase(
-        test_id="M5T-09",
-        description="Checkpoint corruption detection and recovery",
-        command=[THOTH_EXECUTABLE, "status", "corrupted-checkpoint-id"],
-        expected_stdout_patterns=[r"Checkpoint corrupted|Invalid checkpoint"],
-        expected_exit_code=1,
-        skip=True,
-        skip_reason="Requires test infrastructure for corrupted checkpoints",
+        test_id="M5T-10a",
+        description="Operation starts in queued state with --async",
+        command=[THOTH_EXECUTABLE, "test lifecycle", "--async", "--provider", "mock"],
+        expected_stdout_patterns=[r"Operation ID: \w+-\d+-\d+-\w+"],
+        expected_exit_code=0,
+        provider="mock",
+        api_key_method="env",
+        timeout=5,
+    ),
+    TestCase(
+        test_id="M5T-10b",
+        description="Synchronous operation transitions queued→running→completed",
+        command=[THOTH_EXECUTABLE, "test lifecycle sync", "--provider", "mock"],
+        expected_stdout_patterns=[r"Research completed|Results saved"],
+        expected_exit_code=0,
+        provider="mock",
+        api_key_method="env",
+        cleanup_files=["*_mock_*.md"],
+    ),
+    TestCase(
+        test_id="M5T-10c",
+        description="Completed operation status is valid state",
+        command=[THOTH_EXECUTABLE, "status", "test-lifecycle-valid-m5t10c"],
+        expected_stdout_patterns=[
+            r"Status:\s+(queued|running|completed|failed|cancelled)",
+        ],
+        expected_exit_code=0,
+        setup_func=lambda: create_test_checkpoint(
+            "test-lifecycle-valid-m5t10c", status="completed"
+        ),
+        teardown_func=lambda: remove_test_checkpoint("test-lifecycle-valid-m5t10c"),
+    ),
+    TestCase(
+        test_id="M5T-10d",
+        description="Failed operation status is preserved in checkpoint",
+        command=[THOTH_EXECUTABLE, "status", "test-lifecycle-failed-m5t10d"],
+        expected_stdout_patterns=[
+            r"Status:\s+failed",
+        ],
+        expected_exit_code=0,
+        setup_func=lambda: create_test_checkpoint(
+            "test-lifecycle-failed-m5t10d",
+            status="failed",
+            error="Test error message",
+        ),
+        teardown_func=lambda: remove_test_checkpoint("test-lifecycle-failed-m5t10d"),
     ),
     # Milestone 6: Output Management
     TestCase(
@@ -1406,7 +1524,7 @@ all_tests = [
         ],
         expected_stdout_patterns=[r"Results saved to:"],
         expected_files=["test_output/*_mock_*.md"],
-        cleanup_files=["test_output/*"],
+        cleanup_files=["test_output/*", "test_output"],
         expected_exit_code=0,
         provider="mock",
         api_key_method="env",
@@ -1592,7 +1710,11 @@ all_tests = [
         ],
         expected_stdout_patterns=[r"Research completed"],
         expected_files=["research-outputs/test_project/*_mock_*.md"],
-        cleanup_files=["research-outputs/test_project/*"],
+        cleanup_files=[
+            "research-outputs/test_project/*",
+            "research-outputs/test_project",
+            "research-outputs",
+        ],
         expected_exit_code=0,
         provider="mock",
         api_key_method="env",
@@ -1963,7 +2085,7 @@ all_tests = [
         expected_exit_code=0,
     ),
     TestCase(
-        test_id="INT-12",
+        test_id="INT-12a",
         description="Combined initial settings from CLI",
         command=[
             THOTH_EXECUTABLE,

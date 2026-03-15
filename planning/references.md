@@ -12,6 +12,16 @@
 - https://docs.perplexity.ai/guides/prompt-guide
 - https://docs.perplexity.ai/guides/chat-completions-guide
 
+# Gemini Deep Research
+- https://ai.google.dev/gemini-api/docs/deep-research
+- https://ai.google.dev/gemini-api/docs/interactions
+- https://ai.google.dev/gemini-api/docs/gemini-for-research
+
+# Gemini Model
+- Agent: `deep-research-pro-preview-12-2025`
+- API: Interactions API (`/v1beta/interactions`)
+- Auth header: `x-goog-api-key: $GEMINI_API_KEY`
+
 # OpenAI model list
 - https://platform.openai.com/docs/api-reference/models/list
 

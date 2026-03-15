@@ -65,15 +65,7 @@ dev: ## Show thoth help (development mode)
 
 # Run tests
 test: ## Run test suite
-	@echo "Running tests..."
-	@if [ -d "tests" ]; then \
-		python -m pytest tests/ -v; \
-	else \
-		echo "No tests directory found. Creating..."; \
-		mkdir -p tests; \
-		echo "def test_placeholder():" > tests/test_basic.py; \
-		echo "    assert True" >> tests/test_basic.py; \
-	fi
+	@./thoth_test -r
 
 # Lint main executable
 lint: ## Lint thoth executable
@@ -157,13 +149,12 @@ clean: ## Remove generated files and caches
 	@find . -type f -name ".DS_Store" -delete 2>/dev/null || true
 	@rm -rf .pytest_cache 2>/dev/null || true
 	@rm -rf .ruff_cache 2>/dev/null || true
-	@rm -rf .venv 2>/dev/null || true
 	@echo "✓ Cleaned"
 
 # Example run
 run: ## Run example research prompt
 	@echo "Running example research prompt..."
-	@./thoth clarification "What is quantum computing?"
+	@./thoth "What is quantum computing?" --provider mock
 
 # Check if UV is installed
 check-uv: ## Check if UV is installed
