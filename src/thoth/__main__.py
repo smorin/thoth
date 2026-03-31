@@ -593,7 +593,7 @@ class InteractiveInitialSettings:
 class ThothError(Exception):
     """Base exception for Thoth errors"""
 
-    def __init__(self, message: str, suggestion: str = None, exit_code: int = 1):
+    def __init__(self, message: str, suggestion: str | None = None, exit_code: int = 1):
         self.message = message
         self.suggestion = suggestion
         self.exit_code = exit_code
@@ -723,7 +723,7 @@ def build_epilog():
     # Research modes section
     lines.append("Research Modes:")
     for mode_name, mode_config in BUILTIN_MODES.items():
-        desc = mode_config.get("description", "No description")
+        desc = str(mode_config.get("description", "No description"))
         # Truncate long descriptions to fit nicely
         if len(desc) > 60:
             desc = desc[:57] + "..."
@@ -1384,7 +1384,7 @@ def show_general_help(ctx):
     console.print("  help [COMMAND]  Show help (general or command-specific)")
     console.print("\n[bold]Research Modes:[/bold]")
     for mode_name, mode_config in BUILTIN_MODES.items():
-        desc = mode_config.get("description", "No description")
+        desc = str(mode_config.get("description", "No description"))
         # Truncate long descriptions
         if len(desc) > 60:
             desc = desc[:57] + "..."
@@ -1747,7 +1747,7 @@ class ResearchProvider:
     """Base class for research providers"""
 
     async def submit(
-        self, prompt: str, mode: str, system_prompt: str = None, verbose: bool = False
+        self, prompt: str, mode: str, system_prompt: str | None = None, verbose: bool = False
     ) -> str:
         """Submit research and return job ID"""
         raise NotImplementedError
@@ -1798,7 +1798,7 @@ class MockProvider(ResearchProvider):
         self.jobs = {}
 
     async def submit(
-        self, prompt: str, mode: str, system_prompt: str = None, verbose: bool = False
+        self, prompt: str, mode: str, system_prompt: str | None = None, verbose: bool = False
     ) -> str:
         """Submit mock research and return job ID"""
         job_id = f"mock-{generate_operation_id()}"
@@ -1868,7 +1868,7 @@ This mock provider successfully completed the research task.
 class OpenAIProvider(ResearchProvider):
     """OpenAI Responses API implementation for Deep Research"""
 
-    def __init__(self, api_key: str, config: dict[str, Any] = None):
+    def __init__(self, api_key: str, config: dict[str, Any] | None = None):
         self.api_key = api_key
         self.config = config or {}
         # Model will be passed from mode configuration, default to o3
@@ -1888,7 +1888,7 @@ class OpenAIProvider(ResearchProvider):
         retry=retry_if_exception_type((httpx.TimeoutException, httpx.ConnectError)),
     )
     async def submit(
-        self, prompt: str, mode: str, system_prompt: str = None, verbose: bool = False
+        self, prompt: str, mode: str, system_prompt: str | None = None, verbose: bool = False
     ) -> str:
         """Submit research using OpenAI Responses API"""
         try:
@@ -1937,7 +1937,7 @@ class OpenAIProvider(ResearchProvider):
                 request_params["temperature"] = temperature
 
             # Use Responses API
-            response = await self.client.responses.create(**request_params)
+            response = await self.client.responses.create(**request_params)  # ty: ignore[no-matching-overload]
 
             # Store job information
             job_id = (
@@ -2271,13 +2271,13 @@ class OpenAIProvider(ResearchProvider):
 class PerplexityProvider(ResearchProvider):
     """Perplexity research implementation"""
 
-    def __init__(self, api_key: str, config: dict[str, Any] = None):
+    def __init__(self, api_key: str, config: dict[str, Any] | None = None):
         self.api_key = api_key
         self.config = config or {}
         self.model = self.config.get("model", "sonar-pro")  # Store model from config
 
     async def submit(
-        self, prompt: str, mode: str, system_prompt: str = None, verbose: bool = False
+        self, prompt: str, mode: str, system_prompt: str | None = None, verbose: bool = False
     ) -> str:
         """Submit to Perplexity"""
         # TODO: Implement actual Perplexity submission
@@ -2305,13 +2305,13 @@ class ProviderRegistry:
     """Central registry for provider management"""
 
     def __init__(self):
-        self.providers = {
+        self.providers: dict[str, type[ResearchProvider]] = {
             "openai": OpenAIProvider,
             "perplexity": PerplexityProvider,
             "mock": MockProvider,
         }
 
-    def register(self, name: str, provider_class: type):
+    def register(self, name: str, provider_class: type[ResearchProvider]):
         """Register a new provider class"""
         self.providers[name] = provider_class
 
@@ -3064,7 +3064,7 @@ async def providers_command(
     show_models: bool = False,
     show_list: bool = False,
     show_keys: bool = False,
-    filter_provider: str = None,
+    filter_provider: str | None = None,
     refresh_cache: bool = False,
     no_cache: bool = False,
 ):
@@ -3376,7 +3376,7 @@ class SlashCommandRegistry:
             modes = list(BUILTIN_MODES.keys())
             for i, mode_name in enumerate(modes, 1):
                 mode_config = BUILTIN_MODES[mode_name]
-                desc = mode_config.get("description", "No description")[:60]
+                desc = str(mode_config.get("description", "No description"))[:60]
                 current = (
                     " [green]← current[/green]"
                     if mode_name == self.current_mode
@@ -3506,7 +3506,7 @@ class SlashCommandRegistry:
 class SlashCommandCompleter(Completer):
     """Custom completer for slash commands with better partial matching"""
 
-    def __init__(self, commands: list[str], meta_dict: dict[str, str] = None):
+    def __init__(self, commands: list[str], meta_dict: dict[str, str] | None = None):
         self.commands = sorted(commands)
         self.meta_dict = meta_dict or {}
 
@@ -3777,7 +3777,7 @@ class InteractiveSession:
             "interactive", {}
         )
         default_height = clarify_config.get("input_height", 6)
-        current_height = self.input_area.height
+        current_height = self.input_area.height  # ty: ignore[unresolved-attribute]
 
         size_indicator = ""
         if isinstance(current_height, int) and current_height != default_height:
@@ -3957,12 +3957,12 @@ class InteractiveSession:
         @kb.add("c-=")  # Ctrl+= (easier than Ctrl+Plus on most keyboards)
         def handle_increase_height(event):
             """Ctrl+=: Increase input area height"""
-            current_height = self.input_area.height
+            current_height = self.input_area.height  # ty: ignore[unresolved-attribute]
             if (
                 isinstance(current_height, int)
                 and current_height < self.max_input_height
             ):
-                self.input_area.height = current_height + 1
+                self.input_area.height = current_height + 1  # ty: ignore[invalid-assignment]
                 self._update_help_text()
 
         # Also bind Ctrl+Plus for consistency
@@ -3979,11 +3979,11 @@ class InteractiveSession:
         @kb.add("c--")
         def handle_decrease_height(event):
             """Ctrl+-: Decrease input area height"""
-            current_height = self.input_area.height
+            current_height = self.input_area.height  # ty: ignore[unresolved-attribute]
             if (
                 isinstance(current_height, int) and current_height > 3
             ):  # Minimum height of 3
-                self.input_area.height = current_height - 1
+                self.input_area.height = current_height - 1  # ty: ignore[invalid-assignment]
                 self._update_help_text()
 
         return kb
@@ -4113,7 +4113,7 @@ class InteractiveSession:
         def print_modes():
             print("\nAvailable modes:")
             for i, (name, config) in enumerate(BUILTIN_MODES.items(), 1):
-                desc = config.get("description", "No description")[:60]
+                desc = str(config.get("description", "No description"))[:60]
                 current = (
                     " ← current" if name == self.slash_registry.current_mode else ""
                 )

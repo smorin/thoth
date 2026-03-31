@@ -23,6 +23,7 @@ import signal
 import subprocess
 import sys
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -40,7 +41,7 @@ try:
     PEXPECT_AVAILABLE = True
 except ImportError:
     PEXPECT_AVAILABLE = False
-    pexpect = None
+    pexpect = None  # ty: ignore[invalid-assignment]
 
 # Initialize console for output
 console = Console()
@@ -113,8 +114,8 @@ class TestCase:
     interactive_scenario: list[tuple] | None = None  # For pexpect tests: [(expect, send), ...]
     terminal_env: dict[str, str] | None = None  # Terminal-specific env vars
     is_interactive: bool = False  # Whether this is an interactive mode test
-    setup_func: object | None = None  # Callable to run before test execution
-    teardown_func: object | None = None  # Callable to run after test execution
+    setup_func: Callable[[], None] | None = None  # Callable to run before test execution
+    teardown_func: Callable[[], None] | None = None  # Callable to run after test execution
 
 
 # ============================================================================
@@ -485,7 +486,7 @@ class InteractiveTestRunner:
                                 test_id=test_case.test_id,
                                 passed=False,
                                 duration=time.time() - start_time,
-                                stdout=child.before if hasattr(child, "before") else "",
+                                stdout=child.before.decode() if isinstance(child.before, bytes) else (child.before or ""),
                                 stderr=error_msg,
                                 exit_code=-1,
                                 error_message=error_msg,
@@ -501,7 +502,7 @@ class InteractiveTestRunner:
                                     test_id=test_case.test_id,
                                     passed=False,
                                     duration=time.time() - start_time,
-                                    stdout=child.before if hasattr(child, "before") else "",
+                                    stdout=child.before.decode() if isinstance(child.before, bytes) else (child.before or ""),
                                     stderr=error_msg,
                                     exit_code=-1,
                                     error_message=error_msg,
@@ -522,7 +523,7 @@ class InteractiveTestRunner:
                 pass  # Process might have already exited
 
             # Get final output
-            stdout = child.before if hasattr(child, "before") else ""
+            stdout = child.before.decode() if isinstance(child.before, bytes) else (child.before or "")
 
             # Close the child process
             child.close(force=True)

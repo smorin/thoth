@@ -85,9 +85,9 @@ typecheck: ## Type check src/thoth/ package
 	@echo "Type checking src/thoth/ package..."
 	@uv run ty check src/thoth/
 
-# Check main package (lint only; run 'make typecheck' separately — pre-existing type errors exist)
-check: lint ## Run lint check on src/thoth/ package
-	@echo "✓ Package lint checks passed"
+# Check main package
+check: lint typecheck ## Run lint and typecheck on src/thoth/ package
+	@echo "✓ Package checks passed"
 
 # Fix main package
 fix: ## Auto-fix and format src/thoth/ package
@@ -114,9 +114,9 @@ test-typecheck: ## Type check test suite
 	@echo "Type checking test suite..."
 	@uv tool run ty check thoth_test
 
-# Check test suite (lint only; run 'make test-typecheck' separately — pre-existing type errors exist)
-test-check: test-lint ## Run lint check on test suite
-	@echo "✓ Test suite lint checks passed"
+# Check test suite
+test-check: test-lint test-typecheck ## Run lint and typecheck on test suite
+	@echo "✓ Test suite checks passed"
 
 # Fix test suite
 test-fix: ## Auto-fix and format test suite
