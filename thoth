@@ -2284,29 +2284,208 @@ class OpenAIProvider(ResearchProvider):
 
 
 class PerplexityProvider(ResearchProvider):
-    """Perplexity research implementation"""
+    """Perplexity Sonar Deep Research implementation.
+
+    Uses the OpenAI-compatible chat completions API at api.perplexity.ai.
+    Perplexity-specific parameters (reasoning_effort, search filters) are
+    passed via extra_body. The deprecated 'citations' field is ignored in
+    favor of 'search_results' for source extraction.
+    """
 
     def __init__(self, api_key: str, config: Dict[str, Any] = None):
         self.api_key = api_key
         self.config = config or {}
-        self.model = self.config.get("model", "sonar-pro")  # Store model from config
+        self.model = self.config.get("model", "sonar-deep-research")
+        self.jobs = {}
+        self.model_cache = ModelCache("perplexity")
 
+        # Deep research can take 2-40+ minutes; default 300s timeout
+        timeout = self.config.get("timeout", 300.0)
+        self.client = AsyncOpenAI(
+            api_key=api_key,
+            base_url="https://api.perplexity.ai",
+            timeout=httpx.Timeout(timeout, connect=10.0),
+        )
+
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=4, max=10),
+        retry=retry_if_exception_type((httpx.TimeoutException, httpx.ConnectError)),
+    )
     async def submit(
         self, prompt: str, mode: str, system_prompt: str = None, verbose: bool = False
     ) -> str:
-        """Submit to Perplexity"""
-        # TODO: Implement actual Perplexity submission
-        raise NotImplementedError("Perplexity provider not yet implemented")
+        """Submit research query to Perplexity Sonar API"""
+        try:
+            messages = []
+            if system_prompt:
+                messages.append({"role": "system", "content": system_prompt})
+            messages.append({"role": "user", "content": prompt})
+
+            # Perplexity-specific params via extra_body
+            extra_body = {}
+            reasoning_effort = self.config.get("reasoning_effort")
+            if reasoning_effort and self.model == "sonar-deep-research":
+                extra_body["reasoning_effort"] = reasoning_effort
+
+            request_params = {
+                "model": self.model,
+                "messages": messages,
+            }
+            if extra_body:
+                request_params["extra_body"] = extra_body
+
+            response = await self.client.chat.completions.create(**request_params)
+
+            job_id = (
+                response.id
+                if hasattr(response, "id") and response.id
+                else f"pplx-{datetime.now().strftime('%Y%m%d%H%M%S')}-{uuid4().hex[:8]}"
+            )
+            self.jobs[job_id] = {
+                "response": response,
+                "created_at": datetime.now(),
+            }
+
+            return job_id
+
+        except httpx.TimeoutException as e:
+            raise ProviderError(
+                "perplexity",
+                "Request timed out. Deep research can take several minutes; try increasing timeout with --timeout.",
+                raw_error=str(e) if verbose else None,
+            )
+        except httpx.ConnectError as e:
+            raise ProviderError(
+                "perplexity",
+                "Failed to connect to Perplexity API. Check your internet connection.",
+                raw_error=str(e) if verbose else None,
+            )
+        except Exception as e:
+            error_msg = str(e)
+            error_msg_lower = error_msg.lower()
+
+            # Check for authentication errors (401)
+            if (
+                "authentication" in error_msg_lower
+                or "api key" in error_msg_lower
+                or "401" in error_msg
+            ):
+                if (
+                    "incorrect api key" in error_msg_lower
+                    or "invalid" in error_msg_lower
+                ):
+                    raise ThothError(
+                        "Invalid Perplexity API key",
+                        "Check your API key at https://perplexity.ai/account/api",
+                    )
+                else:
+                    raise APIKeyError("perplexity")
+
+            # Check for insufficient credits (402)
+            elif "402" in error_msg or "insufficient" in error_msg_lower:
+                raise ProviderError(
+                    "perplexity",
+                    "Insufficient credits. Check your Perplexity account billing at https://perplexity.ai/account/api",
+                    raw_error=str(e) if verbose else None,
+                )
+
+            # Check for rate limit errors (429)
+            elif "rate limit" in error_msg_lower or "429" in error_msg:
+                raise ProviderError(
+                    "perplexity",
+                    "Rate limit exceeded. Please wait a moment and try again.",
+                    raw_error=str(e) if verbose else None,
+                )
+
+            # Check for model not found errors (404)
+            elif "model" in error_msg_lower and (
+                "not found" in error_msg_lower or "404" in error_msg
+            ):
+                raise ProviderError(
+                    "perplexity",
+                    f"Model '{self.model}' not found. Available: sonar-deep-research, sonar-pro, sonar, sonar-reasoning-pro",
+                    raw_error=str(e) if verbose else None,
+                )
+
+            # Generic error
+            else:
+                raise ProviderError(
+                    "perplexity", str(e), raw_error=str(e) if verbose else None
+                )
+
+    async def check_status(self, job_id: str) -> Dict[str, Any]:
+        """Check job status. Perplexity sync API completes immediately."""
+        if job_id not in self.jobs:
+            return {"status": "not_found", "error": "Job not found"}
+        return {"status": "completed", "progress": 1.0}
+
+    async def get_result(self, job_id: str) -> str:
+        """Extract content and format sources from search_results."""
+        if job_id not in self.jobs:
+            raise ValueError("Job not found")
+
+        response = self.jobs[job_id]["response"]
+        content = ""
+
+        # Extract main content from choices
+        if hasattr(response, "choices") and response.choices:
+            choice = response.choices[0]
+            if hasattr(choice, "message") and hasattr(choice.message, "content"):
+                content = choice.message.content or ""
+
+        # Extract search_results (citations field deprecated May 2025)
+        search_results = getattr(response, "search_results", None)
+
+        # Format sources section from search_results
+        if search_results:
+            content += "\n\n## Sources\n\n"
+            for i, result in enumerate(search_results, 1):
+                if isinstance(result, dict):
+                    title = result.get("title", result.get("url", "Unknown"))
+                    url = result.get("url", "")
+                else:
+                    title = getattr(result, "title", getattr(result, "url", "Unknown"))
+                    url = getattr(result, "url", "")
+                if url:
+                    content += f"{i}. [{title}]({url})\n"
+                else:
+                    content += f"{i}. {title}\n"
+
+        return content if content else "No response available"
 
     async def list_models(self) -> List[Dict[str, Any]]:
-        """Return hardcoded Perplexity models as specified"""
+        """Return hardcoded Perplexity Sonar models."""
         return [
             {
                 "id": "sonar-deep-research",
                 "created": 1700000000,
                 "owned_by": "perplexity",
-            }
+            },
+            {"id": "sonar-pro", "created": 1700000000, "owned_by": "perplexity"},
+            {"id": "sonar", "created": 1700000000, "owned_by": "perplexity"},
+            {
+                "id": "sonar-reasoning-pro",
+                "created": 1700000000,
+                "owned_by": "perplexity",
+            },
         ]
+
+    async def list_models_cached(
+        self, force_refresh: bool = False, no_cache: bool = False
+    ) -> List[Dict[str, Any]]:
+        """List models with caching support."""
+        if no_cache:
+            return await self.list_models()
+
+        if not force_refresh:
+            cached = self.model_cache.load_cache()
+            if cached is not None:
+                return cached
+
+        models = await self.list_models()
+        self.model_cache.save_cache(models)
+        return models
 
 
 # ============================================================================
@@ -2452,7 +2631,11 @@ def create_provider(
         provider_config["timeout"] = timeout_override
 
     # Apply model from mode configuration if specified
-    if mode_config and "model" in mode_config and provider_name == "openai":
+    if (
+        mode_config
+        and "model" in mode_config
+        and provider_name in ["openai", "perplexity"]
+    ):
         provider_config["model"] = mode_config["model"]
 
     # Apply background mode for deep research models

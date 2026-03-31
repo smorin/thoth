@@ -342,31 +342,31 @@ This plan reflects the comprehensive restructuring of milestones to properly seq
 
 **Goal**: Basic Perplexity functionality with minimal features
 
-**Status**: Not started
+**Status**: In progress (implementation complete, pending API key integration testing)
 
 ### Implementation Tasks
 
-- [ ] **M11-01**: Research Perplexity API documentation
-- [ ] **M11-02**: Implement Perplexity client setup
-- [ ] **M11-03**: Create basic query submission
-- [ ] **M11-04**: Parse Perplexity response format
-- [ ] **M11-05**: Handle Perplexity-specific errors
-- [ ] **M11-06**: Test file output with sources
-- [ ] **M11-07**: Add connection handling
+- [x] **M11-01**: Research Perplexity API documentation
+- [x] **M11-02**: Implement Perplexity client setup (AsyncOpenAI with base_url)
+- [x] **M11-03**: Create basic query submission (chat.completions.create)
+- [x] **M11-04**: Parse Perplexity response format (search_results, not deprecated citations)
+- [x] **M11-05**: Handle Perplexity-specific errors (401, 402, 429, timeout, connect)
+- [x] **M11-06**: Test file output with sources
+- [x] **M11-07**: Add connection handling (retry with exponential backoff, 300s default timeout)
 - [ ] **M11-08**: Create provider documentation
 
 ### Test Plan (M11T-01 to M11T-10)
 
-- [ ] **M11T-01**: Basic query returns results
-- [ ] **M11T-02**: Sources included in response
-- [ ] **M11T-03**: Invalid API key error
-- [ ] **M11T-04**: Network timeout handling
-- [ ] **M11T-05**: Response formatting correct
-- [ ] **M11T-06**: File output with citations
-- [ ] **M11T-07**: Empty results handled
-- [ ] **M11T-08**: Special response formats
-- [ ] **M11T-09**: Metadata includes sources
-- [ ] **M11T-10**: Error messages helpful
+- [ ] **M11T-01**: Basic query returns results (requires PERPLEXITY_API_KEY)
+- [ ] **M11T-02**: Sources included in response (requires PERPLEXITY_API_KEY)
+- [x] **M11T-03**: Invalid API key error
+- [x] **M11T-04**: Network timeout handling
+- [ ] **M11T-05**: Response formatting correct (requires PERPLEXITY_API_KEY)
+- [ ] **M11T-06**: File output with citations (requires PERPLEXITY_API_KEY)
+- [ ] **M11T-07**: Empty results handled (requires PERPLEXITY_API_KEY)
+- [x] **M11T-08**: Special response formats
+- [ ] **M11T-09**: Metadata includes sources (requires PERPLEXITY_API_KEY)
+- [x] **M11T-10**: Error messages helpful
 
 ---
 
