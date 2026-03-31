@@ -51,6 +51,7 @@ openai.env
 !CHANGELOG.md
 !CONTRIBUTING.md
 !PUBLISH.md
+!RELEASE.md
 !CLAUDE.md
 !thoth.*.md
 !temp.*.md
