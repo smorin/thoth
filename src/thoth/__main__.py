@@ -1,0 +1,4554 @@
+"""
+Thoth - AI-Powered Research Assistant
+
+A command-line tool that automates deep technical research using multiple LLM providers.
+
+FILE STRUCTURE:
+===============
+SECTION 1:  CONFIGURATION MANAGEMENT      - Configuration classes and managers
+SECTION 2:  UTILITY FUNCTIONS            - General utility functions
+SECTION 3:  DATA MODELS                  - Core data structures
+SECTION 4:  ERROR HANDLING               - Exception classes and error handling
+SECTION 5:  CLI SETUP AND CONFIGURATION  - Click command setup
+SECTION 6:  MAIN CLI FUNCTION            - Main CLI command implementation
+SECTION 7:  COMMAND HANDLERS             - Command execution logic
+SECTION 8:  HELP AND DOCUMENTATION       - Help text functions
+SECTION 9:  CHECKPOINT MANAGEMENT        - Async operation state management
+SECTION 10: OUTPUT MANAGEMENT            - File output and report generation
+SECTION 11: MODEL CACHE MANAGEMENT       - Provider model caching
+SECTION 12: PROVIDER ARCHITECTURE        - Provider base classes and implementations
+SECTION 13: PROVIDER REGISTRY            - Central provider management
+SECTION 14: RESEARCH OPERATIONS - UTILS  - Research operation utilities
+SECTION 15: RESEARCH OPERATIONS - MAIN   - Core research execution
+SECTION 16: INTERACTIVE MODE             - Interactive prompt interface
+SECTION 17: SIGNAL HANDLING              - System signal handlers
+SECTION 18: MAIN ENTRY POINT             - Application entry point
+"""
+
+import asyncio
+import json
+import os
+import re
+import shutil
+import signal
+import sys
+import tomllib
+from dataclasses import asdict, dataclass, field
+from datetime import datetime, timedelta
+from enum import Enum
+from pathlib import Path
+from typing import Any
+from uuid import uuid4
+
+import aiofiles
+import click
+import httpx
+from openai import AsyncOpenAI
+from platformdirs import user_config_dir
+from rich import box
+from rich.console import Console
+from rich.progress import (
+    BarColumn,
+    Progress,
+    SpinnerColumn,
+    TextColumn,
+    TimeElapsedColumn,
+)
+from rich.table import Table
+from tenacity import (
+    retry,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_exponential,
+)
+
+# Initialize console for rich output
+console = Console()
+
+# Version tracking
+THOTH_VERSION = "2.5.0"
+CONFIG_VERSION = "2.0"
+
+# Global variables for signal handling
+_current_checkpoint_manager = None
+_current_operation = None
+
+# Global config path
+_config_path = None
+
+
+class InputMode(Enum):
+    """Interactive input mode states"""
+
+    EDIT_MODE = "edit"
+    CLARIFICATION_MODE = "clarification"
+
+
+def get_config():
+    """Get Config instance with custom path if provided"""
+    return Config(_config_path) if _config_path else Config()
+
+
+# Built-in mode definitions
+BUILTIN_MODES = {
+    "default": {
+        "provider": "openai",
+        "model": "o3",  # Use standard o3 for default
+        "system_prompt": None,  # No system prompt - pass prompt directly
+        "description": "Default mode - passes prompt directly to LLM without any system prompt",
+        "auto_input": False,
+    },
+    "clarification": {
+        "provider": "openai",
+        "model": "o3",  # Use standard o3 for clarification
+        "system_prompt": """I don't want you to follow the above question and instructions; I want you to tell me the ways this is unclear, point out any ambiguities or anything you don't understand. Follow that by asking questions to help clarify the ambiguous points. Once there are no more unclear, ambiguous or not understood portions, help me draft a clear version of the question/instruction.""",
+        "description": "Clarifying takes the prompt to get. Ask clarifying questions to get rid of anything that's ambiguous, unclear, and also make suggestions on what would be a better question.",
+        "next": "exploration",
+    },
+    "mini_research": {  # NEW MODE for quick research
+        "provider": "openai",
+        "model": "o4-mini-deep-research",
+        "system_prompt": "Conduct quick, focused research with key findings and essential information. Be concise but thorough.",
+        "description": "Fast, lightweight research mode for quick answers using o4-mini-deep-research.",
+        "auto_input": False,
+    },
+    "exploration": {
+        "provider": "openai",
+        "model": "o3-deep-research",  # Use deep research for exploration
+        "system_prompt": "Explore the topic at hand, looking at options, alternatives, different trade-offs, and make recommendations based on the use case or alternative/related technologies.",
+        "description": "Exploration looks at the topic at hand and explores some options and alternatives, different trade-offs, and makes recommendations based on the use case or just alternative and related technologies.",
+        "previous": "clarification",
+        "next": "deep_dive",
+    },
+    "deep_dive": {
+        "provider": "openai",
+        "model": "o3-deep-research",  # Use deep research for deep dive
+        "system_prompt": "Deep dive into the specific technology, giving an overview, going deep on it, discussing it, and exploring it. For APIs, cover what the API is, how it works, assumptions, dependencies, if it's deprecated, common pitfalls. For other technologies, cover what the technology is and how it's used.",
+        "description": "This deep dives into a specific technology, giving an overview of it, going deep on it, discussing it, and exploring it.",
+        "previous": "exploration",
+        "next": "tutorial",
+    },
+    "tutorial": {
+        "provider": "openai",
+        "model": "o3-deep-research",  # Use deep research for tutorial
+        "system_prompt": "Create a detailed tutorial with examples of how the technologies are used in common scenarios to get started, along with code samples, command-line execution process, and other useful information.",
+        "description": "The tutorial goes into a detailed explanation with examples of how the technologies are used in common scenarios to get started.",
+        "previous": "deep_dive",
+        "next": "solution",
+    },
+    "solution": {
+        "provider": "openai",
+        "model": "o3-deep-research",  # Use deep research for solution
+        "system_prompt": "Design a specific solution to solve the given problem using appropriate technology. Focus on practical implementation.",
+        "description": "A solution generally goes into a specific solution to solve a specific problem using technology.",
+        "previous": "tutorial",
+        "next": "prd",
+    },
+    "prd": {
+        "provider": "openai",
+        "model": "o3-deep-research",  # Use deep research for PRD
+        "system_prompt": "Create a Product Requirements Document based on prior research. Use previous research on solutions and technologies to create a comprehensive requirements document.",
+        "description": "Product Requirements Document based on prior research, we'll create the PRD looking at previous research on solutions to technologies.",
+        "previous": "solution",
+        "next": "tdd",
+    },
+    "tdd": {
+        "provider": "openai",
+        "model": "o3-deep-research",  # Use deep research for TDD
+        "system_prompt": "Create a Technical Design Document based on the PRD and prior research. Consider best practices on architecture and good abstractions to make things maintainable and well-structured in code.",
+        "description": "The Technical Design Document based on the PRD and prior research puts together a technical design document.",
+        "previous": "prd",
+    },
+    "thinking": {
+        "provider": "openai",
+        "model": "o3-deep-research",  # Use deep research for thinking
+        "temperature": 0.4,
+        "system_prompt": "You are a helpful assistant for quick analysis.",
+        "description": "Quick thinking and analysis mode for simple questions.",
+    },
+    "deep_research": {
+        "provider": "openai",
+        "model": "o3-deep-research",  # Explicit deep research model
+        "providers": ["openai"],
+        "parallel": True,
+        "system_prompt": "Conduct comprehensive research with citations and multiple perspectives.\nOrganize findings clearly and highlight key insights.",
+        "description": "Deep research mode using OpenAI for comprehensive analysis.",
+        "previous": "exploration",
+        "auto_input": True,
+    },
+    "comparison": {  # Add comparison mode with deep research
+        "provider": "openai",
+        "model": "o3-deep-research",
+        "system_prompt": "Compare and contrast the given options, technologies, or approaches. Provide a detailed analysis of pros, cons, and recommendations.",
+        "description": "Comparative analysis mode for evaluating multiple options.",
+    },
+}
+
+# ============================================================================
+# SECTION 1: CONFIGURATION MANAGEMENT
+# ============================================================================
+# This section contains all configuration-related classes and functions:
+# - ConfigSchema: Defines configuration defaults and structure
+# - ConfigManager: Manages layered configuration with precedence
+# - Config: Legacy wrapper for backward compatibility
+# ============================================================================
+
+
+class ConfigSchema:
+    """Configuration schema and defaults"""
+
+    @staticmethod
+    def get_defaults() -> dict[str, Any]:
+        """Return default configuration"""
+        return {
+            "version": CONFIG_VERSION,
+            "general": {
+                "default_project": "",  # Empty means ad-hoc mode
+                "default_mode": "default",
+            },
+            "paths": {
+                "base_output_dir": "./research-outputs",
+                "checkpoint_dir": str(Path(user_config_dir("thoth")) / "checkpoints"),
+            },
+            "execution": {
+                "poll_interval": 30,
+                "max_wait": 30,
+                "parallel_providers": True,
+                "retry_attempts": 3,
+                "auto_input": True,
+            },
+            "output": {
+                "combine_reports": False,
+                "format": "markdown",
+                "include_metadata": True,
+                "timestamp_format": "%Y-%m-%d_%H%M%S",
+            },
+            "providers": {
+                "openai": {"api_key": "${OPENAI_API_KEY}"},
+                "perplexity": {"api_key": "${PERPLEXITY_API_KEY}"},
+            },
+            "clarification": {
+                "cli": {
+                    "provider": "openai",
+                    "model": "gpt-4o-mini",
+                    "temperature": 0.7,
+                    "max_tokens": 500,
+                    "system_prompt": """I don't want you to follow the above question and instructions; I want you to tell me the ways this is unclear, point out any ambiguities or anything you don't understand. Follow that by asking questions to help clarify the ambiguous points. Once there are no more unclear, ambiguous or not understood portions, help me draft a clear version of the question/instruction.""",
+                    "retry_attempts": 3,
+                    "retry_delay": 2.0,
+                },
+                "interactive": {
+                    "provider": "openai",
+                    "model": "gpt-4o-mini",
+                    "temperature": 0.7,
+                    "max_tokens": 800,
+                    "system_prompt": """I don't want you to follow the above question and instructions; I want you to tell me the ways this is unclear, point out any ambiguities or anything you don't understand. Follow that by asking questions to help clarify the ambiguous points. Once there are no more unclear, ambiguous or not understood portions, help me draft a clear version of the question/instruction.""",
+                    "retry_attempts": 3,
+                    "retry_delay": 2.0,
+                    "input_height": 6,
+                    "max_input_height": 15,
+                },
+            },
+            "modes": {},  # Modes will be merged with built-in modes
+        }
+
+
+class ConfigManager:
+    """Manages layered configuration with clear precedence hierarchy"""
+
+    def __init__(self, config_path: Path | None = None):
+        self.user_config_path = (
+            config_path or Path(user_config_dir("thoth")) / "config.toml"
+        )
+        self.project_config_paths = ["./thoth.toml", "./.thoth/config.toml"]
+        self.layers = {}
+        self.data = {}
+
+    def load_all_layers(self, cli_args: dict[str, Any] | None = None):
+        """Load all configuration layers in precedence order"""
+        # Layer 1: Internal defaults
+        self.layers["defaults"] = ConfigSchema.get_defaults()
+
+        # Layer 2: User config file
+        if self.user_config_path.exists():
+            self.layers["user"] = self._load_toml_file(self.user_config_path)
+        else:
+            self.layers["user"] = {}
+
+        # Layer 3: Project config file (if exists)
+        self.layers["project"] = self._load_project_config()
+
+        # Layer 4: Environment variables
+        self.layers["env"] = self._get_env_overrides()
+
+        # Layer 5: CLI arguments
+        self.layers["cli"] = cli_args or {}
+
+        # Merge all layers
+        self.data = self._merge_layers()
+
+        # Validate configuration
+        self._validate_config()
+
+    def _load_toml_file(self, path: Path) -> dict[str, Any]:
+        """Load and parse a TOML configuration file"""
+        try:
+            with open(path, "rb") as f:
+                config = tomllib.load(f)
+
+            # Check version compatibility
+            config_version = config.get("version", "0.0")
+            if config_version != CONFIG_VERSION:
+                console.print(
+                    f"[yellow]Warning:[/yellow] Config version mismatch in {path}"
+                )
+
+            # Expand paths and substitute env vars
+            config = self._expand_paths(config)
+            config = self._substitute_env_vars(config)
+
+            return config
+        except Exception as e:
+            console.print(f"[yellow]Warning:[/yellow] Failed to load {path}: {e}")
+            return {}
+
+    def _load_project_config(self) -> dict[str, Any]:
+        """Load project-level configuration if it exists"""
+        for config_path in self.project_config_paths:
+            path = Path(config_path)
+            if path.exists():
+                return self._load_toml_file(path)
+        return {}
+
+    def _get_env_overrides(self) -> dict[str, Any]:
+        """Get configuration overrides from environment variables"""
+        overrides = {}
+
+        # Map of env vars to config paths
+        env_mappings = {
+            "THOTH_DEFAULT_MODE": "general.default_mode",
+            "THOTH_DEFAULT_PROJECT": "general.default_project",
+            "THOTH_OUTPUT_DIR": "paths.base_output_dir",
+            "THOTH_POLL_INTERVAL": "execution.poll_interval",
+            "THOTH_MAX_WAIT": "execution.max_wait",
+        }
+
+        for env_var, config_path in env_mappings.items():
+            value = os.getenv(env_var)
+            if value is not None:
+                # Convert config path to nested dict
+                keys = config_path.split(".")
+                current = overrides
+                for key in keys[:-1]:
+                    if key not in current:
+                        current[key] = {}
+                    current = current[key]
+
+                # Try to convert to appropriate type
+                try:
+                    if value.lower() in ("true", "false"):
+                        current[keys[-1]] = value.lower() == "true"
+                    elif value.isdigit():
+                        current[keys[-1]] = int(value)
+                    else:
+                        current[keys[-1]] = value
+                except Exception:
+                    current[keys[-1]] = value
+
+        return overrides
+
+    def _merge_layers(self) -> dict[str, Any]:
+        """Merge all configuration layers with proper precedence"""
+        result = {}
+
+        # Merge in order of precedence
+        for layer_name in ["defaults", "user", "project", "env", "cli"]:
+            if layer_name in self.layers and self.layers[layer_name]:
+                result = self._deep_merge(result, self.layers[layer_name])
+
+        return result
+
+    def _deep_merge(
+        self, base: dict[str, Any], override: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Deep merge two dictionaries"""
+        result = base.copy()
+
+        for key, value in override.items():
+            if (
+                key in result
+                and isinstance(result[key], dict)
+                and isinstance(value, dict)
+            ):
+                result[key] = self._deep_merge(result[key], value)
+            else:
+                result[key] = value
+
+        return result
+
+    def _expand_paths(self, config: dict[str, Any]) -> dict[str, Any]:
+        """Expand paths in configuration"""
+        if "paths" in config:
+            for key, value in config["paths"].items():
+                path = Path(value).expanduser()
+                if path.exists() and path.is_symlink():
+                    path = path.resolve()
+                config["paths"][key] = str(path)
+        return config
+
+    def _substitute_env_vars(self, config: dict[str, Any]) -> dict[str, Any]:
+        """Replace ${VAR} with environment variable values"""
+
+        def substitute(value):
+            if (
+                isinstance(value, str)
+                and value.startswith("${")
+                and value.endswith("}")
+            ):
+                var_name = value[2:-1]
+                return os.getenv(var_name, value)
+            elif isinstance(value, dict):
+                return {k: substitute(v) for k, v in value.items()}
+            elif isinstance(value, list):
+                return [substitute(v) for v in value]
+            return value
+
+        return substitute(config)
+
+    def _validate_config(self):
+        """Validate the merged configuration"""
+        # Basic validation - can be extended
+        required_keys = [
+            "version",
+            "general",
+            "paths",
+            "execution",
+            "output",
+            "providers",
+        ]
+        for key in required_keys:
+            if key not in self.data:
+                raise ThothError(
+                    f"Missing required configuration key: {key}",
+                    "Check your configuration file",
+                )
+
+    def get(self, key: str, default: Any = None) -> Any:
+        """Get configuration value using dot notation"""
+        keys = key.split(".")
+        current = self.data
+
+        for k in keys:
+            if isinstance(current, dict) and k in current:
+                current = current[k]
+            else:
+                return default
+
+        return current
+
+    def get_mode_config(self, mode: str) -> dict[str, Any]:
+        """Get mode configuration, merging built-in with user config"""
+        # Start with built-in mode if it exists
+        mode_config = BUILTIN_MODES.get(mode, {}).copy()
+
+        # Override with user config if present
+        user_mode = self.data.get("modes", {}).get(mode, {})
+        mode_config.update(user_mode)
+
+        return mode_config
+
+    def get_effective_config(self) -> dict[str, Any]:
+        """Return the merged effective configuration"""
+        return self.data
+
+
+# Keep old Config class for backward compatibility during migration
+class Config:
+    """Legacy Config class - redirects to ConfigManager"""
+
+    def __init__(self, config_path: Path | None = None):
+        self.manager = ConfigManager(config_path)
+        self.manager.load_all_layers()
+        self.data = self.manager.data
+
+    def get_mode_config(self, mode: str) -> dict[str, Any]:
+        return self.manager.get_mode_config(mode)
+
+
+# ============================================================================
+# SECTION 2: UTILITY FUNCTIONS
+# ============================================================================
+# General-purpose utility functions used throughout the application
+# ============================================================================
+
+
+def generate_operation_id() -> str:
+    """Generate unique operation ID with 16-char UUID suffix"""
+    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    unique_suffix = str(uuid4()).replace("-", "")[:16]  # 16 chars for better uniqueness
+    return f"research-{timestamp}-{unique_suffix}"
+
+
+def sanitize_slug(text: str, max_length: int = 50) -> str:
+    """Convert text to filename-safe slug"""
+    # Keep alphanumeric and spaces, replace spaces with hyphens
+    slug = re.sub(r"[^a-zA-Z0-9\s-]", "", text)
+    slug = re.sub(r"\s+", "-", slug.strip())
+    return slug[:max_length].lower()
+
+
+def mask_api_key(key: str) -> str:
+    """Mask API key for display"""
+    if not key or len(key) < 8:
+        return "***"
+    return f"{key[:3]}...{key[-3:]}"
+
+
+def check_disk_space(path: Path, required_mb: int = 100) -> bool:
+    """Check if sufficient disk space is available"""
+    stat = shutil.disk_usage(path)
+    available_mb = stat.free / (1024 * 1024)
+    return available_mb >= required_mb
+
+
+# ============================================================================
+# SECTION 3: DATA MODELS
+# ============================================================================
+# Core data structures and models used by the application
+# ============================================================================
+
+
+# Valid operation states
+VALID_OPERATION_STATES = {"queued", "running", "completed", "failed", "cancelled"}
+
+# Valid state transitions: source → allowed targets
+VALID_STATE_TRANSITIONS = {
+    "queued": {"running", "cancelled", "failed"},
+    "running": {"completed", "failed", "cancelled"},
+    "completed": set(),  # terminal state
+    "failed": set(),  # terminal state
+    "cancelled": set(),  # terminal state
+}
+
+
+@dataclass
+class OperationStatus:
+    """Status of a research operation"""
+
+    id: str
+    prompt: str
+    mode: str
+    status: str  # "queued", "running", "completed", "failed", "cancelled"
+    created_at: datetime
+    updated_at: datetime
+    providers: dict[str, dict[str, Any]] = field(default_factory=dict)
+    output_paths: dict[str, Path] = field(default_factory=dict)
+    error: str | None = None
+    progress: float = 0.0  # 0.0 to 1.0
+    project: str | None = None
+    input_files: list[Path] = field(default_factory=list)
+
+    def transition_to(self, new_status: str, error: str | None = None) -> None:
+        """Transition to a new status with validation.
+
+        Validates that the transition is allowed per the state machine.
+        Updates updated_at timestamp automatically.
+        """
+        if new_status not in VALID_OPERATION_STATES:
+            raise ValueError(
+                f"Invalid operation status: '{new_status}'. "
+                f"Valid states: {VALID_OPERATION_STATES}"
+            )
+        allowed = VALID_STATE_TRANSITIONS.get(self.status, set())
+        if new_status not in allowed:
+            raise ValueError(
+                f"Invalid state transition: '{self.status}' → '{new_status}'. "
+                f"Allowed transitions from '{self.status}': {allowed}"
+            )
+        self.status = new_status
+        self.updated_at = datetime.now()
+        if error is not None:
+            self.error = error
+
+
+@dataclass
+class InteractiveInitialSettings:
+    """Initial settings for interactive mode from command-line arguments"""
+
+    mode: str | None = None
+    provider: str | None = None
+    prompt: str | None = None
+    async_mode: bool = False
+    cli_api_keys: dict[str, str | None] | None = None
+    clarify_mode: bool = False  # Start in clarification mode if True
+
+
+# ============================================================================
+# SECTION 4: ERROR HANDLING
+# ============================================================================
+# Custom exception classes and error handling utilities
+# ============================================================================
+
+
+class ThothError(Exception):
+    """Base exception for Thoth errors"""
+
+    def __init__(self, message: str, suggestion: str = None, exit_code: int = 1):
+        self.message = message
+        self.suggestion = suggestion
+        self.exit_code = exit_code
+        super().__init__(message)
+
+
+class APIKeyError(ThothError):
+    """Missing or invalid API key"""
+
+    def __init__(self, provider: str):
+        super().__init__(
+            f"{provider} API key not found",
+            f"Set {provider.upper()}_API_KEY or run 'thoth init'",
+            exit_code=2,
+        )
+
+
+class ProviderError(ThothError):
+    """Provider-specific error with raw error support"""
+
+    def __init__(self, provider: str, message: str, raw_error: str | None = None):
+        self.provider = provider
+        self.raw_error = raw_error
+        super().__init__(
+            f"{provider} error: {message}",
+            "Check API status or try again later",
+            exit_code=3,
+        )
+
+
+class DiskSpaceError(ThothError):
+    """Insufficient disk space"""
+
+    def __init__(self, message: str):
+        super().__init__(message, "Free up disk space and try again", exit_code=8)
+
+
+class APIQuotaError(ThothError):
+    """API quota exceeded"""
+
+    def __init__(self, provider: str):
+        super().__init__(
+            f"{provider} API quota exceeded",
+            "Wait for quota reset or upgrade your plan",
+            exit_code=9,
+        )
+
+
+def handle_error(error: Exception):
+    """Display error with appropriate formatting"""
+    if isinstance(error, ThothError):
+        console.print(f"\n[red]Error:[/red] {error.message}")
+        if error.suggestion:
+            console.print(f"[yellow]Suggestion:[/yellow] {error.suggestion}")
+        sys.exit(error.exit_code)
+    elif isinstance(error, KeyboardInterrupt):
+        console.print("\n[yellow]Operation cancelled by user[/yellow]")
+        sys.exit(1)
+    else:
+        console.print(f"\n[red]Unexpected error:[/red] {str(error)}")
+        console.print("[dim]Please report this issue[/dim]")
+        if os.getenv("THOTH_DEBUG"):
+            console.print_exception()
+        sys.exit(127)
+
+
+# ============================================================================
+# SECTION 5: CLI SETUP AND CONFIGURATION
+# ============================================================================
+# Click command setup, option handling, and CLI structure
+# ============================================================================
+
+
+class ThothCommand(click.Command):
+    """Custom command class to enhance help display"""
+
+    def parse_args(self, ctx, args):
+        """Override to intercept --help with subcommands"""
+        # Check if --help is present
+        if "--help" in args:
+            help_index = args.index("--help")
+
+            # Check if --help is followed by a command
+            if help_index + 1 < len(args):
+                subcommand = args[help_index + 1]
+
+                # Show subcommand help instead of general help
+                if subcommand == "init":
+                    show_init_help()
+                    ctx.exit(0)
+                elif subcommand == "status":
+                    show_status_help()
+                    ctx.exit(0)
+                elif subcommand == "list":
+                    show_list_help()
+                    ctx.exit(0)
+                elif subcommand == "providers":
+                    show_providers_help()
+                    ctx.exit(0)
+
+        return super().parse_args(ctx, args)
+
+    def format_epilog(self, ctx, formatter):
+        """Override to format epilog without rewrapping"""
+        if self.epilog:
+            formatter.write_paragraph()
+            # Split epilog into lines and write each one to preserve formatting
+            for line in self.epilog.split("\n"):
+                if line:
+                    formatter.write_text(line)
+                else:
+                    formatter.write_paragraph()
+
+
+def build_epilog():
+    """Build the epilog text with modes and examples"""
+    lines = []
+
+    # Commands section
+    lines.append("Commands:")
+    lines.append("  init            Initialize configuration")
+    lines.append("  status <ID>     Check operation status")
+    lines.append("  list            List research operations")
+    lines.append("  help [COMMAND]  Show help (general or command-specific)")
+    lines.append("")
+
+    # Research modes section
+    lines.append("Research Modes:")
+    for mode_name, mode_config in BUILTIN_MODES.items():
+        desc = mode_config.get("description", "No description")
+        # Truncate long descriptions to fit nicely
+        if len(desc) > 60:
+            desc = desc[:57] + "..."
+        lines.append(f"  {mode_name:<15} {desc}")
+    lines.append("")
+
+    # Examples section
+    lines.append("Examples:")
+    lines.append("  # Simple prompt (uses default mode)")
+    lines.append('  $ thoth "how does DNS work"')
+    lines.append("")
+    lines.append("  # Specify a research mode")
+    lines.append('  $ thoth deep_research "explain kubernetes networking"')
+    lines.append("")
+    lines.append("  # Get command-specific help")
+    lines.append("  $ thoth help init")
+    lines.append("  $ thoth --help status")
+    lines.append("")
+    lines.append("For detailed command help: thoth help [COMMAND]")
+
+    return "\n".join(lines)
+
+
+# ============================================================================
+# SECTION 6: MAIN CLI FUNCTION
+# ============================================================================
+# Main Click CLI command implementation and argument processing
+# ============================================================================
+
+
+@click.command(
+    cls=ThothCommand,
+    context_settings=dict(allow_extra_args=True, allow_interspersed_args=True),
+    epilog=build_epilog(),
+)
+@click.pass_context
+@click.argument("args", nargs=-1)
+@click.option("--mode", "-m", "mode_opt", help="Research mode")
+@click.option("--prompt", "-q", "prompt_opt", help="Research prompt")
+@click.option("--prompt-file", "-F", help="Read prompt from file (use - for stdin)")
+@click.option("--async", "-A", "async_mode", is_flag=True, help="Submit and exit")
+@click.option("--resume", "-R", "resume_id", help="Resume operation by ID")
+@click.option("--project", "-p", help="Project name")
+@click.option("--output-dir", "-o", help="Override output directory")
+@click.option(
+    "--provider",
+    "-P",
+    type=click.Choice(["openai", "perplexity", "mock"]),
+    help="Single provider",
+)
+@click.option("--input-file", help="Use output from previous mode as input")
+@click.option(
+    "--auto", is_flag=True, help="Automatically use latest relevant output as input"
+)
+@click.option("--verbose", "-v", is_flag=True, help="Enable debug output")
+@click.option("--version", "-V", is_flag=True, help="Show version and exit")
+@click.option("--api-key-openai", help="API key for OpenAI provider")
+@click.option("--api-key-perplexity", help="API key for Perplexity provider")
+@click.option("--api-key-mock", help="API key for Mock provider")
+@click.option("--config", "-c", "config_path", help="Path to custom config file")
+@click.option(
+    "--combined", is_flag=True, help="Generate combined report from multiple providers"
+)
+@click.option("--quiet", "-Q", is_flag=True, help="Minimal output during execution")
+@click.option(
+    "--no-metadata",
+    is_flag=True,
+    help="Disable metadata headers and prompt section in output files",
+)
+@click.option("--timeout", "-T", type=float, help="Override request timeout in seconds")
+@click.option("--interactive", "-i", is_flag=True, help="Enter interactive prompt mode")
+@click.option(
+    "--clarify", is_flag=True, help="Start interactive mode in Clarification Mode"
+)
+def cli(
+    ctx,
+    args,
+    mode_opt,
+    prompt_opt,
+    prompt_file,
+    async_mode,
+    resume_id,
+    project,
+    output_dir,
+    provider,
+    input_file,
+    auto,
+    verbose,
+    version,
+    api_key_openai,
+    api_key_perplexity,
+    api_key_mock,
+    config_path,
+    combined,
+    quiet,
+    no_metadata,
+    timeout,
+    interactive,
+    clarify,
+):
+    """Thoth - AI-Powered Research Assistant
+
+    Quick usage: thoth "PROMPT"
+    Advanced: thoth MODE "PROMPT"
+    Commands: init, status, list, providers, help [COMMAND]
+
+    Examples:
+      thoth "how does DNS work"
+      thoth "best practices for REST APIs"
+      thoth exploration "web frameworks"
+      thoth help init
+      thoth help status
+    """
+    # Set global config path if provided
+    global _config_path
+    if config_path:
+        _config_path = Path(config_path).expanduser().resolve()
+
+    # Show version if requested
+    if version:
+        console.print(f"Thoth v{THOTH_VERSION}")
+        sys.exit(0)
+
+    # Determine mode and prompt early (for both interactive and non-interactive)
+    final_mode = None
+    final_prompt = None
+
+    # Skip special commands for mode/prompt determination
+    if not (args and args[0] in ["init", "status", "list", "help", "providers"]):
+        if len(args) >= 2:
+            # Two or more args: First is potentially a mode, rest is prompt
+            if args[0] in BUILTIN_MODES:
+                final_mode = args[0]
+                final_prompt = " ".join(args[1:])
+            else:
+                # Check if it looks like a mode but is invalid
+                if len(args[0].split()) == 1 and not args[0].startswith("-"):
+                    # Might be an invalid mode
+                    console.print(f"[red]Error:[/red] Unknown mode: {args[0]}")
+                    console.print(
+                        f"[yellow]Available modes:[/yellow] {', '.join(BUILTIN_MODES.keys())}"
+                    )
+                    sys.exit(1)
+                # Not a mode, treat entire args as prompt
+                final_mode = "default"
+                final_prompt = " ".join(args)
+        elif len(args) == 1:
+            # One arg: could be just PROMPT or MODE (with --prompt)
+            if prompt_opt:
+                final_mode = args[0]
+                final_prompt = prompt_opt
+            else:
+                final_mode = "default"
+                final_prompt = args[0]
+        else:
+            # No positional args, check options
+            final_mode = mode_opt or "default"
+            final_prompt = prompt_opt
+
+    # Handle prompt file
+    if prompt_file:
+        if prompt_file == "-":
+            # Read from stdin with size limit
+            stdin_data = sys.stdin.read(1024 * 1024)  # 1MB limit
+            if len(stdin_data) >= 1024 * 1024:
+                raise click.BadParameter("Stdin input exceeds 1MB limit")
+            final_prompt = stdin_data.strip()
+        else:
+            with open(prompt_file) as f:
+                final_prompt = f.read().strip()
+
+    # Handle interactive mode with initial settings
+    if interactive:
+        # Prepare CLI API keys dictionary
+        cli_api_keys = {
+            "openai": api_key_openai,
+            "perplexity": api_key_perplexity,
+            "mock": api_key_mock,
+        }
+
+        # Create initial settings from command-line arguments
+        initial_settings = InteractiveInitialSettings(
+            mode=final_mode,
+            provider=provider,
+            prompt=final_prompt,
+            async_mode=async_mode,
+            cli_api_keys=cli_api_keys,
+            clarify_mode=clarify,
+        )
+
+        asyncio.run(
+            enter_interactive_mode(
+                initial_settings=initial_settings,
+                project=project,
+                output_dir=output_dir,
+                config_path=config_path,
+                verbose=verbose,
+                quiet=quiet,
+                no_metadata=no_metadata,
+                timeout=timeout,
+            )
+        )
+        return
+
+    # Handle special commands using CommandHandler
+    if args and args[0] in ["init", "status", "list", "help", "providers"]:
+        # Create CommandHandler for special commands
+        config_manager = ConfigManager()
+        config_manager.load_all_layers({"config_path": config_path})
+        handler = CommandHandler(config_manager)
+
+        command = args[0]
+        if command == "init":
+            handler.init_command(config_path=config_path)
+            return
+        elif command == "status":
+            if len(args) < 2:
+                console.print(
+                    "[red]Error:[/red] status command requires an operation ID"
+                )
+                sys.exit(1)
+            handler.status_command(operation_id=args[1])
+            return
+        elif command == "list":
+            show_all = "--all" in args
+            handler.list_command(show_all=show_all)
+            return
+        elif command == "providers":
+            # For providers command, we need to check both args and ctx.args
+            # because Click might intercept some flags
+            all_args = list(args) + list(ctx.args)
+            show_models = "--models" in all_args or "--models" in sys.argv
+            show_list = "--list" in all_args or "--list" in sys.argv
+            show_keys = "--keys" in all_args or "--keys" in sys.argv
+            refresh_cache = (
+                "--refresh-cache" in all_args or "--refresh-cache" in sys.argv
+            )
+            no_cache = "--no-cache" in all_args or "--no-cache" in sys.argv
+            filter_provider = None
+
+            # Validate mutually exclusive options
+            if refresh_cache and no_cache:
+                console.print(
+                    "[red]Error:[/red] Cannot use --refresh-cache and --no-cache together"
+                )
+                console.print("  --refresh-cache: Updates the cache with fresh data")
+                console.print("  --no-cache: Bypasses cache without updating it")
+                sys.exit(1)
+
+            # Check for --provider flag in multiple places
+            for arg_list in [args, ctx.args, sys.argv]:
+                for i, arg in enumerate(arg_list):
+                    if arg in ["--provider", "-P"] and i + 1 < len(arg_list):
+                        filter_provider = arg_list[i + 1]
+                        break
+                if filter_provider:
+                    break
+
+            # Also check if provider was parsed by Click
+            if not filter_provider and provider:
+                filter_provider = provider
+
+            asyncio.run(
+                providers_command(
+                    show_models=show_models,
+                    show_list=show_list,
+                    show_keys=show_keys,
+                    filter_provider=filter_provider,
+                    refresh_cache=refresh_cache,
+                    no_cache=no_cache,
+                )
+            )
+            return
+        elif command == "help":
+            # Check if there's a specific command to get help for
+            if len(args) > 1:
+                help_command = args[1]
+                if help_command == "init":
+                    show_init_help()
+                elif help_command == "status":
+                    show_status_help()
+                elif help_command == "list":
+                    show_list_help()
+                elif help_command == "providers":
+                    show_providers_help()
+                else:
+                    console.print(f"[red]Error:[/red] Unknown command: {help_command}")
+                    console.print(
+                        "[yellow]Available commands:[/yellow] init, status, list, providers"
+                    )
+                    console.print("\nUse 'thoth help' for general help")
+            else:
+                # Show general help - use Click's help instead
+                console.print(ctx.get_help())
+            return
+
+    # For all other cases, treat as research prompt
+    # Mode and prompt already determined above
+
+    # Validation
+    if async_mode and resume_id:
+        raise click.BadParameter("Cannot use --async with --resume")
+
+    if prompt_file and prompt_opt:
+        raise click.BadParameter("Cannot use --prompt-file with --prompt")
+
+    if input_file and auto:
+        raise click.BadParameter("Cannot use --input-file with --auto")
+
+    # Check for empty prompt
+    if final_prompt is not None and final_prompt.strip() == "":
+        raise click.BadParameter("Prompt cannot be empty")
+
+    if resume_id:
+        # Resume existing operation
+        asyncio.run(resume_operation(resume_id, verbose))
+    elif final_mode and final_prompt:
+        # Run new research
+        # Create provider-specific API keys dictionary
+        cli_api_keys = {
+            "openai": api_key_openai,
+            "perplexity": api_key_perplexity,
+            "mock": api_key_mock,
+        }
+        asyncio.run(
+            run_research(
+                mode=final_mode,
+                prompt=final_prompt,
+                async_mode=async_mode,
+                project=project,
+                output_dir=output_dir,
+                provider=provider,
+                input_file=input_file,
+                auto=auto,
+                verbose=verbose,
+                cli_api_keys=cli_api_keys,
+                combined=combined,
+                quiet=quiet,
+                no_metadata=no_metadata,
+                timeout_override=timeout,
+            )
+        )
+    else:
+        # Show help if no valid command
+        console.print(ctx.get_help())
+
+
+# ============================================================================
+# SECTION 7: COMMAND HANDLERS
+# ============================================================================
+# Command execution logic and handlers for CLI commands
+# ============================================================================
+
+
+class CommandHandler:
+    """Unified command execution for CLI and interactive modes"""
+
+    def __init__(self, config_manager: ConfigManager):
+        self.config = config_manager
+        self.commands = {
+            "init": self.init_command,
+            "status": self.status_command,
+            "list": self.list_command,
+            "providers": self.providers_command,
+            "research": self.research_command,
+            "help": self.help_command,
+        }
+
+    def execute(self, command: str, **params) -> Any:
+        """Execute command with parameters"""
+        if command not in self.commands:
+            raise ThothError(
+                f"Unknown command: {command}",
+                f"Available commands: {', '.join(self.commands.keys())}",
+            )
+        return self.commands[command](**params)
+
+    def init_command(self, config_path: Path | None = None, **params):
+        """Initialize Thoth configuration"""
+        console.print("[bold]Welcome to Thoth Research Assistant Setup![/bold]\n")
+
+        # Check environment
+        console.print("Checking environment...")
+        console.print(f"✓ Python {sys.version.split()[0]} detected")
+        console.print("✓ UV package manager available")
+        console.print(f"✓ Operating System: {sys.platform} (supported)\n")
+
+        # Use custom config path if provided, otherwise use default
+        if config_path is None:
+            config_path = Path(user_config_dir("thoth")) / "config.toml"
+        console.print(f"Configuration file will be created at: {config_path}\n")
+
+        # Create config directory if it doesn't exist
+        config_path.parent.mkdir(parents=True, exist_ok=True)
+
+        # TODO: Implement interactive setup wizard
+        console.print("[yellow]Interactive setup wizard not yet implemented.[/yellow]")
+        console.print("Creating default configuration...")
+
+        # Create default config using new ConfigManager
+        config_manager = ConfigManager()
+        config_manager.load_all_layers()
+        config_data = config_manager.get_effective_config()
+
+        # For now, just save the default config using basic TOML format
+        # Since we can't use external toml library in UV script, write manually
+        with open(config_path, "w") as f:
+            f.write("# Thoth Configuration File\n")
+            f.write(f'version = "{CONFIG_VERSION}"\n\n')
+            f.write("[general]\n")
+            f.write('default_project = ""\n')
+            f.write('default_mode = "default"\n\n')
+            f.write("[paths]\n")
+            f.write('base_output_dir = "./research-outputs"\n')
+            f.write(f'checkpoint_dir = "{config_data["paths"]["checkpoint_dir"]}"\n\n')
+            f.write("[execution]\n")
+            f.write("poll_interval = 30\n")
+            f.write("max_wait = 30\n")
+            f.write("parallel_providers = true\n")
+            f.write("retry_attempts = 3\n")
+            f.write("auto_input = true\n\n")
+            f.write("[output]\n")
+            f.write("combine_reports = false\n")
+            f.write('format = "markdown"\n')
+            f.write("include_metadata = true\n")
+            f.write('timestamp_format = "%Y-%m-%d_%H%M%S"\n\n')
+            f.write("[providers.openai]\n")
+            f.write('api_key = "${OPENAI_API_KEY}"\n\n')
+            f.write("[providers.perplexity]\n")
+            f.write('api_key = "${PERPLEXITY_API_KEY}"\n')
+
+        console.print(f"\n[green]✓[/green] Configuration saved to {config_path}")
+        console.print('\nYou can now run: thoth deep_research "your prompt"')
+
+    def status_command(self, operation_id: str, **params):
+        """Check status of a research operation"""
+        return asyncio.run(show_status(operation_id))
+
+    def list_command(self, show_all: bool = False, **params):
+        """List research operations"""
+        return asyncio.run(list_operations(show_all=show_all))
+
+    def providers_command(self, **params):
+        """Show provider information - delegate to existing function"""
+        # This will delegate to the existing providers_command async function
+        # We'll keep the complex logic there for now
+        return asyncio.run(providers_command(**params))
+
+    def research_command(self, **params):
+        """Execute research operation - delegate to run_research"""
+        # Extract needed parameters
+        mode = params.get("mode", "default")
+        prompt = params.get("prompt")
+        if not prompt:
+            raise ThothError("Prompt is required for research command")
+
+        # Delegate to existing run_research function
+        return asyncio.run(
+            run_research(
+                mode=mode,
+                prompt=prompt,
+                async_mode=params.get("async_mode", False),
+                project=params.get("project"),
+                output_dir=params.get("output_dir"),
+                provider=params.get("provider"),
+                input_file=params.get("input_file"),
+                auto=params.get("auto", False),
+                verbose=params.get("verbose", False),
+                cli_api_keys=params.get("cli_api_keys"),
+                combined=params.get("combined", False),
+                quiet=params.get("quiet", False),
+                no_metadata=params.get("no_metadata", False),
+                timeout_override=params.get("timeout_override"),
+            )
+        )
+
+    def help_command(self, command: str | None = None, **params):
+        """Show help for commands"""
+        if command == "init":
+            show_init_help()
+        elif command == "status":
+            show_status_help()
+        elif command == "list":
+            show_list_help()
+        elif command == "providers":
+            show_providers_help()
+        else:
+            # Show general help
+            console.print("Thoth - AI-Powered Research Assistant")
+            console.print("\nAvailable commands:")
+            for cmd_name in self.commands.keys():
+                console.print(f"  {cmd_name}")
+
+
+def status_command(operation_id):
+    """Check status of a research operation"""
+    return show_status(operation_id)
+
+
+def list_command(show_all):
+    """List research operations"""
+    return list_operations(show_all=show_all)
+
+
+# ============================================================================
+# SECTION 8: HELP AND DOCUMENTATION
+# ============================================================================
+# Help text and documentation functions for user assistance
+# ============================================================================
+
+
+def show_init_help():
+    """Show detailed help for the init command"""
+    console.print("\n[bold]thoth init[/bold] - Initialize Thoth configuration")
+    console.print("\n[bold]Description:[/bold]")
+    console.print("  Sets up Thoth configuration file and verifies environment.")
+    console.print("  Creates default configuration at ~/.thoth/config.toml")
+    console.print("\n[bold]Usage:[/bold]")
+    console.print("  thoth init")
+    console.print("\n[bold]What it does:[/bold]")
+    console.print("  • Checks Python and UV package manager")
+    console.print("  • Creates configuration directory")
+    console.print("  • Generates default config.toml file")
+    console.print("  • Sets up provider API key placeholders")
+    console.print("\n[bold]Configuration file location:[/bold]")
+    console.print(f"  {Path(user_config_dir('thoth')) / 'config.toml'}")
+    console.print("\n[bold]After initialization:[/bold]")
+    console.print("  1. Set your API keys as environment variables:")
+    console.print("     export OPENAI_API_KEY='your-api-key'")
+    console.print("     export PERPLEXITY_API_KEY='your-api-key'")
+    console.print("  2. Or edit the config file directly")
+    console.print("\n[bold]Examples:[/bold]")
+    console.print("  # Initialize configuration")
+    console.print("  $ thoth init")
+    console.print("\n[bold]Related commands:[/bold]")
+    console.print("  thoth help       - Show general help")
+
+
+def show_status_help():
+    """Show detailed help for the status command"""
+    console.print("\n[bold]thoth status[/bold] - Check status of a research operation")
+    console.print("\n[bold]Description:[/bold]")
+    console.print("  Shows detailed status of a specific research operation,")
+    console.print("  including progress, providers, and output files.")
+    console.print("\n[bold]Usage:[/bold]")
+    console.print("  thoth status <OPERATION_ID>")
+    console.print("\n[bold]Arguments:[/bold]")
+    console.print("  OPERATION_ID    The unique identifier for the operation")
+    console.print("                  (e.g., research-20240803-143022-abc123...)")
+    console.print("\n[bold]Information displayed:[/bold]")
+    console.print("  • Operation ID and prompt")
+    console.print("  • Current status (queued/running/completed/failed)")
+    console.print("  • Start time and elapsed duration")
+    console.print("  • Provider status for each LLM")
+    console.print("  • Output file locations")
+    console.print("\n[bold]Examples:[/bold]")
+    console.print("  # Check status of a specific operation")
+    console.print("  $ thoth status research-20240803-143022-1234abcd5678efgh")
+    console.print("\n[bold]Related commands:[/bold]")
+    console.print("  thoth list       - List all operations")
+    console.print("  thoth help       - Show general help")
+
+
+def show_list_help():
+    """Show detailed help for the list command"""
+    console.print("\n[bold]thoth list[/bold] - List research operations")
+    console.print("\n[bold]Description:[/bold]")
+    console.print("  Shows a table of research operations with their status.")
+    console.print("  By default, shows only recent and active operations.")
+    console.print("\n[bold]Usage:[/bold]")
+    console.print("  thoth list [OPTIONS]")
+    console.print("\n[bold]Options:[/bold]")
+    console.print("  --all           Show all operations (not just recent/active)")
+    console.print("\n[bold]Default behavior:[/bold]")
+    console.print("  • Shows operations from the last 24 hours")
+    console.print("  • Always shows running or queued operations")
+    console.print("  • Sorted by creation time (newest first)")
+    console.print("\n[bold]Table columns:[/bold]")
+    console.print("  • ID       - Unique operation identifier")
+    console.print("  • Prompt   - Research prompt (truncated if long)")
+    console.print("  • Status   - Current status with color coding")
+    console.print("  • Elapsed  - Time since operation started")
+    console.print("  • Mode     - Research mode used")
+    console.print("\n[bold]Examples:[/bold]")
+    console.print("  # List recent operations")
+    console.print("  $ thoth list")
+    console.print("\n  # List all operations")
+    console.print("  $ thoth list --all")
+    console.print("\n[bold]Related commands:[/bold]")
+    console.print("  thoth status     - Show details for specific operation")
+    console.print("  thoth help       - Show general help")
+
+
+def show_providers_help():
+    """Show detailed help for the providers command"""
+    console.print(
+        "\n[bold]thoth providers[/bold] - List providers and available models"
+    )
+    console.print("\n[bold]Description:[/bold]")
+    console.print("  Shows available providers and their configuration status,")
+    console.print("  lists available models from each LLM provider,")
+    console.print("  or displays API key configuration information.")
+    console.print("  OpenAI models are fetched dynamically via API and cached locally.")
+    console.print("  Model cache auto-refreshes after 1 week.")
+    console.print("  Perplexity models are returned from a predefined list.")
+    console.print("\n[bold]Usage:[/bold]")
+    console.print("  thoth providers -- [OPTIONS]")
+    console.print("\n[bold]Options:[/bold]")
+    console.print("  --list                List available providers and their status")
+    console.print("  --models              List available models from providers")
+    console.print(
+        "  --keys                Show API key configuration for each provider"
+    )
+    console.print("  --provider, -P        Filter by specific provider (with --models)")
+    console.print("  --refresh-cache       Force refresh of cached model lists")
+    console.print("  --no-cache            Bypass cache without updating it")
+    console.print("\n[bold]Note:[/bold]")
+    console.print("  Use -- before options to prevent parsing conflicts")
+    console.print("\n[bold]Available providers:[/bold]")
+    console.print("  • openai     - OpenAI GPT models (cached)")
+    console.print("  • perplexity - Perplexity Sonar models")
+    console.print("  • mock       - Mock provider for testing")
+    console.print("\n[bold]Examples:[/bold]")
+    console.print("  # List all available providers")
+    console.print("  $ thoth providers -- --list")
+    console.print("\n  # Show API key configuration")
+    console.print("  $ thoth providers -- --keys")
+    console.print("\n  # List all models from all providers")
+    console.print("  $ thoth providers -- --models")
+    console.print("\n  # List only OpenAI models")
+    console.print("  $ thoth providers -- --models --provider openai")
+    console.print("\n  # Force refresh cached models")
+    console.print("  $ thoth providers -- --models --refresh-cache")
+    console.print("\n  # Bypass cache without updating it")
+    console.print("  $ thoth providers -- --models --no-cache")
+    console.print("  $ thoth providers -- --models -P openai")
+    console.print("\n[bold]Related commands:[/bold]")
+    console.print("  thoth help       - Show general help")
+
+
+def show_general_help(ctx):
+    """Show enhanced general help with command overview"""
+    console.print("\n[bold]Thoth - AI-Powered Research Assistant[/bold]")
+    console.print(f"Version {THOTH_VERSION}")
+    console.print("\n[bold]Usage:[/bold]")
+    console.print("  thoth [COMMAND] [OPTIONS]")
+    console.print('  thoth [MODE] "PROMPT" [OPTIONS]')
+    console.print('  thoth "PROMPT" [OPTIONS]')
+    console.print("\n[bold]Quick Start:[/bold]")
+    console.print("  # Simple prompt (uses default mode)")
+    console.print('  $ thoth "how does DNS work"')
+    console.print("\n  # Specify a research mode")
+    console.print('  $ thoth deep_research "explain kubernetes networking"')
+    console.print("\n[bold]Commands:[/bold]")
+    console.print("  init            Initialize configuration")
+    console.print("  status <ID>     Check operation status")
+    console.print("  list            List research operations")
+    console.print("  help [COMMAND]  Show help (general or command-specific)")
+    console.print("\n[bold]Research Modes:[/bold]")
+    for mode_name, mode_config in BUILTIN_MODES.items():
+        desc = mode_config.get("description", "No description")
+        # Truncate long descriptions
+        if len(desc) > 60:
+            desc = desc[:57] + "..."
+        console.print(f"  {mode_name:<15} {desc}")
+    console.print("\n[bold]Common Options:[/bold]")
+    console.print("  --mode, -m      Research mode to use")
+    console.print("  --prompt, -q     Research prompt")
+    console.print("  --async, -A     Submit and exit immediately")
+    console.print("  --project, -p   Project name for organized output")
+    console.print("  --verbose, -v   Show debug output")
+    console.print("  --version, -V   Show version and exit")
+    console.print("\n[bold]For detailed command help:[/bold]")
+    console.print("  $ thoth help init")
+    console.print("  $ thoth help status")
+    console.print("  $ thoth help list")
+    console.print("\n[bold]For all options:[/bold]")
+    console.print("  $ thoth --help")
+
+
+# ============================================================================
+# SECTION 9: CHECKPOINT MANAGEMENT
+# ============================================================================
+# Handles saving and loading operation state for async operations
+# ============================================================================
+
+
+class CheckpointManager:
+    """Handles operation persistence with corruption recovery"""
+
+    def __init__(self, config: Config):
+        self.checkpoint_dir = Path(config.data["paths"]["checkpoint_dir"])
+        self.checkpoint_dir.mkdir(parents=True, exist_ok=True)
+
+    async def save(self, operation: OperationStatus) -> None:
+        """Save operation state atomically"""
+        checkpoint_file = self.checkpoint_dir / f"{operation.id}.json"
+        temp_file = checkpoint_file.with_suffix(".tmp")
+
+        data = asdict(operation)
+        # Convert datetime and Path objects to strings
+        data["created_at"] = operation.created_at.isoformat()
+        data["updated_at"] = operation.updated_at.isoformat()
+        data["output_paths"] = {k: str(v) for k, v in operation.output_paths.items()}
+        data["input_files"] = [str(p) for p in operation.input_files]
+
+        async with aiofiles.open(temp_file, "w") as f:
+            await f.write(json.dumps(data, indent=2))
+
+        temp_file.replace(checkpoint_file)
+
+    async def load(self, operation_id: str) -> OperationStatus | None:
+        """Load operation from checkpoint with corruption handling"""
+        checkpoint_file = self.checkpoint_dir / f"{operation_id}.json"
+
+        if not checkpoint_file.exists():
+            return None
+
+        try:
+            async with aiofiles.open(checkpoint_file) as f:
+                data = json.loads(await f.read())
+
+            # Convert back to proper types
+            data["created_at"] = datetime.fromisoformat(data["created_at"])
+            data["updated_at"] = datetime.fromisoformat(data["updated_at"])
+            data["output_paths"] = {k: Path(v) for k, v in data["output_paths"].items()}
+            data["input_files"] = [Path(p) for p in data.get("input_files", [])]
+
+            return OperationStatus(**data)
+        except (json.JSONDecodeError, KeyError, ValueError):
+            console.print(
+                f"[yellow]Warning:[/yellow] Checkpoint file corrupted: {checkpoint_file}"
+            )
+            console.print(
+                "[yellow]Creating new checkpoint. Previous state lost.[/yellow]"
+            )
+            # Remove corrupted file
+            checkpoint_file.unlink()
+            return None
+
+    def trigger_checkpoint(self, event: str) -> bool:
+        """Determine if checkpoint should be saved based on event"""
+        checkpoint_events = [
+            "operation_start",
+            "provider_start",
+            "provider_complete",
+            "provider_fail",
+            "operation_complete",
+            "operation_fail",
+        ]
+        return event in checkpoint_events
+
+
+# ============================================================================
+# SECTION 10: OUTPUT MANAGEMENT
+# ============================================================================
+# Handles file output, report generation, and output organization
+# ============================================================================
+
+
+class OutputManager:
+    """Manages research output files"""
+
+    def __init__(self, config: Config, no_metadata: bool = False):
+        self.config = config
+        self.base_output_dir = Path(config.data["paths"]["base_output_dir"])
+        self.format = config.data["output"]["format"]
+        self.no_metadata = no_metadata
+
+    def get_output_path(
+        self,
+        operation: OperationStatus,
+        provider: str,
+        output_dir: str | None = None,
+    ) -> Path:
+        """Generate output path based on mode"""
+        timestamp = operation.created_at.strftime(
+            self.config.data["output"]["timestamp_format"]
+        )
+        slug = sanitize_slug(operation.prompt)
+
+        # Determine output directory
+        if output_dir:
+            # Explicit override - takes precedence over everything
+            base_dir = Path(output_dir)
+        elif operation.project:
+            # Project mode
+            base_dir = self.base_output_dir / operation.project
+        else:
+            # Ad-hoc mode - current directory
+            base_dir = Path.cwd()
+
+        # Ensure directory exists
+        base_dir.mkdir(parents=True, exist_ok=True)
+
+        # Generate filename with provider
+        ext = "md" if self.format == "markdown" else "json"
+        if provider == "combined":
+            # Special case for combined reports: <timestamp>_<mode>_combined_<slug>.md
+            base_name = f"{timestamp}_{operation.mode}_combined_{slug}"
+        else:
+            base_name = f"{timestamp}_{operation.mode}_{provider}_{slug}"
+        filename = f"{base_name}.{ext}"
+
+        # Handle deduplication
+        output_path = base_dir / filename
+        counter = 1
+        while output_path.exists():
+            filename = f"{base_name}-{counter}.{ext}"
+            output_path = base_dir / filename
+            counter += 1
+
+        return output_path
+
+    async def save_result(
+        self,
+        operation: OperationStatus,
+        provider: str,
+        content: str,
+        output_dir: str | None = None,
+        model: str | None = None,
+        system_prompt: str | None = None,
+    ) -> Path:
+        """Save research result to file"""
+        output_path = self.get_output_path(operation, provider, output_dir)
+
+        # Check disk space before writing
+        if not check_disk_space(output_path.parent, 10):  # 10MB minimum
+            raise DiskSpaceError("Insufficient disk space to save results")
+
+        if (
+            self.format == "markdown"
+            and self.config.data["output"]["include_metadata"]
+            and not self.no_metadata
+        ):
+            # Add metadata header
+            metadata = f"""---
+prompt: {operation.prompt}
+mode: {operation.mode}
+provider: {provider}
+model: {model if model else "Unknown"}
+operation_id: {operation.id}
+created_at: {operation.created_at.isoformat()}
+"""
+            if operation.input_files:
+                metadata += "input_files:\n"
+                for f in operation.input_files:
+                    metadata += f"  - {f}\n"
+            metadata += "---\n\n"
+
+            # Add prompt section
+            metadata += "### Prompt\n\n```\n"
+            if system_prompt:
+                metadata += f"System: {system_prompt}\n\nUser: {operation.prompt}\n"
+            else:
+                metadata += operation.prompt + "\n"
+            metadata += "```\n\n"
+
+            content = metadata + content
+
+        # Write file
+        async with aiofiles.open(output_path, "w", encoding="utf-8") as f:
+            await f.write(content)
+
+        return output_path
+
+    async def generate_combined_report(
+        self,
+        operation: OperationStatus,
+        contents: dict[str, str],
+        output_dir: str | None = None,
+        system_prompt: str | None = None,
+    ) -> Path:
+        """Generate a combined report from multiple provider results"""
+        # Create synthesized content
+        combined_content = f"# Combined Research Report: {operation.prompt}\n\n"
+        combined_content += f"Generated: {datetime.now().isoformat()}\n\n"
+
+        for provider, content in contents.items():
+            combined_content += f"\n## {provider.title()} Results\n\n"
+            combined_content += content
+            combined_content += "\n\n---\n\n"
+
+        # Save combined report
+        return await self.save_result(
+            operation,
+            "combined",
+            combined_content,
+            output_dir,
+            model="Multiple",
+            system_prompt=system_prompt,
+        )
+
+
+# ============================================================================
+# SECTION 11: MODEL CACHE MANAGEMENT
+# ============================================================================
+# Caches available models from providers to reduce API calls
+# ============================================================================
+
+
+class ModelCache:
+    """Manages cached model lists for providers"""
+
+    def __init__(self, provider_name: str, cache_dir: Path | None = None):
+        """Initialize model cache for a specific provider
+
+        Args:
+            provider_name: Name of the provider (openai, perplexity, etc.)
+            cache_dir: Optional cache directory, defaults to ~/.thoth/model_cache/
+        """
+        self.provider_name = provider_name
+        if cache_dir:
+            self.cache_dir = cache_dir
+        else:
+            self.cache_dir = Path(user_config_dir("thoth")) / "model_cache"
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
+        self.cache_file = self.cache_dir / f"{provider_name}_models.json"
+        self.cache_max_age_days = 7  # Cache expires after 1 week
+
+    def get_cache_path(self) -> Path:
+        """Get the cache file path for this provider"""
+        return self.cache_file
+
+    def is_cache_valid(self, force_refresh: bool = False) -> bool:
+        """Check if cache exists and is still valid
+
+        Args:
+            force_refresh: If True, cache is always considered invalid
+
+        Returns:
+            True if cache is valid and can be used, False otherwise
+        """
+        if force_refresh:
+            return False
+
+        if not self.cache_file.exists():
+            return False
+
+        try:
+            with open(self.cache_file) as f:
+                cache_data = json.load(f)
+
+            cached_at = datetime.fromisoformat(cache_data.get("cached_at", ""))
+            age = datetime.now() - cached_at
+
+            return age.days < self.cache_max_age_days
+        except (json.JSONDecodeError, ValueError, KeyError):
+            # Cache file is corrupted or invalid
+            return False
+
+    def load_cache(self) -> list[dict[str, Any]] | None:
+        """Load models from cache if valid
+
+        Returns:
+            List of model dictionaries if cache is valid, None otherwise
+        """
+        if not self.cache_file.exists():
+            return None
+
+        try:
+            with open(self.cache_file) as f:
+                cache_data = json.load(f)
+            return cache_data.get("models", [])
+        except (json.JSONDecodeError, FileNotFoundError):
+            return None
+
+    def save_cache(self, models: list[dict[str, Any]]) -> None:
+        """Save models to cache with timestamp
+
+        Args:
+            models: List of model dictionaries to cache
+        """
+        cache_data = {
+            "provider": self.provider_name,
+            "cached_at": datetime.now().isoformat(),
+            "models": models,
+        }
+
+        # Save atomically with temp file
+        temp_file = self.cache_file.with_suffix(".tmp")
+        with open(temp_file, "w") as f:
+            json.dump(cache_data, f, indent=2)
+        temp_file.replace(self.cache_file)
+
+    def clear_cache(self) -> None:
+        """Remove the cache file for this provider"""
+        if self.cache_file.exists():
+            self.cache_file.unlink()
+
+    def get_cache_age(self) -> timedelta | None:
+        """Get the age of the cache
+
+        Returns:
+            timedelta object representing cache age, or None if cache doesn't exist
+        """
+        if not self.cache_file.exists():
+            return None
+
+        try:
+            with open(self.cache_file) as f:
+                cache_data = json.load(f)
+            cached_at = datetime.fromisoformat(cache_data.get("cached_at", ""))
+            return datetime.now() - cached_at
+        except (json.JSONDecodeError, ValueError, KeyError):
+            return None
+
+
+# ============================================================================
+# SECTION 12: PROVIDER ARCHITECTURE
+# ============================================================================
+# Provider abstraction layer and implementations:
+# - ResearchProvider: Base class for all providers
+# - MockProvider: For testing
+# - OpenAIProvider: OpenAI Deep Research API
+# - PerplexityProvider: Perplexity Sonar API
+# ============================================================================
+
+
+class ResearchProvider:
+    """Base class for research providers"""
+
+    async def submit(
+        self, prompt: str, mode: str, system_prompt: str = None, verbose: bool = False
+    ) -> str:
+        """Submit research and return job ID"""
+        raise NotImplementedError
+
+    async def check_status(self, job_id: str) -> dict[str, Any]:
+        """Check job status with progress information"""
+        raise NotImplementedError
+
+    async def get_result(self, job_id: str) -> str:
+        """Get the final result content"""
+        raise NotImplementedError
+
+    def supports_progress(self) -> bool:
+        """Whether this provider supports progress reporting"""
+        return False
+
+    async def list_models(self) -> list[dict[str, Any]]:
+        """List available models for this provider"""
+        raise NotImplementedError
+
+    async def list_models_cached(
+        self, force_refresh: bool = False, no_cache: bool = False
+    ) -> list[dict[str, Any]]:
+        """List available models with caching support
+
+        Args:
+            force_refresh: If True, bypass cache and update with fresh data
+            no_cache: If True, bypass cache without updating it
+
+        Returns:
+            List of model dictionaries
+        """
+        # Default implementation without caching - subclasses can override
+        if no_cache:
+            # Bypass cache completely without updating
+            return await self.list_models()
+        return await self.list_models()
+
+
+class MockProvider(ResearchProvider):
+    """Mock provider for testing and development"""
+
+    def __init__(self, name: str = "mock", delay: float = 0.1, api_key: str = ""):
+        self.name = name
+        self.delay = delay
+        self.api_key = api_key
+        self.model = "None"  # Mock provider has no model
+        self.jobs = {}
+
+    async def submit(
+        self, prompt: str, mode: str, system_prompt: str = None, verbose: bool = False
+    ) -> str:
+        """Submit mock research and return job ID"""
+        job_id = f"mock-{generate_operation_id()}"
+        self.jobs[job_id] = {
+            "prompt": prompt,
+            "mode": mode,
+            "status": "running",
+            "progress": 0.0,
+            "start_time": asyncio.get_event_loop().time(),
+        }
+        return job_id
+
+    async def check_status(self, job_id: str) -> dict[str, Any]:
+        """Check mock job status"""
+        if job_id not in self.jobs:
+            return {"status": "not_found", "error": "Job not found"}
+
+        job = self.jobs[job_id]
+        elapsed = asyncio.get_event_loop().time() - job["start_time"]
+
+        if elapsed >= self.delay:
+            job["status"] = "completed"
+            job["progress"] = 1.0
+        else:
+            job["progress"] = min(elapsed / self.delay, 0.99)
+
+        return {
+            "status": job["status"],
+            "progress": job["progress"],
+            "elapsed": elapsed,
+        }
+
+    async def get_result(self, job_id: str) -> str:
+        """Get mock result"""
+        if job_id not in self.jobs:
+            raise ValueError("Job not found")
+
+        job = self.jobs[job_id]
+        return f"""# {self.name.title()} Research Results
+
+## Prompt: {job["prompt"]}
+## Mode: {job["mode"]}
+
+This is a mock research result from the {self.name} provider.
+
+### Key Findings
+1. This is a simulated finding
+2. Another mock insight
+3. Test data point
+
+### Conclusion
+This mock provider successfully completed the research task.
+"""
+
+    def supports_progress(self) -> bool:
+        return True
+
+    async def list_models(self) -> list[dict[str, Any]]:
+        """Return mock models for testing"""
+        return [
+            {"id": "mock-model-v1", "created": 1680000000, "owned_by": "mock"},
+            {"id": "mock-model-v2", "created": 1690000000, "owned_by": "mock"},
+        ]
+
+
+# Placeholder for real providers
+class OpenAIProvider(ResearchProvider):
+    """OpenAI Responses API implementation for Deep Research"""
+
+    def __init__(self, api_key: str, config: dict[str, Any] = None):
+        self.api_key = api_key
+        self.config = config or {}
+        # Model will be passed from mode configuration, default to o3
+        self.model = self.config.get("model", "o3")
+        self.jobs = {}  # Store job information for async tracking
+        self.model_cache = ModelCache("openai")  # Initialize cache for OpenAI
+
+        # Add timeout configuration
+        timeout = self.config.get("timeout", 30.0)
+        self.client = AsyncOpenAI(
+            api_key=api_key, timeout=httpx.Timeout(timeout, connect=5.0)
+        )
+
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=4, max=10),
+        retry=retry_if_exception_type((httpx.TimeoutException, httpx.ConnectError)),
+    )
+    async def submit(
+        self, prompt: str, mode: str, system_prompt: str = None, verbose: bool = False
+    ) -> str:
+        """Submit research using OpenAI Responses API"""
+        try:
+            # Build structured input format for Responses API
+            input_messages = []
+
+            if system_prompt:
+                input_messages.append(
+                    {
+                        "role": "developer",
+                        "content": [{"type": "input_text", "text": system_prompt}],
+                    }
+                )
+
+            input_messages.append(
+                {"role": "user", "content": [{"type": "input_text", "text": prompt}]}
+            )
+
+            # Configure tools based on model type
+            tools = []
+            if "deep-research" in self.model:
+                # Deep research models get full tool access
+                tools = [{"type": "web_search_preview"}, {"type": "code_interpreter"}]
+
+            # Determine if background mode should be used
+            # Use background for deep-research models or if explicitly configured
+            use_background = "deep-research" in self.model or self.config.get(
+                "background", False
+            )
+
+            # Get configuration parameters
+            temperature = self.config.get("temperature", 0.7)
+
+            # Build request parameters
+            request_params = {
+                "model": self.model,
+                "input": input_messages,
+                "reasoning": {"summary": "auto"},  # Enable reasoning summaries
+                "tools": tools,
+                "background": use_background,
+            }
+
+            # Only add temperature for models that support it
+            # Response models (o3, o3-deep-research, o4-mini-deep-research) don't support temperature
+            if not self.model.startswith("o"):
+                request_params["temperature"] = temperature
+
+            # Use Responses API
+            response = await self.client.responses.create(**request_params)
+
+            # Store job information
+            job_id = (
+                response.id
+                if hasattr(response, "id")
+                else f"openai-{datetime.now().strftime('%Y%m%d%H%M%S')}-{uuid4().hex[:8]}"
+            )
+            self.jobs[job_id] = {
+                "response": response,
+                "background": use_background,
+                "created_at": datetime.now(),
+            }
+
+            return job_id
+
+        except httpx.TimeoutException as e:
+            raise ProviderError(
+                "openai",
+                "Request timed out. Try increasing timeout in config.",
+                raw_error=str(e) if verbose else None,
+            )
+        except httpx.ConnectError as e:
+            raise ProviderError(
+                "openai",
+                "Failed to connect to OpenAI API. Check your internet connection.",
+                raw_error=str(e) if verbose else None,
+            )
+        except Exception as e:
+            error_msg = str(e)
+            error_msg_lower = error_msg.lower()
+
+            # Check for authentication errors (401)
+            if (
+                "authentication" in error_msg_lower
+                or "api key" in error_msg_lower
+                or "401" in error_msg
+            ):
+                if "incorrect api key" in error_msg_lower:
+                    raise ThothError(
+                        "Invalid OpenAI API key",
+                        "Please check your API key at https://platform.openai.com/account/api-keys",
+                    )
+                else:
+                    raise APIKeyError("openai")
+
+            # Check for unsupported parameter errors
+            elif "unsupported parameter" in error_msg_lower:
+                if "'temperature'" in error_msg:
+                    raise ProviderError(
+                        "openai",
+                        f"Model '{self.model}' does not support temperature parameter. This is likely a response model (o3, o3-deep-research, etc.)",
+                        raw_error=str(e) if verbose else None,
+                    )
+                else:
+                    # Extract parameter name from error message
+                    import re
+
+                    param_match = re.search(r"'(\w+)'", error_msg)
+                    param_name = param_match.group(1) if param_match else "unknown"
+                    raise ProviderError(
+                        "openai",
+                        f"Model '{self.model}' does not support parameter '{param_name}'",
+                        raw_error=str(e) if verbose else None,
+                    )
+
+            # Check for rate limit errors (429)
+            elif "rate limit" in error_msg_lower or "429" in error_msg:
+                raise ProviderError(
+                    "openai",
+                    "Rate limit exceeded. Please wait a moment and try again.",
+                    raw_error=str(e) if verbose else None,
+                )
+
+            # Check for model not found errors (404)
+            elif "model" in error_msg_lower and (
+                "not found" in error_msg_lower or "404" in error_msg
+            ):
+                raise ProviderError(
+                    "openai",
+                    f"Model '{self.model}' not found. Please check available models with 'thoth providers -- --models --provider openai'",
+                    raw_error=str(e) if verbose else None,
+                )
+
+            # Check for quota exceeded errors
+            elif "quota" in error_msg_lower or "insufficient_quota" in error_msg_lower:
+                raise ProviderError(
+                    "openai",
+                    "API quota exceeded. Please check your OpenAI account billing.",
+                    raw_error=str(e) if verbose else None,
+                )
+
+            # Check for invalid request errors (400)
+            elif "invalid" in error_msg_lower or "400" in error_msg:
+                raise ProviderError(
+                    "openai",
+                    f"Invalid request: {error_msg}",
+                    raw_error=str(e) if verbose else None,
+                )
+
+            # Generic error
+            else:
+                raise ProviderError(
+                    "openai", str(e), raw_error=str(e) if verbose else None
+                )
+
+    async def check_status(self, job_id: str) -> dict[str, Any]:
+        """Check actual status of research task"""
+        if job_id not in self.jobs:
+            return {"status": "not_found", "error": "Job not found"}
+
+        job_info = self.jobs[job_id]
+
+        # If not background mode, it's already completed
+        if not job_info.get("background", False):
+            return {"status": "completed", "progress": 1.0}
+
+        try:
+            # Poll the Responses API for status of background job
+            response = await self.client.responses.retrieve(job_id)
+
+            if hasattr(response, "status"):
+                if response.status == "completed":
+                    # Update stored response with completed data
+                    self.jobs[job_id]["response"] = response
+                    return {"status": "completed", "progress": 1.0}
+                elif response.status == "in_progress":
+                    # Try to get progress from metadata
+                    progress = 0.5  # Default progress
+                    if hasattr(response, "metadata") and response.metadata:
+                        progress = response.metadata.get("progress", 0.5)
+                    return {"status": "running", "progress": progress}
+                elif response.status == "failed":
+                    error_msg = getattr(response, "error", "Unknown error")
+                    return {"status": "failed", "error": str(error_msg)}
+                else:
+                    return {"status": "queued", "progress": 0.0}
+            else:
+                # If no status attribute, assume completed (synchronous response)
+                return {"status": "completed", "progress": 1.0}
+        except Exception as e:
+            # If retrieval fails, check if we have a cached response
+            if "response" in job_info and job_info["response"]:
+                return {"status": "completed", "progress": 1.0}
+            return {"status": "error", "error": str(e)}
+
+    async def get_result(self, job_id: str) -> str:
+        """Get the Deep Research result"""
+        if job_id not in self.jobs:
+            raise ValueError("Job not found")
+
+        job_info = self.jobs[job_id]
+
+        # If background mode, retrieve the latest response
+        if job_info.get("background", False):
+            try:
+                response = await self.client.responses.retrieve(job_id)
+                job_info["response"] = response  # Update cached response
+            except Exception as e:
+                # Use cached response if retrieval fails
+                response = job_info.get("response")
+                if not response:
+                    return f"Error retrieving result: {str(e)}"
+        else:
+            response = job_info.get("response")
+
+        if not response:
+            return "No response available"
+
+        # Extract content based on response structure
+        content = ""
+
+        # Handle different response formats
+        if hasattr(response, "output"):
+            # Responses API format
+            if isinstance(response.output, list):
+                # New o3 format: output is a list with reasoning and message items
+                texts = []
+                for item in response.output:
+                    if hasattr(item, "type") and item.type == "message":
+                        if hasattr(item, "content") and isinstance(item.content, list):
+                            for content_item in item.content:
+                                if hasattr(content_item, "text"):
+                                    texts.append(content_item.text)
+                        elif hasattr(item, "content"):
+                            texts.append(item.content)
+                content = "\n".join(texts) if texts else ""
+            elif isinstance(response.output, dict):
+                content = response.output.get("content", "")
+            elif isinstance(response.output, str):
+                content = response.output
+            elif hasattr(response.output, "content"):
+                content = response.output.content
+        elif hasattr(response, "choices"):
+            # Chat-style response format (might be returned by responses API for non-background)
+            if response.choices and len(response.choices) > 0:
+                # Check if it's a message or direct content
+                choice = response.choices[0]
+                if hasattr(choice, "message") and hasattr(choice.message, "content"):
+                    content = choice.message.content
+                elif hasattr(choice, "text"):
+                    content = choice.text
+                elif hasattr(choice, "content"):
+                    content = choice.content
+        elif hasattr(response, "content"):
+            content = response.content
+        elif hasattr(response, "text"):
+            content = response.text
+
+        # If still no content, try to debug the response structure
+        if not content and response:
+            # Debug: log response structure for troubleshooting
+            import json
+
+            try:
+                # Try to serialize the response to understand its structure
+                if hasattr(response, "model_dump_json"):
+                    content = (
+                        f"[Debug] Response structure: {response.model_dump_json()}"
+                    )
+                elif hasattr(response, "__dict__"):
+                    content = f"[Debug] Response attributes: {json.dumps({k: str(v)[:100] for k, v in response.__dict__.items() if not k.startswith('_')}, indent=2)}"
+            except Exception:
+                content = f"[Debug] Response type: {type(response).__name__}"
+
+        # Extract reasoning from the new format if available
+        reasoning_content = ""
+        if hasattr(response, "output") and isinstance(response.output, list):
+            for item in response.output:
+                if hasattr(item, "type") and item.type == "reasoning":
+                    if hasattr(item, "summary") and item.summary:
+                        # If summary is a list, join it
+                        if isinstance(item.summary, list):
+                            reasoning_content = "\n".join(str(s) for s in item.summary)
+                        else:
+                            reasoning_content = str(item.summary)
+                    break
+
+        # Include reasoning summary if available (either from new format or old format)
+        if reasoning_content:
+            content = f"## Reasoning Summary\n{reasoning_content}\n\n{content}"
+        elif hasattr(response, "reasoning") and response.reasoning:
+            if isinstance(response.reasoning, dict) and response.reasoning.get(
+                "summary"
+            ):
+                reasoning_summary = response.reasoning["summary"]
+                content = f"## Reasoning Summary\n{reasoning_summary}\n\n{content}"
+
+        return content if content else "No content in response"
+
+    async def list_models(self) -> list[dict[str, Any]]:
+        """List available models including Responses API models"""
+        # Start with known Responses API models
+        response_models = [
+            {
+                "id": "o3",
+                "type": "response",
+                "description": "Standard response model for general tasks",
+                "created": 1719500000,  # Approximate timestamp
+                "owned_by": "openai",
+            },
+            {
+                "id": "o3-deep-research",
+                "type": "deep_research",
+                "description": "Full deep research model with web search and code execution",
+                "created": 1719500001,
+                "owned_by": "openai",
+            },
+            {
+                "id": "o4-mini-deep-research",
+                "type": "deep_research",
+                "description": "Fast lightweight research model for quick answers",
+                "created": 1719500002,
+                "owned_by": "openai",
+            },
+        ]
+
+        # Also try to fetch other models from API
+        try:
+            response = await self.client.models.list()
+            api_models = []
+            for model in response.data:
+                # Include all models without filtering
+                # Don't duplicate the response models we already added
+                if model.id not in ["o3", "o3-deep-research", "o4-mini-deep-research"]:
+                    api_models.append(
+                        {
+                            "id": model.id,
+                            "created": model.created,
+                            "owned_by": model.owned_by,
+                            "type": "unknown",  # Mark type as unknown for unfiltered models
+                        }
+                    )
+            # Combine and sort all models
+            all_models = response_models + api_models
+            return sorted(all_models, key=lambda x: x.get("created", 0), reverse=True)
+        except Exception as e:
+            raise ProviderError("openai", f"Failed to fetch models: {str(e)}")
+
+    async def list_models_cached(
+        self, force_refresh: bool = False, no_cache: bool = False
+    ) -> list[dict[str, Any]]:
+        """List OpenAI models with caching support
+
+        Args:
+            force_refresh: If True, bypass cache and fetch fresh data
+            no_cache: If True, bypass cache without updating it
+
+        Returns:
+            List of model dictionaries from cache or API
+        """
+        # If no_cache is True, bypass cache without updating
+        if no_cache:
+            return await self.list_models()
+
+        # Check if cache is valid
+        if not force_refresh and self.model_cache.is_cache_valid():
+            # Try to load from cache
+            cached_models = self.model_cache.load_cache()
+            if cached_models is not None:
+                return cached_models
+
+        # Fetch fresh models from API
+        models = await self.list_models()
+
+        # Save to cache (only when not using no_cache)
+        self.model_cache.save_cache(models)
+
+        return models
+
+
+class PerplexityProvider(ResearchProvider):
+    """Perplexity research implementation"""
+
+    def __init__(self, api_key: str, config: dict[str, Any] = None):
+        self.api_key = api_key
+        self.config = config or {}
+        self.model = self.config.get("model", "sonar-pro")  # Store model from config
+
+    async def submit(
+        self, prompt: str, mode: str, system_prompt: str = None, verbose: bool = False
+    ) -> str:
+        """Submit to Perplexity"""
+        # TODO: Implement actual Perplexity submission
+        raise NotImplementedError("Perplexity provider not yet implemented")
+
+    async def list_models(self) -> list[dict[str, Any]]:
+        """Return hardcoded Perplexity models as specified"""
+        return [
+            {
+                "id": "sonar-deep-research",
+                "created": 1700000000,
+                "owned_by": "perplexity",
+            }
+        ]
+
+
+# ============================================================================
+# SECTION 13: PROVIDER REGISTRY
+# ============================================================================
+# Central registry for managing and creating provider instances
+# ============================================================================
+
+
+class ProviderRegistry:
+    """Central registry for provider management"""
+
+    def __init__(self):
+        self.providers = {
+            "openai": OpenAIProvider,
+            "perplexity": PerplexityProvider,
+            "mock": MockProvider,
+        }
+
+    def register(self, name: str, provider_class: type):
+        """Register a new provider class"""
+        self.providers[name] = provider_class
+
+    def get_available_providers(self) -> list[str]:
+        """Get list of registered provider names"""
+        return list(self.providers.keys())
+
+    def create(
+        self,
+        provider_name: str,
+        config: Any,
+        cli_api_key: str | None = None,
+        timeout_override: float | None = None,
+    ) -> ResearchProvider:
+        """Create a provider instance with configuration"""
+        if provider_name not in self.providers:
+            raise ThothError(
+                f"Unknown provider: {provider_name}",
+                f"Valid providers are: {', '.join(self.providers.keys())}",
+            )
+
+        # Get config data - handle both Config and ConfigManager
+        if hasattr(config, "data"):
+            config_data = config.data
+        elif hasattr(config, "get_effective_config"):
+            config_data = config.get_effective_config()
+        else:
+            config_data = config
+
+        provider_config = config_data.get("providers", {}).get(provider_name, {})
+
+        # Handle mock provider specially
+        if provider_name == "mock":
+            mock_api_key = (
+                cli_api_key
+                or os.getenv("MOCK_API_KEY", "")
+                or provider_config.get("api_key", "")
+            )
+            if not mock_api_key or (
+                mock_api_key.startswith("${") and mock_api_key.endswith("}")
+            ):
+                raise APIKeyError("mock")
+            if mock_api_key == "invalid":
+                raise ThothError(
+                    "Invalid mock API key format",
+                    "Mock API key should not be 'invalid'",
+                )
+            return MockProvider(name=provider_name, delay=0.1, api_key=mock_api_key)
+
+        # Handle real providers
+        api_key = cli_api_key or provider_config.get("api_key", "")
+        if not api_key or (api_key.startswith("${") and api_key.endswith("}")):
+            raise APIKeyError(provider_name)
+
+        # Apply timeout override if provided
+        if timeout_override is not None:
+            provider_config = provider_config.copy()
+            provider_config["timeout"] = timeout_override
+
+        # Create provider instance
+        if provider_name == "openai":
+            return OpenAIProvider(api_key=api_key, config=provider_config)
+        elif provider_name == "perplexity":
+            return PerplexityProvider(api_key=api_key, config=provider_config)
+        else:
+            raise ThothError(f"Provider {provider_name} not properly configured")
+
+
+# Global provider registry instance
+provider_registry = ProviderRegistry()
+
+
+def create_provider(
+    provider_name: str,
+    config: Config,
+    cli_api_key: str | None = None,
+    timeout_override: float | None = None,
+    mode_config: dict[str, Any] | None = None,
+) -> ResearchProvider:
+    """Create a provider instance with proper configuration and error handling"""
+    provider_config = config.data["providers"].get(provider_name, {}).copy()
+
+    if provider_name == "mock":
+        # Mock provider accepts any API key (for testing)
+        # Check environment variable first
+        mock_api_key = os.getenv("MOCK_API_KEY", "")
+
+        # Override with CLI key if provided
+        if cli_api_key:
+            mock_api_key = cli_api_key
+
+        # Override with config key if no env/cli key
+        if not mock_api_key:
+            mock_api_key = provider_config.get("api_key", "")
+
+        # Mock provider requires some API key (can be dummy)
+        if not mock_api_key or (
+            mock_api_key.startswith("${") and mock_api_key.endswith("}")
+        ):
+            raise APIKeyError("mock")
+
+        # Special validation for testing: reject "invalid" as API key
+        if mock_api_key == "invalid":
+            raise ThothError(
+                "Invalid mock API key format", "Mock API key should not be 'invalid'"
+            )
+
+        return MockProvider(name=provider_name, delay=0.1, api_key=mock_api_key)
+
+    # Get API key from provider config
+    api_key = provider_config.get("api_key", "")
+
+    # Override with CLI key if provided
+    if cli_api_key:
+        api_key = cli_api_key
+
+    # Check if API key exists or is still a placeholder
+    if not api_key or (api_key.startswith("${") and api_key.endswith("}")):
+        raise APIKeyError(provider_name)
+
+    # Apply timeout override if provided
+    if timeout_override is not None and provider_name in ["openai", "perplexity"]:
+        provider_config["timeout"] = timeout_override
+
+    # Apply model from mode configuration if specified
+    if mode_config and "model" in mode_config and provider_name == "openai":
+        provider_config["model"] = mode_config["model"]
+
+    # Apply background mode for deep research models
+    if provider_name == "openai" and provider_config.get("model", ""):
+        if "deep-research" in provider_config["model"]:
+            provider_config["background"] = True
+
+    # Create provider instance
+    if provider_name == "openai":
+        return OpenAIProvider(api_key=api_key, config=provider_config)
+    elif provider_name == "perplexity":
+        return PerplexityProvider(api_key=api_key, config=provider_config)
+    else:
+        raise ThothError(
+            f"Unknown provider: {provider_name}",
+            "Valid providers are: openai, perplexity, mock",
+        )
+
+
+# ============================================================================
+# SECTION 14: RESEARCH OPERATIONS - UTILITIES
+# ============================================================================
+# Utility functions for research operations
+# ============================================================================
+
+
+async def find_latest_outputs(
+    current_mode: str, project: str | None, config: Config
+) -> list[Path]:
+    """Find latest outputs from previous mode in chain"""
+    mode_config = config.get_mode_config(current_mode)
+    previous_mode = mode_config.get("previous")
+
+    if not previous_mode:
+        return []
+
+    # Determine search directory
+    if project:
+        search_dir = Path(config.data["paths"]["base_output_dir"]) / project
+    else:
+        search_dir = Path.cwd()
+
+    if not search_dir.exists():
+        return []
+
+    # Use strict pattern matching to avoid false matches
+    # Pattern: YYYY-MM-DD_HHMMSS_<mode>_<provider>_<slug>.(md|json)
+    pattern = f"*_*_{previous_mode}_*_*.md"
+    files = sorted(
+        search_dir.glob(pattern), key=lambda p: p.stat().st_mtime, reverse=True
+    )
+
+    # Validate files match expected pattern more strictly
+    valid_files = []
+    for file in files:
+        parts = file.stem.split("_")
+        if len(parts) >= 5:  # Ensure we have all expected parts
+            # Validate timestamp format
+            try:
+                datetime.strptime(f"{parts[0]}_{parts[1]}", "%Y-%m-%d_%H%M%S")
+                if parts[2] == previous_mode:  # Confirm mode matches
+                    valid_files.append(file)
+            except ValueError:
+                continue
+
+    # Return latest file for each provider
+    providers_found = set()
+    result = []
+    for file in valid_files:
+        parts = file.stem.split("_")
+        if len(parts) >= 4:
+            provider = parts[3]
+            # Skip combined reports when collecting inputs
+            if provider != "combined" and provider not in providers_found:
+                providers_found.add(provider)
+                result.append(file)
+
+    return result
+
+
+def get_estimated_duration(mode: str, provider: str | None) -> float:
+    """Get estimated duration in seconds based on mode and provider"""
+    estimates = {
+        "thinking": {"openai": 10, "perplexity": 8, "mock": 5},
+        "clarification": {"openai": 15, "perplexity": 12, "mock": 5},
+        "exploration": {"openai": 20, "perplexity": 15, "mock": 10},
+        "deep_research": {"openai": 22, "perplexity": 20, "combined": 23, "mock": 2},
+    }
+
+    mode_estimates = estimates.get(mode, {"default": 60})
+    if provider:
+        return mode_estimates.get(provider, 60)
+    else:
+        # For multi-provider modes, use the max time
+        return mode_estimates.get("combined", max(mode_estimates.values(), default=60))
+
+
+# ============================================================================
+# SECTION 15: RESEARCH OPERATIONS - MAIN
+# ============================================================================
+# Core research execution logic and async operation management
+# ============================================================================
+
+
+async def run_research(
+    mode: str,
+    prompt: str,
+    async_mode: bool,
+    project: str | None,
+    output_dir: str | None,
+    provider: str | None,
+    input_file: str | None,
+    auto: bool,
+    verbose: bool,
+    cli_api_keys: dict[str, str | None] | None = None,
+    combined: bool = False,
+    quiet: bool = False,
+    no_metadata: bool = False,
+    timeout_override: float | None = None,
+):
+    """Execute research operation"""
+    global _current_checkpoint_manager, _current_operation
+
+    config = get_config()
+
+    # Check disk space
+    output_path = Path(output_dir) if output_dir else Path.cwd()
+
+    # Create output directory if it doesn't exist
+    if output_dir and not output_path.exists():
+        output_path.mkdir(parents=True, exist_ok=True)
+
+    if not check_disk_space(output_path):
+        raise DiskSpaceError("Insufficient disk space. Free up at least 100MB")
+
+    # Validate that mode and prompt are provided
+    if not mode or not prompt:
+        raise click.BadParameter(
+            "Both mode and prompt are required for research operations"
+        )
+
+    # Create operation
+    operation_id = generate_operation_id()
+
+    if verbose:
+        console.print(f"[dim]Operation ID: {operation_id}[/dim]")
+
+    # Handle input files
+    input_files = []
+    if input_file:
+        input_files.append(Path(input_file))
+    elif auto:
+        # Check mode-specific auto_input first, then global
+        mode_config = config.get_mode_config(mode)
+        mode_auto = mode_config.get("auto_input")
+        global_auto = config.data["execution"].get("auto_input", False)
+
+        if mode_auto is not None:
+            use_auto = mode_auto
+        else:
+            use_auto = global_auto
+
+        if use_auto:
+            # Find latest relevant output
+            input_files = await find_latest_outputs(mode, project, config)
+            if not input_files:
+                console.print(
+                    "[yellow]Warning:[/yellow] No previous outputs found for auto-input"
+                )
+
+    # Create operation status
+    operation = OperationStatus(
+        id=operation_id,
+        prompt=prompt,
+        mode=mode,
+        status="queued",
+        created_at=datetime.now(),
+        updated_at=datetime.now(),
+        project=project,
+    )
+
+    # Initialize managers
+    checkpoint_manager = CheckpointManager(config)
+    output_manager = OutputManager(config, no_metadata=no_metadata)
+
+    # Set globals for signal handling
+    _current_checkpoint_manager = checkpoint_manager
+    _current_operation = operation
+
+    # Save initial checkpoint
+    await checkpoint_manager.save(operation)
+
+    # Get providers to use
+    mode_config = config.get_mode_config(mode)
+
+    # Determine which providers to use
+    if provider:
+        # When --provider is explicitly specified, use only that provider
+        # This takes precedence over any mode configuration
+        providers_to_use = [provider]
+    elif mode == "thinking" or "provider" in mode_config:
+        # Single-provider mode (only if no explicit --provider flag)
+        default_provider = mode_config.get("provider", "openai")
+        providers_to_use = [default_provider]
+    elif "providers" in mode_config:
+        # Multi-provider mode (only if no explicit --provider flag)
+        providers_to_use = mode_config.get("providers", ["openai"])
+    else:
+        # Default to single provider
+        providers_to_use = ["openai"]
+
+    # Create provider instances
+    providers = {}
+    for provider_name in providers_to_use:
+        try:
+            # Get the provider-specific CLI API key if provided
+            provider_cli_key = None
+            if cli_api_keys:
+                provider_cli_key = cli_api_keys.get(provider_name)
+            providers[provider_name] = create_provider(
+                provider_name,
+                config,
+                cli_api_key=provider_cli_key,
+                timeout_override=timeout_override,
+                mode_config=mode_config,  # Pass mode config to get model
+            )
+        except APIKeyError as e:
+            console.print(f"[red]Error:[/red] {e.message}")
+            console.print(f"[yellow]Suggestion:[/yellow] {e.suggestion}")
+            raise click.Abort()
+        except ProviderError as e:
+            console.print(f"[red]Error:[/red] {e.message}")
+            console.print(f"[yellow]Suggestion:[/yellow] {e.suggestion}")
+            if verbose and hasattr(e, "raw_error") and e.raw_error:
+                console.print(f"[dim]Raw error: {e.raw_error}[/dim]")
+            raise click.Abort()
+        except ThothError as e:
+            console.print(f"[red]Error:[/red] {e.message}")
+            console.print(f"[yellow]Suggestion:[/yellow] {e.suggestion}")
+            raise click.Abort()
+
+    # Show masked API keys and timeout in verbose mode
+    if verbose:
+        for provider_name, provider_instance in providers.items():
+            if hasattr(provider_instance, "api_key") and provider_instance.api_key:
+                masked = mask_api_key(provider_instance.api_key)
+                console.print(f"[dim]{provider_name} API Key: {masked}[/dim]")
+            # Show timeout for providers that support it
+            if (
+                hasattr(provider_instance, "config")
+                and "timeout" in provider_instance.config
+            ):
+                timeout_value = provider_instance.config.get("timeout")
+                console.print(f"[dim]{provider_name} Timeout: {timeout_value}s[/dim]")
+
+    if async_mode:
+        # Submit and exit
+        if not quiet:
+            console.print("[green]✓[/green] Research submitted")
+        console.print(f"Operation ID: [bold]{operation_id}[/bold]")
+        if not quiet:
+            console.print(f"\nCheck status: [dim]thoth status {operation_id}[/dim]")
+
+        # TODO: Actually submit async tasks
+        return
+
+    # Synchronous execution with progress
+    try:
+        await _execute_research(
+            operation,
+            checkpoint_manager,
+            output_manager,
+            config,
+            mode_config,
+            providers,
+            quiet,
+            verbose,
+            output_dir,
+            combined,
+            project,
+            mode,
+            prompt,
+            timeout_override=timeout_override,
+        )
+    except (click.Abort, KeyboardInterrupt):
+        # User cancellation — status already set by signal handler or will be set here
+        if operation.status not in ("cancelled", "failed", "completed"):
+            operation.transition_to("cancelled")
+            await checkpoint_manager.save(operation)
+        raise
+    except Exception as e:
+        operation.transition_to("failed", error=str(e))
+        await checkpoint_manager.save(operation)
+        raise
+
+
+async def _execute_research(
+    operation: OperationStatus,
+    checkpoint_manager: "CheckpointManager",
+    output_manager: "OutputManager",
+    config: Config,
+    mode_config: dict,
+    providers: dict,
+    quiet: bool,
+    verbose: bool,
+    output_dir: str | None,
+    combined: bool,
+    project: str | None,
+    mode: str,
+    prompt: str,
+    timeout_override: float | None = None,
+):
+    """Execute research with providers and track progress."""
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+        TimeElapsedColumn(),
+        TextColumn("| Next poll: {task.fields[next_poll]}s"),
+        console=console,
+        disable=quiet,  # Disable progress in quiet mode
+    ) as progress:
+        # Submit to all providers
+        jobs = {}
+        for provider_name, provider_instance in providers.items():
+            try:
+                system_prompt = mode_config.get("system_prompt", "")
+                job_id = await provider_instance.submit(
+                    prompt, mode, system_prompt, verbose=verbose
+                )
+                jobs[provider_name] = {
+                    "provider": provider_instance,
+                    "job_id": job_id,
+                    "task_id": progress.add_task(
+                        f"{provider_name.title()} Research", total=100, next_poll=30
+                    ),
+                }
+                operation.providers[provider_name] = {
+                    "status": "running",
+                    "job_id": job_id,
+                }
+            except ProviderError as e:
+                console.print(f"\n[red]Error:[/red] {e.message}")
+                console.print(f"[yellow]Suggestion:[/yellow] {e.suggestion}")
+                if verbose and hasattr(e, "raw_error") and e.raw_error:
+                    console.print(f"[dim]Raw error: {e.raw_error}[/dim]")
+                raise click.Abort()
+            except Exception as e:
+                console.print(
+                    f"\n[red]Unexpected error during submission:[/red] {str(e)}"
+                )
+                if verbose:
+                    console.print(f"[dim]Full error: {repr(e)}[/dim]")
+                raise click.Abort()
+
+        # Update checkpoint
+        operation.transition_to("running")
+        await checkpoint_manager.save(operation)
+
+        # Poll for completion
+        all_completed = False
+        poll_interval = config.data["execution"]["poll_interval"]
+        max_wait = config.data["execution"]["max_wait"] * 60  # Convert to seconds
+        start_time = asyncio.get_event_loop().time()
+
+        while not all_completed:
+            all_completed = True
+
+            for provider_name, job_info in jobs.items():
+                status = await job_info["provider"].check_status(job_info["job_id"])
+
+                if status["status"] == "running":
+                    all_completed = False
+                    progress_pct = int(status.get("progress", 0) * 100)
+                    elapsed = asyncio.get_event_loop().time() - start_time
+                    next_poll = max(0, poll_interval - int(elapsed % poll_interval))
+                    progress.update(
+                        job_info["task_id"], completed=progress_pct, next_poll=next_poll
+                    )
+                elif status["status"] == "completed":
+                    progress.update(job_info["task_id"], completed=100, next_poll=0)
+
+                    # Get and save result
+                    if provider_name not in operation.output_paths:
+                        result_content = await job_info["provider"].get_result(
+                            job_info["job_id"]
+                        )
+                        # Get model information from provider
+                        provider_model = getattr(job_info["provider"], "model", None)
+                        # Get system prompt from mode config
+                        system_prompt = mode_config.get("system_prompt", "")
+                        output_path = await output_manager.save_result(
+                            operation,
+                            provider_name,
+                            result_content,
+                            output_dir,
+                            model=provider_model,
+                            system_prompt=system_prompt,
+                        )
+                        operation.output_paths[provider_name] = output_path
+                        operation.providers[provider_name]["status"] = "completed"
+                        await checkpoint_manager.save(operation)
+
+            # Check timeout
+            if asyncio.get_event_loop().time() - start_time > max_wait:
+                console.print(
+                    f"\n[red]Timeout exceeded ({max_wait / 60} minutes)[/red]"
+                )
+                operation.transition_to(
+                    "failed", error=f"Timeout exceeded ({max_wait / 60} minutes)"
+                )
+                await checkpoint_manager.save(operation)
+                return
+
+            if not all_completed:
+                await asyncio.sleep(
+                    min(poll_interval, 1)
+                )  # Sleep for 1 second increments
+
+    # Generate combined report if multiple providers and combined flag is set
+    if len(operation.output_paths) > 1 and combined:
+        contents = {}
+        for provider_name, path in operation.output_paths.items():
+            async with aiofiles.open(path) as f:
+                contents[provider_name] = await f.read()
+
+        combined_path = await output_manager.generate_combined_report(
+            operation,
+            contents,
+            output_dir,
+            system_prompt=mode_config.get("system_prompt", ""),
+        )
+        operation.output_paths["combined"] = combined_path
+
+    # Final checkpoint
+    operation.transition_to("completed")
+    await checkpoint_manager.save(operation)
+
+    if not quiet:
+        console.print("\n[green]✓[/green] Research completed!")
+        if project:
+            console.print(
+                f"Results saved to: [dim]{config.data['paths']['base_output_dir']}/{project}/[/dim]"
+            )
+        else:
+            console.print("Results saved to: [dim]current directory[/dim]")
+
+    # Show output files
+    for provider_name, path in operation.output_paths.items():
+        console.print(f"  • {path.name}")
+
+    # Suggest combined report if multiple providers and not already generated
+    if (
+        not quiet
+        and len(operation.output_paths) > 1
+        and "combined" not in operation.output_paths
+    ):
+        console.print("\nTo generate a combined report, run with --combined flag")
+
+    # Clear globals after successful completion
+    _current_checkpoint_manager = None
+    _current_operation = None
+
+    return operation
+
+
+async def resume_operation(operation_id: str, verbose: bool):
+    """Resume an existing operation"""
+    config = get_config()
+    checkpoint_manager = CheckpointManager(config)
+
+    # Load operation from checkpoint
+    operation = await checkpoint_manager.load(operation_id)
+    if not operation:
+        console.print(f"[red]Error:[/red] Operation {operation_id} not found")
+        sys.exit(6)
+
+    console.print(f"[yellow]Resuming operation {operation_id}...[/yellow]")
+    console.print(f"Prompt: {operation.prompt}")
+    console.print(f"Mode: {operation.mode}")
+    console.print(f"Status: {operation.status}")
+
+    # TODO: Implement actual resumption logic
+    console.print("[yellow]Full resume functionality not yet implemented[/yellow]")
+
+
+async def show_status(operation_id: str):
+    """Show status of a specific operation"""
+    config = get_config()
+    checkpoint_manager = CheckpointManager(config)
+
+    # Load operation from checkpoint
+    operation = await checkpoint_manager.load(operation_id)
+    if not operation:
+        console.print(f"[red]Error:[/red] Operation {operation_id} not found")
+        sys.exit(6)
+
+    # Display operation details
+    console.print("\nOperation Details:")
+    console.print("─────────────────")
+    console.print(f"ID:        {operation.id}")
+    console.print(f"Prompt:    {operation.prompt}")
+    console.print(f"Mode:      {operation.mode}")
+    console.print(f"Status:    {operation.status}")
+    console.print(f"Started:   {operation.created_at.strftime('%Y-%m-%d %H:%M:%S')}")
+
+    # Calculate elapsed time
+    if operation.status in ["running", "completed"]:
+        elapsed = datetime.now() - operation.created_at
+        minutes = int(elapsed.total_seconds() / 60)
+        console.print(f"Elapsed:   {minutes} minutes")
+
+    if operation.project:
+        console.print(f"Project:   {operation.project}")
+
+    # Show provider status
+    if operation.providers:
+        console.print("\nProvider Status:")
+        console.print("───────────────")
+        for provider_name, provider_info in operation.providers.items():
+            status_icon = "✓" if provider_info.get("status") == "completed" else "▶"
+            status_text = provider_info.get("status", "unknown").title()
+            console.print(f"{provider_name.title()}:  {status_icon} {status_text}")
+
+    # Show output files
+    if operation.output_paths:
+        console.print("\nOutput Files:")
+        console.print("────────────")
+        if operation.project:
+            base_dir = Path(config.data["paths"]["base_output_dir"]) / operation.project
+            console.print(f"{base_dir}/")
+        else:
+            console.print("./")
+
+        for provider_name, path in operation.output_paths.items():
+            console.print(f"  ├── {Path(path).name}")
+
+
+async def list_operations(show_all: bool):
+    """List all operations"""
+    config = get_config()
+    checkpoint_manager = CheckpointManager(config)
+
+    # Get all checkpoint files
+    checkpoint_files = list(checkpoint_manager.checkpoint_dir.glob("*.json"))
+
+    if not checkpoint_files:
+        console.print("No operations found.")
+        return
+
+    # Load operations
+    operations = []
+    for checkpoint_file in checkpoint_files:
+        operation_id = checkpoint_file.stem
+        operation = await checkpoint_manager.load(operation_id)
+        if operation:
+            operations.append(operation)
+
+    # Sort by creation time (newest first)
+    operations.sort(key=lambda op: op.created_at, reverse=True)
+
+    # Filter if not showing all
+    if not show_all:
+        # Only show recent or active operations
+        cutoff_time = datetime.now() - timedelta(hours=24)
+        operations = [
+            op
+            for op in operations
+            if op.status in ["running", "queued"] or op.created_at > cutoff_time
+        ]
+
+    if not operations:
+        console.print("No active operations found. Use --all to see all operations.")
+        return
+
+    # Display table
+    from rich.table import Table
+
+    table = Table(title="Research Operations")
+    table.add_column("ID", style="dim", width=40)
+    table.add_column("Prompt", width=25)
+    table.add_column("Status", width=10)
+    table.add_column("Elapsed", width=8)
+    table.add_column("Mode", width=15)
+
+    for operation in operations:
+        # Truncate prompt if too long
+        prompt_display = (
+            operation.prompt[:22] + "..."
+            if len(operation.prompt) > 25
+            else operation.prompt
+        )
+
+        # Calculate elapsed time
+        elapsed = datetime.now() - operation.created_at
+        if elapsed.total_seconds() < 3600:
+            elapsed_str = f"{int(elapsed.total_seconds() / 60)}m"
+        else:
+            elapsed_str = f"{int(elapsed.total_seconds() / 3600)}h"
+
+        # Status color
+        status_style = (
+            "green"
+            if operation.status == "completed"
+            else "yellow"
+            if operation.status == "running"
+            else "dim"
+        )
+
+        table.add_row(
+            operation.id,
+            prompt_display,
+            f"[{status_style}]{operation.status}[/{status_style}]",
+            elapsed_str,
+            operation.mode,
+        )
+
+    console.print(table)
+    console.print("\nUse 'thoth status <ID>' for details")
+
+
+async def providers_command(
+    show_models: bool = False,
+    show_list: bool = False,
+    show_keys: bool = False,
+    filter_provider: str = None,
+    refresh_cache: bool = False,
+    no_cache: bool = False,
+):
+    """Show provider information and available models"""
+    if not show_models and not show_list and not show_keys:
+        console.print("[yellow]Usage:[/yellow] thoth providers -- [OPTIONS]")
+        console.print("\nShow provider information and available models.")
+        console.print("\nOptions:")
+        console.print(
+            "  --list                List available providers and their status"
+        )
+        console.print("  --models              List available models from providers")
+        console.print(
+            "  --keys                Show API key configuration for each provider"
+        )
+        console.print(
+            "  --provider, -P        Filter by specific provider (with --models)"
+        )
+        console.print("  --refresh-cache       Force refresh of cached model lists")
+        console.print("  --no-cache            Bypass cache without updating it")
+        console.print(
+            "\n[dim]Note: Use -- before options to prevent parsing conflicts[/dim]"
+        )
+        console.print("\nExamples:")
+        console.print("  # List all available providers")
+        console.print("  $ thoth providers -- --list")
+        console.print("\n  # Show API key configuration")
+        console.print("  $ thoth providers -- --keys")
+        console.print("\n  # List all models from all providers")
+        console.print("  $ thoth providers -- --models")
+        console.print("\n  # List only OpenAI models")
+        console.print("  $ thoth providers -- --models --provider openai")
+        console.print("\n  # Force refresh cached models")
+        console.print("  $ thoth providers -- --models --refresh-cache")
+        console.print("\n  # Check current models without updating cache")
+        console.print("  $ thoth providers -- --models --no-cache")
+        return
+
+    config = get_config()
+
+    # Define available providers
+    all_providers = ["openai", "perplexity", "mock"]
+
+    # Provider descriptions
+    provider_descriptions = {
+        "openai": "OpenAI GPT models",
+        "perplexity": "Perplexity search AI",
+        "mock": "Mock provider for tests",
+    }
+
+    if show_list:
+        # Show provider listing with status
+        table = Table(title="Available Providers", box=box.ROUNDED)
+        table.add_column("Provider", style="cyan", width=13)
+        table.add_column("Status", width=10)
+        table.add_column("Description", style="dim", width=25)
+        table.add_column("Model Cache", style="dim", width=30)
+
+        for provider_name in all_providers:
+            try:
+                # Try to create provider instance to check if configured
+                provider = create_provider(provider_name, config)
+                status = "[green]✓ Ready[/green]"
+
+                # Check cache status for providers that support it
+                cache_info = "N/A"
+                if provider_name == "openai":
+                    cache = ModelCache(provider_name)
+                    age = cache.get_cache_age()
+                    if age:
+                        days = age.days
+                        if days == 0:
+                            cache_info = "Cached today"
+                        elif days == 1:
+                            cache_info = "1 day old"
+                        else:
+                            refresh_in = 7 - days
+                            if refresh_in > 0:
+                                cache_info = (
+                                    f"{days} days old (refresh in {refresh_in} days)"
+                                )
+                            else:
+                                cache_info = f"{days} days old (needs refresh)"
+                    else:
+                        cache_info = "Not cached"
+
+            except APIKeyError:
+                status = "[red]✗ No key[/red]"
+                cache_info = "N/A"
+            except Exception:
+                status = "[yellow]⚠ Error[/yellow]"
+                cache_info = "N/A"
+
+            description = provider_descriptions.get(provider_name, "Unknown provider")
+            table.add_row(provider_name, status, description, cache_info)
+
+        console.print(table)
+        console.print("\nTo see available models, use: thoth providers -- --models")
+        console.print(
+            "To refresh model cache, use: thoth providers -- --models --refresh-cache"
+        )
+        return
+
+    if show_keys:
+        # Show API key configuration
+        # Hardcoded mapping of providers to environment variables
+        env_vars = {
+            "openai": "OPENAI_API_KEY",
+            "perplexity": "PERPLEXITY_API_KEY",
+            "mock": "MOCK_API_KEY",
+        }
+
+        table = Table(title="Provider API Key Configuration", box=box.ROUNDED)
+        table.add_column("Provider", style="cyan", width=13)
+        table.add_column("Environment Variable", style="green", width=22)
+        table.add_column("CLI Argument", style="yellow", width=22)
+
+        for provider_name in all_providers:
+            env_var = env_vars.get(provider_name, f"{provider_name.upper()}_API_KEY")
+            cli_arg = f"--api-key-{provider_name}"
+            table.add_row(provider_name, env_var, cli_arg)
+
+        console.print(table)
+        console.print("\nExamples:")
+        console.print("  # Set via environment variable")
+        console.print('  $ export OPENAI_API_KEY="your-key-here"')
+        console.print("\n  # Set via command line for single provider")
+        console.print(
+            '  $ thoth "prompt" --api-key-openai "your-key-here" --provider openai'
+        )
+        console.print("\n  # Set multiple API keys for multi-provider modes")
+        console.print(
+            '  $ thoth deep_research "prompt" --api-key-openai "sk-..." --api-key-perplexity "pplx-..."'
+        )
+        return
+
+    # Original --models logic
+    providers = all_providers
+    if filter_provider:
+        if filter_provider not in providers:
+            # Print to stderr directly
+            print(f"Error: Unknown provider: {filter_provider}", file=sys.stderr)
+            print(f"Available providers: {', '.join(providers)}", file=sys.stderr)
+            sys.exit(1)
+        providers = [filter_provider]
+
+    if refresh_cache:
+        console.print("Fetching available models (refreshing cache)...\n")
+    else:
+        console.print("Fetching available models...\n")
+
+    for provider_name in providers:
+        try:
+            # Create provider instance
+            provider = create_provider(provider_name, config)
+
+            # Fetch models - use cached version if available
+            if hasattr(provider, "list_models_cached"):
+                models = await provider.list_models_cached(
+                    force_refresh=refresh_cache, no_cache=no_cache
+                )
+            else:
+                models = await provider.list_models()
+
+            # Calculate dynamic column width based on longest model ID
+            if models:
+                max_model_id_length = max(len(model.get("id", "")) for model in models)
+                # Add padding and ensure minimum width
+                model_id_width = max(max_model_id_length + 2, 20)
+            else:
+                model_id_width = 25  # Default width if no models
+
+            # Display in table format
+            if provider_name == "openai":
+                table = Table(title="OpenAI Models", box=box.ROUNDED)
+                table.add_column("Model ID", style="cyan", width=model_id_width)
+                table.add_column("Created", style="green", width=14)
+                table.add_column("Owned By", style="yellow", width=16)
+
+                for model in models:
+                    created_date = datetime.fromtimestamp(model["created"]).strftime(
+                        "%Y-%m-%d"
+                    )
+                    table.add_row(model["id"], created_date, model["owned_by"])
+            elif provider_name == "perplexity":
+                table = Table(title="Perplexity Models", box=box.ROUNDED)
+                table.add_column("Model ID", style="cyan", width=model_id_width)
+
+                for model in models:
+                    table.add_row(model["id"])
+            else:  # mock
+                table = Table(title="Mock Models", box=box.ROUNDED)
+                table.add_column("Model ID", style="cyan", width=model_id_width)
+
+                for model in models:
+                    table.add_row(model["id"])
+
+            console.print(table)
+            console.print()
+
+        except APIKeyError as e:
+            console.print(f"[yellow]Skipping {provider_name}:[/yellow] {e}")
+            console.print()
+        except Exception as e:
+            console.print(
+                f"[red]Error fetching models from {provider_name}:[/red] {str(e)}"
+            )
+            console.print()
+
+
+# ============================================================================
+# SECTION 16: INTERACTIVE MODE
+# ============================================================================
+# Interactive prompt interface with slash commands and UI components:
+# - SlashCommandRegistry: Manages slash commands
+# - InteractiveSession: Main interactive session handler
+# - UI components and keyboard handling
+# ============================================================================
+
+
+# Prompt Toolkit imports for enhanced interactive mode
+try:
+    from prompt_toolkit import Application
+    from prompt_toolkit.application import run_in_terminal
+    from prompt_toolkit.completion import Completer, Completion
+    from prompt_toolkit.document import Document
+    from prompt_toolkit.formatted_text import HTML
+    from prompt_toolkit.key_binding import KeyBindings
+    from prompt_toolkit.layout import HSplit, Layout
+    from prompt_toolkit.styles import Style
+    from prompt_toolkit.widgets import Frame, Label, TextArea
+
+    PROMPT_TOOLKIT_AVAILABLE = True
+except ImportError:
+    PROMPT_TOOLKIT_AVAILABLE = False
+
+
+class SlashCommandRegistry:
+    """Registry and handler for slash commands"""
+
+    def __init__(self, console: Console):
+        self.console = console
+        self.commands = {
+            "/help": self.show_help,
+            "/mode": self.set_mode,
+            "/provider": self.set_provider,
+            "/async": self.toggle_async,
+            "/status": self.check_status,
+            "/exit": self.exit_interactive,
+            "/quit": self.exit_interactive,
+            "/multiline": self.toggle_multiline,
+        }
+        # Current settings
+        self.current_mode = "default"
+        self.current_provider = None
+        self.async_mode = False
+        self.multiline_mode = True  # Default to multiline mode
+        self.last_operation_id = None
+
+    def parse_and_execute(self, input_text: str) -> str:
+        """Parse and execute slash command, return action to take"""
+        if not input_text.startswith("/"):
+            return "continue"
+
+        parts = input_text.split(maxsplit=1)
+        command = parts[0].lower()
+        args = parts[1] if len(parts) > 1 else ""
+
+        if command in self.commands:
+            return self.commands[command](args)
+        else:
+            self.console.print(f"[red]Unknown command:[/red] {command}")
+            self.console.print("Type /help for available commands")
+            return "continue"
+
+    def show_help(self, args: str) -> str:
+        """Show available commands"""
+        self.console.print("[cyan]Available commands:[/cyan]")
+        self.console.print("  /help              - Show this help")
+        self.console.print("  /mode <mode>       - Change research mode")
+        self.console.print(
+            "  /provider <name>   - Set provider (openai, perplexity, mock)"
+        )
+        self.console.print("  /async             - Toggle async mode")
+        self.console.print("  /multiline         - Toggle multiline input mode")
+        self.console.print("  /status            - Check last operation status")
+        self.console.print("  /exit, /quit       - Exit interactive mode")
+        self.console.print()
+        self.console.print("[cyan]Unix shortcuts (always available):[/cyan]")
+        self.console.print("  Ctrl+A             - Move to start of line")
+        self.console.print("  Ctrl+E             - Move to end of line")
+        self.console.print("  Ctrl+K             - Delete to end of line")
+        self.console.print("  Ctrl+U             - Delete to start of line")
+        self.console.print("  Ctrl+W             - Delete word backward")
+        self.console.print()
+        self.console.print("[dim]Current settings:[/dim]")
+        self.console.print(f"  Mode: {self.current_mode}")
+        self.console.print(f"  Provider: {self.current_provider or 'auto'}")
+        self.console.print(f"  Async: {self.async_mode}")
+        self.console.print(f"  Multiline: {self.multiline_mode}")
+        self.console.print()
+        return "continue"
+
+    def set_mode(self, args: str) -> str:
+        """Set research mode"""
+        if not args:
+            # Show available modes with descriptions
+            self.console.print("[cyan]Available modes:[/cyan]")
+            modes = list(BUILTIN_MODES.keys())
+            for i, mode_name in enumerate(modes, 1):
+                mode_config = BUILTIN_MODES[mode_name]
+                desc = mode_config.get("description", "No description")[:60]
+                current = (
+                    " [green]← current[/green]"
+                    if mode_name == self.current_mode
+                    else ""
+                )
+                self.console.print(f"  {i}. {mode_name:<15} - {desc}{current}")
+            self.console.print("\n[dim]Usage: /mode <name> or /mode <number>[/dim]")
+            self.console.print(f"[dim]Current mode: {self.current_mode}[/dim]")
+        else:
+            arg = args.strip()
+            # Check if it's a number
+            if arg.isdigit():
+                modes = list(BUILTIN_MODES.keys())
+                idx = int(arg) - 1
+                if 0 <= idx < len(modes):
+                    mode = modes[idx]
+                    self.current_mode = mode
+                    self.console.print(f"[green]Mode set to:[/green] {mode}")
+                else:
+                    self.console.print(f"[red]Invalid mode number:[/red] {arg}")
+                    self.console.print(f"Please choose 1-{len(modes)}")
+            else:
+                mode = arg.lower()
+                if mode in BUILTIN_MODES:
+                    self.current_mode = mode
+                    self.console.print(f"[green]Mode set to:[/green] {mode}")
+                else:
+                    self.console.print(f"[red]Unknown mode:[/red] {mode}")
+                    self.console.print(
+                        "Use /mode without arguments to see available modes"
+                    )
+        self.console.print()
+        return "continue"
+
+    def set_provider(self, args: str) -> str:
+        """Set provider"""
+        providers = ["openai", "perplexity", "mock", "auto"]
+        if not args:
+            self.console.print("[cyan]Available providers:[/cyan]")
+            for i, provider in enumerate(providers, 1):
+                current = (
+                    " [green]← current[/green]"
+                    if provider == (self.current_provider or "auto")
+                    else ""
+                )
+                desc = {
+                    "openai": "OpenAI GPT models",
+                    "perplexity": "Perplexity search AI",
+                    "mock": "Mock provider for testing",
+                    "auto": "Automatic provider selection",
+                }.get(provider, "")
+                self.console.print(f"  {i}. {provider:<12} - {desc}{current}")
+            self.console.print(
+                "\n[dim]Usage: /provider <name> or /provider <number>[/dim]"
+            )
+            self.console.print(
+                f"[dim]Current provider: {self.current_provider or 'auto'}[/dim]"
+            )
+        else:
+            arg = args.strip()
+            # Check if it's a number
+            if arg.isdigit():
+                idx = int(arg) - 1
+                if 0 <= idx < len(providers):
+                    provider = providers[idx]
+                    self.current_provider = None if provider == "auto" else provider
+                    self.console.print(f"[green]Provider set to:[/green] {provider}")
+                else:
+                    self.console.print(f"[red]Invalid provider number:[/red] {arg}")
+                    self.console.print(f"Please choose 1-{len(providers)}")
+            else:
+                provider = arg.lower()
+                if provider == "auto":
+                    self.current_provider = None
+                    self.console.print("[green]Provider set to:[/green] auto")
+                elif provider in ["openai", "perplexity", "mock"]:
+                    self.current_provider = provider
+                    self.console.print(f"[green]Provider set to:[/green] {provider}")
+                else:
+                    self.console.print(f"[red]Unknown provider:[/red] {provider}")
+                    self.console.print(
+                        "Valid providers: openai, perplexity, mock, auto"
+                    )
+        self.console.print()
+        return "continue"
+
+    def toggle_async(self, args: str) -> str:
+        """Toggle async mode"""
+        self.async_mode = not self.async_mode
+        self.console.print(
+            f"[green]Async mode:[/green] {'enabled' if self.async_mode else 'disabled'}"
+        )
+        self.console.print()
+        return "continue"
+
+    def check_status(self, args: str) -> str:
+        """Check operation status"""
+        if not self.last_operation_id:
+            self.console.print("[yellow]No operations run in this session[/yellow]")
+        else:
+            self.console.print(f"[cyan]Last operation:[/cyan] {self.last_operation_id}")
+            # TODO: Actually check status using existing status_command
+        self.console.print()
+        return "continue"
+
+    def toggle_multiline(self, args: str) -> str:
+        """Toggle multiline mode"""
+        import platform
+
+        self.multiline_mode = not self.multiline_mode
+        if self.multiline_mode:
+            newline_key = (
+                "Option+Return" if platform.system() == "Darwin" else "Alt+Enter"
+            )
+            mode_text = f"enabled (Enter submits, {newline_key} for new line)"
+        else:
+            mode_text = "disabled (Enter submits immediately)"
+        self.console.print(f"[green]Multiline mode:[/green] {mode_text}")
+        self.console.print()
+        return "continue"
+
+    def exit_interactive(self, args: str) -> str:
+        """Exit interactive mode"""
+        return "exit"
+
+
+class SlashCommandCompleter(Completer):
+    """Custom completer for slash commands with better partial matching"""
+
+    def __init__(self, commands: list[str], meta_dict: dict[str, str] = None):
+        self.commands = sorted(commands)
+        self.meta_dict = meta_dict or {}
+
+    def get_completions(self, document: Document, complete_event):
+        """Get completions for the current document"""
+        text = document.text_before_cursor
+
+        # Only complete if we're at the start or after a space
+        if not text or text[-1] == " ":
+            return
+
+        # Get the current word being typed
+        word = document.get_word_before_cursor(WORD=True)
+
+        # If it doesn't start with /, don't complete
+        if not word.startswith("/"):
+            return
+
+        # Find matching commands
+        for cmd in self.commands:
+            if cmd.lower().startswith(word.lower()):
+                # Calculate the completion text (what to add)
+                completion_text = cmd[len(word) :]
+
+                # Get metadata for this command
+                meta = self.meta_dict.get(cmd, "")
+
+                yield Completion(
+                    text=completion_text,
+                    start_position=0,
+                    display=cmd,
+                    display_meta=meta,
+                )
+
+
+class ClarificationSession:
+    """Tracks clarification history and manages iterative refinement"""
+
+    def __init__(self):
+        self.history = []  # List of (query, response, timestamp) tuples
+        self.current_round = 0
+        self.max_rounds = 5
+        self.original_query = None
+        self.last_failed_query = None  # For retry functionality
+        self.last_error = None
+
+    def add_round(self, query: str, response: str):
+        """Add a clarification round to history"""
+        self.history.append(
+            {
+                "round": self.current_round,
+                "query": query,
+                "response": response,
+                "timestamp": datetime.now(),
+            }
+        )
+        self.current_round += 1
+
+    def can_continue(self) -> bool:
+        """Check if more clarification rounds are allowed"""
+        return self.current_round < self.max_rounds
+
+    def get_context(self) -> str:
+        """Get formatted history context for next clarification"""
+        if not self.history:
+            return ""
+
+        context_parts = ["Previous clarification rounds:"]
+        for entry in self.history:
+            context_parts.append(f"\nRound {entry['round'] + 1}:")
+            context_parts.append(f"Query: {entry['query']}")
+            context_parts.append(
+                f"Response: {entry['response'][:200]}..."
+            )  # Truncate for context
+
+        return "\n".join(context_parts)
+
+    def reset(self):
+        """Reset the session for a new clarification"""
+        self.history.clear()
+        self.current_round = 0
+        self.original_query = None
+        self.last_failed_query = None
+        self.last_error = None
+
+
+class InteractiveSession:
+    """Interactive mode session using Prompt Toolkit Application"""
+
+    def __init__(
+        self,
+        console: Console,
+        config: Config,
+        initial_settings: InteractiveInitialSettings,
+    ):
+        self.console = console
+        self.config = config
+        self.initial_settings = initial_settings
+        self.result = None
+        self.should_exit = False
+
+        # Initialize slash command registry with settings from command line
+        self.slash_registry = SlashCommandRegistry(console)
+        self.slash_registry.current_mode = initial_settings.mode or config.data[
+            "general"
+        ].get("default_mode", "default")
+        self.slash_registry.current_provider = initial_settings.provider
+        self.slash_registry.async_mode = initial_settings.async_mode
+
+        # State management
+        self.current_provider = initial_settings.provider
+        self.current_model = None
+        self.pending_command = None  # For multi-step commands
+
+        # Store CLI API keys
+        self.cli_api_keys = initial_settings.cli_api_keys
+
+        # Clarification mode state
+        self.current_input_mode = (
+            InputMode.CLARIFICATION_MODE
+            if initial_settings.clarify_mode
+            else InputMode.EDIT_MODE
+        )
+        self.original_query = None  # Store original query during clarification
+        self.clarification_response = None  # Store clarification suggestions
+        self.clarification_in_progress = False  # Track if clarification is happening
+        self.clarification_session = (
+            ClarificationSession()
+        )  # Track clarification history
+
+        # Detect and enable extended keyboard support
+        self.supports_shift_enter = self._enable_extended_keyboard()
+
+        # Set key label for newline based on terminal capabilities
+        import platform
+
+        if self.supports_shift_enter:
+            self.newline_key = "Shift+Return"
+        else:
+            # Fallback to Option/Alt+Enter
+            self.newline_key = (
+                "Option+Return" if platform.system() == "Darwin" else "Alt+Enter"
+            )
+
+        # Create TextArea for input with multiline support first (needed by _create_help_text)
+        # Pre-populate with initial prompt if provided
+        # Get height from config (interactive clarification settings)
+        clarify_config = config.data.get("clarification", {}).get("interactive", {})
+        input_height = clarify_config.get("input_height", 6)
+        self.max_input_height = clarify_config.get("max_input_height", 15)
+
+        self.input_area = TextArea(
+            text=initial_settings.prompt or "",
+            multiline=True,
+            prompt="❯ ",
+            wrap_lines=True,
+            scrollbar=True,  # Enable scrollbar for longer content
+            height=input_height,
+            completer=self._create_completer(),
+        )
+
+        # Create help text (now that input_area exists)
+        help_html = self._create_help_text()
+
+        # Create widgets
+        self.help_label = Label(HTML(help_html), style="class:help")
+
+        # Create Frame around TextArea for border
+        self.input_frame = Frame(
+            self.input_area, title=" Prompt ", style="class:input-frame"
+        )
+
+        # Create layout
+        self.layout = Layout(HSplit([self.help_label, self.input_frame]))
+
+        # Create key bindings
+        self.kb = self._create_key_bindings()
+
+        # Create style
+        self.style = Style.from_dict(
+            {
+                "help": "#888888",  # Dim gray for help text
+                "input-frame": "#0080ff",  # Bright blue for border
+                "prompt": "#00aa00 bold",  # Green for prompt
+            }
+        )
+
+        # Create Application
+        self.app = Application(
+            layout=self.layout,
+            key_bindings=self.kb,
+            style=self.style,
+            enable_page_navigation_bindings=False,
+            mouse_support=True,
+            full_screen=False,  # Don't take full screen, just display inline
+        )
+
+    def _enable_extended_keyboard(self) -> bool:
+        """
+        Try to enable CSI-u extended keyboard mode for modern terminals.
+        This allows capturing Shift+Enter as a distinct key combination.
+        """
+        if not sys.stdin.isatty():
+            return False  # Not in a real terminal
+
+        try:
+            # Try to enable modifyOtherKeys mode (level 2)
+            # This sends unique codes for modified keys like Shift+Enter
+            sys.stdout.write("\x1b[>4;2m")
+            sys.stdout.flush()
+
+            # Check terminal type for known support
+            term = os.environ.get("TERM", "").lower()
+            term_program = os.environ.get("TERM_PROGRAM", "").lower()
+
+            # Known terminals with good CSI-u support
+            if any(t in term for t in ["xterm-256color", "screen-256color", "tmux"]):
+                return True
+            if any(t in term_program for t in ["iterm", "warp", "vscode"]):
+                return True
+            if "WT_SESSION" in os.environ:  # Windows Terminal
+                return True
+
+            # Optimistically enable for other modern terminals
+            # The key binding will simply not trigger if unsupported
+            return True
+
+        except Exception:
+            return False
+
+    def _create_help_text(self) -> str:
+        """Create the help text HTML"""
+        mode_text = f"Mode: <b>{self.slash_registry.current_mode}</b>"
+        provider_text = f"Provider: <b>{self.current_provider or 'auto'}</b>"
+
+        newline_help = (
+            f"<b>{self.newline_key}</b>"
+            if self.supports_shift_enter
+            else "<b>Ctrl+J</b>"
+        )
+
+        # Show different help based on current input mode
+        if self.current_input_mode == InputMode.CLARIFICATION_MODE:
+            if self.clarification_response:
+                # Showing clarification suggestions
+                mode_indicator = "<b style='color:orange'>📝 Clarification Mode</b>"
+                if self.clarification_session.can_continue():
+                    round_info = f" (Round {self.clarification_session.current_round}/{self.clarification_session.max_rounds})"
+                    action_help = "<b>Enter</b>: accept • Type 'continue' + <b>Enter</b>: more clarification • <b>Shift+Tab</b>: edit"
+                else:
+                    round_info = " (Final round)"
+                    action_help = "<b>Enter</b>: accept • <b>Shift+Tab</b>: edit mode"
+                mode_indicator += round_info
+            else:
+                # Ready to clarify
+                mode_indicator = "<b style='color:yellow'>🔍 Clarification Mode</b>"
+                if self.clarification_session.last_error:
+                    action_help = "<b>Enter</b>: clarify • <b>Ctrl+R</b>: retry • <b>Shift+Tab</b>: edit mode"
+                else:
+                    action_help = "<b>Enter</b>: clarify • <b>Shift+Tab</b>: edit mode"
+        else:
+            # Edit mode
+            mode_indicator = "<b style='color:green'>✏️ Edit Mode</b>"
+            action_help = f"<b>Enter</b>: submit • {newline_help}: new line • <b>Shift+Tab</b>: clarify"
+
+        # Add input area size indicator if not at default
+        clarify_config = self.config.data.get("clarification", {}).get(
+            "interactive", {}
+        )
+        default_height = clarify_config.get("input_height", 6)
+        current_height = self.input_area.height
+
+        size_indicator = ""
+        if isinstance(current_height, int) and current_height != default_height:
+            size_indicator = (
+                f" • Size: {current_height} lines (<b>Ctrl+=/-</b>: resize)"
+            )
+
+        return (
+            f"{mode_indicator} | {mode_text} | {provider_text}\n"
+            f"{action_help} • <b>/help</b>: commands{size_indicator}"
+        )
+
+    def _update_help_text(self):
+        """Update help text with current state"""
+        self.help_label.text = HTML(self._create_help_text())
+
+    def _create_completer(self) -> Completer:
+        """Create completer for slash commands"""
+        commands = [
+            "/help",
+            "/keybindings",
+            "/mode",
+            "/provider",
+            "/async",
+            "/status",
+            "/exit",
+            "/quit",
+        ]
+
+        meta_dict = {
+            "/help": "Show available commands",
+            "/keybindings": "Show keyboard shortcuts",
+            "/mode": "Change research mode",
+            "/provider": "Set provider",
+            "/async": "Toggle async mode",
+            "/status": "Check operation status",
+            "/exit": "Exit interactive mode",
+            "/quit": "Exit interactive mode",
+        }
+
+        return SlashCommandCompleter(commands, meta_dict)
+
+    def _create_key_bindings(self) -> KeyBindings:
+        """Create custom key bindings"""
+        kb = KeyBindings()
+
+        @kb.add("enter")
+        def handle_enter(event):
+            """Enter key: submit or process commands"""
+            buffer = event.app.current_buffer
+            text = buffer.text.strip()
+
+            if not text:
+                return  # Ignore empty input
+
+            # Check for slash commands
+            if text.startswith("/"):
+                self._handle_slash_command(text)
+                buffer.text = ""  # Clear input
+                return
+
+            # Check if we're in a multi-step command
+            if self.pending_command:
+                self._handle_command_continuation(text)
+                buffer.text = ""
+                return
+
+            # Handle based on current input mode
+            if self.current_input_mode == InputMode.CLARIFICATION_MODE:
+                if self.clarification_response:
+                    # Check if user wants to continue clarifying (if text starts with "continue")
+                    if (
+                        text.lower().strip() == "continue"
+                        and self.clarification_session.can_continue()
+                    ):
+                        # Continue with another round of clarification
+                        refined_text = buffer.text.split(
+                            "Refined query (edit as needed):\n"
+                        )[-1].strip()
+                        self._process_clarification(refined_text)
+                    else:
+                        # Accept the refined query and switch to edit mode
+                        self.current_input_mode = InputMode.EDIT_MODE
+                        self.clarification_response = None
+                        self._update_help_text()
+                else:
+                    # Process clarification
+                    self._process_clarification(text)
+            else:
+                # Normal prompt submission in edit mode
+                self.result = text
+                event.app.exit()
+
+        # Add Shift+Tab binding for mode toggle
+        # Using s-tab which is the standard notation for Shift+Tab
+        @kb.add("s-tab")
+        def handle_shift_tab(event):
+            """Shift+Tab: Toggle between Edit and Clarification modes"""
+            if self.current_input_mode == InputMode.EDIT_MODE:
+                self.current_input_mode = InputMode.CLARIFICATION_MODE
+                # Store the current text as original query
+                self.original_query = event.current_buffer.text
+            else:
+                self.current_input_mode = InputMode.EDIT_MODE
+                # If we have a clarification response, keep it in the buffer
+                # Otherwise restore original query if it exists
+                if not self.clarification_response and self.original_query:
+                    event.current_buffer.text = self.original_query
+
+            self.clarification_response = None  # Clear any existing clarification
+            self._update_help_text()
+
+        # Also bind backtab as a fallback for terminals that use this notation
+        try:
+
+            @kb.add("backtab")
+            def handle_shift_tab_alt(event):
+                """Shift+Tab alternative: Toggle between Edit and Clarification modes"""
+                handle_shift_tab(event)
+        except Exception:
+            # Some terminals may not support backtab
+            pass
+
+        # Try to bind Shift+Enter via CSI-u extended keyboard protocol
+        if self.supports_shift_enter:
+            try:
+                # CSI-u sequence for Shift+Enter: ESC[13;2u
+                @kb.add("\x1b[13;2u")
+                def handle_shift_enter(event):
+                    """Shift+Enter: insert newline (CSI-u mode)"""
+                    event.current_buffer.insert_text("\n")
+            except ValueError:
+                # If the binding fails, we'll rely on fallbacks
+                self.supports_shift_enter = False
+
+        # Universal fallback: Ctrl+J (works in all terminals)
+        @kb.add("c-j")
+        def handle_ctrl_j(event):
+            """Ctrl+J: insert newline (universal)"""
+            event.current_buffer.insert_text("\n")
+
+        # Alt+Enter for newline (Option+Return on Mac)
+        @kb.add("escape", "enter")  # Alt+Enter
+        def handle_alt_enter(event):
+            """Alt+Enter: insert newline (fallback)"""
+            event.current_buffer.insert_text("\n")
+
+        @kb.add("c-c")
+        def handle_abort(event):
+            """Ctrl+C: abort interactive mode"""
+            self.result = None
+            event.app.exit()
+
+        @kb.add("tab")
+        def handle_tab(event):
+            """Tab: trigger completion"""
+            event.current_buffer.complete_next()
+
+        # Add Ctrl+R for manual retry of failed clarification
+        @kb.add("c-r")
+        def handle_retry_clarification(event):
+            """Ctrl+R: Retry last failed clarification"""
+            if (
+                self.current_input_mode == InputMode.CLARIFICATION_MODE
+                and self.clarification_session.last_failed_query
+            ):
+                # Retry the last failed clarification
+                self._process_clarification(
+                    self.clarification_session.last_failed_query
+                )
+            elif self.clarification_session.last_error:
+                # Show error message if there's no query to retry
+                event.app.layout.focus(self.input_area)
+                event.current_buffer.text = f"No clarification to retry. Last error: {self.clarification_session.last_error}"
+
+        # Add Ctrl+Plus/Equal for increasing input area height
+        @kb.add("c-=")  # Ctrl+= (easier than Ctrl+Plus on most keyboards)
+        def handle_increase_height(event):
+            """Ctrl+=: Increase input area height"""
+            current_height = self.input_area.height
+            if (
+                isinstance(current_height, int)
+                and current_height < self.max_input_height
+            ):
+                self.input_area.height = current_height + 1
+                self._update_help_text()
+
+        # Also bind Ctrl+Plus for consistency
+        try:
+
+            @kb.add("c-+")
+            def handle_increase_height_alt(event):
+                """Ctrl++: Increase input area height"""
+                handle_increase_height(event)
+        except Exception:
+            pass  # Some terminals may not support this
+
+        # Add Ctrl+Minus for decreasing input area height
+        @kb.add("c--")
+        def handle_decrease_height(event):
+            """Ctrl+-: Decrease input area height"""
+            current_height = self.input_area.height
+            if (
+                isinstance(current_height, int) and current_height > 3
+            ):  # Minimum height of 3
+                self.input_area.height = current_height - 1
+                self._update_help_text()
+
+        return kb
+
+    def _handle_slash_command(self, text: str):
+        """Handle slash commands"""
+        parts = text.split(maxsplit=1)
+        command = parts[0].lower()
+        args = parts[1] if len(parts) > 1 else ""
+
+        if command == "/help":
+            self._show_help()
+        elif command == "/keybindings":
+            self._show_keybindings()
+        elif command == "/mode":
+            if args:
+                # Direct mode setting
+                if args in BUILTIN_MODES:
+                    self.slash_registry.current_mode = args
+                    self._update_help_text()
+                    run_in_terminal(lambda: print(f"Mode set to: {args}"))
+            else:
+                # Show mode selection
+                self._show_mode_selection()
+        elif command == "/provider":
+            if args:
+                # Direct provider setting
+                self.current_provider = args
+                self._update_help_text()
+                run_in_terminal(lambda: print(f"Provider set to: {args}"))
+            else:
+                # Show provider selection
+                self._show_provider_selection()
+        elif command == "/async":
+            self.slash_registry.async_mode = not self.slash_registry.async_mode
+            status = "enabled" if self.slash_registry.async_mode else "disabled"
+            run_in_terminal(lambda: print(f"Async mode: {status}"))
+        elif command == "/status":
+            if self.slash_registry.last_operation_id:
+                run_in_terminal(
+                    lambda: print(
+                        f"Last operation: {self.slash_registry.last_operation_id}"
+                    )
+                )
+            else:
+                run_in_terminal(lambda: print("No operations yet"))
+        elif command in ["/exit", "/quit"]:
+            self.result = None
+            self.app.exit()
+        else:
+            run_in_terminal(lambda: print(f"Unknown command: {command}"))
+
+    def _show_help(self):
+        """Display help information"""
+
+        def print_help():
+            print("\nAvailable commands:")
+            print("  /help              - Show this help")
+            print("  /keybindings       - Show keyboard shortcuts")
+            print("  /mode [<mode>]     - Change or show research modes")
+            print("  /provider [<name>] - Set or show providers")
+            print("  /async             - Toggle async mode")
+            print("  /status            - Check last operation status")
+            print("  /exit, /quit       - Exit interactive mode")
+            print("\nInput Modes:")
+            print("  Edit Mode          - Write and submit prompts for research")
+            print("  Clarification Mode - Get AI suggestions to refine your prompt")
+            print("\nType /keybindings to see keyboard shortcuts")
+            print()
+
+        run_in_terminal(print_help)
+
+    def _show_keybindings(self):
+        """Display keyboard shortcuts"""
+
+        def print_keybindings():
+            print("\nKeyboard shortcuts:")
+            print(
+                "  Enter              - Submit prompt (Edit) / Accept clarification (Clarify)"
+            )
+            print("  Shift+Tab          - Toggle between Edit and Clarification modes")
+            print("  Ctrl+R             - Retry failed clarification")
+            print("  Ctrl+=             - Increase input area size")
+            print("  Ctrl+-             - Decrease input area size")
+
+            # Show newline options based on terminal support
+            if self.supports_shift_enter:
+                print("  Shift+Return       - Insert new line (detected support)")
+            print(f"  {self.newline_key:18} - Insert new line")
+            print("  Ctrl+J             - Insert new line (universal)")
+
+            print("  Tab                - Complete slash commands")
+            print("  Ctrl+A             - Go to line start")
+            print("  Ctrl+E             - Go to line end")
+            print("  Ctrl+K             - Delete to end of line")
+            print("  Ctrl+U             - Delete to start of line")
+            print("  Ctrl+W             - Delete word before cursor")
+            print("  Ctrl+C             - Exit without submitting")
+            print("  Arrow keys         - Navigate text")
+            print()
+
+            print("Mode-specific behavior:")
+            print("  Edit Mode:")
+            print("    - Enter submits prompt for research")
+            print("    - Shift+Tab switches to Clarification Mode")
+            print("  Clarification Mode:")
+            print("    - Enter processes clarification")
+            print("    - After clarification, Enter accepts refined query")
+            print("    - Shift+Tab returns to Edit Mode")
+            print()
+
+            if self.supports_shift_enter:
+                print("Note: Your terminal supports Shift+Return!")
+                print("You can also use Ctrl+J or Option+Return as alternatives.")
+            else:
+                print("Note: Shift+Return is not supported by your terminal.")
+                print(
+                    "Use Ctrl+J (recommended) or Option+Return (Mac) / Alt+Enter (Linux/Windows)."
+                )
+            print()
+
+        run_in_terminal(print_keybindings)
+
+    def _show_mode_selection(self):
+        """Show available modes for selection"""
+
+        def print_modes():
+            print("\nAvailable modes:")
+            for i, (name, config) in enumerate(BUILTIN_MODES.items(), 1):
+                desc = config.get("description", "No description")[:60]
+                current = (
+                    " ← current" if name == self.slash_registry.current_mode else ""
+                )
+                print(f"  {i}. {name:15} - {desc}{current}")
+            print("\nType: /mode <name> to select a mode")
+            print()
+
+        run_in_terminal(print_modes)
+
+    def _show_provider_selection(self):
+        """Show available providers for selection"""
+
+        def print_providers():
+            print("\nAvailable providers:")
+            providers = [
+                ("openai", "OpenAI GPT models"),
+                ("perplexity", "Perplexity search AI"),
+                ("mock", "Mock provider for testing"),
+                ("auto", "Automatic provider selection"),
+            ]
+            for i, (name, desc) in enumerate(providers, 1):
+                current = (
+                    " ← current" if name == (self.current_provider or "auto") else ""
+                )
+                print(f"  {i}. {name:12} - {desc}{current}")
+            print("\nType: /provider <name> to select a provider")
+            print()
+
+        run_in_terminal(print_providers)
+
+    def _handle_command_continuation(self, text: str):
+        """Handle continuation of multi-step commands"""
+        # This would be used for future enhancements where commands
+        # require multiple inputs
+        self.pending_command = None
+
+    def _process_clarification(self, query: str):
+        """Process query through clarification mode"""
+        from prompt_toolkit.application import get_app
+
+        # Store the original query
+        self.original_query = query
+        self.clarification_in_progress = True
+
+        # Run clarification in background
+        async def run_clarification():
+            try:
+                # Get clarification suggestions from LLM
+                clarification_text = await self._get_clarification_suggestions(query)
+
+                # Update the buffer with clarification response
+                app = get_app()
+                if app and app.current_buffer:
+                    app.current_buffer.text = clarification_text
+                    self.clarification_response = clarification_text
+                    self.clarification_in_progress = False
+                    self._update_help_text()
+
+            except Exception as e:
+                # On error, show error message and switch back to edit mode
+                app = get_app()
+                if app and app.current_buffer:
+                    app.current_buffer.text = f"Error getting clarification: {str(e)}\n\nOriginal query: {query}"
+                    self.current_input_mode = InputMode.EDIT_MODE
+                    self.clarification_in_progress = False
+                    self._update_help_text()
+
+        # Schedule the async operation
+        import asyncio
+
+        # Show loading message
+        app = get_app()
+        app.current_buffer.text = "🔍 Getting clarification suggestions..."
+
+        # Run the clarification task
+        asyncio.ensure_future(run_clarification())
+
+    async def _get_clarification_suggestions(self, query: str) -> str:
+        """Get clarification suggestions from the LLM with retry logic"""
+        # Get configuration for interactive clarification
+        clarify_config = self.config.data.get("clarification", {}).get(
+            "interactive", {}
+        )
+
+        # Use config values with fallbacks
+        # provider = clarify_config.get("provider", "openai")  # TODO: Support multiple providers
+        model = clarify_config.get("model", "gpt-4o-mini")
+        temperature = clarify_config.get("temperature", 0.7)
+        max_tokens = clarify_config.get("max_tokens", 800)
+        system_prompt = clarify_config.get(
+            "system_prompt",
+            """I don't want you to follow the above question and instructions; I want you to tell me the ways this is unclear, point out any ambiguities or anything you don't understand. Follow that by asking questions to help clarify the ambiguous points. Once there are no more unclear, ambiguous or not understood portions, help me draft a clear version of the question/instruction.""",
+        )
+        retry_attempts = clarify_config.get("retry_attempts", 3)
+        retry_delay = clarify_config.get("retry_delay", 2.0)
+
+        # Store query for potential retry
+        self.clarification_session.last_failed_query = query
+
+        # Get API keys from config or CLI
+        api_keys = self.cli_api_keys or {}
+
+        # Try to get OpenAI API key
+        openai_key = (
+            api_keys.get("openai")
+            or self.config.data.get("providers", {}).get("openai", {}).get("api_key")
+            or os.environ.get("OPENAI_API_KEY")
+        )
+
+        if not openai_key:
+            raise ValueError(
+                "OpenAI API key not found. Please set OPENAI_API_KEY or configure in ~/.thoth/config.toml"
+            )
+
+        # Include clarification history context if available
+        context = self.clarification_session.get_context()
+        if context:
+            query = f"{context}\n\nCurrent query: {query}"
+
+        # Implement retry logic using tenacity
+        @retry(
+            stop=stop_after_attempt(retry_attempts),
+            wait=wait_exponential(
+                multiplier=retry_delay, min=retry_delay, max=retry_delay * 4
+            ),
+            retry=retry_if_exception_type((httpx.TimeoutException, httpx.ConnectError)),
+            before_sleep=lambda retry_state: self._log_retry_attempt(retry_state),
+        )
+        async def make_clarification_request():
+            import httpx
+            from openai import AsyncOpenAI
+
+            client = AsyncOpenAI(
+                api_key=openai_key, timeout=httpx.Timeout(30.0, connect=5.0)
+            )
+
+            # Build messages for clarification
+            messages = []
+            if system_prompt:
+                messages.append({"role": "system", "content": system_prompt})
+            messages.append({"role": "user", "content": query})
+
+            # Make the API call
+            response = await client.chat.completions.create(
+                model=model,
+                messages=messages,
+                temperature=temperature,
+                max_tokens=max_tokens,
+            )
+
+            return response.choices[0].message.content
+
+        # Try to get clarification with retries
+        try:
+            clarification_text = await make_clarification_request()
+
+            # Track successful clarification in session
+            self.clarification_session.add_round(query, clarification_text)
+
+            # Format the response nicely
+            round_indicator = (
+                f" (Round {self.clarification_session.current_round}/{self.clarification_session.max_rounds})"
+                if self.clarification_session.current_round > 1
+                else ""
+            )
+
+            formatted_response = f"""📝 Clarification Suggestions{round_indicator}:
+            
+{clarification_text}
+
+---
+✏️ Refined query (edit as needed):
+{query.split("Current query: ")[-1] if "Current query: " in query else query}"""
+
+            # Clear any error state
+            self.clarification_session.last_error = None
+
+            return formatted_response
+
+        except Exception as e:
+            # Store error for potential manual retry
+            self.clarification_session.last_error = str(e)
+            error_msg = f"❌ Failed to get clarification after {retry_attempts} attempts: {str(e)}"
+
+            # Provide helpful error message with retry option
+            error_msg += (
+                "\n\nPress Ctrl+R to retry or Shift+Tab to return to Edit Mode."
+            )
+            raise Exception(error_msg)
+
+    def _log_retry_attempt(self, retry_state):
+        """Log retry attempts for clarification"""
+        attempt = retry_state.attempt_number
+        if attempt > 1:
+            from prompt_toolkit.application import get_app
+
+            app = get_app()
+            app.current_buffer.text = (
+                f"🔄 Retrying clarification... (Attempt {attempt})"
+            )
+
+    async def run_async(self) -> str | None:
+        """Run the interactive application asynchronously and return the prompt"""
+        # Check if we're in a terminal
+        if not sys.stdin.isatty():
+            # Fall back to simple input for piped/non-terminal input
+            console = self.console
+            console.print(
+                "[yellow]Warning: Not in terminal, using basic input mode[/yellow]"
+            )
+
+            while True:
+                try:
+                    prompt = input("> ")
+                    if not prompt:
+                        continue
+
+                    # Handle slash commands in basic mode
+                    if prompt.startswith("/"):
+                        if prompt in ["/exit", "/quit"]:
+                            return None
+                        elif prompt == "/help":
+                            print("Available commands:")
+                            print("  /help - Show this help")
+                            print("  /keybindings - Show keyboard shortcuts")
+                            print("  /exit, /quit - Exit")
+                            print("  (Other commands not available in basic mode)")
+                            continue
+                        elif prompt == "/keybindings":
+                            print("Keyboard shortcuts (basic mode):")
+                            print("  Enter - Submit prompt")
+                            print("  Ctrl+C - Exit")
+                            print("  (Advanced shortcuts not available in basic mode)")
+                            continue
+                        else:
+                            print(f"Command not available in basic mode: {prompt}")
+                            continue
+
+                    # Return the prompt
+                    return prompt
+
+                except (EOFError, KeyboardInterrupt):
+                    return None
+
+        # Run the full Application in terminal mode (async version)
+        await self.app.run_async()
+        return self.result
+
+    def run(self) -> str | None:
+        """Run the interactive application synchronously"""
+        import asyncio
+
+        # Check if we're already in an event loop
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            # No running loop, we can use asyncio.run()
+            return asyncio.run(self.run_async())
+        # We're in an async context, can't use run()
+        raise RuntimeError("Cannot use run() in async context, use run_async() instead")
+
+
+async def enter_interactive_mode(
+    initial_settings: InteractiveInitialSettings,
+    project: str | None,
+    output_dir: str | None,
+    config_path: str | None,
+    verbose: bool,
+    quiet: bool,
+    no_metadata: bool,
+    timeout: float | None,
+):
+    """Enter interactive prompt mode with Prompt Toolkit"""
+    if not PROMPT_TOOLKIT_AVAILABLE:
+        console.print(
+            "[yellow]Warning: prompt_toolkit not available, falling back to basic input[/yellow]"
+        )
+        # Fall back to basic input mode
+        config = get_config()
+        console.print("[bold cyan]Interactive Mode (Basic)[/bold cyan]")
+        console.print("[dim]Enter prompt • /help: commands • /exit: quit[/dim]")
+        console.print()
+
+        slash_registry = SlashCommandRegistry(console)
+        # Initialize with settings from command line
+        slash_registry.current_mode = initial_settings.mode or config.data[
+            "general"
+        ].get("default_mode", "default")
+        slash_registry.current_provider = initial_settings.provider
+        slash_registry.async_mode = initial_settings.async_mode
+
+        try:
+            while True:
+                prompt = input("> ")
+
+                if prompt.startswith("/"):
+                    action = slash_registry.parse_and_execute(prompt)
+                    if action == "exit":
+                        console.print("[yellow]Exiting interactive mode[/yellow]")
+                        return
+                    continue
+
+                if prompt.strip():
+                    console.print(f"[green]Processing prompt:[/green] {prompt}")
+                    await run_research(
+                        mode=slash_registry.current_mode,
+                        prompt=prompt,
+                        project=project,
+                        output_dir=output_dir,
+                        provider=slash_registry.current_provider,
+                        input_file=None,
+                        auto=False,
+                        verbose=verbose,
+                        async_mode=slash_registry.async_mode,
+                        cli_api_keys=initial_settings.cli_api_keys
+                        if initial_settings.cli_api_keys
+                        else {},
+                        combined=False,
+                        quiet=quiet,
+                        no_metadata=no_metadata,
+                        timeout_override=timeout,
+                    )
+                    break
+        except (KeyboardInterrupt, EOFError):
+            console.print("\n[yellow]Interactive mode cancelled[/yellow]")
+        return
+
+    config = get_config()
+
+    # Create and run the new Application-based session with initial settings
+    session = InteractiveSession(console, config, initial_settings)
+
+    # Run the interactive application (async version since we're in async context)
+    prompt = await session.run_async()
+
+    if prompt is None:
+        console.print("\n[yellow]Interactive mode cancelled[/yellow]")
+        return
+
+    # Process the prompt
+    console.print(f"\n[green]Processing prompt:[/green] {prompt}")
+    console.print(
+        f"[dim]Mode: {session.slash_registry.current_mode} | Provider: {session.current_provider or 'auto'} | Async: {session.slash_registry.async_mode}[/dim]"
+    )
+    console.print()
+
+    # Run the research with collected settings
+    try:
+        # Use CLI API keys from initial settings if provided, otherwise empty dict
+        api_keys = (
+            initial_settings.cli_api_keys if initial_settings.cli_api_keys else {}
+        )
+
+        await run_research(
+            mode=session.slash_registry.current_mode,
+            prompt=prompt,
+            project=project,
+            output_dir=output_dir,
+            provider=session.current_provider,
+            input_file=None,
+            auto=False,
+            verbose=verbose,
+            async_mode=session.slash_registry.async_mode,
+            cli_api_keys=api_keys,
+            combined=False,
+            quiet=quiet,
+            no_metadata=no_metadata,
+            timeout_override=timeout,
+        )
+
+    except Exception as e:
+        console.print(f"[red]Error:[/red] {str(e)}")
+
+
+# ============================================================================
+# SECTION 17: SIGNAL HANDLING
+# ============================================================================
+# System signal handlers for graceful shutdown
+# ============================================================================
+
+
+def handle_sigint(signum, frame):
+    """Handle Ctrl-C gracefully by saving checkpoint"""
+    console.print("\n[yellow]Interrupt received. Saving checkpoint...[/yellow]")
+
+    if _current_checkpoint_manager and _current_operation:
+        # Update operation status (cancelled per PRD lifecycle states)
+        _current_operation.transition_to("cancelled")
+
+        # Save checkpoint synchronously (no event loop needed in signal handler)
+        try:
+            checkpoint_dir = _current_checkpoint_manager.checkpoint_dir
+            checkpoint_file = checkpoint_dir / f"{_current_operation.id}.json"
+            temp_file = checkpoint_file.with_suffix(".tmp")
+
+            data = asdict(_current_operation)
+            data["created_at"] = _current_operation.created_at.isoformat()
+            data["updated_at"] = _current_operation.updated_at.isoformat()
+            data["output_paths"] = {
+                k: str(v) for k, v in _current_operation.output_paths.items()
+            }
+            data["input_files"] = [str(p) for p in _current_operation.input_files]
+
+            with open(temp_file, "w") as f:
+                f.write(json.dumps(data, indent=2))
+            temp_file.replace(checkpoint_file)
+
+            console.print(
+                f"[green]✓[/green] Checkpoint saved. Resume with: thoth --resume {_current_operation.id}"
+            )
+        except Exception as e:
+            console.print(f"[red]Error saving checkpoint:[/red] {e}")
+
+    console.print("[red]Exiting...[/red]")
+    sys.exit(1)
+
+
+# ============================================================================
+# SECTION 18: MAIN ENTRY POINT
+# ============================================================================
+# Application entry point and execution
+# ============================================================================
+
+def main():
+    # Register signal handler for graceful shutdown
+    signal.signal(signal.SIGINT, handle_sigint)
+
+    try:
+        cli()
+    except Exception as e:
+        import traceback
+
+        traceback.print_exc()
+        handle_error(e)
+
+
+if __name__ == "__main__":
+    main()

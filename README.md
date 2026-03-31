@@ -1,5 +1,10 @@
 # Thoth - AI-Powered Research Assistant
 
+[![PyPI version](https://img.shields.io/pypi/v/thoth.svg)](https://pypi.org/project/thoth/)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
+[![CI](https://github.com/smorin/thoth/actions/workflows/ci.yml/badge.svg)](https://github.com/smorin/thoth/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 Thoth is a command-line tool that automates deep technical research using multiple LLM providers. It orchestrates parallel execution of OpenAI's Deep Research API and Perplexity's research models to deliver comprehensive, multi-perspective research reports.
 
 ## Features
@@ -25,16 +30,31 @@ Origin of the name: Thoth (also spelled Tehuti) is the god of wisdom, writing, h
 
 ## Installation
 
+### From PyPI (recommended)
+
+```bash
+# Install and run with uvx (no setup required)
+uvx thoth
+
+# Or install permanently with uv
+uv tool install thoth
+
+# Or with pip
+pip install thoth
+```
+
+### From source
+
 ```bash
 # Clone the repository
-git clone <repository-url>
+git clone https://github.com/smorin/thoth.git
 cd thoth
 
-# Make the script executable
-chmod +x thoth
+# Install in editable mode
+uv sync
 
-# Install to system (optional)
-sudo make install
+# Or run directly without installing
+./thoth --help
 ```
 
 ## Quick Start
@@ -507,11 +527,8 @@ API keys are resolved in the following order (highest to lowest priority):
 
 ## Version History
 
-- **v2.2**: Provider discovery, provider-specific API keys, enhanced metadata
-- **v2.1**: Providers command, dynamic model listing  
-- **v2.0**: Mode chaining, checkpoint/resume, operation management
-- **v1.5**: Core research functionality with multiple modes
+See [CHANGELOG.md](CHANGELOG.md) for the full version history.
 
 ## License
 
-[License information here]
+[MIT License](LICENSE)

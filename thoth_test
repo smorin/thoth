@@ -15,24 +15,23 @@ black-box testing using subprocess and pexpect. Each test validates:
 - Interactive mode behavior
 """
 
-import subprocess
 import json
 import os
-import sys
-import time
-import signal
-from dataclasses import dataclass, field
-from pathlib import Path
-from typing import List, Optional, Dict, Tuple
 import re
 import shutil
+import signal
+import subprocess
+import sys
+import time
+from dataclasses import dataclass, field
 from datetime import datetime
+from pathlib import Path
 from uuid import uuid4
 
-from rich.console import Console
-from rich.table import Table
-from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn
 import click
+from rich.console import Console
+from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn
+from rich.table import Table
 
 # Try to import pexpect for interactive tests
 try:
@@ -83,8 +82,8 @@ class TestResult:
     stdout: str
     stderr: str
     exit_code: int
-    error_message: Optional[str] = None
-    created_files: List[Path] = field(default_factory=list)
+    error_message: str | None = None
+    created_files: list[Path] = field(default_factory=list)
     is_api_key_failure: bool = False
     skipped: bool = False
 
@@ -95,29 +94,27 @@ class TestCase:
 
     test_id: str
     description: str
-    command: List[str]
-    env: Dict[str, str] = field(default_factory=dict)
+    command: list[str]
+    env: dict[str, str] = field(default_factory=dict)
     expected_exit_code: int = 0
-    expected_stdout_patterns: List[str] = field(default_factory=list)
-    expected_stderr_patterns: List[str] = field(default_factory=list)
-    not_expected_stdout_patterns: List[str] = field(default_factory=list)
-    not_expected_stderr_patterns: List[str] = field(default_factory=list)
-    expected_files: List[str] = field(default_factory=list)
+    expected_stdout_patterns: list[str] = field(default_factory=list)
+    expected_stderr_patterns: list[str] = field(default_factory=list)
+    not_expected_stdout_patterns: list[str] = field(default_factory=list)
+    not_expected_stderr_patterns: list[str] = field(default_factory=list)
+    expected_files: list[str] = field(default_factory=list)
     timeout: int = TEST_TIMEOUT
-    cleanup_files: List[str] = field(default_factory=list)
+    cleanup_files: list[str] = field(default_factory=list)
     skip: bool = False
     skip_reason: str = ""
-    provider: Optional[str] = None  # Which provider this test requires
+    provider: str | None = None  # Which provider this test requires
     api_key_method: str = "env"  # "env", "cli", or "config"
-    signal_after: Optional[float] = None  # Send signal after N seconds
+    signal_after: float | None = None  # Send signal after N seconds
     test_type: str = "subprocess"  # "subprocess" or "interactive"
-    interactive_scenario: Optional[List[Tuple]] = (
-        None  # For pexpect tests: [(expect, send), ...]
-    )
-    terminal_env: Optional[Dict[str, str]] = None  # Terminal-specific env vars
+    interactive_scenario: list[tuple] | None = None  # For pexpect tests: [(expect, send), ...]
+    terminal_env: dict[str, str] | None = None  # Terminal-specific env vars
     is_interactive: bool = False  # Whether this is an interactive mode test
-    setup_func: Optional[object] = None  # Callable to run before test execution
-    teardown_func: Optional[object] = None  # Callable to run after test execution
+    setup_func: object | None = None  # Callable to run before test execution
+    teardown_func: object | None = None  # Callable to run after test execution
 
 
 # ============================================================================
@@ -130,7 +127,7 @@ def generate_mock_api_key() -> str:
     return f"mock-key-{uuid4().hex[:16]}"
 
 
-def get_test_api_keys() -> Dict[str, str]:
+def get_test_api_keys() -> dict[str, str]:
     """Get API keys for testing (real or generated)"""
     return {
         "mock": generate_mock_api_key(),
@@ -139,7 +136,7 @@ def get_test_api_keys() -> Dict[str, str]:
     }
 
 
-def get_available_providers(test_api_keys: Dict[str, str]) -> List[str]:
+def get_available_providers(test_api_keys: dict[str, str]) -> list[str]:
     """Determine which providers are available for testing"""
     providers = ["mock"]  # Mock is always available
 
@@ -153,12 +150,12 @@ def get_available_providers(test_api_keys: Dict[str, str]) -> List[str]:
 
 
 def run_command(
-    command: List[str],
-    env: Optional[Dict[str, str]] = None,
+    command: list[str],
+    env: dict[str, str] | None = None,
     timeout: int = TEST_TIMEOUT,
-    cwd: Optional[str] = None,
-    signal_after: Optional[float] = None,
-) -> Tuple[int, str, str]:
+    cwd: str | None = None,
+    signal_after: float | None = None,
+) -> tuple[int, str, str]:
     """
     Execute a command and return exit code, stdout, stderr
     """
@@ -207,7 +204,7 @@ def run_command(
         return -1, "", f"Command failed: {str(e)}"
 
 
-def cleanup_test_files(patterns: List[str]):
+def cleanup_test_files(patterns: list[str]):
     """Remove test artifacts matching patterns"""
     if not CLEANUP_ENABLED:
         return
@@ -223,7 +220,7 @@ def cleanup_test_files(patterns: List[str]):
                 pass
 
 
-def validate_file_creation(expected_files: List[str]) -> Tuple[bool, List[Path], str]:
+def validate_file_creation(expected_files: list[str]) -> tuple[bool, list[Path], str]:
     """Check if expected files were created"""
     created_files = []
     missing_files = []
@@ -246,8 +243,8 @@ def validate_file_creation(expected_files: List[str]) -> Tuple[bool, List[Path],
 
 
 def validate_output(
-    output: str, expected_patterns: List[str], not_expected_patterns: List[str]
-) -> Tuple[bool, str]:
+    output: str, expected_patterns: list[str], not_expected_patterns: list[str]
+) -> tuple[bool, str]:
     """Validate output against expected and not-expected patterns"""
     # Check expected patterns
     for pattern in expected_patterns:
@@ -272,9 +269,7 @@ def is_api_key_error(stdout: str, stderr: str) -> bool:
         r"PERPLEXITY_API_KEY",
     ]
     combined_output = stdout + stderr
-    return any(
-        re.search(pattern, combined_output, re.IGNORECASE) for pattern in error_patterns
-    )
+    return any(re.search(pattern, combined_output, re.IGNORECASE) for pattern in error_patterns)
 
 
 def create_test_config(config_dir: Path, content: str):
@@ -285,11 +280,9 @@ def create_test_config(config_dir: Path, content: str):
     return config_file
 
 
-def find_latest_output_file(pattern: str = "*_*_*_*_*.md") -> Optional[Path]:
+def find_latest_output_file(pattern: str = "*_*_*_*_*.md") -> Path | None:
     """Find the most recently created output file matching pattern"""
-    files = sorted(
-        Path(".").glob(pattern), key=lambda p: p.stat().st_mtime, reverse=True
-    )
+    files = sorted(Path(".").glob(pattern), key=lambda p: p.stat().st_mtime, reverse=True)
     return files[0] if files else None
 
 
@@ -300,9 +293,7 @@ def get_checkpoint_dir() -> Path:
     return Path(user_config_dir("thoth")) / "checkpoints"
 
 
-def create_test_checkpoint(
-    operation_id: str, status: str = "completed", **overrides
-) -> Path:
+def create_test_checkpoint(operation_id: str, status: str = "completed", **overrides) -> Path:
     """Create a valid checkpoint file for testing"""
     checkpoint_dir = get_checkpoint_dir()
     checkpoint_dir.mkdir(parents=True, exist_ok=True)
@@ -349,7 +340,7 @@ def remove_test_checkpoint(operation_id: str):
 
 
 def validate_test_environment(
-    test_api_keys: Dict[str, str], requested_providers: Optional[List[str]] = None
+    test_api_keys: dict[str, str], requested_providers: list[str] | None = None
 ) -> None:
     """Validate test environment and show configuration"""
     console.print("\n[bold]Test Environment Configuration:[/bold]")
@@ -373,9 +364,7 @@ def validate_test_environment(
                     missing_keys.append("OPENAI_API_KEY")
             elif provider == "perplexity":
                 if test_api_keys["perplexity"]:
-                    console.print(
-                        f"Perplexity API Key: {test_api_keys['perplexity'][:8]}... ✓"
-                    )
+                    console.print(f"Perplexity API Key: {test_api_keys['perplexity'][:8]}... ✓")
                 else:
                     console.print(
                         "[red]Perplexity API Key: Not set (required for requested tests)[/red]"
@@ -395,9 +384,7 @@ def validate_test_environment(
         if test_api_keys["openai"]:
             console.print(f"OpenAI API Key: {test_api_keys['openai'][:8]}... ✓")
         else:
-            console.print(
-                "[yellow]OpenAI API Key: Not set (OpenAI tests will be skipped)[/yellow]"
-            )
+            console.print("[yellow]OpenAI API Key: Not set (OpenAI tests will be skipped)[/yellow]")
 
         if test_api_keys["perplexity"]:
             console.print(f"Perplexity API Key: {test_api_keys['perplexity'][:8]}... ✓")
@@ -484,9 +471,7 @@ class InteractiveTestRunner:
 
             # Execute the interactive scenario
             if test_case.interactive_scenario:
-                for i, (expect_pattern, send_input) in enumerate(
-                    test_case.interactive_scenario
-                ):
+                for i, (expect_pattern, send_input) in enumerate(test_case.interactive_scenario):
                     if expect_pattern is not None:
                         try:
                             child.expect(expect_pattern, timeout=3)
@@ -495,9 +480,7 @@ class InteractiveTestRunner:
                                     f"✓ Step {i + 1}: Found pattern: {expect_pattern[:50]}"
                                 )
                         except pexpect.TIMEOUT:
-                            error_msg = (
-                                f"Step {i + 1}: Timeout waiting for: {expect_pattern}"
-                            )
+                            error_msg = f"Step {i + 1}: Timeout waiting for: {expect_pattern}"
                             return TestResult(
                                 test_id=test_case.test_id,
                                 passed=False,
@@ -518,9 +501,7 @@ class InteractiveTestRunner:
                                     test_id=test_case.test_id,
                                     passed=False,
                                     duration=time.time() - start_time,
-                                    stdout=child.before
-                                    if hasattr(child, "before")
-                                    else "",
+                                    stdout=child.before if hasattr(child, "before") else "",
                                     stderr=error_msg,
                                     exit_code=-1,
                                     error_message=error_msg,
@@ -529,9 +510,7 @@ class InteractiveTestRunner:
                     if send_input is not None:
                         child.send(send_input)
                         if self.verbose:
-                            console.print(
-                                f"✓ Step {i + 1}: Sent input: {repr(send_input[:20])}"
-                            )
+                            console.print(f"✓ Step {i + 1}: Sent input: {repr(send_input[:20])}")
                         time.sleep(0.1)  # Small delay for processing
 
             # Try to exit cleanly if not already done
@@ -568,7 +547,9 @@ class InteractiveTestRunner:
             # Validate exit code if specified
             if exit_code != test_case.expected_exit_code:
                 result.passed = False
-                result.error_message = f"Expected exit code {test_case.expected_exit_code}, got {exit_code}"
+                result.error_message = (
+                    f"Expected exit code {test_case.expected_exit_code}, got {exit_code}"
+                )
 
             # Validate expected patterns in output if specified
             if test_case.expected_stdout_patterns:
@@ -616,9 +597,9 @@ class TestRunner:
         self,
         verbose: bool = False,
         save_output: bool = False,
-        requested_providers: Optional[List[str]] = None,
+        requested_providers: list[str] | None = None,
     ):
-        self.results: List[TestResult] = []
+        self.results: list[TestResult] = []
         self.start_time = time.time()
         self.test_api_keys = get_test_api_keys()
         self.available_providers = get_available_providers(self.test_api_keys)
@@ -627,21 +608,16 @@ class TestRunner:
         self.verbose = verbose
         self.save_output = save_output
         if save_output:
-            self.output_dir = Path("test_outputs") / datetime.now().strftime(
-                "%Y%m%d_%H%M%S"
-            )
+            self.output_dir = Path("test_outputs") / datetime.now().strftime("%Y%m%d_%H%M%S")
             self.output_dir.mkdir(parents=True, exist_ok=True)
 
-    def should_skip_test(self, test_case: TestCase) -> Tuple[bool, str]:
+    def should_skip_test(self, test_case: TestCase) -> tuple[bool, str]:
         """Check if test should be skipped based on provider availability and selection"""
         if not test_case.provider:
             return False, ""  # No specific provider required
 
         # If specific providers were requested, skip tests for other providers
-        if (
-            self.requested_providers
-            and test_case.provider not in self.requested_providers
-        ):
+        if self.requested_providers and test_case.provider not in self.requested_providers:
             return True, f"Provider {test_case.provider} not requested"
 
         if test_case.provider == "mock":
@@ -821,9 +797,7 @@ api_key = "{api_key}"
         # Show verbose output if enabled
         if self.verbose:
             console.print(f"\n[dim]{'=' * 60}[/dim]")
-            console.print(
-                f"[cyan]Test {test_case.test_id}: {test_case.description}[/cyan]"
-            )
+            console.print(f"[cyan]Test {test_case.test_id}: {test_case.description}[/cyan]")
             console.print(f"[dim]Command: {' '.join(test_command)}[/dim]")
             console.print(f"[dim]Exit Code: {exit_code}[/dim]")
             if stdout:
@@ -874,7 +848,9 @@ api_key = "{api_key}"
             # Validate exit code
             if exit_code != test_case.expected_exit_code:
                 result.passed = False
-                result.error_message = f"Expected exit code {test_case.expected_exit_code}, got {exit_code}"
+                result.error_message = (
+                    f"Expected exit code {test_case.expected_exit_code}, got {exit_code}"
+                )
                 return result
 
             # Validate stdout
@@ -901,9 +877,7 @@ api_key = "{api_key}"
 
             # Validate file creation
             if test_case.expected_files:
-                passed, created_files, error = validate_file_creation(
-                    test_case.expected_files
-                )
+                passed, created_files, error = validate_file_creation(test_case.expected_files)
                 result.created_files = created_files
                 if not passed:
                     result.passed = False
@@ -924,7 +898,7 @@ api_key = "{api_key}"
         # Update test result in saved output
         if self.save_output:
             test_output_dir = self.output_dir / test_case.test_id
-            with open(test_output_dir / "test_info.json", "r") as f:
+            with open(test_output_dir / "test_info.json") as f:
                 test_info = json.load(f)
             test_info["passed"] = result.passed
             test_info["error_message"] = result.error_message
@@ -933,7 +907,7 @@ api_key = "{api_key}"
 
         return result
 
-    def run_all_tests(self, test_cases: List[TestCase]):
+    def run_all_tests(self, test_cases: list[TestCase]):
         """Run all test cases and generate report"""
         self.filtered_tests = test_cases
         total_tests = len(test_cases)
@@ -970,9 +944,7 @@ api_key = "{api_key}"
         passed_tests = sum(1 for r in self.results if r.passed and not r.skipped)
         skipped_tests = sum(1 for r in self.results if r.skipped)
         failed_tests = sum(1 for r in self.results if not r.passed)
-        api_key_failures = sum(
-            1 for r in self.results if not r.passed and r.is_api_key_failure
-        )
+        api_key_failures = sum(1 for r in self.results if not r.passed and r.is_api_key_failure)
         other_failures = failed_tests - api_key_failures
 
         # Summary
@@ -1029,9 +1001,7 @@ api_key = "{api_key}"
             else:
                 status = "[yellow]Not available[/yellow]"
 
-            console.print(
-                f"  {provider.capitalize()}: {status} - {ran}/{total} tests run", end=""
-            )
+            console.print(f"  {provider.capitalize()}: {status} - {ran}/{total} tests run", end="")
             if skipped > 0:
                 console.print(f" ({skipped} skipped)")
             else:
@@ -1049,14 +1019,10 @@ api_key = "{api_key}"
         if api_key_failures > 0:
             console.print("[yellow]⚠️  API Key Issues Detected[/yellow]")
             console.print(f"{api_key_failures} tests failed due to missing API keys.")
-            console.print(
-                "Set OPENAI_API_KEY and/or PERPLEXITY_API_KEY environment variables.\n"
-            )
+            console.print("Set OPENAI_API_KEY and/or PERPLEXITY_API_KEY environment variables.\n")
 
         # Detailed results table
-        table = Table(
-            title="Test Results", show_header=True, header_style="bold magenta"
-        )
+        table = Table(title="Test Results", show_header=True, header_style="bold magenta")
         table.add_column("Test ID", style="cyan", width=12)
         table.add_column("Description", style="white", width=45)
         table.add_column("Provider", style="white", width=12)
@@ -1108,17 +1074,11 @@ api_key = "{api_key}"
             console.print("\n[bold red]Failed Test Details[/bold red]")
 
             # Show API key failures separately
-            api_failures = [
-                r for r in self.results if not r.passed and r.is_api_key_failure
-            ]
-            other_failures = [
-                r for r in self.results if not r.passed and not r.is_api_key_failure
-            ]
+            api_failures = [r for r in self.results if not r.passed and r.is_api_key_failure]
+            other_failures = [r for r in self.results if not r.passed and not r.is_api_key_failure]
 
             if api_failures:
-                console.print(
-                    "\n[yellow]Tests Failed Due to Missing API Keys:[/yellow]"
-                )
+                console.print("\n[yellow]Tests Failed Due to Missing API Keys:[/yellow]")
                 for result in api_failures:
                     console.print(f"  • {result.test_id}: {result.error_message}")
 
@@ -2379,9 +2339,7 @@ all_tests = [
 )
 @click.option("--interactive", is_flag=True, help="Run only interactive mode tests")
 @click.option("--no-cleanup", is_flag=True, help="Do not clean up test files")
-@click.option(
-    "--save-output", is_flag=True, help="Save test output to files for debugging"
-)
+@click.option("--save-output", is_flag=True, help="Save test output to files for debugging")
 def main(
     run,
     all,
@@ -2466,9 +2424,7 @@ def main(
     # Parse provider selection
     requested_providers = None
     if provider and all_providers:
-        console.print(
-            "[red]Error: Cannot specify both --provider and --all-providers[/red]"
-        )
+        console.print("[red]Error: Cannot specify both --provider and --all-providers[/red]")
         sys.exit(1)
 
     if provider:
@@ -2477,9 +2433,7 @@ def main(
         valid_providers = ["mock", "openai", "perplexity"]
         invalid = [p for p in requested_providers if p not in valid_providers]
         if invalid:
-            console.print(
-                f"[red]Error: Invalid provider(s): {', '.join(invalid)}[/red]"
-            )
+            console.print(f"[red]Error: Invalid provider(s): {', '.join(invalid)}[/red]")
             console.print(f"Valid providers: {', '.join(valid_providers)}")
             sys.exit(1)
     elif all_providers:
@@ -2496,9 +2450,7 @@ def main(
     # Further filter by test pattern if provided
     if test:
         tests_to_run = [
-            t
-            for t in tests_to_run
-            if test in t.test_id or test.lower() in t.description.lower()
+            t for t in tests_to_run if test in t.test_id or test.lower() in t.description.lower()
         ]
         console.print(f"Running {len(tests_to_run)} tests matching '{test}'")
     elif not interactive:
@@ -2536,9 +2488,7 @@ def main(
             console.print(f"Test breakdown: {', '.join(breakdown)}")
 
     if verbose:
-        console.print(
-            "[yellow]Verbose mode enabled - showing full output for each test[/yellow]"
-        )
+        console.print("[yellow]Verbose mode enabled - showing full output for each test[/yellow]")
 
     # Verify executable exists
     if not Path(THOTH_EXECUTABLE).exists():

@@ -1,0 +1,66 @@
+---
+# lefthook.yml — Git hooks configuration
+# Docs: https://github.com/evilmartians/lefthook
+# Install: brew install lefthook && lefthook install
+
+pre-commit:
+  parallel: true
+  commands:
+    trailing-whitespace:
+      glob: "*.{yml,yaml,md,sh,txt,json,toml,cfg,conf,ini}"
+      run: |
+        for f in {staged_files}; do
+          if [ -f "$f" ]; then
+            sed -i '' 's/[[:space:]]*$//' "$f"
+          fi
+        done
+      stage_fixed: true
+
+    end-of-file-fixer:
+      glob: "*.{yml,yaml,md,sh,txt,json,toml,cfg,conf,ini}"
+      run: |
+        for f in {staged_files}; do
+          if [ -f "$f" ] && [ -s "$f" ]; then
+            tail -c1 "$f" | read -r _ || echo "" >> "$f"
+          fi
+        done
+      stage_fixed: true
+
+    check-added-large-files:
+      run: |
+        max_kb=500
+        for f in {staged_files}; do
+          if [ -f "$f" ]; then
+            size=$(wc -c < "$f" | tr -d ' ')
+            if [ "$size" -gt $((max_kb * 1024)) ]; then
+              echo "File $f is too large ($(( size / 1024 )) KB > ${max_kb} KB)"
+              exit 1
+            fi
+          fi
+        done
+
+    check-yaml:
+      glob: "*.{yml,yaml}"
+      run: uvx yamllint -c .yamllint {staged_files}
+
+    actionlint:
+      glob: ".github/workflows/*.{yml,yaml}"
+      run: actionlint {staged_files}
+
+    ruff-format:
+      glob: "*.py"
+      run: uv run ruff format {staged_files}
+      stage_fixed: true
+
+    ruff-lint:
+      glob: "*.py"
+      run: uv run ruff check --fix {staged_files}
+      stage_fixed: true
+
+    ty-typecheck:
+      glob: "*.py"
+      run: uv run ty check src/
+
+    codespell:
+      glob: "*.{py,md}"
+      run: uvx codespell --skip=".git,.venv,htmlcov,uv.lock,requirements.txt" --ignore-words-list="thoth,perplexity,sonar,pplx,openai" {staged_files}

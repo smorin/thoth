@@ -48,6 +48,9 @@ research-outputs/
 *.md
 openai.env
 !README.md
+!CHANGELOG.md
+!CONTRIBUTING.md
+!PUBLISH.md
 !CLAUDE.md
 !thoth.*.md
 !temp.*.md

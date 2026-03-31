@@ -1,0 +1,91 @@
+[project]
+name = "thoth"
+version = "2.5.0"
+description = "AI-Powered Research Assistant — orchestrates parallel LLM providers for comprehensive research reports"
+readme = "README.md"
+license = "MIT"
+authors = [
+    { name = "Steve Morin", email = "steve.morin@gmail.com" }
+]
+requires-python = ">=3.11"
+keywords = [
+    "ai", "research", "llm", "openai", "perplexity", "gemini",
+    "cli", "deep-research", "assistant", "automation",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Typing :: Typed",
+]
+dependencies = [
+    "click>=8.0",
+    "openai>=1.14.0",
+    "httpx>=0.27.0",
+    "rich>=13.7",
+    "platformdirs>=3.0",
+    "aiofiles>=23.0",
+    "tenacity>=8.0",
+    "python-dateutil>=2.8",
+    "prompt-toolkit>=3.0",
+]
+
+[project.scripts]
+thoth = "thoth.__main__:main"
+
+[project.urls]
+Homepage = "https://github.com/smorin/thoth"
+Repository = "https://github.com/smorin/thoth"
+Changelog = "https://github.com/smorin/thoth/blob/main/CHANGELOG.md"
+"Bug Tracker" = "https://github.com/smorin/thoth/issues"
+
+[build-system]
+requires = ["uv_build>=0.6,<0.12"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "ruff>=0.9",
+    "ty>=0.0.1a14",
+    "pexpect>=4.8",
+]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+exclude = [
+    ".git",
+    "__pycache__",
+    "build",
+    "dist",
+    "archive",
+]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "B",   # flake8-bugbear
+    "UP",  # pyupgrade
+]
+ignore = [
+    "E501",  # line too long (handled by formatter)
+    "B904",  # raise-without-from-inside-except (existing pattern throughout codebase)
+    "B007",  # unused loop variable (existing pattern: provider_name, _ in .items())
+    "W293",  # whitespace on blank line inside f-string literals
+]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "auto"
