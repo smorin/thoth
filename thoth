@@ -241,6 +241,7 @@ class ConfigSchema:
             "providers": {
                 "openai": {"api_key": "${OPENAI_API_KEY}"},
                 "perplexity": {"api_key": "${PERPLEXITY_API_KEY}"},
+                "gemini": {"api_key": "${GEMINI_API_KEY}"},
             },
             "clarification": {
                 "cli": {
@@ -786,7 +787,7 @@ def build_epilog():
 @click.option(
     "--provider",
     "-P",
-    type=click.Choice(["openai", "perplexity", "mock"]),
+    type=click.Choice(["openai", "perplexity", "gemini", "mock"]),
     help="Single provider",
 )
 @click.option("--input-file", help="Use output from previous mode as input")
@@ -798,6 +799,7 @@ def build_epilog():
 @click.option("--api-key-openai", help="API key for OpenAI provider")
 @click.option("--api-key-perplexity", help="API key for Perplexity provider")
 @click.option("--api-key-mock", help="API key for Mock provider")
+@click.option("--api-key-gemini", help="API key for Gemini provider")
 @click.option("--config", "-c", "config_path", help="Path to custom config file")
 @click.option(
     "--combined", is_flag=True, help="Generate combined report from multiple providers"
@@ -831,6 +833,7 @@ def cli(
     api_key_openai,
     api_key_perplexity,
     api_key_mock,
+    api_key_gemini,
     config_path,
     combined,
     quiet,
@@ -917,6 +920,7 @@ def cli(
             "openai": api_key_openai,
             "perplexity": api_key_perplexity,
             "mock": api_key_mock,
+            "gemini": api_key_gemini,
         }
 
         # Create initial settings from command-line arguments
@@ -1062,6 +1066,7 @@ def cli(
             "openai": api_key_openai,
             "perplexity": api_key_perplexity,
             "mock": api_key_mock,
+            "gemini": api_key_gemini,
         }
         asyncio.run(
             run_research(
@@ -2309,6 +2314,250 @@ class PerplexityProvider(ResearchProvider):
         ]
 
 
+class GeminiProvider(ResearchProvider):
+    """Gemini Deep Research via the Interactions API"""
+
+    INTERACTIONS_BASE = (
+        "https://generativelanguage.googleapis.com/v1beta/interactions"
+    )
+
+    def __init__(self, api_key: str, config: Dict[str, Any] = None):
+        self.api_key = api_key
+        self.config = config or {}
+        self.model = self.config.get("model", "deep-research-pro-preview-12-2025")
+        self.jobs: Dict[str, Dict[str, Any]] = {}
+        self.model_cache = ModelCache("gemini")
+        timeout = self.config.get("timeout", 30.0)
+        self.http_client = httpx.AsyncClient(
+            timeout=httpx.Timeout(timeout, connect=5.0),
+            headers={
+                "x-goog-api-key": api_key,
+                "Content-Type": "application/json",
+            },
+        )
+
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=4, max=10),
+        retry=retry_if_exception_type((httpx.TimeoutException, httpx.ConnectError)),
+    )
+    async def submit(
+        self, prompt: str, mode: str, system_prompt: str = None, verbose: bool = False
+    ) -> str:
+        """Submit research to Gemini Deep Research agent"""
+        try:
+            body: Dict[str, Any] = {
+                "input": prompt,
+                "agent": self.model,
+                "background": True,
+                "stream": False,
+                "agent_config": {
+                    "type": "deep-research",
+                    "thinking_summaries": "auto",
+                },
+            }
+            if system_prompt:
+                body["system_instruction"] = system_prompt
+
+            if verbose:
+                console = Console(stderr=True)
+                masked_key = (
+                    f"{self.api_key[:8]}...{self.api_key[-4:]}"
+                    if len(self.api_key) > 12
+                    else "***"
+                )
+                console.print(f"gemini API Key: {masked_key}")
+                console.print(f"Model: {self.model}")
+                timeout_val = self.config.get("timeout", 30.0)
+                console.print(f"Timeout: {timeout_val}")
+
+            response = await self.http_client.post(
+                self.INTERACTIONS_BASE, json=body
+            )
+
+            if response.status_code == 401 or response.status_code == 403:
+                raise ThothError(
+                    "Invalid Gemini API key",
+                    "Check your GEMINI_API_KEY environment variable or use --api-key-gemini",
+                )
+            if response.status_code == 429:
+                raise ProviderError(
+                    "gemini", "Rate limit exceeded. Try again later."
+                )
+            if response.status_code == 400:
+                error_detail = response.json().get("error", {}).get("message", "Invalid request")
+                raise ProviderError("gemini", f"Invalid request: {error_detail}")
+            if response.status_code >= 500:
+                raise httpx.ConnectError(
+                    f"Gemini service error: {response.status_code}"
+                )
+
+            response.raise_for_status()
+            data = response.json()
+            job_id = data.get("id", f"gemini-{uuid4().hex[:8]}")
+
+            self.jobs[job_id] = {
+                "response": data,
+                "created_at": datetime.now(),
+            }
+
+            return job_id
+
+        except (ThothError, ProviderError):
+            raise
+        except httpx.TimeoutException:
+            raise ProviderError(
+                "gemini",
+                "Request timed out connecting to Gemini API",
+                raw_error="timeout",
+            )
+        except httpx.ConnectError:
+            raise
+        except Exception as e:
+            raise ProviderError("gemini", f"Gemini API error: {e}", raw_error=str(e))
+
+    async def check_status(self, job_id: str) -> Dict[str, Any]:
+        """Check status of a Gemini Deep Research interaction"""
+        if job_id not in self.jobs:
+            return {"status": "not_found", "error": "Job not found"}
+
+        try:
+            response = await self.http_client.get(
+                f"{self.INTERACTIONS_BASE}/{job_id}"
+            )
+
+            if response.status_code == 403:
+                # Known intermittent bug — return last known status
+                cached = self.jobs.get(job_id, {}).get("response", {})
+                cached_status = cached.get("status", "in_progress")
+                if cached_status == "completed":
+                    return {"status": "completed", "progress": 1.0}
+                return {"status": "running", "progress": 0.5}
+
+            response.raise_for_status()
+            data = response.json()
+            status = data.get("status", "in_progress")
+
+            if status == "completed":
+                self.jobs[job_id]["response"] = data
+                return {"status": "completed", "progress": 1.0}
+            elif status == "failed":
+                error_msg = data.get("error", "Research failed")
+                return {"status": "failed", "error": error_msg}
+            elif status == "cancelled":
+                return {"status": "failed", "error": "Research was cancelled"}
+            else:
+                return {"status": "running", "progress": 0.5}
+
+        except Exception:
+            # On any error, return running to allow retry
+            return {"status": "running", "progress": 0.5}
+
+    async def get_result(self, job_id: str) -> str:
+        """Get the final research report from a completed interaction"""
+        if job_id not in self.jobs:
+            raise ValueError(f"Job {job_id} not found")
+
+        job_info = self.jobs[job_id]
+        data = job_info.get("response", {})
+
+        # If not yet fetched as completed, try fetching
+        if data.get("status") != "completed":
+            try:
+                response = await self.http_client.get(
+                    f"{self.INTERACTIONS_BASE}/{job_id}"
+                )
+                response.raise_for_status()
+                data = response.json()
+                self.jobs[job_id]["response"] = data
+            except Exception as e:
+                raise ProviderError(
+                    "gemini", f"Failed to retrieve results: {e}"
+                )
+
+        # Extract report text from outputs
+        outputs = data.get("outputs", [])
+        if not outputs:
+            return "No research output was generated."
+
+        # Get the last text output (the final report)
+        report_text = ""
+        for output in reversed(outputs):
+            if output.get("type") == "text" and output.get("text"):
+                report_text = output["text"]
+                break
+
+        if not report_text:
+            # Fallback: try any output with text
+            for output in outputs:
+                if output.get("text"):
+                    report_text = output["text"]
+                    break
+
+        if not report_text:
+            return "Research completed but no text content was found in outputs."
+
+        # Extract citations from annotations
+        annotations = []
+        for output in outputs:
+            if output.get("type") == "text":
+                annotations.extend(output.get("annotations", []))
+
+        if annotations:
+            # Deduplicate by URL
+            seen_urls: set = set()
+            unique_sources = []
+            for ann in annotations:
+                url = ann.get("url", "")
+                if url and url not in seen_urls:
+                    seen_urls.add(url)
+                    # Extract domain for display
+                    domain = url.split("//")[-1].split("/")[0]
+                    unique_sources.append(f"[{domain}]({url})")
+
+            if unique_sources:
+                report_text += "\n\n## Sources\n"
+                for i, source in enumerate(unique_sources, 1):
+                    report_text += f"{i}. {source}\n"
+
+        return report_text
+
+    def supports_progress(self) -> bool:
+        """Gemini supports progress via status polling"""
+        return True
+
+    async def list_models(self) -> List[Dict[str, Any]]:
+        """Return available Gemini Deep Research models"""
+        return [
+            {
+                "id": "deep-research-pro-preview-12-2025",
+                "type": "deep_research",
+                "created": 1733000000,
+                "owned_by": "google",
+            },
+        ]
+
+    async def list_models_cached(
+        self, force_refresh: bool = False, no_cache: bool = False
+    ) -> List[Dict[str, Any]]:
+        """List models with caching support"""
+        # Check cache first (unless force refresh or no_cache)
+        if not force_refresh and not no_cache:
+            if self.model_cache.is_cache_valid():
+                cached = self.model_cache.load_cache()
+                if cached is not None:
+                    return cached
+
+        # Fetch fresh models
+        models = await self.list_models()
+
+        # Save to cache (unless no_cache mode)
+        if not no_cache:
+            self.model_cache.save_cache(models)
+
+        return models
+
+
 # ============================================================================
 # SECTION 13: PROVIDER REGISTRY
 # ============================================================================
@@ -2323,6 +2572,7 @@ class ProviderRegistry:
         self.providers = {
             "openai": OpenAIProvider,
             "perplexity": PerplexityProvider,
+            "gemini": GeminiProvider,
             "mock": MockProvider,
         }
 
@@ -2391,6 +2641,8 @@ class ProviderRegistry:
             return OpenAIProvider(api_key=api_key, config=provider_config)
         elif provider_name == "perplexity":
             return PerplexityProvider(api_key=api_key, config=provider_config)
+        elif provider_name == "gemini":
+            return GeminiProvider(api_key=api_key, config=provider_config)
         else:
             raise ThothError(f"Provider {provider_name} not properly configured")
 
@@ -2448,11 +2700,18 @@ def create_provider(
         raise APIKeyError(provider_name)
 
     # Apply timeout override if provided
-    if timeout_override is not None and provider_name in ["openai", "perplexity"]:
+    if timeout_override is not None and provider_name in [
+        "openai",
+        "perplexity",
+        "gemini",
+    ]:
         provider_config["timeout"] = timeout_override
 
     # Apply model from mode configuration if specified
-    if mode_config and "model" in mode_config and provider_name == "openai":
+    if mode_config and "model" in mode_config and provider_name in [
+        "openai",
+        "gemini",
+    ]:
         provider_config["model"] = mode_config["model"]
 
     # Apply background mode for deep research models
@@ -2465,10 +2724,12 @@ def create_provider(
         return OpenAIProvider(api_key=api_key, config=provider_config)
     elif provider_name == "perplexity":
         return PerplexityProvider(api_key=api_key, config=provider_config)
+    elif provider_name == "gemini":
+        return GeminiProvider(api_key=api_key, config=provider_config)
     else:
         raise ThothError(
             f"Unknown provider: {provider_name}",
-            "Valid providers are: openai, perplexity, mock",
+            "Valid providers are: openai, perplexity, gemini, mock",
         )
 
 
@@ -3121,12 +3382,13 @@ async def providers_command(
     config = get_config()
 
     # Define available providers
-    all_providers = ["openai", "perplexity", "mock"]
+    all_providers = ["openai", "perplexity", "gemini", "mock"]
 
     # Provider descriptions
     provider_descriptions = {
         "openai": "OpenAI GPT models",
         "perplexity": "Perplexity search AI",
+        "gemini": "Google Gemini Deep Research",
         "mock": "Mock provider for tests",
     }
 
@@ -3428,7 +3690,7 @@ class SlashCommandRegistry:
 
     def set_provider(self, args: str) -> str:
         """Set provider"""
-        providers = ["openai", "perplexity", "mock", "auto"]
+        providers = ["openai", "perplexity", "gemini", "mock", "auto"]
         if not args:
             self.console.print("[cyan]Available providers:[/cyan]")
             for i, provider in enumerate(providers, 1):
@@ -3467,7 +3729,7 @@ class SlashCommandRegistry:
                 if provider == "auto":
                     self.current_provider = None
                     self.console.print("[green]Provider set to:[/green] auto")
-                elif provider in ["openai", "perplexity", "mock"]:
+                elif provider in ["openai", "perplexity", "gemini", "mock"]:
                     self.current_provider = provider
                     self.console.print(f"[green]Provider set to:[/green] {provider}")
                 else:

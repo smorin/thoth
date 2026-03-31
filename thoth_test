@@ -136,6 +136,7 @@ def get_test_api_keys() -> Dict[str, str]:
         "mock": generate_mock_api_key(),
         "openai": os.getenv("OPENAI_API_KEY", ""),
         "perplexity": os.getenv("PERPLEXITY_API_KEY", ""),
+        "gemini": os.getenv("GEMINI_API_KEY", ""),
     }
 
 
@@ -148,6 +149,9 @@ def get_available_providers(test_api_keys: Dict[str, str]) -> List[str]:
 
     if test_api_keys.get("perplexity"):
         providers.append("perplexity")
+
+    if test_api_keys.get("gemini"):
+        providers.append("gemini")
 
     return providers
 
@@ -2349,6 +2353,134 @@ all_tests = [
         expected_stdout_patterns=[r"Request timed out|Timeout|Connection error"],
         expected_exit_code=1,
         timeout=5,
+    ),
+    # Milestone 34: Gemini Deep Research Provider Tests
+    TestCase(
+        test_id="M34T-01",
+        description="Gemini provider initialization with API key",
+        command=[THOTH_EXECUTABLE, "test gemini init", "--provider", "gemini", "-v"],
+        expected_stdout_patterns=[r"gemini API Key: .*\.\.\.", r"Research completed"],
+        expected_exit_code=0,
+        provider="gemini",
+        api_key_method="env",
+    ),
+    TestCase(
+        test_id="M34T-02",
+        description="Gemini provider handles missing API key",
+        command=[THOTH_EXECUTABLE, "test no key", "--provider", "gemini"],
+        env={"GEMINI_API_KEY": ""},
+        expected_stdout_patterns=[r"gemini API key not found"],
+        expected_exit_code=1,
+    ),
+    TestCase(
+        test_id="M34T-03",
+        description="Gemini provider handles invalid API key",
+        command=[
+            THOTH_EXECUTABLE,
+            "test invalid key",
+            "--provider",
+            "gemini",
+            "--api-key-gemini",
+            "invalid-key",
+        ],
+        expected_stdout_patterns=[r"Invalid Gemini API key|gemini error|Authentication"],
+        expected_exit_code=1,
+        timeout=15,
+    ),
+    TestCase(
+        test_id="M34T-04",
+        description="Gemini timeout configuration from CLI",
+        command=[
+            THOTH_EXECUTABLE,
+            "test timeout",
+            "--provider",
+            "gemini",
+            "--timeout",
+            "30.0",
+            "-v",
+        ],
+        expected_stdout_patterns=[r"Timeout: 30\.0"],
+        expected_exit_code=0,
+        provider="gemini",
+        api_key_method="env",
+    ),
+    TestCase(
+        test_id="M34T-05",
+        description="Gemini provider async operation returns job ID",
+        command=[
+            THOTH_EXECUTABLE,
+            "test async gemini",
+            "--provider",
+            "gemini",
+            "--async",
+        ],
+        expected_stdout_patterns=[r"Operation ID: research-\d+-\w+"],
+        expected_exit_code=0,
+        timeout=5,
+        provider="gemini",
+        api_key_method="env",
+    ),
+    TestCase(
+        test_id="M34T-06",
+        description="Gemini provider creates output file",
+        command=[THOTH_EXECUTABLE, "test output", "--provider", "gemini"],
+        expected_stdout_patterns=[r"Research completed"],
+        expected_files=["*_gemini_*.md"],
+        cleanup_files=["*_gemini_*.md"],
+        expected_exit_code=0,
+        provider="gemini",
+        api_key_method="env",
+    ),
+    TestCase(
+        test_id="M34T-07",
+        description="Gemini provider with verbose shows configuration",
+        command=[THOTH_EXECUTABLE, "test verbose", "--provider", "gemini", "-v"],
+        expected_stdout_patterns=[r"gemini API Key: .*\.\.\.", r"Research completed"],
+        expected_exit_code=0,
+        provider="gemini",
+        api_key_method="env",
+        timeout=120,
+    ),
+    TestCase(
+        test_id="M34T-08",
+        description="Gemini provider handles network timeout",
+        command=[
+            THOTH_EXECUTABLE,
+            "test timeout",
+            "--provider",
+            "gemini",
+            "--timeout",
+            "0.001",
+            "-v",
+        ],
+        expected_stdout_patterns=[r"Request timed out|Timeout|Connection error"],
+        expected_exit_code=1,
+        timeout=15,
+        provider="gemini",
+        api_key_method="env",
+    ),
+    TestCase(
+        test_id="M34T-09",
+        description="Gemini provider listed in providers command",
+        command=[THOTH_EXECUTABLE, "providers", "--", "--list"],
+        expected_stdout_patterns=[r"gemini"],
+        expected_exit_code=0,
+    ),
+    TestCase(
+        test_id="M34T-10",
+        description="Gemini provider accepts --api-key-gemini flag",
+        command=[
+            THOTH_EXECUTABLE,
+            "test cli key",
+            "--provider",
+            "gemini",
+            "--api-key-gemini",
+            "test-gemini-key-12345",
+        ],
+        expected_stdout_patterns=[r"Research completed|gemini error|Authentication"],
+        expected_exit_code=0,
+        provider="gemini",
+        api_key_method="cli",
     ),
 ]
 
