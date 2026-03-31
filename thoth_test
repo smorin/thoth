@@ -486,7 +486,9 @@ class InteractiveTestRunner:
                                 test_id=test_case.test_id,
                                 passed=False,
                                 duration=time.time() - start_time,
-                                stdout=child.before.decode() if isinstance(child.before, bytes) else (child.before or ""),
+                                stdout=child.before.decode()
+                                if isinstance(child.before, bytes)
+                                else (child.before or ""),
                                 stderr=error_msg,
                                 exit_code=-1,
                                 error_message=error_msg,
@@ -502,7 +504,9 @@ class InteractiveTestRunner:
                                     test_id=test_case.test_id,
                                     passed=False,
                                     duration=time.time() - start_time,
-                                    stdout=child.before.decode() if isinstance(child.before, bytes) else (child.before or ""),
+                                    stdout=child.before.decode()
+                                    if isinstance(child.before, bytes)
+                                    else (child.before or ""),
                                     stderr=error_msg,
                                     exit_code=-1,
                                     error_message=error_msg,
@@ -523,7 +527,9 @@ class InteractiveTestRunner:
                 pass  # Process might have already exited
 
             # Get final output
-            stdout = child.before.decode() if isinstance(child.before, bytes) else (child.before or "")
+            stdout = (
+                child.before.decode() if isinstance(child.before, bytes) else (child.before or "")
+            )
 
             # Close the child process
             child.close(force=True)
@@ -2339,6 +2345,11 @@ all_tests = [
     help="Run tests for all providers (requires all API keys)",
 )
 @click.option("--interactive", is_flag=True, help="Run only interactive mode tests")
+@click.option(
+    "--skip-interactive",
+    is_flag=True,
+    help="Skip interactive mode tests (useful in CI/non-TTY environments)",
+)
 @click.option("--no-cleanup", is_flag=True, help="Do not clean up test files")
 @click.option("--save-output", is_flag=True, help="Save test output to files for debugging")
 def main(
@@ -2349,6 +2360,7 @@ def main(
     provider,
     all_providers,
     interactive,
+    skip_interactive,
     no_cleanup,
     save_output,
 ):
@@ -2385,6 +2397,9 @@ def main(
 
       # Run only interactive mode tests
       ./thoth_test -r --interactive
+
+      # Skip interactive mode tests (for CI/non-TTY environments)
+      ./thoth_test -r --provider mock --skip-interactive
 
       # Save test outputs for debugging
       ./thoth_test -r --provider mock --save-output
@@ -2447,6 +2462,16 @@ def main(
     if interactive:
         tests_to_run = [t for t in tests_to_run if getattr(t, "is_interactive", False)]
         console.print(f"Running {len(tests_to_run)} interactive mode tests")
+
+    # Skip interactive tests if requested
+    if skip_interactive:
+        before = len(tests_to_run)
+        tests_to_run = [t for t in tests_to_run if not getattr(t, "is_interactive", False)]
+        skipped = before - len(tests_to_run)
+        if skipped:
+            console.print(
+                f"[yellow]Skipping {skipped} interactive mode tests (--skip-interactive)[/yellow]"
+            )
 
     # Further filter by test pattern if provided
     if test:

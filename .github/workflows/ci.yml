@@ -68,4 +68,4 @@ jobs:
       - name: Run tests (mock provider only)
         env:
           MOCK_API_KEY: ci-test-key
-        run: ./thoth_test -r --provider mock
+        run: ./thoth_test -r --provider mock --skip-interactive
