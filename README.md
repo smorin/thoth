@@ -19,7 +19,7 @@ Thoth is a command-line tool that automates deep technical research using multip
 - **Mode chaining**: Seamless workflow from clarification through exploration to deep research
 - **Rich metadata**: Output files include model information and exact prompts sent to LLMs
 
-Origin of the name: Thoth (also spelled Tehuti) is the god of wisdom, writing, hieroglyphs, science, magic, art, and judgment. He is often depicted as a man with the head of an ibis or a baboon, animals sacred to him. Thoth is also associated with the moon and is considered the scribe of the gods. 
+Origin of the name: Thoth (also spelled Tehuti) is the god of wisdom, writing, hieroglyphs, science, magic, art, and judgment. He is often depicted as a man with the head of an ibis or a baboon, animals sacred to him. Thoth is also associated with the moon and is considered the scribe of the gods.
 
 ## Prerequisites
 
@@ -168,7 +168,7 @@ Interactive mode features:
   - **Shift+Return** - Works in modern terminals with CSI-u support (iTerm2, Warp, Windows Terminal, VSCode)
   - **Ctrl+J** - Universal option that works in all terminals (recommended)
   - **Option+Return** (Mac) or **Alt+Enter** (Linux/Windows) - Traditional fallback
-- **Slash commands**: 
+- **Slash commands**:
   - `/help` - Show available commands
   - `/keybindings` - Show keyboard shortcuts
   - `/mode [<name>]` - Change research mode or list available modes
@@ -322,6 +322,13 @@ thoth "prompt" --provider openai -v
 - Automatic connection retry
 - Check API status at https://status.openai.com/
 
+### Multi-Provider Failures
+When running with multiple providers, a single provider failure does not abort the operation:
+- The failed provider is logged with a warning (`⚠ Provider failed: <reason>`)
+- Remaining providers continue polling normally
+- Partial results from successful providers are saved to disk
+- Only when **all** providers fail does the operation transition to a failed state
+
 ## Output Structure
 
 ### Ad-hoc Mode (default)
@@ -394,7 +401,7 @@ The Makefile provides separate targets for the main executable (`thoth`) and tes
 #### Main Executable (thoth)
 ```bash
 make lint        # Lint thoth executable
-make format      # Format thoth executable  
+make format      # Format thoth executable
 make typecheck   # Type check thoth executable
 make check       # Run all checks on thoth (lint + typecheck)
 make fix         # Auto-fix lint issues and format thoth
@@ -402,19 +409,35 @@ make fix         # Auto-fix lint issues and format thoth
 
 #### Test Suite (thoth_test)
 ```bash
-make test-lint       # Lint test suite
-make test-format     # Format test suite
-make test-typecheck  # Type check test suite  
-make test-check      # Run all checks on test suite
-make test-fix        # Auto-fix lint issues and format test suite
+make test-lint              # Lint test suite
+make test-format            # Format test suite
+make test-typecheck         # Type check test suite
+make test-check             # Run all checks on test suite
+make test-fix               # Auto-fix lint issues and format test suite
+make test-skip-interactive  # Run tests skipping interactive (pexpect) tests — CI-safe
+```
+
+#### Snapshot Tests
+```bash
+make update-snapshots  # Regenerate pytest snapshot files
 ```
 
 #### Combined Operations
 ```bash
 make lint-all    # Lint both thoth and thoth_test
 make format-all  # Format both thoth and thoth_test
-make check-all   # Check both thoth and thoth_test  
+make check-all   # Check both thoth and thoth_test
 make fix-all     # Fix and format both thoth and thoth_test
+```
+
+#### Build & Release
+```bash
+make build               # Build distribution packages (wheel + sdist)
+make publish-test        # Publish to TestPyPI for validation
+make publish             # Publish to PyPI (production)
+make bump TYPE=patch     # Bump version in pyproject.toml, commit, and tag
+make changelog           # Regenerate CHANGELOG.md from git history (git-cliff)
+make release TYPE=minor  # Full release: bump version + update changelog in one step
 ```
 
 #### Virtual Environment Management
@@ -459,6 +482,11 @@ make run         # Run example research prompt
 ```bash
 # Test with mock provider (no API keys needed)
 ./thoth "test prompt" --provider mock
+
+# Run tests skipping interactive (pexpect) tests — fast, CI-safe
+./thoth_test -r --provider mock --skip-interactive
+# or equivalently
+make test-skip-interactive
 
 # Run OpenAI provider tests (requires API key)
 ./thoth_test -r --provider openai -t M8T
@@ -506,7 +534,7 @@ API keys are resolved in the following order (highest to lowest priority):
 ### Main Commands
 
 | Command | Description | Example |
-|---------|-------------|---------|  
+|---------|-------------|---------|
 | (default) | Run research with prompt | `thoth "your research prompt"` |
 | init | Setup wizard for API keys | `thoth init` |
 | status | Show operation details | `thoth status research-20240803-143022-xxx` |
@@ -517,7 +545,7 @@ API keys are resolved in the following order (highest to lowest priority):
 ### Providers Command Options
 
 | Option | Description | Example |
-|--------|-------------|---------|  
+|--------|-------------|---------|
 | --list | Show available providers and status | `thoth providers -- --list` |
 | --models | List models from providers | `thoth providers -- --models` |
 | --keys | Show API key configuration | `thoth providers -- --keys` |
