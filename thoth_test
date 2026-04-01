@@ -65,6 +65,7 @@ THOTH_EXECUTABLE = "./thoth"
 TEST_TIMEOUT = 30
 CLEANUP_ENABLED = True
 VERBOSE_OUTPUT = False  # Global verbose flag
+INTERACTIVE_COMPLETION_TIMEOUT = 5
 
 
 # Terminal key sequences for interactive tests
@@ -498,6 +499,9 @@ class InteractiveTestRunner:
             api_key = generate_mock_api_key() if test_case.provider == "mock" else ""
             if test_case.provider == "mock":
                 test_env["MOCK_API_KEY"] = api_key
+                # Interactive mock tests submit work that completes in ~0.1s, so
+                # keep polling tight and let the child exit naturally.
+                test_env.setdefault("THOTH_POLL_INTERVAL", "1")
             elif test_case.provider == "openai":
                 test_env["OPENAI_API_KEY"] = os.getenv("OPENAI_API_KEY", "")
             elif test_case.provider == "perplexity":
@@ -576,8 +580,11 @@ class InteractiveTestRunner:
             # Try to exit cleanly if not already done
             try:
                 if child.isalive():
-                    child.send("/exit\r")
-                    child.expect(pexpect.EOF, timeout=2)
+                    try:
+                        child.expect(pexpect.EOF, timeout=INTERACTIVE_COMPLETION_TIMEOUT)
+                    except pexpect.TIMEOUT:
+                        child.send("/exit\r")
+                        child.expect(pexpect.EOF, timeout=2)
             except Exception:
                 pass  # Process might have already exited
 
@@ -3239,9 +3246,9 @@ all_tests = [
             # Toggle back to Edit mode
             (None, "\x1b\t"),
             ("Edit Mode", None),
-            # Exit
-            (None, "/exit"),
-            (None, Keys.ENTER),
+            # Cancel cleanly without mutating the existing prompt buffer
+            (None, Keys.CTRL_C),
+            (["cancelled", "aborted", "exit", pexpect.EOF], None),
         ],
         provider="mock",
         expected_exit_code=0,
