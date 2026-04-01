@@ -67,4 +67,6 @@ pre-commit:
 
     codespell:
       glob: "*.{py,md}"
-      run: uvx codespell --skip=".git,.venv,htmlcov,uv.lock,requirements.txt" --ignore-words-list="thoth,perplexity,sonar,pplx,openai" {staged_files}
+      run: |
+        uvx codespell --skip=".git,.venv,htmlcov,uv.lock,requirements.txt" \
+          --ignore-words-list="thoth,perplexity,sonar,pplx,openai" {staged_files}
