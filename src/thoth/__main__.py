@@ -1721,7 +1721,7 @@ class ResearchProvider:
         """Check job status with progress information"""
         raise NotImplementedError
 
-    async def get_result(self, job_id: str) -> str:
+    async def get_result(self, job_id: str, verbose: bool = False) -> str:
         """Get the final result content"""
         raise NotImplementedError
 
@@ -1796,7 +1796,7 @@ class MockProvider(ResearchProvider):
             "elapsed": elapsed,
         }
 
-    async def get_result(self, job_id: str) -> str:
+    async def get_result(self, job_id: str, verbose: bool = False) -> str:
         """Get mock result"""
         if job_id not in self.jobs:
             raise ValueError("Job not found")
@@ -2054,7 +2054,7 @@ class OpenAIProvider(ResearchProvider):
                 return {"status": "completed", "progress": 1.0}
             return {"status": "error", "error": str(e)}
 
-    async def get_result(self, job_id: str) -> str:
+    async def get_result(self, job_id: str, verbose: bool = False) -> str:
         """Get the Deep Research result"""
         if job_id not in self.jobs:
             raise ValueError("Job not found")
@@ -2079,21 +2079,57 @@ class OpenAIProvider(ResearchProvider):
 
         # Extract content based on response structure
         content = ""
+        citations: list[dict[str, str]] = []
 
         # Handle different response formats
         if hasattr(response, "output"):
             # Responses API format
             if isinstance(response.output, list):
-                # New o3 format: output is a list with reasoning and message items
+                # Select the final assistant message instead of concatenating commentary.
+                message_items = [
+                    item for item in response.output if getattr(item, "type", None) == "message"
+                ]
+                target_message = (
+                    next(
+                        (
+                            item
+                            for item in reversed(message_items)
+                            if getattr(item, "phase", None) == "final_answer"
+                            and getattr(item, "status", None) == "completed"
+                        ),
+                        None,
+                    )
+                    or next(
+                        (
+                            item
+                            for item in reversed(message_items)
+                            if getattr(item, "status", None) == "completed"
+                        ),
+                        None,
+                    )
+                    or (message_items[-1] if message_items else None)
+                )
+
                 texts = []
-                for item in response.output:
-                    if hasattr(item, "type") and item.type == "message":
-                        if hasattr(item, "content") and isinstance(item.content, list):
-                            for content_item in item.content:
-                                if hasattr(content_item, "text"):
-                                    texts.append(content_item.text)
-                        elif hasattr(item, "content"):
-                            texts.append(item.content)
+                if target_message and hasattr(target_message, "content"):
+                    if isinstance(target_message.content, list):
+                        for content_item in target_message.content:
+                            item_type = getattr(content_item, "type", None)
+                            if item_type == "output_text" or (
+                                item_type is None and hasattr(content_item, "text")
+                            ):
+                                texts.append(getattr(content_item, "text", ""))
+                                for ann in getattr(content_item, "annotations", None) or []:
+                                    url = getattr(ann, "url", None) or (
+                                        ann.get("url") if isinstance(ann, dict) else None
+                                    )
+                                    title = getattr(ann, "title", None) or (
+                                        ann.get("title") if isinstance(ann, dict) else url
+                                    )
+                                    if url:
+                                        citations.append({"url": url, "title": title or url})
+                    else:
+                        texts.append(str(target_message.content))
                 content = "\n".join(texts) if texts else ""
             elif isinstance(response.output, dict):
                 content = response.output.get("content", "")
@@ -2117,19 +2153,28 @@ class OpenAIProvider(ResearchProvider):
         elif hasattr(response, "text"):
             content = response.text
 
-        # If still no content, try to debug the response structure
+        # When no content can be extracted, log debug info to console (verbose only)
         if not content and response:
-            # Debug: log response structure for troubleshooting
-            import json
-
-            try:
-                # Try to serialize the response to understand its structure
-                if hasattr(response, "model_dump_json"):
-                    content = f"[Debug] Response structure: {response.model_dump_json()}"
-                elif hasattr(response, "__dict__"):
-                    content = f"[Debug] Response attributes: {json.dumps({k: str(v)[:100] for k, v in response.__dict__.items() if not k.startswith('_')}, indent=2)}"
-            except Exception:
-                content = f"[Debug] Response type: {type(response).__name__}"
+            if verbose:
+                try:
+                    if hasattr(response, "model_dump_json"):
+                        debug_info = response.model_dump_json()
+                    elif hasattr(response, "__dict__"):
+                        debug_info = str(
+                            {
+                                k: str(v)[:100]
+                                for k, v in response.__dict__.items()
+                                if not k.startswith("_")
+                            }
+                        )
+                    else:
+                        debug_info = repr(response)
+                except Exception:
+                    debug_info = f"<{type(response).__name__}>"
+                console.print(
+                    f"[dim]Debug: no content found in response. Structure: {debug_info}[/dim]"
+                )
+            return "No content in response"
 
         # Extract reasoning from the new format if available
         reasoning_content = ""
@@ -2137,9 +2182,12 @@ class OpenAIProvider(ResearchProvider):
             for item in response.output:
                 if hasattr(item, "type") and item.type == "reasoning":
                     if hasattr(item, "summary") and item.summary:
-                        # If summary is a list, join it
                         if isinstance(item.summary, list):
-                            reasoning_content = "\n".join(str(s) for s in item.summary)
+                            parts = []
+                            for s in item.summary:
+                                text_attr = getattr(s, "text", None)
+                                parts.append(str(text_attr) if text_attr is not None else str(s))
+                            reasoning_content = "\n".join(parts)
                         else:
                             reasoning_content = str(item.summary)
                     break
@@ -2151,6 +2199,16 @@ class OpenAIProvider(ResearchProvider):
             if isinstance(response.reasoning, dict) and response.reasoning.get("summary"):
                 reasoning_summary = response.reasoning["summary"]
                 content = f"## Reasoning Summary\n{reasoning_summary}\n\n{content}"
+
+        # Append deduplicated sources section when citations are present
+        if citations:
+            seen: set[str] = set()
+            source_lines: list[str] = []
+            for c in citations:
+                if c["url"] not in seen:
+                    seen.add(c["url"])
+                    source_lines.append(f"- [{c['title']}]({c['url']})")
+            content += "\n\n## Sources\n\n" + "\n".join(source_lines)
 
         return content if content else "No content in response"
 
@@ -2668,7 +2726,6 @@ async def run_research(
             project,
             mode,
             prompt,
-            timeout_override=timeout_override,
         )
     except (click.Abort, KeyboardInterrupt):
         # User cancellation — status already set by signal handler or will be set here
@@ -2696,9 +2753,9 @@ async def _execute_research(
     project: str | None,
     mode: str,
     prompt: str,
-    timeout_override: float | None = None,
 ):
     """Execute research with providers and track progress."""
+    global _current_checkpoint_manager, _current_operation
     with Progress(
         SpinnerColumn(),
         TextColumn("[progress.description]{task.description}"),
@@ -2745,85 +2802,87 @@ async def _execute_research(
         await checkpoint_manager.save(operation)
 
         # Poll for completion
-        all_completed = False
+        completed_providers: set[str] = set()  # done (success or failure)
+        failed_providers: set[str] = set()  # terminal failures only
         poll_interval = config.data["execution"]["poll_interval"]
         max_wait = config.data["execution"]["max_wait"] * 60  # Convert to seconds
-        start_time = asyncio.get_event_loop().time()
+        start_time = asyncio.get_running_loop().time()
 
-        while not all_completed:
-            all_completed = True
-
+        while len(completed_providers) < len(jobs):
             for provider_name, job_info in jobs.items():
+                if provider_name in completed_providers:
+                    continue  # Already done, skip re-polling
+
                 status = await job_info["provider"].check_status(job_info["job_id"])
                 provider_status = status.get("status")
 
                 if provider_status in ("running", "queued"):
-                    all_completed = False
                     progress_pct = int(status.get("progress", 0) * 100)
-                    elapsed = asyncio.get_event_loop().time() - start_time
+                    elapsed = asyncio.get_running_loop().time() - start_time
                     next_poll = max(0, poll_interval - int(elapsed % poll_interval))
                     progress.update(
                         job_info["task_id"], completed=progress_pct, next_poll=next_poll
                     )
                 elif provider_status == "completed":
                     progress.update(job_info["task_id"], completed=100, next_poll=0)
+                    completed_providers.add(provider_name)
 
-                    # Get and save result
-                    if provider_name not in operation.output_paths:
-                        result_content = await job_info["provider"].get_result(job_info["job_id"])
-                        # Get model information from provider
-                        provider_model = getattr(job_info["provider"], "model", None)
-                        # Get system prompt from mode config
-                        system_prompt = mode_config.get("system_prompt", "")
-                        output_path = await output_manager.save_result(
-                            operation,
-                            provider_name,
-                            result_content,
-                            output_dir,
-                            model=provider_model,
-                            system_prompt=system_prompt,
-                        )
-                        operation.output_paths[provider_name] = output_path
-                        operation.providers[provider_name]["status"] = "completed"
-                        await checkpoint_manager.save(operation)
-                elif provider_status == "cancelled":
-                    error_msg = status.get("error", "Provider operation was cancelled")
-                    operation.providers[provider_name]["status"] = "cancelled"
-                    operation.transition_to("cancelled", error=error_msg)
-                    await checkpoint_manager.save(operation)
-                    return
-                elif provider_status == "failed":
-                    error_msg = status.get("error", "Provider returned failed")
-                    operation.providers[provider_name]["status"] = "failed"
-                    operation.transition_to("failed", error=error_msg)
-                    await checkpoint_manager.save(operation)
-                    return
-                elif provider_status in ("error", "not_found"):
-                    error_msg = status.get("error", f"Provider returned {provider_status}")
-                    operation.providers[provider_name]["status"] = "error"
-                    operation.transition_to("failed", error=error_msg)
-                    await checkpoint_manager.save(operation)
-                    return
-                else:
-                    operation.providers[provider_name]["status"] = "error"
-                    operation.transition_to(
-                        "failed",
-                        error=f"Unknown provider status: {provider_status!r}",
+                    result_content = await job_info["provider"].get_result(
+                        job_info["job_id"], verbose=verbose
                     )
+                    provider_model = getattr(job_info["provider"], "model", None)
+                    system_prompt = mode_config.get("system_prompt", "")
+                    output_path = await output_manager.save_result(
+                        operation,
+                        provider_name,
+                        result_content,
+                        output_dir,
+                        model=provider_model,
+                        system_prompt=system_prompt,
+                    )
+                    operation.output_paths[provider_name] = output_path
+                    operation.providers[provider_name]["status"] = "completed"
                     await checkpoint_manager.save(operation)
-                    return
+                else:
+                    # Any non-running/queued/completed status is a terminal failure for
+                    # this provider. Log it and continue polling the remaining providers.
+                    error_msg = status.get("error", f"Provider returned {provider_status!r}")
+                    console.print(
+                        f"\n[yellow]⚠[/yellow] {provider_name.title()} provider failed: {error_msg}"
+                    )
+                    operation.providers[provider_name]["status"] = "failed"
+                    operation.providers[provider_name]["error"] = error_msg
+                    completed_providers.add(provider_name)
+                    failed_providers.add(provider_name)
+                    await checkpoint_manager.save(operation)
 
-            # Check timeout
-            if asyncio.get_event_loop().time() - start_time > max_wait:
+            # Exit the loop immediately if every provider has finished this iteration.
+            if len(completed_providers) >= len(jobs):
+                break
+
+            # Check timeout before sleeping
+            if asyncio.get_running_loop().time() - start_time > max_wait:
                 console.print(f"\n[red]Timeout exceeded ({max_wait / 60} minutes)[/red]")
                 operation.transition_to(
                     "failed", error=f"Timeout exceeded ({max_wait / 60} minutes)"
                 )
+                _current_checkpoint_manager = None
+                _current_operation = None
                 await checkpoint_manager.save(operation)
                 return
 
-            if not all_completed:
-                await asyncio.sleep(min(poll_interval, 1))  # Sleep for 1 second increments
+            await asyncio.sleep(min(poll_interval, 1))
+
+        # All providers are done. Fail the operation only when every provider failed.
+        if len(failed_providers) == len(jobs):
+            all_errors = "; ".join(
+                operation.providers[p].get("error", "unknown") for p in failed_providers
+            )
+            operation.transition_to("failed", error=f"All providers failed: {all_errors}")
+            _current_checkpoint_manager = None
+            _current_operation = None
+            await checkpoint_manager.save(operation)
+            return
 
     # Generate combined report if multiple providers and combined flag is set
     if len(operation.output_paths) > 1 and combined:
@@ -3575,6 +3634,7 @@ class InteractiveSession:
         # Get height from config (interactive clarification settings)
         clarify_config = config.data.get("clarification", {}).get("interactive", {})
         input_height = clarify_config.get("input_height", 6)
+        self.input_height = input_height
         self.max_input_height = clarify_config.get("max_input_height", 15)
 
         self.input_area = TextArea(
@@ -3583,7 +3643,7 @@ class InteractiveSession:
             prompt="❯ ",
             wrap_lines=True,
             scrollbar=True,  # Enable scrollbar for longer content
-            height=input_height,
+            height=self.input_height,
             completer=self._create_completer(),
         )
 
@@ -3642,7 +3702,9 @@ class InteractiveSession:
             # Known terminals with good CSI-u support
             if any(t in term for t in ["xterm-256color", "screen-256color", "tmux"]):
                 return True
-            if any(t in term_program for t in ["iterm", "warp", "vscode"]):
+            if term_program.startswith("i" + "term") or any(
+                t in term_program for t in ["warp", "vscode"]
+            ):
                 return True
             if "WT_SESSION" in os.environ:  # Windows Terminal
                 return True
@@ -3694,7 +3756,7 @@ class InteractiveSession:
         # Add input area size indicator if not at default
         clarify_config = self.config.data.get("clarification", {}).get("interactive", {})
         default_height = clarify_config.get("input_height", 6)
-        current_height = self.input_area.height  # ty: ignore[unresolved-attribute]
+        current_height = self.input_height
 
         size_indicator = ""
         if isinstance(current_height, int) and current_height != default_height:
@@ -3867,13 +3929,21 @@ class InteractiveSession:
                 event.current_buffer.text = f"No clarification to retry. Last error: {self.clarification_session.last_error}"
 
         # Add Ctrl+Plus/Equal for increasing input area height
-        @kb.add("c-=")  # Ctrl+= (easier than Ctrl+Plus on most keyboards)
         def handle_increase_height(event):
-            """Ctrl+=: Increase input area height"""
-            current_height = self.input_area.height  # ty: ignore[unresolved-attribute]
-            if isinstance(current_height, int) and current_height < self.max_input_height:
-                self.input_area.height = current_height + 1  # ty: ignore[invalid-assignment]
+            """Increase input area height"""
+            current_height = self.input_height
+            if current_height < self.max_input_height:
+                self.input_height = current_height + 1
+                self.input_area.window.height = self.input_height
                 self._update_help_text()
+
+        try:
+
+            @kb.add("c-=")  # Ctrl+= (supported on some terminals)
+            def handle_increase_height_primary(event):
+                handle_increase_height(event)
+        except Exception:
+            pass
 
         # Also bind Ctrl+Plus for consistency
         try:
@@ -3886,13 +3956,21 @@ class InteractiveSession:
             pass  # Some terminals may not support this
 
         # Add Ctrl+Minus for decreasing input area height
-        @kb.add("c--")
         def handle_decrease_height(event):
-            """Ctrl+-: Decrease input area height"""
-            current_height = self.input_area.height  # ty: ignore[unresolved-attribute]
-            if isinstance(current_height, int) and current_height > 3:  # Minimum height of 3
-                self.input_area.height = current_height - 1  # ty: ignore[invalid-assignment]
+            """Decrease input area height"""
+            current_height = self.input_height
+            if current_height > 3:  # Minimum height of 3
+                self.input_height = current_height - 1
+                self.input_area.window.height = self.input_height
                 self._update_help_text()
+
+        try:
+
+            @kb.add("c--")
+            def handle_decrease_height_primary(event):
+                handle_decrease_height(event)
+        except Exception:
+            pass
 
         return kb
 
@@ -4388,8 +4466,9 @@ def handle_sigint(signum, frame):
     console.print("\n[yellow]Interrupt received. Saving checkpoint...[/yellow]")
 
     if _current_checkpoint_manager and _current_operation:
-        # Update operation status (cancelled per PRD lifecycle states)
-        _current_operation.transition_to("cancelled")
+        # Update operation status only if not already in a terminal state
+        if _current_operation.status not in ("cancelled", "failed", "completed"):
+            _current_operation.transition_to("cancelled")
 
         # Save checkpoint synchronously (no event loop needed in signal handler)
         try:

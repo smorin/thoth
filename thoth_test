@@ -376,6 +376,23 @@ def make_mock_openai_client(response_obj: object) -> types.SimpleNamespace:
     return client
 
 
+def make_mock_openai_result_response(
+    text: str,
+    annotations: list[dict] | None = None,
+    reasoning_summary: list[str] | None = None,
+) -> types.SimpleNamespace:
+    """Build a fake completed OpenAI Responses API result object for parser tests."""
+    ann_objs = [types.SimpleNamespace(**a) for a in (annotations or [])]
+    content_item = types.SimpleNamespace(type="output_text", text=text, annotations=ann_objs)
+    message_item = types.SimpleNamespace(type="message", content=[content_item])
+    items: list[object] = []
+    if reasoning_summary is not None:
+        summary_objs = [types.SimpleNamespace(text=s) for s in reasoning_summary]
+        items.append(types.SimpleNamespace(type="reasoning", summary=summary_objs))
+    items.append(message_item)
+    return types.SimpleNamespace(output=items)
+
+
 def validate_test_environment(
     test_api_keys: dict[str, str], requested_providers: list[str] | None = None
 ) -> None:
@@ -1373,7 +1390,7 @@ def _oai_bg_09() -> None:
                 return {"status": "queued", "progress": 0.0}
             return {"status": "completed", "progress": 1.0}
 
-        async def get_result(self, job_id: str) -> str:
+        async def get_result(self, job_id: str, verbose: bool = False) -> str:
             return "mock result content"
 
     operation = OperationStatus(
@@ -1433,7 +1450,7 @@ def _oai_bg_10() -> None:
                 return {"status": "running", "progress": 0.3}
             return {"status": "failed", "error": "API quota exceeded"}
 
-        async def get_result(self, job_id: str) -> str:
+        async def get_result(self, job_id: str, verbose: bool = False) -> str:
             return ""
 
     operation = OperationStatus(
@@ -1467,7 +1484,7 @@ def _oai_bg_10() -> None:
 
 
 def _oai_bg_11() -> None:
-    """Polling loop: cancelled provider status transitions operation to cancelled."""
+    """Polling loop: cancelled provider status transitions operation to failed."""
     import sys
 
     if _thoth_src_path() not in sys.path:
@@ -1489,7 +1506,7 @@ def _oai_bg_11() -> None:
         async def check_status(self, job_id: str) -> dict:
             return {"status": "cancelled", "error": "Response was cancelled"}
 
-        async def get_result(self, job_id: str) -> str:
+        async def get_result(self, job_id: str, verbose: bool = False) -> str:
             return ""
 
     operation = OperationStatus(
@@ -1517,11 +1534,11 @@ def _oai_bg_11() -> None:
             prompt="test",
         )
     )
-    assert operation.status == "cancelled", (
-        f"cancelled provider should set operation to cancelled, got: {operation.status}"
+    assert operation.status == "failed", (
+        f"cancelled provider should set operation to failed, got: {operation.status}"
     )
-    assert operation.providers["mock"]["status"] == "cancelled", (
-        f"provider status should remain cancelled, got: {operation.providers}"
+    assert operation.providers["mock"]["status"] == "failed", (
+        f"provider status should be normalized to failed, got: {operation.providers}"
     )
 
 
@@ -1548,7 +1565,7 @@ def _oai_bg_12() -> None:
         async def check_status(self, job_id: str) -> dict:
             return {"status": "error", "error": "network error"}
 
-        async def get_result(self, job_id: str) -> str:
+        async def get_result(self, job_id: str, verbose: bool = False) -> str:
             return ""
 
     operation = OperationStatus(
@@ -1579,8 +1596,8 @@ def _oai_bg_12() -> None:
     assert operation.status == "failed", (
         f"error provider should set operation to failed, got: {operation.status}"
     )
-    assert operation.providers["mock"]["status"] == "error", (
-        f"error provider should be normalized to error, got: {operation.providers}"
+    assert operation.providers["mock"]["status"] == "failed", (
+        f"error provider should be normalized to failed, got: {operation.providers}"
     )
 
 
@@ -1607,7 +1624,7 @@ def _oai_bg_13() -> None:
         async def check_status(self, job_id: str) -> dict:
             return {"status": "not_found", "error": "Job not found"}
 
-        async def get_result(self, job_id: str) -> str:
+        async def get_result(self, job_id: str, verbose: bool = False) -> str:
             return ""
 
     operation = OperationStatus(
@@ -1638,8 +1655,8 @@ def _oai_bg_13() -> None:
     assert operation.status == "failed", (
         f"not_found provider should fail the operation, got: {operation.status}"
     )
-    assert operation.providers["mock"]["status"] == "error", (
-        f"not_found should normalize to error, got: {operation.providers}"
+    assert operation.providers["mock"]["status"] == "failed", (
+        f"not_found should normalize to failed, got: {operation.providers}"
     )
     assert "not found" in (operation.error or "").lower(), (
         f"expected not_found details in error, got: {operation.error}"
@@ -1669,7 +1686,7 @@ def _oai_bg_14() -> None:
         async def check_status(self, job_id: str) -> dict:
             return {"status": "mystery_state", "error": "unexpected provider state"}
 
-        async def get_result(self, job_id: str) -> str:
+        async def get_result(self, job_id: str, verbose: bool = False) -> str:
             return ""
 
     operation = OperationStatus(
@@ -1700,11 +1717,214 @@ def _oai_bg_14() -> None:
     assert operation.status == "failed", (
         f"unknown provider status should fail the operation, got: {operation.status}"
     )
-    assert operation.providers["mock"]["status"] == "error", (
-        f"unknown status should normalize to error, got: {operation.providers}"
+    assert operation.providers["mock"]["status"] == "failed", (
+        f"unknown status should normalize to failed, got: {operation.providers}"
     )
-    assert "mystery_state" in (operation.error or ""), (
-        f"expected raw unknown state in error, got: {operation.error}"
+    assert operation.providers["mock"].get("error"), (
+        f"unknown status should record an error message, got: {operation.providers}"
+    )
+
+
+def _oai_parse_01() -> None:
+    """get_result: ## Sources section present when annotations exist."""
+    import sys
+
+    if _thoth_src_path() not in sys.path:
+        sys.path.insert(0, _thoth_src_path())
+    from thoth.__main__ import OpenAIProvider
+
+    provider = OpenAIProvider(api_key="dummy")
+    response = make_mock_openai_result_response(
+        text="Research content.",
+        annotations=[{"url": "https://example.com", "title": "Example Source"}],
+    )
+    provider.jobs["job-1"] = {"background": False, "response": response}
+    result = asyncio.run(provider.get_result("job-1"))
+    assert "## Sources" in result, f"expected ## Sources section, got: {result!r}"
+
+
+def _oai_parse_02() -> None:
+    """get_result: citation url and title preserved verbatim in Sources section."""
+    import sys
+
+    if _thoth_src_path() not in sys.path:
+        sys.path.insert(0, _thoth_src_path())
+    from thoth.__main__ import OpenAIProvider
+
+    provider = OpenAIProvider(api_key="dummy")
+    response = make_mock_openai_result_response(
+        text="Report body.",
+        annotations=[{"url": "https://papers.org/123", "title": "Key Paper"}],
+    )
+    provider.jobs["job-1"] = {"background": False, "response": response}
+    result = asyncio.run(provider.get_result("job-1"))
+    assert "https://papers.org/123" in result, f"citation url missing: {result!r}"
+    assert "Key Paper" in result, f"citation title missing: {result!r}"
+
+
+def _oai_parse_03() -> None:
+    """get_result: reasoning summary extracts .text from summary objects (not str(obj))."""
+    import sys
+
+    if _thoth_src_path() not in sys.path:
+        sys.path.insert(0, _thoth_src_path())
+    from thoth.__main__ import OpenAIProvider
+
+    provider = OpenAIProvider(api_key="dummy")
+    response = make_mock_openai_result_response(
+        text="Report body.",
+        reasoning_summary=["Planning research approach", "Evaluating sources"],
+    )
+    provider.jobs["job-1"] = {"background": False, "response": response}
+    result = asyncio.run(provider.get_result("job-1"))
+    assert "Planning research approach" in result, f"reasoning text missing: {result!r}"
+    assert "namespace" not in result.lower(), f"object repr leaked into result: {result!r}"
+
+
+def _oai_parse_04() -> None:
+    """get_result: duplicate citation URLs are deduplicated in Sources section."""
+    import sys
+
+    if _thoth_src_path() not in sys.path:
+        sys.path.insert(0, _thoth_src_path())
+    from thoth.__main__ import OpenAIProvider
+
+    provider = OpenAIProvider(api_key="dummy")
+    response = make_mock_openai_result_response(
+        text="Report with repeated references.",
+        annotations=[
+            {"url": "https://dup.com", "title": "Dup Source"},
+            {"url": "https://dup.com", "title": "Dup Source"},
+            {"url": "https://other.com", "title": "Other Source"},
+        ],
+    )
+    provider.jobs["job-1"] = {"background": False, "response": response}
+    result = asyncio.run(provider.get_result("job-1"))
+    assert result.count("https://dup.com") == 1, (
+        f"duplicate url should appear once, got: {result!r}"
+    )
+
+
+def _oai_parse_05() -> None:
+    """get_result: response with no content returns clean string, no [Debug] prefix."""
+    import sys
+
+    if _thoth_src_path() not in sys.path:
+        sys.path.insert(0, _thoth_src_path())
+    from thoth.__main__ import OpenAIProvider
+
+    provider = OpenAIProvider(api_key="dummy")
+    provider.jobs["job-1"] = {"background": False, "response": types.SimpleNamespace()}
+    result = asyncio.run(provider.get_result("job-1"))
+    assert not result.startswith("[Debug]"), f"debug dump leaked into result: {result!r}"
+    assert "No content" in result, f"unexpected result: {result!r}"
+
+
+def _oai_parse_06() -> None:
+    """get_result: no annotations means no ## Sources section in output."""
+    import sys
+
+    if _thoth_src_path() not in sys.path:
+        sys.path.insert(0, _thoth_src_path())
+    from thoth.__main__ import OpenAIProvider
+
+    provider = OpenAIProvider(api_key="dummy")
+    response = make_mock_openai_result_response(text="Clean report, no sources.")
+    provider.jobs["job-1"] = {"background": False, "response": response}
+    result = asyncio.run(provider.get_result("job-1"))
+    assert "## Sources" not in result, f"unexpected Sources section: {result!r}"
+
+
+def _oai_parse_07() -> None:
+    """get_result: verbose=True with no content response — result string is clean."""
+    import sys
+
+    if _thoth_src_path() not in sys.path:
+        sys.path.insert(0, _thoth_src_path())
+    from thoth.__main__ import OpenAIProvider
+
+    provider = OpenAIProvider(api_key="dummy")
+    provider.jobs["job-1"] = {"background": False, "response": types.SimpleNamespace()}
+    result = asyncio.run(provider.get_result("job-1", verbose=True))
+    assert not result.startswith("[Debug]"), f"debug dump in result with verbose: {result!r}"
+
+
+def _oai_parse_08() -> None:
+    """get_result: commentary message is excluded when final_answer phase exists."""
+    import sys
+
+    if _thoth_src_path() not in sys.path:
+        sys.path.insert(0, _thoth_src_path())
+    from openai.types.responses.response import Response
+
+    from thoth.__main__ import OpenAIProvider
+
+    provider = OpenAIProvider(api_key="dummy")
+    response = Response.model_validate(
+        {
+            "id": "resp_456",
+            "object": "response",
+            "created_at": 1,
+            "model": "o3-deep-research",
+            "status": "completed",
+            "output": [
+                {
+                    "type": "message",
+                    "id": "msg_commentary",
+                    "status": "completed",
+                    "role": "assistant",
+                    "phase": "commentary",
+                    "content": [
+                        {
+                            "type": "output_text",
+                            "text": "Thinking aloud",
+                            "annotations": [
+                                {
+                                    "type": "url_citation",
+                                    "url": "https://commentary.example",
+                                    "title": "Commentary Source",
+                                    "start_index": 0,
+                                    "end_index": 8,
+                                }
+                            ],
+                        }
+                    ],
+                },
+                {
+                    "type": "message",
+                    "id": "msg_final",
+                    "status": "completed",
+                    "role": "assistant",
+                    "phase": "final_answer",
+                    "content": [
+                        {
+                            "type": "output_text",
+                            "text": "Actual final answer",
+                            "annotations": [
+                                {
+                                    "type": "url_citation",
+                                    "url": "https://final.example",
+                                    "title": "Final Source",
+                                    "start_index": 0,
+                                    "end_index": 6,
+                                }
+                            ],
+                        }
+                    ],
+                },
+            ],
+            "tools": [],
+            "tool_choice": "auto",
+            "parallel_tool_calls": False,
+        }
+    )
+    provider.jobs["job-1"] = {"background": False, "response": response}
+    result = asyncio.run(provider.get_result("job-1"))
+    assert "Actual final answer" in result, f"final answer missing: {result!r}"
+    assert "Thinking aloud" not in result, f"commentary leaked into result: {result!r}"
+    assert "https://final.example" in result, f"final citation missing: {result!r}"
+    assert "https://commentary.example" not in result, (
+        f"commentary citation leaked into result: {result!r}"
     )
 
 
@@ -2780,7 +3000,7 @@ all_tests = [
             # Show keybindings
             (None, "/keybindings"),
             (None, Keys.ENTER),
-            ("Shift+Tab", None),
+            (r"Shift\+Tab", None),
             ("Toggle between Edit and Clarification", None),
             # Exit
             (None, "/exit"),
@@ -2997,31 +3217,87 @@ all_tests = [
     ),
     TestCase(
         test_id="OAI-BG-11",
-        description="polling loop: cancelled provider transitions operation to cancelled",
+        description="polling loop: cancelled provider transitions operation to failed",
         command=[],
         test_type="fixture",
         setup_func=lambda: _oai_bg_11(),
     ),
     TestCase(
         test_id="OAI-BG-12",
-        description="polling loop: error provider transitions operation to failed",
+        description="polling loop: error provider status normalizes to failed",
         command=[],
         test_type="fixture",
         setup_func=lambda: _oai_bg_12(),
     ),
     TestCase(
         test_id="OAI-BG-13",
-        description="polling loop: not_found provider status normalizes to error",
+        description="polling loop: not_found provider status normalizes to failed",
         command=[],
         test_type="fixture",
         setup_func=lambda: _oai_bg_13(),
     ),
     TestCase(
         test_id="OAI-BG-14",
-        description="polling loop: unknown provider status normalizes to error with raw state",
+        description="polling loop: unknown provider status normalizes to failed",
         command=[],
         test_type="fixture",
         setup_func=lambda: _oai_bg_14(),
+    ),
+    TestCase(
+        test_id="OAI-PARSE-01",
+        description="get_result: ## Sources section present when annotations exist",
+        command=[],
+        test_type="fixture",
+        setup_func=lambda: _oai_parse_01(),
+    ),
+    TestCase(
+        test_id="OAI-PARSE-02",
+        description="get_result: citation url and title preserved verbatim in Sources",
+        command=[],
+        test_type="fixture",
+        setup_func=lambda: _oai_parse_02(),
+    ),
+    TestCase(
+        test_id="OAI-PARSE-03",
+        description="get_result: reasoning summary extracts .text not str(obj)",
+        command=[],
+        test_type="fixture",
+        setup_func=lambda: _oai_parse_03(),
+    ),
+    TestCase(
+        test_id="OAI-PARSE-04",
+        description="get_result: duplicate citation URLs are deduplicated",
+        command=[],
+        test_type="fixture",
+        setup_func=lambda: _oai_parse_04(),
+    ),
+    TestCase(
+        test_id="OAI-PARSE-05",
+        description="get_result: no content returns clean string without [Debug] prefix",
+        command=[],
+        test_type="fixture",
+        setup_func=lambda: _oai_parse_05(),
+    ),
+    TestCase(
+        test_id="OAI-PARSE-06",
+        description="get_result: no annotations means no ## Sources section",
+        command=[],
+        test_type="fixture",
+        setup_func=lambda: _oai_parse_06(),
+    ),
+    TestCase(
+        test_id="OAI-PARSE-07",
+        description="get_result: verbose=True with no content — result string is clean",
+        command=[],
+        test_type="fixture",
+        setup_func=lambda: _oai_parse_07(),
+    ),
+    TestCase(
+        test_id="OAI-PARSE-08",
+        description="get_result: commentary phase is excluded when final answer exists",
+        command=[],
+        test_type="fixture",
+        setup_func=lambda: _oai_parse_08(),
     ),
 ]
 
