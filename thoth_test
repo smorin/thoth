@@ -1,7 +1,18 @@
 #!/usr/bin/env -S uv run --script
 # /// script
 # requires-python = ">=3.11"
-# dependencies = ["rich>=13.7", "click>=8.0", "pexpect>=4.8", "platformdirs>=4.0"]
+# dependencies = [
+#   "rich>=13.7",
+#   "click>=8.0",
+#   "pexpect>=4.8",
+#   "platformdirs>=4.0",
+#   "openai>=1.14.0",
+#   "httpx>=0.27.0",
+#   "aiofiles>=23.0",
+#   "tenacity>=8.0",
+#   "python-dateutil>=2.8",
+#   "prompt-toolkit>=3.0",
+# ]
 # ///
 """
 Thoth Test Suite - Comprehensive regression tests for Thoth CLI
@@ -15,6 +26,7 @@ black-box testing using subprocess and pexpect. Each test validates:
 - Interactive mode behavior
 """
 
+import asyncio
 import json
 import os
 import re
@@ -23,6 +35,7 @@ import signal
 import subprocess
 import sys
 import time
+import types
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -114,8 +127,8 @@ class TestCase:
     interactive_scenario: list[tuple] | None = None  # For pexpect tests: [(expect, send), ...]
     terminal_env: dict[str, str] | None = None  # Terminal-specific env vars
     is_interactive: bool = False  # Whether this is an interactive mode test
-    setup_func: Callable[[], None] | None = None  # Callable to run before test execution
-    teardown_func: Callable[[], None] | None = None  # Callable to run after test execution
+    setup_func: Callable[[], object] | None = None  # Callable to run before test execution
+    teardown_func: Callable[[], object] | None = None  # Callable to run after test execution
 
 
 # ============================================================================
@@ -338,6 +351,29 @@ def remove_test_checkpoint(operation_id: str):
     checkpoint_file = get_checkpoint_dir() / f"{operation_id}.json"
     if checkpoint_file.exists():
         checkpoint_file.unlink()
+
+
+def make_mock_openai_response(
+    status: str, error: str | None = None, metadata: dict | None = None
+) -> types.SimpleNamespace:
+    """Build a fake OpenAI Response-like object for fixture tests."""
+    obj = types.SimpleNamespace(status=status)
+    if error is not None:
+        obj.error = error
+    if metadata is not None:
+        obj.metadata = metadata
+    return obj
+
+
+def make_mock_openai_client(response_obj: object) -> types.SimpleNamespace:
+    """Build a fake AsyncOpenAI client whose responses.retrieve() returns response_obj."""
+
+    async def fake_retrieve(job_id: str) -> object:
+        return response_obj
+
+    client = types.SimpleNamespace()
+    client.responses = types.SimpleNamespace(retrieve=fake_retrieve)
+    return client
 
 
 def validate_test_environment(
@@ -665,6 +701,39 @@ class TestRunner:
                 exit_code=0,
                 skipped=True,
             )
+
+        # Handle fixture tests (in-process, no subprocess)
+        if test_case.test_type == "fixture":
+            if test_case.setup_func is None:
+                return TestResult(
+                    test_id=test_case.test_id,
+                    passed=False,
+                    duration=0,
+                    stdout="",
+                    stderr="fixture test has no setup_func",
+                    exit_code=1,
+                )
+            start = time.time()
+            try:
+                test_case.setup_func()
+                return TestResult(
+                    test_id=test_case.test_id,
+                    passed=True,
+                    duration=time.time() - start,
+                    stdout="",
+                    stderr="",
+                    exit_code=0,
+                )
+            except Exception as e:
+                return TestResult(
+                    test_id=test_case.test_id,
+                    passed=False,
+                    duration=time.time() - start,
+                    stdout="",
+                    stderr=str(e),
+                    exit_code=1,
+                    error_message=str(e),
+                )
 
         # Handle interactive tests
         if test_case.test_type == "interactive":
@@ -1102,6 +1171,541 @@ api_key = "{api_key}"
 
         # Exit with appropriate code
         sys.exit(0 if failed_tests == 0 else 1)
+
+
+# ============================================================================
+# BUG-01 Fixture Test Callables
+# ============================================================================
+
+
+def _thoth_src_path() -> str:
+    """Return the path to src/ so fixture tests can import thoth."""
+    return str(Path(__file__).resolve().parent / "src")
+
+
+def _oai_bg_01() -> None:
+    """queued status must not be treated as completed."""
+    import sys
+
+    if _thoth_src_path() not in sys.path:
+        sys.path.insert(0, _thoth_src_path())
+    from thoth.__main__ import OpenAIProvider
+
+    provider = OpenAIProvider(api_key="dummy")
+    provider.jobs["job-1"] = {"background": True, "response": None}
+    provider.client = make_mock_openai_client(make_mock_openai_response("queued"))
+    result = asyncio.run(provider.check_status("job-1"))
+    assert result["status"] != "completed", f"queued was treated as completed: {result}"
+    assert result["status"] == "queued", f"expected queued, got: {result}"
+
+
+def _oai_bg_02() -> None:
+    """failed status must propagate the error message."""
+    import sys
+
+    if _thoth_src_path() not in sys.path:
+        sys.path.insert(0, _thoth_src_path())
+    from thoth.__main__ import OpenAIProvider
+
+    provider = OpenAIProvider(api_key="dummy")
+    provider.jobs["job-1"] = {"background": True, "response": None}
+    provider.client = make_mock_openai_client(
+        make_mock_openai_response("failed", error="API quota exceeded")
+    )
+    result = asyncio.run(provider.check_status("job-1"))
+    assert result["status"] == "failed", f"expected failed, got: {result}"
+    assert "quota" in result.get("error", ""), f"error not propagated: {result}"
+
+
+def _oai_bg_03() -> None:
+    """incomplete status must map to failed with 'incomplete' in the error."""
+    import sys
+
+    if _thoth_src_path() not in sys.path:
+        sys.path.insert(0, _thoth_src_path())
+    from thoth.__main__ import OpenAIProvider
+
+    provider = OpenAIProvider(api_key="dummy")
+    provider.jobs["job-1"] = {"background": True, "response": None}
+    provider.client = make_mock_openai_client(make_mock_openai_response("incomplete"))
+    result = asyncio.run(provider.check_status("job-1"))
+    assert result["status"] == "failed", f"expected failed, got: {result}"
+    assert "incomplete" in result.get("error", "").lower(), f"'incomplete' not in error: {result}"
+
+
+def _oai_bg_04() -> None:
+    """cancelled status must map to cancelled."""
+    import sys
+
+    if _thoth_src_path() not in sys.path:
+        sys.path.insert(0, _thoth_src_path())
+    from thoth.__main__ import OpenAIProvider
+
+    provider = OpenAIProvider(api_key="dummy")
+    provider.jobs["job-1"] = {"background": True, "response": None}
+    provider.client = make_mock_openai_client(make_mock_openai_response("cancelled"))
+    result = asyncio.run(provider.check_status("job-1"))
+    assert result["status"] == "cancelled", f"expected cancelled, got: {result}"
+
+
+def _oai_bg_05() -> None:
+    """Response with no status attribute must not be treated as completed."""
+    import sys
+
+    if _thoth_src_path() not in sys.path:
+        sys.path.insert(0, _thoth_src_path())
+    from thoth.__main__ import OpenAIProvider
+
+    provider = OpenAIProvider(api_key="dummy")
+    provider.jobs["job-1"] = {"background": True, "response": None}
+    # SimpleNamespace with NO status attribute
+    provider.client = make_mock_openai_client(types.SimpleNamespace())
+    result = asyncio.run(provider.check_status("job-1"))
+    assert result["status"] != "completed", (
+        f"no-status-attr response was treated as completed: {result}"
+    )
+    assert result["status"] in ("error", "failed"), f"expected error or failed, got: {result}"
+
+
+def _oai_bg_06() -> None:
+    """Exception with stale cached (in_progress) response must not be treated as completed."""
+    import sys
+
+    if _thoth_src_path() not in sys.path:
+        sys.path.insert(0, _thoth_src_path())
+    from thoth.__main__ import OpenAIProvider
+
+    provider = OpenAIProvider(api_key="dummy")
+    stale = make_mock_openai_response("in_progress")
+    provider.jobs["job-1"] = {"background": True, "response": stale}
+
+    async def raise_error(job_id: str) -> object:
+        raise Exception("network error")
+
+    provider.client = types.SimpleNamespace(responses=types.SimpleNamespace(retrieve=raise_error))
+    result = asyncio.run(provider.check_status("job-1"))
+    assert result["status"] != "completed", (
+        f"stale cached response was treated as completed: {result}"
+    )
+    assert result["status"] in ("error", "failed"), f"expected error or failed, got: {result}"
+
+
+def _oai_bg_07() -> None:
+    """Exception with a genuinely completed cached response must still return completed."""
+    import sys
+
+    if _thoth_src_path() not in sys.path:
+        sys.path.insert(0, _thoth_src_path())
+    from thoth.__main__ import OpenAIProvider
+
+    provider = OpenAIProvider(api_key="dummy")
+    good_cache = make_mock_openai_response("completed")
+    provider.jobs["job-1"] = {"background": True, "response": good_cache}
+
+    async def raise_error(job_id: str) -> object:
+        raise Exception("network error")
+
+    provider.client = types.SimpleNamespace(responses=types.SimpleNamespace(retrieve=raise_error))
+    result = asyncio.run(provider.check_status("job-1"))
+    assert result["status"] == "completed", (
+        f"completed cache should survive network error: {result}"
+    )
+
+
+def _oai_bg_08() -> None:
+    """in_progress still maps to running (regression guard)."""
+    import sys
+
+    if _thoth_src_path() not in sys.path:
+        sys.path.insert(0, _thoth_src_path())
+    from thoth.__main__ import OpenAIProvider
+
+    provider = OpenAIProvider(api_key="dummy")
+    provider.jobs["job-1"] = {"background": True, "response": None}
+    provider.client = make_mock_openai_client(make_mock_openai_response("in_progress"))
+    result = asyncio.run(provider.check_status("job-1"))
+    assert result["status"] == "running", f"expected running, got: {result}"
+    assert result.get("progress") == 0.5, f"expected progress=0.5, got: {result}"
+
+
+def _make_polling_stubs() -> tuple:
+    """Return (config_stub, checkpoint_stub, output_stub, mode_config) for polling tests."""
+
+    async def _noop_save(op: object) -> None:
+        pass
+
+    async def _stub_save_result(
+        op: object, provider: str, content: str, output_dir: object, **kw: object
+    ) -> Path:
+        return Path("/tmp/mock_result.md")
+
+    config_stub = types.SimpleNamespace(data={"execution": {"poll_interval": 0.01, "max_wait": 1}})
+    checkpoint_stub = types.SimpleNamespace(save=_noop_save)
+    output_stub = types.SimpleNamespace(save_result=_stub_save_result)
+    mode_config: dict = {"system_prompt": ""}
+    return config_stub, checkpoint_stub, output_stub, mode_config
+
+
+def _oai_bg_09() -> None:
+    """Polling loop: queued status does not exit prematurely — result must be retrieved."""
+    import sys
+
+    if _thoth_src_path() not in sys.path:
+        sys.path.insert(0, _thoth_src_path())
+    from datetime import datetime
+
+    from thoth.__main__ import OperationStatus, _execute_research
+
+    config_stub, checkpoint_stub, output_stub, mode_config = _make_polling_stubs()
+
+    class _MockSeqProvider:
+        model = "mock"
+        _calls = 0
+
+        async def submit(
+            self, prompt: str, mode: str, system_prompt: str, verbose: bool = False
+        ) -> str:
+            return "job-1"
+
+        async def check_status(self, job_id: str) -> dict:
+            self._calls += 1
+            if self._calls <= 1:
+                return {"status": "queued", "progress": 0.0}
+            return {"status": "completed", "progress": 1.0}
+
+        async def get_result(self, job_id: str) -> str:
+            return "mock result content"
+
+    operation = OperationStatus(
+        id="test-bg-09",
+        prompt="test",
+        mode="default",
+        status="queued",
+        created_at=datetime.now(),
+        updated_at=datetime.now(),
+    )
+    asyncio.run(
+        _execute_research(
+            operation=operation,
+            checkpoint_manager=checkpoint_stub,
+            output_manager=output_stub,
+            config=config_stub,
+            mode_config=mode_config,
+            providers={"mock": _MockSeqProvider()},
+            quiet=True,
+            verbose=False,
+            output_dir=None,
+            combined=False,
+            project=None,
+            mode="default",
+            prompt="test",
+        )
+    )
+    assert len(operation.output_paths) > 0, (
+        f"queued caused premature loop exit — result never retrieved: {operation.output_paths}"
+    )
+
+
+def _oai_bg_10() -> None:
+    """Polling loop: failed provider status transitions operation to failed."""
+    import sys
+
+    if _thoth_src_path() not in sys.path:
+        sys.path.insert(0, _thoth_src_path())
+    from datetime import datetime
+
+    from thoth.__main__ import OperationStatus, _execute_research
+
+    config_stub, checkpoint_stub, output_stub, mode_config = _make_polling_stubs()
+
+    class _MockSeqProvider:
+        model = "mock"
+        _calls = 0
+
+        async def submit(
+            self, prompt: str, mode: str, system_prompt: str, verbose: bool = False
+        ) -> str:
+            return "job-1"
+
+        async def check_status(self, job_id: str) -> dict:
+            self._calls += 1
+            if self._calls == 1:
+                return {"status": "running", "progress": 0.3}
+            return {"status": "failed", "error": "API quota exceeded"}
+
+        async def get_result(self, job_id: str) -> str:
+            return ""
+
+    operation = OperationStatus(
+        id="test-bg-10",
+        prompt="test",
+        mode="default",
+        status="queued",
+        created_at=datetime.now(),
+        updated_at=datetime.now(),
+    )
+    asyncio.run(
+        _execute_research(
+            operation=operation,
+            checkpoint_manager=checkpoint_stub,
+            output_manager=output_stub,
+            config=config_stub,
+            mode_config=mode_config,
+            providers={"mock": _MockSeqProvider()},
+            quiet=True,
+            verbose=False,
+            output_dir=None,
+            combined=False,
+            project=None,
+            mode="default",
+            prompt="test",
+        )
+    )
+    assert operation.status == "failed", (
+        f"failed provider should set operation to failed, got: {operation.status}"
+    )
+
+
+def _oai_bg_11() -> None:
+    """Polling loop: cancelled provider status transitions operation to cancelled."""
+    import sys
+
+    if _thoth_src_path() not in sys.path:
+        sys.path.insert(0, _thoth_src_path())
+    from datetime import datetime
+
+    from thoth.__main__ import OperationStatus, _execute_research
+
+    config_stub, checkpoint_stub, output_stub, mode_config = _make_polling_stubs()
+
+    class _MockSeqProvider:
+        model = "mock"
+
+        async def submit(
+            self, prompt: str, mode: str, system_prompt: str, verbose: bool = False
+        ) -> str:
+            return "job-1"
+
+        async def check_status(self, job_id: str) -> dict:
+            return {"status": "cancelled", "error": "Response was cancelled"}
+
+        async def get_result(self, job_id: str) -> str:
+            return ""
+
+    operation = OperationStatus(
+        id="test-bg-11",
+        prompt="test",
+        mode="default",
+        status="queued",
+        created_at=datetime.now(),
+        updated_at=datetime.now(),
+    )
+    asyncio.run(
+        _execute_research(
+            operation=operation,
+            checkpoint_manager=checkpoint_stub,
+            output_manager=output_stub,
+            config=config_stub,
+            mode_config=mode_config,
+            providers={"mock": _MockSeqProvider()},
+            quiet=True,
+            verbose=False,
+            output_dir=None,
+            combined=False,
+            project=None,
+            mode="default",
+            prompt="test",
+        )
+    )
+    assert operation.status == "cancelled", (
+        f"cancelled provider should set operation to cancelled, got: {operation.status}"
+    )
+    assert operation.providers["mock"]["status"] == "cancelled", (
+        f"provider status should remain cancelled, got: {operation.providers}"
+    )
+
+
+def _oai_bg_12() -> None:
+    """Polling loop: error provider status transitions operation to failed."""
+    import sys
+
+    if _thoth_src_path() not in sys.path:
+        sys.path.insert(0, _thoth_src_path())
+    from datetime import datetime
+
+    from thoth.__main__ import OperationStatus, _execute_research
+
+    config_stub, checkpoint_stub, output_stub, mode_config = _make_polling_stubs()
+
+    class _MockSeqProvider:
+        model = "mock"
+
+        async def submit(
+            self, prompt: str, mode: str, system_prompt: str, verbose: bool = False
+        ) -> str:
+            return "job-1"
+
+        async def check_status(self, job_id: str) -> dict:
+            return {"status": "error", "error": "network error"}
+
+        async def get_result(self, job_id: str) -> str:
+            return ""
+
+    operation = OperationStatus(
+        id="test-bg-12",
+        prompt="test",
+        mode="default",
+        status="queued",
+        created_at=datetime.now(),
+        updated_at=datetime.now(),
+    )
+    asyncio.run(
+        _execute_research(
+            operation=operation,
+            checkpoint_manager=checkpoint_stub,
+            output_manager=output_stub,
+            config=config_stub,
+            mode_config=mode_config,
+            providers={"mock": _MockSeqProvider()},
+            quiet=True,
+            verbose=False,
+            output_dir=None,
+            combined=False,
+            project=None,
+            mode="default",
+            prompt="test",
+        )
+    )
+    assert operation.status == "failed", (
+        f"error provider should set operation to failed, got: {operation.status}"
+    )
+    assert operation.providers["mock"]["status"] == "error", (
+        f"error provider should be normalized to error, got: {operation.providers}"
+    )
+
+
+def _oai_bg_13() -> None:
+    """Polling loop: not_found provider status normalizes to error and fails the operation."""
+    import sys
+
+    if _thoth_src_path() not in sys.path:
+        sys.path.insert(0, _thoth_src_path())
+    from datetime import datetime
+
+    from thoth.__main__ import OperationStatus, _execute_research
+
+    config_stub, checkpoint_stub, output_stub, mode_config = _make_polling_stubs()
+
+    class _MockSeqProvider:
+        model = "mock"
+
+        async def submit(
+            self, prompt: str, mode: str, system_prompt: str, verbose: bool = False
+        ) -> str:
+            return "job-1"
+
+        async def check_status(self, job_id: str) -> dict:
+            return {"status": "not_found", "error": "Job not found"}
+
+        async def get_result(self, job_id: str) -> str:
+            return ""
+
+    operation = OperationStatus(
+        id="test-bg-13",
+        prompt="test",
+        mode="default",
+        status="queued",
+        created_at=datetime.now(),
+        updated_at=datetime.now(),
+    )
+    asyncio.run(
+        _execute_research(
+            operation=operation,
+            checkpoint_manager=checkpoint_stub,
+            output_manager=output_stub,
+            config=config_stub,
+            mode_config=mode_config,
+            providers={"mock": _MockSeqProvider()},
+            quiet=True,
+            verbose=False,
+            output_dir=None,
+            combined=False,
+            project=None,
+            mode="default",
+            prompt="test",
+        )
+    )
+    assert operation.status == "failed", (
+        f"not_found provider should fail the operation, got: {operation.status}"
+    )
+    assert operation.providers["mock"]["status"] == "error", (
+        f"not_found should normalize to error, got: {operation.providers}"
+    )
+    assert "not found" in (operation.error or "").lower(), (
+        f"expected not_found details in error, got: {operation.error}"
+    )
+
+
+def _oai_bg_14() -> None:
+    """Polling loop: unknown provider status normalizes to error with raw state in the message."""
+    import sys
+
+    if _thoth_src_path() not in sys.path:
+        sys.path.insert(0, _thoth_src_path())
+    from datetime import datetime
+
+    from thoth.__main__ import OperationStatus, _execute_research
+
+    config_stub, checkpoint_stub, output_stub, mode_config = _make_polling_stubs()
+
+    class _MockSeqProvider:
+        model = "mock"
+
+        async def submit(
+            self, prompt: str, mode: str, system_prompt: str, verbose: bool = False
+        ) -> str:
+            return "job-1"
+
+        async def check_status(self, job_id: str) -> dict:
+            return {"status": "mystery_state", "error": "unexpected provider state"}
+
+        async def get_result(self, job_id: str) -> str:
+            return ""
+
+    operation = OperationStatus(
+        id="test-bg-14",
+        prompt="test",
+        mode="default",
+        status="queued",
+        created_at=datetime.now(),
+        updated_at=datetime.now(),
+    )
+    asyncio.run(
+        _execute_research(
+            operation=operation,
+            checkpoint_manager=checkpoint_stub,
+            output_manager=output_stub,
+            config=config_stub,
+            mode_config=mode_config,
+            providers={"mock": _MockSeqProvider()},
+            quiet=True,
+            verbose=False,
+            output_dir=None,
+            combined=False,
+            project=None,
+            mode="default",
+            prompt="test",
+        )
+    )
+    assert operation.status == "failed", (
+        f"unknown provider status should fail the operation, got: {operation.status}"
+    )
+    assert operation.providers["mock"]["status"] == "error", (
+        f"unknown status should normalize to error, got: {operation.providers}"
+    )
+    assert "mystery_state" in (operation.error or ""), (
+        f"expected raw unknown state in error, got: {operation.error}"
+    )
 
 
 # ============================================================================
@@ -2316,6 +2920,108 @@ all_tests = [
         expected_stdout_patterns=[r"Request timed out|Timeout|Connection error"],
         expected_exit_code=1,
         timeout=5,
+        provider="openai",
+    ),
+    # -------------------------------------------------------------------------
+    # BUG-01 Fixture Tests: OpenAIProvider.check_status() lifecycle correctness
+    # -------------------------------------------------------------------------
+    TestCase(
+        test_id="OAI-BG-01",
+        description="check_status: queued status is not treated as completed",
+        command=[],
+        test_type="fixture",
+        setup_func=lambda: _oai_bg_01(),
+    ),
+    TestCase(
+        test_id="OAI-BG-02",
+        description="check_status: failed status propagates error message",
+        command=[],
+        test_type="fixture",
+        setup_func=lambda: _oai_bg_02(),
+    ),
+    TestCase(
+        test_id="OAI-BG-03",
+        description="check_status: incomplete status maps to failed with descriptive error",
+        command=[],
+        test_type="fixture",
+        setup_func=lambda: _oai_bg_03(),
+    ),
+    TestCase(
+        test_id="OAI-BG-04",
+        description="check_status: cancelled status maps to cancelled",
+        command=[],
+        test_type="fixture",
+        setup_func=lambda: _oai_bg_04(),
+    ),
+    TestCase(
+        test_id="OAI-BG-05",
+        description="check_status: response with no status attribute is not treated as completed",
+        command=[],
+        test_type="fixture",
+        setup_func=lambda: _oai_bg_05(),
+    ),
+    TestCase(
+        test_id="OAI-BG-06",
+        description="check_status: exception with stale cached response is not treated as completed",
+        command=[],
+        test_type="fixture",
+        setup_func=lambda: _oai_bg_06(),
+    ),
+    TestCase(
+        test_id="OAI-BG-07",
+        description="check_status: exception with genuinely completed cached response stays completed",
+        command=[],
+        test_type="fixture",
+        setup_func=lambda: _oai_bg_07(),
+    ),
+    TestCase(
+        test_id="OAI-BG-08",
+        description="check_status: in_progress still maps to running (regression guard)",
+        command=[],
+        test_type="fixture",
+        setup_func=lambda: _oai_bg_08(),
+    ),
+    TestCase(
+        test_id="OAI-BG-09",
+        description="polling loop: queued status does not exit prematurely",
+        command=[],
+        test_type="fixture",
+        setup_func=lambda: _oai_bg_09(),
+    ),
+    TestCase(
+        test_id="OAI-BG-10",
+        description="polling loop: failed provider transitions operation to failed",
+        command=[],
+        test_type="fixture",
+        setup_func=lambda: _oai_bg_10(),
+    ),
+    TestCase(
+        test_id="OAI-BG-11",
+        description="polling loop: cancelled provider transitions operation to cancelled",
+        command=[],
+        test_type="fixture",
+        setup_func=lambda: _oai_bg_11(),
+    ),
+    TestCase(
+        test_id="OAI-BG-12",
+        description="polling loop: error provider transitions operation to failed",
+        command=[],
+        test_type="fixture",
+        setup_func=lambda: _oai_bg_12(),
+    ),
+    TestCase(
+        test_id="OAI-BG-13",
+        description="polling loop: not_found provider status normalizes to error",
+        command=[],
+        test_type="fixture",
+        setup_func=lambda: _oai_bg_13(),
+    ),
+    TestCase(
+        test_id="OAI-BG-14",
+        description="polling loop: unknown provider status normalizes to error with raw state",
+        command=[],
+        test_type="fixture",
+        setup_func=lambda: _oai_bg_14(),
     ),
 ]
 
