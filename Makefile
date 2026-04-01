@@ -18,7 +18,7 @@ DIM := \033[2m
 ITALIC := \033[3m
 UNDERLINE := \033[4m
 
-.PHONY: help install dev test lint format typecheck check fix clean run test-lint test-format test-typecheck test-check test-fix lint-all format-all check-all fix-all install-uv install-uv-force set-path check-uv init smoke-test venv venv-install venv-sync venv-clean build publish-test publish install-lefthook
+.PHONY: help install dev test test-skip-interactive update-snapshots lint format typecheck check fix clean run test-lint test-format test-typecheck test-check test-fix lint-all format-all check-all fix-all install-uv install-uv-force set-path check-uv init smoke-test venv venv-install venv-sync venv-clean build publish-test publish install-lefthook bump changelog release
 
 # Default target
 help: ## Show this help message
@@ -69,6 +69,16 @@ dev: ## Show thoth help (development mode)
 # Run tests
 test: ## Run test suite
 	@./thoth_test -r
+
+# Run tests skipping interactive (pexpect) tests — fast, CI-safe
+test-skip-interactive: ## Run test suite skipping interactive mode tests
+	@./thoth_test -r --provider mock --skip-interactive
+
+# Update snapshot files
+update-snapshots: ## Regenerate pytest snapshot files (pytest-textual-snapshot)
+	@echo "Updating snapshots..."
+	@uv run pytest --snapshot-update
+	@echo "✓ Snapshots updated"
 
 # Lint main package
 lint: ## Lint src/thoth/ package
@@ -195,6 +205,37 @@ publish: build ## Publish to PyPI (production)
 	@echo "$(BOLD)Publishing to PyPI...$(NC)"
 	@uv publish --trusted-publishing always
 	@echo "$(GREEN)✓ Published to PyPI$(NC)"
+
+# Bump version
+bump: ## Bump version: make bump TYPE=patch|minor|major
+	@if [ -z "$(TYPE)" ]; then \
+		echo "$(RED)Error: TYPE is required$(NC)"; \
+		echo "Usage: make bump TYPE=patch|minor|major"; \
+		exit 1; \
+	fi
+	@echo "$(BOLD)Bumping $(TYPE) version...$(NC)"
+	@uvx bump-my-version bump $(TYPE)
+	@echo "$(GREEN)✓ Version bumped ($(TYPE))$(NC)"
+	@echo "New version: $$(grep '^version' pyproject.toml | head -1 | cut -d'\"' -f2)"
+
+# Generate changelog from git history
+changelog: ## Generate CHANGELOG.md from git history (git-cliff)
+	@echo "$(BOLD)Generating changelog...$(NC)"
+	@uvx git-cliff -o CHANGELOG.md
+	@echo "$(GREEN)✓ CHANGELOG.md updated$(NC)"
+
+# Full release: bump + changelog
+release: ## Full release: bump version, update changelog — make release TYPE=patch|minor|major
+	@if [ -z "$(TYPE)" ]; then \
+		echo "$(RED)Error: TYPE is required$(NC)"; \
+		echo "Usage: make release TYPE=patch|minor|major"; \
+		exit 1; \
+	fi
+	@$(MAKE) bump TYPE=$(TYPE)
+	@$(MAKE) changelog
+	@git add CHANGELOG.md pyproject.toml
+	@git commit --amend --no-edit
+	@echo "$(GREEN)✓ Release complete$(NC)"
 
 
 # UV INSTALLATION TARGETS

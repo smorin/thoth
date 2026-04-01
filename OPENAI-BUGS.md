@@ -23,7 +23,7 @@ This document tracks defects and near-term OpenAI provider improvements discover
 
 ### BUG-01 Background status handling is incorrect
 
-- `Status`: Open
+- `Status`: Fixed
 - `Impact`: High
 - `Type`: Reliability, Bug Fix, Research Update
 - `Summary`: The provider does not map the documented background response lifecycle exactly. `failed`, `incomplete`, and `cancelled` are not handled explicitly, and unexpected retrieve behavior can be treated as success instead of a terminal non-success state.
@@ -56,11 +56,11 @@ This should be fixed first. It is a correctness issue, not just a polish issue, 
 
 **Checklist**
 
-- [ ] Reproduce `queued`, `failed`, `incomplete`, and `cancelled` response states with mocked responses
-- [ ] Stop mapping unknown retrieve states to successful completion
-- [ ] Stop treating retrieve exceptions as successful completion unless a completed cached response already exists
-- [ ] Propagate terminal failure details into operation state and CLI output
-- [ ] Add regression coverage for every documented terminal state
+- [x] Reproduce `queued`, `failed`, `incomplete`, and `cancelled` response states with mocked responses
+- [x] Stop mapping unknown retrieve states to successful completion
+- [x] Stop treating retrieve exceptions as successful completion unless a completed cached response already exists
+- [x] Propagate terminal failure details into operation state and CLI output
+- [x] Add regression coverage for every documented terminal state
 
 **Fix plan**
 

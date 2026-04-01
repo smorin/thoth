@@ -61,6 +61,10 @@ pre-commit:
       glob: "*.py"
       run: uv run ty check src/
 
+    bandit-security:
+      glob: "*.py"
+      run: uvx bandit -r src/thoth/ -ll -q
+
     codespell:
       glob: "*.{py,md}"
       run: uvx codespell --skip=".git,.venv,htmlcov,uv.lock,requirements.txt" --ignore-words-list="thoth,perplexity,sonar,pplx,openai" {staged_files}
