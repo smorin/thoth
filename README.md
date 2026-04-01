@@ -480,13 +480,44 @@ make run         # Run example research prompt
 ### Running Tests
 
 ```bash
-# Test with mock provider (no API keys needed)
+# Quick manual smoke check of the CLI itself (not the regression suite)
 ./thoth "test prompt" --provider mock
+```
+
+Use `thoth_test` for the actual regression suite. It mixes provider-agnostic CLI tests, mock-provider runs, interactive `pexpect` coverage, and provider-specific tests that only run when the needed API keys are present.
+
+| Command | What it runs | When to use it |
+|------|---------|---------|
+| `make test` | Full `thoth_test` suite (`./thoth_test -r`) | Local full validation before merging |
+| `./thoth_test -r` | All available tests for the current environment | Default comprehensive test run |
+| `make test-skip-interactive` | Mock + provider-agnostic tests, skipping interactive `pexpect` cases | Fast CI-safe pass or non-TTY environments |
+| `./thoth_test -r --interactive` | Interactive-only `pexpect` tests (`INT-*`) | Debugging terminal UI and interactive mode |
+| `./thoth_test -r --provider mock` | Provider-agnostic tests plus mock-provider coverage | Fastest broad regression run with no real API keys |
+| `./thoth_test -r --provider openai` | Provider-agnostic tests plus OpenAI-specific cases | Validating OpenAI integration with a real key |
+| `./thoth_test -r --all-providers` | Every provider test the suite knows about | Full provider matrix validation |
+
+`thoth_test -r` behaves like this:
+- Always runs provider-agnostic tests.
+- Always runs mock-provider tests because the suite auto-generates a mock key.
+- Runs interactive tests unless you pass `--skip-interactive`.
+- Skips OpenAI and Perplexity tests when their API keys are not set.
+
+Useful commands:
+
+```bash
+# Full suite with whatever providers are available in your environment
+./thoth_test -r
 
 # Run tests skipping interactive (pexpect) tests — fast, CI-safe
 ./thoth_test -r --provider mock --skip-interactive
 # or equivalently
 make test-skip-interactive
+
+# Run interactive tests only
+./thoth_test -r --interactive
+
+# Run the broad no-API-key path most contributors use
+./thoth_test -r --provider mock
 
 # Run OpenAI provider tests (requires API key)
 ./thoth_test -r --provider openai -t M8T
@@ -496,6 +527,19 @@ make test-skip-interactive
 
 # Run specific test pattern
 ./thoth_test -r -t "async" -v
+
+# Save stdout/stderr and metadata for each test under test_outputs/
+./thoth_test -r --provider mock --save-output
+```
+
+Verification workflow used in this repo:
+
+```bash
+make check
+make fix
+./thoth_test -r
+make test-check
+make test-fix
 ```
 
 ## Environment Variables
