@@ -39,7 +39,7 @@ platformdirs==4.3.8
 prompt-toolkit==3.0.51
 pydantic==2.11.7
     # via openai
-pydantic-core==2.33.2
+pydantic-core==2.45.0
     # via pydantic
 pygments==2.19.2
     # via rich
