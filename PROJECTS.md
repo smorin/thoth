@@ -1,8 +1,34 @@
+## [x] Project P03: Fix BUG-03 OpenAI Poll Interval Scheduling (v2.5.1)
+**Goal**: Make the background polling loop respect the configured poll cadence, including bounded jitter and sub-second intervals, while keeping the progress countdown aligned with the next real network poll.
+
+**Out of Scope**
+- BUG-02 (citation parsing), GAP-01 through GAP-05
+
+### Tests & Tasks
+- [x] [P03-TS01] Add virtual-time fixture tests for jittered and sub-second poll intervals
+- [x] [P03-T01] Normalize poll interval math so jitter never truncates a 2s cadence into a 1s poll
+- [x] [P03-T02] Schedule polling with absolute deadlines instead of a fixed 1s sleep cap
+- [x] [P03-T03] Keep the progress countdown aligned with the next scheduled poll
+- [x] [P03-TS02] Keep a mock-provider CLI regression for the end-to-end fixed polling loop
+- [x] [P03-T04] Update OPENAI-BUGS.md and PROJECTS.md
+
+### Automated Verification
+- `make check` passes
+- `./thoth_test -r -t BUG03 --skip-interactive` → 3/3 pass
+- `./thoth_test -r -t OAI-BG --skip-interactive` → 14/14 pass
+
+### Regression Test Status
+- [x] BUG03-01 verifies -10% jitter still polls at 1.8s, not 1.0s
+- [x] BUG03-02 verifies a 0.25s poll interval is honored exactly
+- [x] BUG03-03 verifies the CLI still completes a mock-provider research run end to end
+
+---
+
 ## [x] Project P02: Fix BUG-01 OpenAI Background Status Handling (v2.5.0)
 **Goal**: Correctly handle all documented OpenAI Responses API background lifecycle states (`incomplete`, `cancelled`, `queued`, no-status-attr, stale-cache) so the CLI never silently misreports terminal failure states as success.
 
 **Out of Scope**
-- BUG-02 (citation parsing), BUG-03 (poll interval), GAP-01 through GAP-05
+- BUG-02 (citation parsing), GAP-01 through GAP-05
 
 ### Tests & Tasks
 - [x] [P02-T01] Add `"fixture"` test_type dispatch + helpers to `thoth_test`
@@ -19,6 +45,32 @@
 
 ### Regression Test Status
 - [x] All 14 OAI-BG fixture tests pass
+
+---
+
+## [x] Project P04: GAP-01 — max_tool_calls safeguard and tool-selection config (v2.6.0)
+**Goal**: Expose `max_tool_calls` and `code_interpreter` as optional OpenAI provider config knobs so users can bound cost/latency and disable the code interpreter for prompt types that don't need it. Values must reach the Responses API request payload.
+
+**Out of Scope**
+- GAP-02 (file_search / MCP tools), GAP-03 (model aliases), GAP-04 (SDK floor), GAP-05 (fixture gaps)
+
+### Tests & Tasks
+- [x] [P04-TS01] Fixture test: `max_tool_calls` set in provider config → value present in request payload
+- [x] [P04-TS02] Fixture test: `code_interpreter = false` in provider config → `code_interpreter` absent from tools array
+- [x] [P04-TS03] Fixture test: no config keys → request has no `max_tool_calls` key and `code_interpreter` is included by default
+- [x] [P04-T01] Read `max_tool_calls` from `self.config` in `OpenAIProvider.submit()` and conditionally add to `request_params`
+- [x] [P04-T02] Read `code_interpreter` bool (default `True`) from `self.config` and conditionally include the tool in `tools` list
+- [x] [P04-T03] Update OPENAI-BUGS.md (GAP-01 status → Fixed) and PROJECTS.md
+
+### Automated Verification
+- `make check` passes
+- `./thoth_test -r -t GAP01 --skip-interactive` → 3/3 pass
+- `./thoth_test -r --provider mock --skip-interactive` → no regressions
+
+### Regression Test Status
+- [x] GAP01-01 verifies max_tool_calls reaches the request payload
+- [x] GAP01-02 verifies code_interpreter=False removes the tool
+- [x] GAP01-03 verifies default behavior (no max_tool_calls key, code_interpreter included)
 
 ---
 

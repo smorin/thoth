@@ -68,7 +68,7 @@ Update `OpenAIProvider.check_status()` to map the documented status values exact
 
 ### BUG-02 Final output parser drops citations and is schema-fragile
 
-- `Status`: Open
+- `Status`: Fixed
 - `Impact`: High
 - `Type`: Reliability, Bug Fix, Research Update
 - `Summary`: The current result parser extracts text loosely from `response.output`, but it does not preserve citations from `output_text.annotations`. It also stringifies reasoning summary objects and can fall back to debug dumps in user-facing output.
@@ -101,11 +101,11 @@ This should also be fixed in the first pass. Losing citations materially reduces
 
 **Checklist**
 
-- [ ] Parse the final `message` item using the documented `output_text` plus `annotations` shape
-- [ ] Preserve citation URLs and titles in saved output
-- [ ] Normalize reasoning summaries by extracting `.text` instead of stringifying whole objects
-- [ ] Remove or sharply limit debug-dump fallbacks in normal output paths
-- [ ] Add fixture-based tests for citations and reasoning summary extraction
+- [x] Parse the final `message` item using the documented `output_text` plus `annotations` shape
+- [x] Preserve citation URLs and titles in saved output
+- [x] Normalize reasoning summaries by extracting `.text` instead of stringifying whole objects
+- [x] Remove or sharply limit debug-dump fallbacks in normal output paths
+- [x] Add fixture-based tests for citations and reasoning summary extraction
 
 **Fix plan**
 
@@ -113,7 +113,7 @@ Refactor `get_result()` so it reads the final assistant report from the document
 
 ### BUG-03 Polling loop ignores configured poll interval and over-polls
 
-- `Status`: Open
+- `Status`: Closed
 - `Impact`: Medium
 - `Type`: Reliability, Bug Fix
 - `Summary`: The progress UI shows a configurable poll interval, but the loop sleeps in one-second increments and calls `check_status()` every pass. That means the CLI effectively polls once per second regardless of the configured interval.
@@ -121,9 +121,9 @@ Refactor `get_result()` so it reads the final assistant report from the document
 **Evidence**
 
 - Code evidence:
-  - [`src/thoth/__main__.py#L2801-L2805`](src/thoth/__main__.py#L2801-L2805)
-  - [`src/thoth/__main__.py#L2813-L2820`](src/thoth/__main__.py#L2813-L2820)
-  - [`src/thoth/__main__.py#L2856-L2859`](src/thoth/__main__.py#L2856-L2859)
+  - [`src/thoth/__main__.py#L2829-L2842`](src/thoth/__main__.py#L2829-L2842)
+  - [`src/thoth/__main__.py#L2848-L2854`](src/thoth/__main__.py#L2848-L2854)
+  - [`src/thoth/__main__.py#L2886-L2913`](src/thoth/__main__.py#L2886-L2913)
 - Research evidence:
   - [`research/openai-deep-research-api.v1.md#L298-L339`](research/openai-deep-research-api.v1.md#L298-L339)
 - Official docs:
@@ -146,11 +146,11 @@ This should be fixed with the Phase 1 bugs. It is less severe than the lifecycle
 
 **Checklist**
 
-- [ ] Reproduce current one-second polling behavior
-- [ ] Make sleep behavior match configured poll cadence
-- [ ] Add lightweight backoff or bounded jitter to reduce burstiness
-- [ ] Keep progress text in sync with actual poll timing
-- [ ] Add a non-live test for poll scheduling logic
+- [x] Reproduce current one-second polling behavior
+- [x] Make sleep behavior match configured poll cadence
+- [x] Add lightweight backoff or bounded jitter to reduce burstiness
+- [x] Keep progress text in sync with actual poll timing
+- [x] Add a non-live test for poll scheduling logic
 
 **Fix plan**
 
@@ -160,7 +160,7 @@ Change the polling loop to issue network status checks on the configured interva
 
 ### GAP-01 No `max_tool_calls` safeguard or tool-selection config
 
-- `Status`: Open
+- `Status`: Fixed
 - `Impact`: High
 - `Type`: Cost Control, Reliability, Research Update
 - `Summary`: The provider hardcodes tool selection for deep-research models and does not pass through `max_tool_calls`, even though the research packet identifies it as the primary control for bounding cost and latency.
@@ -194,10 +194,10 @@ This is not a confirmed bug, but it is a strong production gap and should be add
 
 **Checklist**
 
-- [ ] Add provider config support for `max_tool_calls`
-- [ ] Add config support for enabling or disabling `code_interpreter`
-- [ ] Document the default cost and latency tradeoff
-- [ ] Add tests proving config values reach the request payload
+- [x] Add provider config support for `max_tool_calls`
+- [x] Add config support for enabling or disabling `code_interpreter`
+- [x] Document the default cost and latency tradeoff
+- [x] Add tests proving config values reach the request payload
 
 **Fix plan**
 
@@ -205,7 +205,7 @@ Extend the provider configuration schema to support explicit tool configuration 
 
 ### GAP-02 No support for file search or MCP tool configuration
 
-- `Status`: Open
+- `Status`: Won't Fix
 - `Impact`: Medium
 - `Type`: Research Update, Feature Gap
 - `Summary`: The provider only hardcodes web search and code interpreter for deep-research models. It does not expose configuration for `file_search` or `mcp`, even though those are first-class documented deep-research data sources.
@@ -248,7 +248,7 @@ Add provider-level configuration for optional `file_search` and `mcp` tools, val
 
 ### GAP-03 Deep-research modes use rolling aliases instead of pinned snapshots
 
-- `Status`: Open
+- `Status`: By Design
 - `Impact`: Medium
 - `Type`: Versioning, Reliability, Research Update
 - `Summary`: Built-in modes use alias model names such as `o3-deep-research` and `o4-mini-deep-research`. The research packet recommends pinned dated snapshots for reproducibility in production-oriented integrations.
@@ -280,17 +280,29 @@ This should be documented and likely adopted for production-focused modes, but i
 
 **Checklist**
 
-- [ ] Decide whether defaults should pin to dated snapshots
-- [ ] Document alias versus pinned behavior
-- [ ] Add a regression note for future model upgrades
+- [x] Decide whether defaults should pin to dated snapshots
+- [x] Document alias versus pinned behavior
+- [x] Add a regression note for future model upgrades
 
-**Fix plan**
+**Policy decision**
 
-Pick a default policy for built-in modes. If production reproducibility matters most, change the mode defaults to pinned snapshots and leave aliases available as explicit overrides in config.
+Built-in modes intentionally use rolling alias strings (`o3-deep-research`, `o4-mini-deep-research`) so users always get OpenAI's latest snapshot without any maintenance. Users who require reproducibility can pin to a dated snapshot by overriding `model` in their `config.toml`:
+
+```toml
+[modes.deep_research]
+model = "o3-deep-research-2025-06-26"
+
+[modes.quick]
+model = "o4-mini-deep-research-2025-06-26"
+```
+
+When OpenAI ships a new snapshot, the alias rolls forward automatically for users who keep the default. Users on pinned snapshots must update their config deliberately — which is the intended behavior for reproducibility-sensitive workflows.
+
+**Regression note**: when a new dated snapshot ships, verify the new alias behavior against the existing fixture tests. If the response schema changes, the OAI-PARSE fixture tests will catch it.
 
 ### GAP-04 Declared OpenAI SDK minimum is too loose for modern async Responses behavior
 
-- `Status`: Open
+- `Status`: Fixed
 - `Impact`: Medium
 - `Type`: Reliability, Documentation, Dependency
 - `Summary`: The project currently declares `openai>=1.14.0`, while the research packet recommends using a recent SDK because older versions had async Responses issues. The lockfile is current, but published dependency metadata remains permissive.
@@ -322,9 +334,9 @@ This is a dependency and reliability gap that should be fixed, even if the repo 
 
 **Checklist**
 
-- [ ] Raise the declared package floor or add a runtime version guard
-- [ ] Explain why the floor differs from the lockfile version
-- [ ] Add a test or startup check for unsupported versions
+- [x] Raise the declared package floor — bumped to `openai>=2.0.0` in `pyproject.toml`
+- [x] Floor now matches lockfile version (both `2.x`), no divergence to explain
+- [x] Install-time enforcement via pip/uv is sufficient; no runtime check needed
 
 **Fix plan**
 
@@ -332,7 +344,7 @@ Choose a minimum OpenAI SDK version that is known to support stable async Respon
 
 ### GAP-05 OpenAI coverage lacks fixture-based parser and lifecycle tests
 
-- `Status`: Open
+- `Status`: Fixed
 - `Impact`: Medium
 - `Type`: Testing, Reliability
 - `Summary`: Existing OpenAI tests are primarily live black-box CLI tests. They do not deterministically cover documented response states, citation parsing, or response-shape handling without the live API.
@@ -364,10 +376,10 @@ This is an important testing gap and should be addressed alongside the Phase 1 f
 
 **Checklist**
 
-- [ ] Add non-live fixtures for successful deep-research responses
-- [ ] Add non-live fixtures for `failed`, `incomplete`, and `cancelled`
-- [ ] Add citation extraction assertions
-- [ ] Add polling and lifecycle assertions
+- [x] Non-live fixtures for successful deep-research responses — OAI-PARSE-01–08
+- [x] Non-live fixtures for `failed`, `incomplete`, `cancelled` — OAI-BG-02, 03, 04, 09–14
+- [x] Citation extraction assertions — OAI-PARSE-01, 02, 04, 06
+- [x] Polling and lifecycle assertions — OAI-BG-01–14
 
 **Fix plan**
 

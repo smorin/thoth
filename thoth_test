@@ -40,6 +40,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
+from typing import Any, cast
 from uuid import uuid4
 
 import click
@@ -185,6 +186,7 @@ def run_command(
         # Use Popen for more control over output capture
         process = subprocess.Popen(
             command,
+            stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
@@ -794,6 +796,11 @@ class TestRunner:
         if test_case.provider:
             api_key = self.test_api_keys.get(test_case.provider, "")
 
+            # Mock provider completes in ~0.1s, so keep polling tight for every
+            # non-interactive mock test regardless of how the API key is supplied.
+            if test_case.provider == "mock" and "THOTH_POLL_INTERVAL" not in test_env:
+                test_env["THOTH_POLL_INTERVAL"] = "1"
+
             if test_case.api_key_method == "env":
                 # Inject the appropriate API key in environment
                 if test_case.provider == "mock":
@@ -829,7 +836,7 @@ class TestRunner:
 
             elif test_case.api_key_method == "config":
                 # Create a temporary config file with API key
-                config_content = f"""version = "1.0"
+                config_content = f"""version = "2.0"
 
 [general]
 default_mode = "default"
@@ -839,7 +846,7 @@ base_output_dir = "./research-outputs"
 checkpoint_dir = "~/.thoth/checkpoints"
 
 [execution]
-poll_interval = 30
+poll_interval = 1
 max_wait = 30
 
 [output]
@@ -1925,6 +1932,293 @@ def _oai_parse_08() -> None:
     assert "https://final.example" in result, f"final citation missing: {result!r}"
     assert "https://commentary.example" not in result, (
         f"commentary citation leaked into result: {result!r}"
+    )
+
+
+# ============================================================================
+# BUG-03 Fixture Test Callables
+# ============================================================================
+
+
+def _bug03_01() -> None:
+    """BUG-03: Negative jitter must not truncate a 2s interval down to a 1s poll."""
+    import sys
+
+    if _thoth_src_path() not in sys.path:
+        sys.path.insert(0, _thoth_src_path())
+    from datetime import datetime
+
+    from thoth.__main__ import OperationStatus, _execute_research
+
+    class _FakeLoop:
+        def __init__(self) -> None:
+            self.now = 0.0
+
+        def time(self) -> float:
+            return self.now
+
+        def advance(self, seconds: float) -> None:
+            self.now += seconds
+
+    async def _fake_sleep(seconds: float) -> None:
+        fake_loop.advance(seconds)
+
+    class _MockSeqProvider:
+        model = "mock"
+
+        def __init__(self) -> None:
+            self.poll_times: list[float] = []
+
+        async def submit(
+            self, prompt: str, mode: str, system_prompt: str, verbose: bool = False
+        ) -> str:
+            return "job-1"
+
+        async def check_status(self, job_id: str) -> dict:
+            self.poll_times.append(fake_loop.time())
+            if len(self.poll_times) == 1:
+                return {"status": "running", "progress": 0.5}
+            return {"status": "completed", "progress": 1.0}
+
+        async def get_result(self, job_id: str, verbose: bool = False) -> str:
+            return "mock result content"
+
+    async def _noop_save(op: object) -> None:
+        pass
+
+    async def _stub_save_result(
+        op: object, provider: str, content: str, output_dir: object, **kw: object
+    ) -> Path:
+        return Path("/tmp/mock_result.md")
+
+    fake_loop = _FakeLoop()
+    provider = _MockSeqProvider()
+    config_stub = types.SimpleNamespace(data={"execution": {"poll_interval": 2.0, "max_wait": 1}})
+    checkpoint_stub = types.SimpleNamespace(save=_noop_save)
+    output_stub = types.SimpleNamespace(save_result=_stub_save_result)
+    operation = OperationStatus(
+        id="bug03-01",
+        prompt="test",
+        mode="default",
+        status="queued",
+        created_at=datetime.now(),
+        updated_at=datetime.now(),
+    )
+    asyncio_stub = types.SimpleNamespace(get_running_loop=lambda: fake_loop, sleep=_fake_sleep)
+    random_stub = types.SimpleNamespace(uniform=lambda _a, _b: -0.10)
+    original_asyncio = _execute_research.__globals__["asyncio"]
+    original_random = _execute_research.__globals__["random"]
+    try:
+        _execute_research.__globals__["asyncio"] = asyncio_stub
+        _execute_research.__globals__["random"] = random_stub
+        asyncio.run(
+            _execute_research(
+                operation=operation,
+                checkpoint_manager=cast(Any, checkpoint_stub),
+                output_manager=cast(Any, output_stub),
+                config=cast(Any, config_stub),
+                mode_config={"system_prompt": ""},
+                providers={"mock": provider},
+                quiet=True,
+                verbose=False,
+                output_dir=None,
+                combined=False,
+                project=None,
+                mode="default",
+                prompt="test",
+            )
+        )
+    finally:
+        _execute_research.__globals__["asyncio"] = original_asyncio
+        _execute_research.__globals__["random"] = original_random
+
+    assert provider.poll_times == [0.0, 1.8], (
+        f"expected polls at t=0.0s and t=1.8s with -10% jitter on a 2.0s base interval, "
+        f"got: {provider.poll_times}"
+    )
+
+
+def _bug03_02() -> None:
+    """BUG-03: Sub-second poll intervals must be honored instead of rounding up to 1s."""
+    import sys
+
+    if _thoth_src_path() not in sys.path:
+        sys.path.insert(0, _thoth_src_path())
+    from datetime import datetime
+
+    from thoth.__main__ import OperationStatus, _execute_research
+
+    class _FakeLoop:
+        def __init__(self) -> None:
+            self.now = 0.0
+
+        def time(self) -> float:
+            return self.now
+
+        def advance(self, seconds: float) -> None:
+            self.now += seconds
+
+    async def _fake_sleep(seconds: float) -> None:
+        fake_loop.advance(seconds)
+
+    class _MockSeqProvider:
+        model = "mock"
+
+        def __init__(self) -> None:
+            self.poll_times: list[float] = []
+
+        async def submit(
+            self, prompt: str, mode: str, system_prompt: str, verbose: bool = False
+        ) -> str:
+            return "job-1"
+
+        async def check_status(self, job_id: str) -> dict:
+            self.poll_times.append(fake_loop.time())
+            if len(self.poll_times) == 1:
+                return {"status": "running", "progress": 0.5}
+            return {"status": "completed", "progress": 1.0}
+
+        async def get_result(self, job_id: str, verbose: bool = False) -> str:
+            return "mock result content"
+
+    async def _noop_save(op: object) -> None:
+        pass
+
+    async def _stub_save_result(
+        op: object, provider: str, content: str, output_dir: object, **kw: object
+    ) -> Path:
+        return Path("/tmp/mock_result.md")
+
+    fake_loop = _FakeLoop()
+    provider = _MockSeqProvider()
+    config_stub = types.SimpleNamespace(data={"execution": {"poll_interval": 0.25, "max_wait": 1}})
+    checkpoint_stub = types.SimpleNamespace(save=_noop_save)
+    output_stub = types.SimpleNamespace(save_result=_stub_save_result)
+    operation = OperationStatus(
+        id="bug03-02",
+        prompt="test",
+        mode="default",
+        status="queued",
+        created_at=datetime.now(),
+        updated_at=datetime.now(),
+    )
+    asyncio_stub = types.SimpleNamespace(get_running_loop=lambda: fake_loop, sleep=_fake_sleep)
+    random_stub = types.SimpleNamespace(uniform=lambda _a, _b: 0.0)
+    original_asyncio = _execute_research.__globals__["asyncio"]
+    original_random = _execute_research.__globals__["random"]
+    try:
+        _execute_research.__globals__["asyncio"] = asyncio_stub
+        _execute_research.__globals__["random"] = random_stub
+        asyncio.run(
+            _execute_research(
+                operation=operation,
+                checkpoint_manager=cast(Any, checkpoint_stub),
+                output_manager=cast(Any, output_stub),
+                config=cast(Any, config_stub),
+                mode_config={"system_prompt": ""},
+                providers={"mock": provider},
+                quiet=True,
+                verbose=False,
+                output_dir=None,
+                combined=False,
+                project=None,
+                mode="default",
+                prompt="test",
+            )
+        )
+    finally:
+        _execute_research.__globals__["asyncio"] = original_asyncio
+        _execute_research.__globals__["random"] = original_random
+
+    assert provider.poll_times == [0.0, 0.25], (
+        "expected a 0.25s poll interval to be honored exactly in the scheduler, "
+        f"got: {provider.poll_times}"
+    )
+
+
+# ============================================================================
+# GAP-01 Fixture Test Callables
+# ============================================================================
+
+
+def _gap01_01() -> None:
+    """GAP-01: max_tool_calls from provider config reaches the Responses API request payload."""
+    import sys
+
+    if _thoth_src_path() not in sys.path:
+        sys.path.insert(0, _thoth_src_path())
+    from thoth.__main__ import OpenAIProvider
+
+    captured: dict = {}
+
+    async def fake_create(**kwargs: object) -> object:
+        captured.update(kwargs)
+        return types.SimpleNamespace(id="job-gap01-1")
+
+    provider = OpenAIProvider(
+        api_key="dummy", config={"model": "o3-deep-research", "max_tool_calls": 80}
+    )
+    provider.client = types.SimpleNamespace(responses=types.SimpleNamespace(create=fake_create))
+    asyncio.run(provider.submit("test prompt", mode="deep_research"))
+    assert "max_tool_calls" in captured, (
+        f"max_tool_calls missing from request payload: {list(captured.keys())}"
+    )
+    assert captured["max_tool_calls"] == 80, (
+        f"expected max_tool_calls=80, got {captured['max_tool_calls']!r}"
+    )
+
+
+def _gap01_02() -> None:
+    """GAP-01: code_interpreter=False in config excludes the tool from the request."""
+    import sys
+
+    if _thoth_src_path() not in sys.path:
+        sys.path.insert(0, _thoth_src_path())
+    from thoth.__main__ import OpenAIProvider
+
+    captured: dict = {}
+
+    async def fake_create(**kwargs: object) -> object:
+        captured.update(kwargs)
+        return types.SimpleNamespace(id="job-gap01-2")
+
+    provider = OpenAIProvider(
+        api_key="dummy", config={"model": "o3-deep-research", "code_interpreter": False}
+    )
+    provider.client = types.SimpleNamespace(responses=types.SimpleNamespace(create=fake_create))
+    asyncio.run(provider.submit("test prompt", mode="deep_research"))
+    tool_types = [t.get("type") for t in captured.get("tools", [])]
+    assert "code_interpreter" not in tool_types, (
+        f"code_interpreter should be absent when config sets it False, got tools: {tool_types}"
+    )
+    assert "web_search_preview" in tool_types, (
+        f"web_search_preview must still be present, got tools: {tool_types}"
+    )
+
+
+def _gap01_03() -> None:
+    """GAP-01: default config — no max_tool_calls key in payload, code_interpreter included."""
+    import sys
+
+    if _thoth_src_path() not in sys.path:
+        sys.path.insert(0, _thoth_src_path())
+    from thoth.__main__ import OpenAIProvider
+
+    captured: dict = {}
+
+    async def fake_create(**kwargs: object) -> object:
+        captured.update(kwargs)
+        return types.SimpleNamespace(id="job-gap01-3")
+
+    provider = OpenAIProvider(api_key="dummy", config={"model": "o3-deep-research"})
+    provider.client = types.SimpleNamespace(responses=types.SimpleNamespace(create=fake_create))
+    asyncio.run(provider.submit("test prompt", mode="deep_research"))
+    assert "max_tool_calls" not in captured, (
+        f"max_tool_calls should be absent when not configured, got: {captured.get('max_tool_calls')}"
+    )
+    tool_types = [t.get("type") for t in captured.get("tools", [])]
+    assert "code_interpreter" in tool_types, (
+        f"code_interpreter must be included by default, got tools: {tool_types}"
     )
 
 
@@ -3298,6 +3592,59 @@ all_tests = [
         command=[],
         test_type="fixture",
         setup_func=lambda: _oai_parse_08(),
+    ),
+    # ============================================================================
+    # Milestone 34: BUG-03 Poll Interval Tests
+    # ============================================================================
+    TestCase(
+        test_id="BUG03-01",
+        description="polling loop: negative jitter does not truncate a 2s interval into a 1s poll",
+        command=[],
+        test_type="fixture",
+        setup_func=lambda: _bug03_01(),
+    ),
+    TestCase(
+        test_id="BUG03-02",
+        description="polling loop: sub-second poll intervals are honored without a 1s floor",
+        command=[],
+        test_type="fixture",
+        setup_func=lambda: _bug03_02(),
+    ),
+    TestCase(
+        test_id="BUG03-03",
+        description="polling loop: mock provider research completes correctly with fixed poll loop",
+        command=[THOTH_EXECUTABLE, "test poll fix regression", "--provider", "mock"],
+        env={"THOTH_POLL_INTERVAL": "2"},
+        expected_stdout_patterns=[r"(?i)research completed|output saved"],
+        cleanup_files=["*_mock_*.md"],
+        expected_exit_code=0,
+        timeout=20,
+        provider="mock",
+        api_key_method="env",
+    ),
+    # ============================================================================
+    # GAP-01: max_tool_calls safeguard and tool-selection config
+    # ============================================================================
+    TestCase(
+        test_id="GAP01-01",
+        description="submit: max_tool_calls from provider config reaches request payload",
+        command=[],
+        test_type="fixture",
+        setup_func=lambda: _gap01_01(),
+    ),
+    TestCase(
+        test_id="GAP01-02",
+        description="submit: code_interpreter=False in config excludes tool from request",
+        command=[],
+        test_type="fixture",
+        setup_func=lambda: _gap01_02(),
+    ),
+    TestCase(
+        test_id="GAP01-03",
+        description="submit: default config — no max_tool_calls key, code_interpreter included",
+        command=[],
+        test_type="fixture",
+        setup_func=lambda: _gap01_03(),
     ),
 ]
 

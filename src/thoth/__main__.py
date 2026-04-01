@@ -27,7 +27,9 @@ SECTION 18: MAIN ENTRY POINT             - Application entry point
 
 import asyncio
 import json
+import math
 import os
+import random
 import re
 import shutil
 import signal
@@ -1871,10 +1873,11 @@ class OpenAIProvider(ResearchProvider):
             )
 
             # Configure tools based on model type
-            tools = []
+            tools: list[dict[str, Any]] = []
             if "deep-research" in self.model:
-                # Deep research models get full tool access
-                tools = [{"type": "web_search_preview"}, {"type": "code_interpreter"}]
+                tools = [{"type": "web_search_preview"}]
+                if self.config.get("code_interpreter", True):
+                    tools.append({"type": "code_interpreter"})
 
             # Determine if background mode should be used
             # Use background for deep-research models or if explicitly configured
@@ -1884,7 +1887,7 @@ class OpenAIProvider(ResearchProvider):
             temperature = self.config.get("temperature", 0.7)
 
             # Build request parameters
-            request_params = {
+            request_params: dict[str, Any] = {
                 "model": self.model,
                 "input": input_messages,
                 "reasoning": {"summary": "auto"},  # Enable reasoning summaries
@@ -1897,8 +1900,13 @@ class OpenAIProvider(ResearchProvider):
             if not self.model.startswith("o"):
                 request_params["temperature"] = temperature
 
+            # Apply max_tool_calls if configured — primary lever for cost and latency control
+            max_tool_calls = self.config.get("max_tool_calls")
+            if max_tool_calls is not None:
+                request_params["max_tool_calls"] = max_tool_calls
+
             # Use Responses API
-            response = await self.client.responses.create(**request_params)  # ty: ignore[no-matching-overload]
+            response = await self.client.responses.create(**request_params)
 
             # Store job information
             job_id = (
@@ -2756,6 +2764,23 @@ async def _execute_research(
 ):
     """Execute research with providers and track progress."""
     global _current_checkpoint_manager, _current_operation
+    poll_refresh_interval = 1.0
+    poll_jitter_ratio = 0.10
+    min_poll_interval = 0.1
+
+    def _normalize_poll_interval(value: Any) -> float:
+        return max(min_poll_interval, float(value))
+
+    def _compute_poll_interval(base_interval: float) -> float:
+        jitter_multiplier = 1.0 + random.uniform(-poll_jitter_ratio, poll_jitter_ratio)
+        return max(min_poll_interval, base_interval * jitter_multiplier)
+
+    def _next_poll_countdown(now: float, next_poll_at: float) -> int:
+        return max(0, math.ceil(next_poll_at - now))
+
+    def _next_poll_sleep(now: float, next_poll_at: float) -> float:
+        return max(0.0, min(poll_refresh_interval, next_poll_at - now))
+
     with Progress(
         SpinnerColumn(),
         TextColumn("[progress.description]{task.description}"),
@@ -2774,11 +2799,14 @@ async def _execute_research(
                 job_id = await provider_instance.submit(
                     prompt, mode, system_prompt, verbose=verbose
                 )
+                initial_next_poll = 0
                 jobs[provider_name] = {
                     "provider": provider_instance,
                     "job_id": job_id,
                     "task_id": progress.add_task(
-                        f"{provider_name.title()} Research", total=100, next_poll=30
+                        f"{provider_name.title()} Research",
+                        total=100,
+                        next_poll=initial_next_poll,
                     ),
                 }
                 operation.providers[provider_name] = {
@@ -2804,57 +2832,74 @@ async def _execute_research(
         # Poll for completion
         completed_providers: set[str] = set()  # done (success or failure)
         failed_providers: set[str] = set()  # terminal failures only
-        poll_interval = config.data["execution"]["poll_interval"]
+        base_poll_interval = _normalize_poll_interval(config.data["execution"]["poll_interval"])
         max_wait = config.data["execution"]["max_wait"] * 60  # Convert to seconds
         start_time = asyncio.get_running_loop().time()
+        effective_interval = base_poll_interval
+        next_poll_at = start_time  # prime: poll immediately on first tick
+        cached_statuses: dict[str, dict[str, Any]] = {}
 
         while len(completed_providers) < len(jobs):
+            now = asyncio.get_running_loop().time()
+            should_poll = now >= next_poll_at
+
+            if should_poll:
+                effective_interval = _compute_poll_interval(base_poll_interval)
+                next_poll_at = now + effective_interval
+
+                for provider_name, job_info in jobs.items():
+                    if provider_name in completed_providers:
+                        continue  # Already done, skip re-polling
+
+                    status = await job_info["provider"].check_status(job_info["job_id"])
+                    provider_status = status.get("status")
+
+                    if provider_status in ("running", "queued"):
+                        cached_statuses[provider_name] = status
+                    elif provider_status == "completed":
+                        progress.update(job_info["task_id"], completed=100, next_poll=0)
+                        completed_providers.add(provider_name)
+
+                        result_content = await job_info["provider"].get_result(
+                            job_info["job_id"], verbose=verbose
+                        )
+                        provider_model = getattr(job_info["provider"], "model", None)
+                        system_prompt = mode_config.get("system_prompt", "")
+                        output_path = await output_manager.save_result(
+                            operation,
+                            provider_name,
+                            result_content,
+                            output_dir,
+                            model=provider_model,
+                            system_prompt=system_prompt,
+                        )
+                        operation.output_paths[provider_name] = output_path
+                        operation.providers[provider_name]["status"] = "completed"
+                        await checkpoint_manager.save(operation)
+                    else:
+                        # Any non-running/queued/completed status is a terminal failure for
+                        # this provider. Log it and continue polling the remaining providers.
+                        error_msg = status.get("error", f"Provider returned {provider_status!r}")
+                        console.print(
+                            f"\n[yellow]⚠[/yellow] {provider_name.title()} provider failed: {error_msg}"
+                        )
+                        operation.providers[provider_name]["status"] = "failed"
+                        operation.providers[provider_name]["error"] = error_msg
+                        completed_providers.add(provider_name)
+                        failed_providers.add(provider_name)
+                        await checkpoint_manager.save(operation)
+
+            # Update progress display for still-running providers on every 1-second tick
             for provider_name, job_info in jobs.items():
                 if provider_name in completed_providers:
-                    continue  # Already done, skip re-polling
-
-                status = await job_info["provider"].check_status(job_info["job_id"])
-                provider_status = status.get("status")
-
-                if provider_status in ("running", "queued"):
-                    progress_pct = int(status.get("progress", 0) * 100)
-                    elapsed = asyncio.get_running_loop().time() - start_time
-                    next_poll = max(0, poll_interval - int(elapsed % poll_interval))
+                    continue
+                cached = cached_statuses.get(provider_name)
+                if cached is not None and cached.get("status") in ("running", "queued"):
+                    progress_pct = int(cached.get("progress", 0) * 100)
+                    next_poll = _next_poll_countdown(now, next_poll_at)
                     progress.update(
                         job_info["task_id"], completed=progress_pct, next_poll=next_poll
                     )
-                elif provider_status == "completed":
-                    progress.update(job_info["task_id"], completed=100, next_poll=0)
-                    completed_providers.add(provider_name)
-
-                    result_content = await job_info["provider"].get_result(
-                        job_info["job_id"], verbose=verbose
-                    )
-                    provider_model = getattr(job_info["provider"], "model", None)
-                    system_prompt = mode_config.get("system_prompt", "")
-                    output_path = await output_manager.save_result(
-                        operation,
-                        provider_name,
-                        result_content,
-                        output_dir,
-                        model=provider_model,
-                        system_prompt=system_prompt,
-                    )
-                    operation.output_paths[provider_name] = output_path
-                    operation.providers[provider_name]["status"] = "completed"
-                    await checkpoint_manager.save(operation)
-                else:
-                    # Any non-running/queued/completed status is a terminal failure for
-                    # this provider. Log it and continue polling the remaining providers.
-                    error_msg = status.get("error", f"Provider returned {provider_status!r}")
-                    console.print(
-                        f"\n[yellow]⚠[/yellow] {provider_name.title()} provider failed: {error_msg}"
-                    )
-                    operation.providers[provider_name]["status"] = "failed"
-                    operation.providers[provider_name]["error"] = error_msg
-                    completed_providers.add(provider_name)
-                    failed_providers.add(provider_name)
-                    await checkpoint_manager.save(operation)
 
             # Exit the loop immediately if every provider has finished this iteration.
             if len(completed_providers) >= len(jobs):
@@ -2871,7 +2916,7 @@ async def _execute_research(
                 await checkpoint_manager.save(operation)
                 return
 
-            await asyncio.sleep(min(poll_interval, 1))
+            await asyncio.sleep(_next_poll_sleep(asyncio.get_running_loop().time(), next_poll_at))
 
         # All providers are done. Fail the operation only when every provider failed.
         if len(failed_providers) == len(jobs):
