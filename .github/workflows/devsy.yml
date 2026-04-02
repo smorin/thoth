@@ -58,7 +58,7 @@ jobs:
 
       - name: Run Devsy Action
         id: devsy
-        uses: DevsyAI/devsy-action@main
+        uses: DevsyAI/devsy-action@647333be9516b55962fef09b0d27c96bf3749c3f  # main
         with:
           mode: ${{ inputs.mode }}
           pr_number: ${{ inputs.pr_number }}
