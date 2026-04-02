@@ -4300,7 +4300,7 @@ class InteractiveSession:
             )
 
             formatted_response = f"""📝 Clarification Suggestions{round_indicator}:
-            
+
 {clarification_text}
 
 ---

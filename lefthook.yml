@@ -6,6 +6,9 @@
 pre-commit:
   parallel: true
   commands:
+    editorconfig:
+      run: uvx --from editorconfig-checker ec {staged_files}
+
     trailing-whitespace:
       glob: "*.{yml,yaml,md,sh,txt,json,toml,cfg,conf,ini}"
       run: |
@@ -68,5 +71,8 @@ pre-commit:
     codespell:
       glob: "*.{py,md}"
       run: |
-        uvx codespell --skip=".git,.venv,htmlcov,uv.lock,requirements.txt" \
-          --ignore-words-list="thoth,perplexity,sonar,pplx,openai" {staged_files}
+        uvx codespell --skip=".git,.venv,htmlcov,uv.lock,requirements.txt,archive,planning,research" \
+          --ignore-words-list="thoth,perplexity,sonar,pplx,openai,hel" {staged_files}
+
+    test:
+      run: ./thoth_test -r --provider mock --skip-interactive

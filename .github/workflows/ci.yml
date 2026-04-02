@@ -51,6 +51,49 @@ jobs:
           bash <(curl -Ls https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash)
           ./actionlint -color
 
+  codespell:
+    name: Codespell
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Run codespell
+        run: >
+          uvx codespell
+          --skip=".git,.venv,htmlcov,uv.lock,requirements.txt,archive,planning,research"
+          --ignore-words-list="thoth,perplexity,sonar,pplx,openai,hel"
+          .
+
+  bandit:
+    name: Bandit Security Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v8.0.0
+      - name: Run bandit
+        run: uvx bandit -r src/ -ll
+
+  file-hygiene:
+    name: File Hygiene
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Run editorconfig-checker
+        run: uvx --from editorconfig-checker ec
+      - name: Check for large files
+        run: |
+          max_kb=500
+          failed=0
+          while IFS= read -r -d '' f; do
+            if [ -f "$f" ]; then
+              size=$(wc -c < "$f" | tr -d ' ')
+              if [ "$size" -gt $((max_kb * 1024)) ]; then
+                echo "::error file=$f::File is too large ($(( size / 1024 )) KB > ${max_kb} KB)"
+                failed=1
+              fi
+            fi
+          done < <(git ls-files -z)
+          exit $failed
+
   test:
     name: Test (Python ${{ matrix.python-version }} on ${{ matrix.os }})
     runs-on: ${{ matrix.os }}

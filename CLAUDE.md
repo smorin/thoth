@@ -58,11 +58,11 @@ Planning documents follow this versioning format:
 - **Other Documents**: `[name].vX.md` (e.g., `temp.v5.md`)
 
 ### Version Detection and Incrementing
-1. **Finding Latest Version**: 
+1. **Finding Latest Version**:
    - List files in `planning/` directory
    - Use regex pattern: `thoth\.(prd\.)?v([0-9]+)\.md`
    - Extract version numbers and find the highest
-   
+
 2. **Creating New Version**:
    - Increment the highest version number by 1
    - For PRDs: `thoth.prd.v[N+1].md`
@@ -92,9 +92,9 @@ When creating a new version:
 
 Never say in commits:
 
- 🤖 Generated with [Claude Code](https://claude.ai/code)          
+ 🤖 Generated with [Claude Code](https://claude.ai/code)
 
- or 
+ or
 
    Co-Authored-By: Claude <noreply@anthropic.com>
 
