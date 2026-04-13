@@ -49,7 +49,7 @@ The release stack is built entirely on [uv](https://docs.astral.sh/uv/) — no h
 | Package manager | `uv` | Dependency resolution, venv, lock file |
 | Build | `uv build` | Produces wheel (`.whl`) and source dist (`.tar.gz`) |
 | Publish | `uv publish` | Uploads to PyPI/TestPyPI via OIDC or token |
-| Task runner | `make` | Wraps uv commands for local convenience |
+| Task runner | `just` | Wraps uv commands for local convenience |
 | CI/CD | GitHub Actions | Automated test, lint, typecheck, publish |
 | Auth | OIDC trusted publishing | No stored API tokens — GitHub mints short-lived tokens |
 
@@ -62,7 +62,8 @@ The release stack is built entirely on [uv](https://docs.astral.sh/uv/) — no h
 | `uv.lock` | Locked dependency graph (committed to repo) |
 | `.github/workflows/ci.yml` | Runs tests, lint, typecheck on push/PR |
 | `.github/workflows/publish.yml` | Builds and publishes on `v*` tag push |
-| `Makefile` | Local task automation (`make build`, `make publish`) |
+| `justfile` | Local task automation (`just build`, `just publish`) |
+| `Makefile` | Environment dependency checks (`make check`) |
 | `CHANGELOG.md` | Release notes, one section per version |
 
 ---
@@ -161,7 +162,7 @@ Add a section at the top (below the `# Changelog` header):
 ### 3. Run all checks locally
 
 ```bash
-make check-all          # lint both src/thoth/ and thoth_test
+just check-all          # lint both src/thoth/ and thoth_test
 ./thoth_test -r --provider mock   # run full test suite
 ```
 
@@ -222,7 +223,7 @@ push/PR to main
     │       uv run ruff format --check src/thoth/
     │       uv run ruff check src/thoth/
     │
-    ├── typecheck (ubuntu-latest, continue-on-error)
+    ├── typecheck (ubuntu-latest)
     │       uv run ty check src/thoth/
     │
     ├── yamllint (ubuntu-latest)
@@ -236,7 +237,7 @@ push/PR to main
             ./thoth_test -r --provider mock
 ```
 
-Jobs run in parallel. The `test` matrix runs 6 combinations (2 OS × 3 Python versions). Typecheck is informational (`continue-on-error: true`) due to pre-existing type annotations in the codebase.
+Jobs run in parallel. The `test` matrix runs 6 combinations (2 OS × 3 Python versions). Typecheck is a required check — failures block the pipeline.
 
 ### `publish.yml` — Release Publishing
 
@@ -316,15 +317,15 @@ These commands are available for testing builds or publishing manually (e.g., fr
 
 ```bash
 # Build wheel + source distribution
-make build
+just build
 # Output: dist/thoth-2.6.0-py3-none-any.whl
 #         dist/thoth-2.6.0.tar.gz
 
 # Publish to TestPyPI (for validation)
-UV_PUBLISH_TOKEN=<your-testpypi-token> make publish-test
+UV_PUBLISH_TOKEN=<your-testpypi-token> just publish-test
 
 # Publish to PyPI
-UV_PUBLISH_TOKEN=<your-pypi-token> make publish
+UV_PUBLISH_TOKEN=<your-pypi-token> just publish
 ```
 
 To inspect a built distribution before publishing:

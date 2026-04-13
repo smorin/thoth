@@ -50,7 +50,7 @@ if ! uv lock --check 2>/dev/null; then
 fi
 if [ -n "$(git status --porcelain uv.lock)" ]; then
     git add uv.lock
-    git commit -m "chore: update uv.lock for v$VERSION"
+    git commit -- uv.lock -m "chore: update uv.lock for v$VERSION"
     echo "    Committed updated uv.lock"
 fi
 
@@ -79,14 +79,22 @@ if [ "$BRANCH" != "main" ]; then
 fi
 
 echo "==> Running quality checks (format, lint, typecheck, security, test)..."
-if ! just all; then
-    err "Quality checks failed — fix the issues above before releasing" \
-        "Run checks individually to isolate the failure:" \
-        "  just format     # auto-fix formatting" \
-        "  just lint       # auto-fix lint issues" \
-        "  just typecheck  # type errors" \
-        "  just security   # security issues" \
-        "  just test       # failing tests"
+if ! uv run ruff format --check src/thoth/; then
+    err "Format check failed — files need formatting" \
+        "Run 'just format' to auto-fix, then commit before releasing"
+fi
+if ! uv run ruff check src/thoth/; then
+    err "Lint check failed — lint issues found" \
+        "Run 'just lint' to auto-fix, then commit before releasing"
+fi
+if ! just typecheck; then
+    err "Typecheck failed — fix type errors before releasing"
+fi
+if ! just security; then
+    err "Security check failed — fix security issues before releasing"
+fi
+if ! just test; then
+    err "Tests failed — fix failing tests before releasing"
 fi
 
 echo "==> Generating changelog..."
@@ -100,7 +108,7 @@ fi
 # Auto-commit changelog if it changed
 if [ -n "$(git status --porcelain CHANGELOG.md)" ]; then
     git add CHANGELOG.md
-    git commit -m "chore(release): update CHANGELOG.md for v$VERSION"
+    git commit -- CHANGELOG.md -m "chore(release): update CHANGELOG.md for v$VERSION"
     echo "    Committed updated CHANGELOG.md"
 fi
 
