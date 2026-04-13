@@ -92,11 +92,16 @@ line-ending = "auto"
 
 [tool.bumpversion]
 current_version = "2.5.0"
-commit = true
-tag = true
+commit = false
+tag = false
 tag_name = "v{new_version}"
 
 [[tool.bumpversion.files]]
 filename = "pyproject.toml"
 search = 'version = "{current_version}"'
 replace = 'version = "{new_version}"'
+
+[[tool.bumpversion.files]]
+filename = "src/thoth/__init__.py"
+search = '__version__ = "{current_version}"'
+replace = '__version__ = "{new_version}"'

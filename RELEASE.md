@@ -34,7 +34,7 @@ The release stack is built entirely on [uv](https://docs.astral.sh/uv/) — no h
 │      │                                                   │
 │      ├── [publish-testpypi job]                          │
 │      │       uv publish --trusted-publishing always      │
-│      │       --index-url https://test.pypi.org/legacy/  │
+│      │       --publish-url https://test.pypi.org/legacy/ │
 │      │                                                   │
 │      └── [publish-pypi job]                              │
 │              uv publish --trusted-publishing always      │
@@ -253,7 +253,7 @@ push tag v*
                 └── publish-testpypi (environment: testpypi)
                         permissions: id-token: write
                         uv publish --trusted-publishing always
-                        --index-url https://test.pypi.org/legacy/
+                        --publish-url https://test.pypi.org/legacy/
                             │
                             └── publish-pypi (environment: pypi)
                                     permissions: id-token: write

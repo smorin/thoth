@@ -75,4 +75,5 @@ pre-commit:
           --ignore-words-list="thoth,perplexity,sonar,pplx,openai,hel" {staged_files}
 
     test:
+      glob: "*.py"
       run: ./thoth_test -r --provider mock --skip-interactive

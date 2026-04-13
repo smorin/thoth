@@ -12,10 +12,11 @@ jobs:
     name: Lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v6.0.2
       - uses: astral-sh/setup-uv@v8.0.0
         with:
           python-version: "3.11"
+          enable-cache: true
       - name: ruff format check
         run: uv run ruff format --check src/thoth/
       - name: ruff lint
@@ -25,10 +26,11 @@ jobs:
     name: Typecheck
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v6.0.2
       - uses: astral-sh/setup-uv@v8.0.0
         with:
           python-version: "3.11"
+          enable-cache: true
       - name: ty check
         run: uv run ty check src/thoth/
 
@@ -36,7 +38,7 @@ jobs:
     name: YAML lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v6.0.2
       - uses: astral-sh/setup-uv@v8.0.0
       - name: yamllint
         run: uvx yamllint -c .yamllint .
@@ -45,7 +47,7 @@ jobs:
     name: Actionlint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v6.0.2
       - name: actionlint
         run: |
           bash <(curl -Ls https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash)
@@ -55,7 +57,7 @@ jobs:
     name: Codespell
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v6.0.2
       - uses: astral-sh/setup-uv@v8.0.0
       - name: Run codespell
         run: >
@@ -68,7 +70,7 @@ jobs:
     name: Bandit Security Lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v6.0.2
       - uses: astral-sh/setup-uv@v8.0.0
       - name: Run bandit
         run: uvx bandit -r src/ -ll
@@ -77,7 +79,7 @@ jobs:
     name: File Hygiene
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v6.0.2
       - uses: astral-sh/setup-uv@v8.0.0
       - name: Run editorconfig-checker
         run: uvx --from editorconfig-checker ec
@@ -105,10 +107,11 @@ jobs:
         os: [ubuntu-latest, macos-latest]
         python-version: ["3.11", "3.12", "3.13"]
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v6.0.2
       - uses: astral-sh/setup-uv@v8.0.0
         with:
           python-version: ${{ matrix.python-version }}
+          enable-cache: true
       - name: Make scripts executable
         run: chmod +x thoth thoth_test
       - name: Run tests (mock provider only)

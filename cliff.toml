@@ -14,7 +14,7 @@ body = """
 {% for group, commits in commits | group_by(attribute="group") %}
 ### {{ group | striptags | trim | upper_first }}
 {% for commit in commits %}
-- {{ commit.message | upper_first }}\
+- {% if commit.breaking %}[**breaking**] {% endif %}{{ commit.message | upper_first }}\
 {% endfor %}
 {% endfor %}\n
 """
@@ -31,9 +31,12 @@ commit_parsers = [
   { message = "^perf", group = "Performance" },
   { message = "^refactor", group = "Refactoring" },
   { message = "^docs", group = "Documentation" },
+  { message = "^ci", group = "CI/CD" },
   { message = "^test", group = "Testing" },
-  { message = "^chore", group = "Chores" },
-  { message = "^ci", skip = true },
+  { message = "^chore\\(release\\)", skip = true },
+  { message = "^chore: bump version", skip = true },
+  { message = "^chore: update uv\\.lock for v", skip = true },
+  { message = "^chore", group = "Miscellaneous" },
 ]
 filter_commits = false
 tag_pattern = "v[0-9].*"
