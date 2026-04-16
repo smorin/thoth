@@ -34,7 +34,7 @@ clean:
 
 # Run all checks (format, lint, typecheck, security, test)
 [group: 'quality']
-all: format lint typecheck security test
+all: format lint typecheck security test test-vcr
 
 # Format src/thoth/ package
 [group: 'quality']
@@ -110,6 +110,11 @@ test:
 [group: 'testing']
 test-skip-interactive:
     ./thoth_test -r --provider mock --skip-interactive
+
+# Run VCR cassette replay tests
+[group: 'testing']
+test-vcr:
+    uv run pytest tests/test_vcr_openai.py -v
 
 # Regenerate pytest snapshot files
 [group: 'testing']
