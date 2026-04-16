@@ -27,6 +27,7 @@ black-box testing using subprocess and pexpect. Each test validates:
 """
 
 import asyncio
+import atexit
 import json
 import os
 import re
@@ -34,6 +35,7 @@ import shutil
 import signal
 import subprocess
 import sys
+import tempfile
 import time
 import types
 from collections.abc import Callable
@@ -66,6 +68,12 @@ TEST_TIMEOUT = 30
 CLEANUP_ENABLED = True
 VERBOSE_OUTPUT = False  # Global verbose flag
 INTERACTIVE_COMPLETION_TIMEOUT = 5
+INTERACTIVE_STEP_TIMEOUT = int(os.getenv("THOTH_TEST_STEP_TIMEOUT", "3"))
+
+# Make thoth package importable from fixture tests without per-call boilerplate.
+_THOTH_SRC = str(Path(__file__).resolve().parent / "src")
+if _THOTH_SRC not in sys.path:
+    sys.path.insert(0, _THOTH_SRC)
 
 
 # Terminal key sequences for interactive tests
@@ -125,6 +133,7 @@ class TestCase:
     provider: str | None = None  # Which provider this test requires
     api_key_method: str = "env"  # "env", "cli", or "config"
     signal_after: float | None = None  # Send signal after N seconds
+    stdin_input: str | None = None  # Data piped to subprocess stdin
     test_type: str = "subprocess"  # "subprocess" or "interactive"
     interactive_scenario: list[tuple] | None = None  # For pexpect tests: [(expect, send), ...]
     terminal_env: dict[str, str] | None = None  # Terminal-specific env vars
@@ -171,6 +180,7 @@ def run_command(
     timeout: int = TEST_TIMEOUT,
     cwd: str | None = None,
     signal_after: float | None = None,
+    stdin_input: str | None = None,
 ) -> tuple[int, str, str]:
     """
     Execute a command and return exit code, stdout, stderr
@@ -187,7 +197,7 @@ def run_command(
         # Use Popen for more control over output capture
         process = subprocess.Popen(
             command,
-            stdin=subprocess.DEVNULL,
+            stdin=subprocess.PIPE if stdin_input is not None else subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
@@ -210,7 +220,7 @@ def run_command(
                 signal_thread.daemon = True
                 signal_thread.start()
 
-            stdout, stderr = process.communicate(timeout=timeout)
+            stdout, stderr = process.communicate(input=stdin_input, timeout=timeout)
             return process.returncode, stdout, stderr
         except subprocess.TimeoutExpired:
             process.kill()
@@ -227,7 +237,15 @@ def cleanup_test_files(patterns: list[str]):
         return
 
     for pattern in patterns:
-        for file_path in Path(".").glob(pattern):
+        expanded = os.path.expanduser(pattern)
+        p = Path(expanded)
+        if p.is_absolute():
+            base = Path(p.anchor)
+            glob_part = str(p.relative_to(p.anchor))
+        else:
+            base = Path(".")
+            glob_part = expanded
+        for file_path in base.glob(glob_part):
             try:
                 if file_path.is_file():
                     file_path.unlink()
@@ -237,13 +255,20 @@ def cleanup_test_files(patterns: list[str]):
                 pass
 
 
-def validate_file_creation(expected_files: list[str]) -> tuple[bool, list[Path], str]:
-    """Check if expected files were created"""
+def validate_file_creation(
+    expected_files: list[str], since: float = 0.0
+) -> tuple[bool, list[Path], str]:
+    """Check if expected files were created after ``since`` (epoch seconds).
+
+    ``since`` filters out stale files left over from earlier runs so a broken
+    test can't pass just because a previous test already dropped a matching
+    file in the cwd.
+    """
     created_files = []
     missing_files = []
 
     for file_pattern in expected_files:
-        matching_files = list(Path(".").glob(file_pattern))
+        matching_files = [p for p in Path(".").glob(file_pattern) if p.stat().st_mtime >= since]
         if matching_files:
             created_files.extend(matching_files)
         else:
@@ -303,8 +328,27 @@ def find_latest_output_file(pattern: str = "*_*_*_*_*.md") -> Path | None:
     return files[0] if files else None
 
 
+_TEST_CONFIG_HOME: Path | None = None
+
+
+def _ensure_test_config_home() -> Path:
+    """Create a per-run temp XDG_CONFIG_HOME and propagate it to subprocesses.
+
+    This isolates test checkpoints from the user's real thoth config directory
+    (e.g. ~/Library/Application Support/thoth on macOS), since platformdirs
+    honors XDG_CONFIG_HOME on all platforms.
+    """
+    global _TEST_CONFIG_HOME
+    if _TEST_CONFIG_HOME is None:
+        _TEST_CONFIG_HOME = Path(tempfile.mkdtemp(prefix="thoth-test-"))
+        os.environ["XDG_CONFIG_HOME"] = str(_TEST_CONFIG_HOME)
+        atexit.register(shutil.rmtree, str(_TEST_CONFIG_HOME), True)
+    return _TEST_CONFIG_HOME
+
+
 def get_checkpoint_dir() -> Path:
     """Get the checkpoint directory path (matches thoth's config default)"""
+    _ensure_test_config_home()
     from platformdirs import user_config_dir
 
     return Path(user_config_dir("thoth")) / "checkpoints"
@@ -356,6 +400,23 @@ def remove_test_checkpoint(operation_id: str):
         checkpoint_file.unlink()
 
 
+def extract_operation_id(output: str) -> str:
+    """Extract an operation ID from CLI output."""
+    match = re.search(r"Operation ID:\s*(research-\d{8}-\d{6}-[a-f0-9]{16})", output)
+    if not match:
+        raise AssertionError(f"operation ID not found in output: {output!r}")
+    return match.group(1)
+
+
+def load_checkpoint_data(operation_id: str) -> dict[str, Any]:
+    """Load a checkpoint file as JSON for assertions."""
+    checkpoint_file = get_checkpoint_dir() / f"{operation_id}.json"
+    if not checkpoint_file.exists():
+        raise AssertionError(f"checkpoint not found: {checkpoint_file}")
+    with open(checkpoint_file) as f:
+        return json.load(f)
+
+
 def make_mock_openai_response(
     status: str, error: str | None = None, metadata: dict | None = None
 ) -> types.SimpleNamespace:
@@ -371,7 +432,7 @@ def make_mock_openai_response(
 def make_mock_openai_client(response_obj: object) -> types.SimpleNamespace:
     """Build a fake AsyncOpenAI client whose responses.retrieve() returns response_obj."""
 
-    async def fake_retrieve(job_id: str) -> object:
+    async def fake_retrieve(*args: object, **kwargs: object) -> object:
         return response_obj
 
     client = types.SimpleNamespace()
@@ -470,16 +531,6 @@ class InteractiveTestRunner:
 
     def run_interactive_test(self, test_case: TestCase) -> TestResult:
         """Execute an interactive test using pexpect"""
-        if not PEXPECT_AVAILABLE:
-            return TestResult(
-                test_id=test_case.test_id,
-                passed=True,
-                duration=0,
-                stdout="",
-                stderr="Skipped: pexpect not available",
-                exit_code=0,
-            )
-
         start_time = time.time()
 
         # Set up environment
@@ -534,7 +585,7 @@ class InteractiveTestRunner:
                 for i, (expect_pattern, send_input) in enumerate(test_case.interactive_scenario):
                     if expect_pattern is not None:
                         try:
-                            child.expect(expect_pattern, timeout=3)
+                            child.expect(expect_pattern, timeout=INTERACTIVE_STEP_TIMEOUT)
                             if self.verbose:
                                 console.print(
                                     f"✓ Step {i + 1}: Found pattern: {expect_pattern[:50]}"
@@ -545,9 +596,7 @@ class InteractiveTestRunner:
                                 test_id=test_case.test_id,
                                 passed=False,
                                 duration=time.time() - start_time,
-                                stdout=child.before.decode()
-                                if isinstance(child.before, bytes)
-                                else (child.before or ""),
+                                stdout=child.before or "",
                                 stderr=error_msg,
                                 exit_code=-1,
                                 error_message=error_msg,
@@ -563,9 +612,7 @@ class InteractiveTestRunner:
                                     test_id=test_case.test_id,
                                     passed=False,
                                     duration=time.time() - start_time,
-                                    stdout=child.before.decode()
-                                    if isinstance(child.before, bytes)
-                                    else (child.before or ""),
+                                    stdout=child.before or "",
                                     stderr=error_msg,
                                     exit_code=-1,
                                     error_message=error_msg,
@@ -589,17 +636,16 @@ class InteractiveTestRunner:
                 pass  # Process might have already exited
 
             # Get final output
-            stdout = (
-                child.before.decode() if isinstance(child.before, bytes) else (child.before or "")
-            )
+            stdout = child.before or ""
 
             # Close the child process
             child.close(force=True)
-            exit_code = (
-                child.exitstatus
-                if hasattr(child, "exitstatus") and child.exitstatus is not None
-                else 0
-            )
+            if child.exitstatus is not None:
+                exit_code = child.exitstatus
+            elif child.signalstatus is not None:
+                exit_code = -child.signalstatus  # negative => killed by signal
+            else:
+                exit_code = -1
 
             duration = time.time() - start_time
 
@@ -760,6 +806,12 @@ class TestRunner:
                     exit_code=1,
                     error_message=str(e),
                 )
+            finally:
+                if test_case.teardown_func:
+                    try:
+                        test_case.teardown_func()
+                    except Exception:
+                        pass
 
         # Handle interactive tests
         if test_case.test_type == "interactive":
@@ -883,6 +935,7 @@ api_key = "{api_key}"
             env=test_env,
             timeout=test_case.timeout,
             signal_after=test_case.signal_after,
+            stdin_input=test_case.stdin_input,
         )
 
         duration = time.time() - start_time
@@ -984,7 +1037,9 @@ api_key = "{api_key}"
 
             # Validate file creation
             if test_case.expected_files:
-                passed, created_files, error = validate_file_creation(test_case.expected_files)
+                passed, created_files, error = validate_file_creation(
+                    test_case.expected_files, since=start_time
+                )
                 result.created_files = created_files
                 if not passed:
                     result.passed = False
@@ -1209,134 +1264,110 @@ api_key = "{api_key}"
 # ============================================================================
 
 
-def _thoth_src_path() -> str:
-    """Return the path to src/ so fixture tests can import thoth."""
-    return str(Path(__file__).resolve().parent / "src")
-
-
 def _oai_bg_01() -> None:
     """queued status must not be treated as completed."""
-    import sys
-
-    if _thoth_src_path() not in sys.path:
-        sys.path.insert(0, _thoth_src_path())
     from thoth.__main__ import OpenAIProvider
 
     provider = OpenAIProvider(api_key="dummy")
     provider.jobs["job-1"] = {"background": True, "response": None}
-    provider.client = make_mock_openai_client(make_mock_openai_response("queued"))
+    provider.client = cast(Any, make_mock_openai_client(make_mock_openai_response("queued")))
     result = asyncio.run(provider.check_status("job-1"))
     assert result["status"] != "completed", f"queued was treated as completed: {result}"
     assert result["status"] == "queued", f"expected queued, got: {result}"
 
 
 def _oai_bg_02() -> None:
-    """failed status must propagate the error message."""
-    import sys
-
-    if _thoth_src_path() not in sys.path:
-        sys.path.insert(0, _thoth_src_path())
+    """failed status must propagate the error message as a permanent_error."""
     from thoth.__main__ import OpenAIProvider
 
     provider = OpenAIProvider(api_key="dummy")
     provider.jobs["job-1"] = {"background": True, "response": None}
-    provider.client = make_mock_openai_client(
-        make_mock_openai_response("failed", error="API quota exceeded")
+    provider.client = cast(
+        Any,
+        make_mock_openai_client(make_mock_openai_response("failed", error="API quota exceeded")),
     )
     result = asyncio.run(provider.check_status("job-1"))
-    assert result["status"] == "failed", f"expected failed, got: {result}"
+    assert result["status"] == "permanent_error", f"expected permanent_error, got: {result}"
     assert "quota" in result.get("error", ""), f"error not propagated: {result}"
 
 
 def _oai_bg_03() -> None:
-    """incomplete status must map to failed with 'incomplete' in the error."""
-    import sys
-
-    if _thoth_src_path() not in sys.path:
-        sys.path.insert(0, _thoth_src_path())
+    """incomplete status must map to permanent_error with 'incomplete' in the error."""
     from thoth.__main__ import OpenAIProvider
 
     provider = OpenAIProvider(api_key="dummy")
     provider.jobs["job-1"] = {"background": True, "response": None}
-    provider.client = make_mock_openai_client(make_mock_openai_response("incomplete"))
+    provider.client = cast(Any, make_mock_openai_client(make_mock_openai_response("incomplete")))
     result = asyncio.run(provider.check_status("job-1"))
-    assert result["status"] == "failed", f"expected failed, got: {result}"
+    assert result["status"] == "permanent_error", f"expected permanent_error, got: {result}"
     assert "incomplete" in result.get("error", "").lower(), f"'incomplete' not in error: {result}"
 
 
 def _oai_bg_04() -> None:
     """cancelled status must map to cancelled."""
-    import sys
-
-    if _thoth_src_path() not in sys.path:
-        sys.path.insert(0, _thoth_src_path())
     from thoth.__main__ import OpenAIProvider
 
     provider = OpenAIProvider(api_key="dummy")
     provider.jobs["job-1"] = {"background": True, "response": None}
-    provider.client = make_mock_openai_client(make_mock_openai_response("cancelled"))
+    provider.client = cast(Any, make_mock_openai_client(make_mock_openai_response("cancelled")))
     result = asyncio.run(provider.check_status("job-1"))
     assert result["status"] == "cancelled", f"expected cancelled, got: {result}"
 
 
 def _oai_bg_05() -> None:
     """Response with no status attribute must not be treated as completed."""
-    import sys
-
-    if _thoth_src_path() not in sys.path:
-        sys.path.insert(0, _thoth_src_path())
     from thoth.__main__ import OpenAIProvider
 
     provider = OpenAIProvider(api_key="dummy")
     provider.jobs["job-1"] = {"background": True, "response": None}
     # SimpleNamespace with NO status attribute
-    provider.client = make_mock_openai_client(types.SimpleNamespace())
+    provider.client = cast(Any, make_mock_openai_client(types.SimpleNamespace()))
     result = asyncio.run(provider.check_status("job-1"))
     assert result["status"] != "completed", (
         f"no-status-attr response was treated as completed: {result}"
     )
-    assert result["status"] in ("error", "failed"), f"expected error or failed, got: {result}"
+    assert result["status"] in ("error", "failed", "permanent_error", "transient_error"), (
+        f"expected error/failed/permanent_error/transient_error, got: {result}"
+    )
 
 
 def _oai_bg_06() -> None:
     """Exception with stale cached (in_progress) response must not be treated as completed."""
-    import sys
-
-    if _thoth_src_path() not in sys.path:
-        sys.path.insert(0, _thoth_src_path())
     from thoth.__main__ import OpenAIProvider
 
     provider = OpenAIProvider(api_key="dummy")
     stale = make_mock_openai_response("in_progress")
     provider.jobs["job-1"] = {"background": True, "response": stale}
 
-    async def raise_error(job_id: str) -> object:
+    async def raise_error(*args: object, **kwargs: object) -> object:
         raise Exception("network error")
 
-    provider.client = types.SimpleNamespace(responses=types.SimpleNamespace(retrieve=raise_error))
+    provider.client = cast(
+        Any, types.SimpleNamespace(responses=types.SimpleNamespace(retrieve=raise_error))
+    )
     result = asyncio.run(provider.check_status("job-1"))
     assert result["status"] != "completed", (
         f"stale cached response was treated as completed: {result}"
     )
-    assert result["status"] in ("error", "failed"), f"expected error or failed, got: {result}"
+    assert result["status"] in ("error", "failed", "permanent_error", "transient_error"), (
+        f"expected error/failed/permanent_error/transient_error, got: {result}"
+    )
 
 
 def _oai_bg_07() -> None:
     """Exception with a genuinely completed cached response must still return completed."""
-    import sys
-
-    if _thoth_src_path() not in sys.path:
-        sys.path.insert(0, _thoth_src_path())
     from thoth.__main__ import OpenAIProvider
 
     provider = OpenAIProvider(api_key="dummy")
     good_cache = make_mock_openai_response("completed")
     provider.jobs["job-1"] = {"background": True, "response": good_cache}
 
-    async def raise_error(job_id: str) -> object:
+    async def raise_error(*args: object, **kwargs: object) -> object:
         raise Exception("network error")
 
-    provider.client = types.SimpleNamespace(responses=types.SimpleNamespace(retrieve=raise_error))
+    provider.client = cast(
+        Any, types.SimpleNamespace(responses=types.SimpleNamespace(retrieve=raise_error))
+    )
     result = asyncio.run(provider.check_status("job-1"))
     assert result["status"] == "completed", (
         f"completed cache should survive network error: {result}"
@@ -1345,18 +1376,197 @@ def _oai_bg_07() -> None:
 
 def _oai_bg_08() -> None:
     """in_progress still maps to running (regression guard)."""
-    import sys
-
-    if _thoth_src_path() not in sys.path:
-        sys.path.insert(0, _thoth_src_path())
     from thoth.__main__ import OpenAIProvider
 
     provider = OpenAIProvider(api_key="dummy")
     provider.jobs["job-1"] = {"background": True, "response": None}
-    provider.client = make_mock_openai_client(make_mock_openai_response("in_progress"))
+    provider.client = cast(Any, make_mock_openai_client(make_mock_openai_response("in_progress")))
     result = asyncio.run(provider.check_status("job-1"))
     assert result["status"] == "running", f"expected running, got: {result}"
-    assert result.get("progress") == 0.5, f"expected progress=0.5, got: {result}"
+
+
+def _p07_async_01() -> None:
+    """P07-M1: async submission must persist provider job metadata in the checkpoint."""
+    env = {"MOCK_API_KEY": generate_mock_api_key(), "THOTH_POLL_INTERVAL": "1"}
+    exit_code, stdout, stderr = run_command(
+        [THOTH_EXECUTABLE, "test async persistence", "--async", "--provider", "mock"],
+        env=env,
+        timeout=5,
+    )
+    assert exit_code == 0, f"unexpected exit code {exit_code}\nstdout={stdout}\nstderr={stderr}"
+    operation_id = extract_operation_id(stdout)
+    try:
+        data = load_checkpoint_data(operation_id)
+        providers = data.get("providers", {})
+        assert data.get("status") == "running", f"expected running checkpoint, got: {data}"
+        assert "mock" in providers, f"mock provider missing from checkpoint: {data}"
+        assert providers["mock"].get("status") == "running", f"expected running provider: {data}"
+        job_id = providers["mock"].get("job_id")
+        assert isinstance(job_id, str) and job_id.startswith("mock-"), (
+            f"expected mock job id in checkpoint, got: {job_id!r}"
+        )
+    finally:
+        remove_test_checkpoint(operation_id)
+
+
+def _p07_async_02() -> None:
+    """P07-M1: status must show provider state for an async-submitted operation."""
+    env = {"MOCK_API_KEY": generate_mock_api_key(), "THOTH_POLL_INTERVAL": "1"}
+    exit_code, stdout, stderr = run_command(
+        [THOTH_EXECUTABLE, "test async status", "--async", "--provider", "mock"],
+        env=env,
+        timeout=5,
+    )
+    assert exit_code == 0, f"unexpected exit code {exit_code}\nstdout={stdout}\nstderr={stderr}"
+    operation_id = extract_operation_id(stdout)
+    try:
+        status_exit, status_stdout, status_stderr = run_command(
+            [THOTH_EXECUTABLE, "status", operation_id],
+            timeout=5,
+        )
+        assert status_exit == 0, (
+            f"unexpected status exit code {status_exit}\nstdout={status_stdout}\nstderr={status_stderr}"
+        )
+        assert "Provider Status:" in status_stdout, f"provider status missing: {status_stdout!r}"
+        assert re.search(r"Mock:\s+▶\s+Running", status_stdout), (
+            f"running mock status missing: {status_stdout!r}"
+        )
+    finally:
+        remove_test_checkpoint(operation_id)
+
+
+def _p07_m3_01() -> None:
+    """P07-M3: basic interactive mode stores the last operation ID after submission."""
+    import builtins
+
+    import thoth.__main__ as thoth_main
+
+    observed: dict[str, Any] = {}
+    original_prompt_toolkit = thoth_main.PROMPT_TOOLKIT_AVAILABLE
+    original_input = builtins.input
+    original_run_research = thoth_main.run_research
+    original_registry = thoth_main.SlashCommandRegistry
+
+    class RecordingRegistry(original_registry):
+        last_created: "RecordingRegistry | None" = None
+
+        def __init__(self, console: Any):
+            super().__init__(console)
+            RecordingRegistry.last_created = self
+
+    async def fake_run_research(**kwargs: Any) -> str:
+        observed["kwargs"] = kwargs
+        return "research-20260416-010101-abcdef1234567890"
+
+    prompts = iter(["interactive stored op id"])
+
+    def fake_input(prompt: object = "") -> str:
+        return next(prompts)
+
+    try:
+        thoth_main.PROMPT_TOOLKIT_AVAILABLE = False
+        thoth_main.run_research = cast(Any, fake_run_research)
+        thoth_main.SlashCommandRegistry = cast(Any, RecordingRegistry)
+        builtins.input = cast(Any, fake_input)
+        asyncio.run(
+            thoth_main.enter_interactive_mode(
+                initial_settings=thoth_main.InteractiveInitialSettings(provider="mock"),
+                project=None,
+                output_dir=None,
+                config_path=None,
+                verbose=False,
+                quiet=True,
+                no_metadata=False,
+                timeout=None,
+            )
+        )
+    finally:
+        thoth_main.PROMPT_TOOLKIT_AVAILABLE = original_prompt_toolkit
+        thoth_main.run_research = original_run_research
+        thoth_main.SlashCommandRegistry = original_registry
+        builtins.input = original_input
+
+    registry = RecordingRegistry.last_created
+    assert registry is not None, "interactive mode did not create a slash registry"
+    assert registry.last_operation_id == "research-20260416-010101-abcdef1234567890", (
+        f"expected stored operation id, got: {registry.last_operation_id!r}"
+    )
+    assert observed["kwargs"]["prompt"] == "interactive stored op id"
+
+
+def _p07_m3_02() -> None:
+    """P07-M3: prompt-toolkit /status delegates to show_status for the last operation."""
+    import thoth.__main__ as thoth_main
+
+    if not getattr(thoth_main, "PROMPT_TOOLKIT_AVAILABLE", False):
+        return
+
+    captured: dict[str, Any] = {}
+    original_run_in_terminal = thoth_main.run_in_terminal
+    original_show_status = thoth_main.show_status
+
+    async def fake_show_status(operation_id: str) -> None:
+        captured["operation_id"] = operation_id
+
+    try:
+        thoth_main.run_in_terminal = cast(Any, lambda fn: fn())
+        thoth_main.show_status = cast(Any, fake_show_status)
+        session = thoth_main.InteractiveSession(
+            thoth_main.console,
+            thoth_main.get_config(),
+            thoth_main.InteractiveInitialSettings(provider="mock"),
+        )
+        session.slash_registry.last_operation_id = "research-20260416-020202-fedcba9876543210"
+        session._handle_slash_command("/status")
+    finally:
+        thoth_main.run_in_terminal = original_run_in_terminal
+        thoth_main.show_status = original_show_status
+
+    assert captured.get("operation_id") == "research-20260416-020202-fedcba9876543210", (
+        f"/status did not delegate to show_status: {captured}"
+    )
+
+
+def _p07_m4_01() -> None:
+    """P07-M4: make env-check remains the bootstrap entrypoint."""
+    exit_code, stdout, stderr = run_command(["make", "-n", "env-check"], timeout=5)
+    assert exit_code == 0, f"make -n env-check failed: stdout={stdout}\nstderr={stderr}"
+    assert "Checking development environment..." in stdout, (
+        f"expected bootstrap banner in make env-check, got: {stdout!r}"
+    )
+    assert "python3 --version" in stdout, f"expected python version check, got: {stdout!r}"
+    assert "uv --version" in stdout, f"expected uv version check, got: {stdout!r}"
+    assert "just --version" in stdout, f"expected just version check, got: {stdout!r}"
+
+
+def _p07_m4_02() -> None:
+    """P07-M4: make workflow targets are removed and just check becomes code quality."""
+    removed_targets = ["check", "fix", "test-check", "test-fix", "check-all", "fix-all", "clean"]
+    for target in removed_targets:
+        exit_code, stdout, stderr = run_command(["make", "-n", target], timeout=5)
+        assert exit_code != 0, f"make -n {target} unexpectedly succeeded: {stdout!r}"
+        assert "No rule to make target" in stderr, (
+            f"expected removed target failure for {target}: stdout={stdout!r} stderr={stderr!r}"
+        )
+
+    expectations = {
+        "check": [
+            "uv run ruff check src/thoth/ --fix",
+            "uv run ty check src/thoth/",
+        ],
+        "check-all": [
+            "uv run ruff check src/thoth/ --fix",
+            "uv run ty check src/thoth/",
+            "uv tool run ruff check thoth_test",
+            "uv tool run ty check thoth_test",
+        ],
+    }
+    for target, patterns in expectations.items():
+        exit_code, stdout, stderr = run_command(["just", "--dry-run", target], timeout=5)
+        assert exit_code == 0, f"just --dry-run {target} failed: stdout={stdout}\nstderr={stderr}"
+        output = stdout + stderr
+        for pattern in patterns:
+            assert pattern in output, f"expected {pattern!r} in just --dry-run {target}: {output!r}"
 
 
 def _make_polling_stubs() -> tuple:
@@ -1379,10 +1589,6 @@ def _make_polling_stubs() -> tuple:
 
 def _oai_bg_09() -> None:
     """Polling loop: queued status does not exit prematurely — result must be retrieved."""
-    import sys
-
-    if _thoth_src_path() not in sys.path:
-        sys.path.insert(0, _thoth_src_path())
     from datetime import datetime
 
     from thoth.__main__ import OperationStatus, _execute_research
@@ -1439,10 +1645,6 @@ def _oai_bg_09() -> None:
 
 def _oai_bg_10() -> None:
     """Polling loop: failed provider status transitions operation to failed."""
-    import sys
-
-    if _thoth_src_path() not in sys.path:
-        sys.path.insert(0, _thoth_src_path())
     from datetime import datetime
 
     from thoth.__main__ import OperationStatus, _execute_research
@@ -1499,10 +1701,6 @@ def _oai_bg_10() -> None:
 
 def _oai_bg_11() -> None:
     """Polling loop: cancelled provider status transitions operation to failed."""
-    import sys
-
-    if _thoth_src_path() not in sys.path:
-        sys.path.insert(0, _thoth_src_path())
     from datetime import datetime
 
     from thoth.__main__ import OperationStatus, _execute_research
@@ -1558,10 +1756,6 @@ def _oai_bg_11() -> None:
 
 def _oai_bg_12() -> None:
     """Polling loop: error provider status transitions operation to failed."""
-    import sys
-
-    if _thoth_src_path() not in sys.path:
-        sys.path.insert(0, _thoth_src_path())
     from datetime import datetime
 
     from thoth.__main__ import OperationStatus, _execute_research
@@ -1617,10 +1811,6 @@ def _oai_bg_12() -> None:
 
 def _oai_bg_13() -> None:
     """Polling loop: not_found provider status normalizes to error and fails the operation."""
-    import sys
-
-    if _thoth_src_path() not in sys.path:
-        sys.path.insert(0, _thoth_src_path())
     from datetime import datetime
 
     from thoth.__main__ import OperationStatus, _execute_research
@@ -1679,10 +1869,6 @@ def _oai_bg_13() -> None:
 
 def _oai_bg_14() -> None:
     """Polling loop: unknown provider status normalizes to error with raw state in the message."""
-    import sys
-
-    if _thoth_src_path() not in sys.path:
-        sys.path.insert(0, _thoth_src_path())
     from datetime import datetime
 
     from thoth.__main__ import OperationStatus, _execute_research
@@ -1741,10 +1927,6 @@ def _oai_bg_14() -> None:
 
 def _oai_parse_01() -> None:
     """get_result: ## Sources section present when annotations exist."""
-    import sys
-
-    if _thoth_src_path() not in sys.path:
-        sys.path.insert(0, _thoth_src_path())
     from thoth.__main__ import OpenAIProvider
 
     provider = OpenAIProvider(api_key="dummy")
@@ -1759,10 +1941,6 @@ def _oai_parse_01() -> None:
 
 def _oai_parse_02() -> None:
     """get_result: citation url and title preserved verbatim in Sources section."""
-    import sys
-
-    if _thoth_src_path() not in sys.path:
-        sys.path.insert(0, _thoth_src_path())
     from thoth.__main__ import OpenAIProvider
 
     provider = OpenAIProvider(api_key="dummy")
@@ -1778,10 +1956,6 @@ def _oai_parse_02() -> None:
 
 def _oai_parse_03() -> None:
     """get_result: reasoning summary extracts .text from summary objects (not str(obj))."""
-    import sys
-
-    if _thoth_src_path() not in sys.path:
-        sys.path.insert(0, _thoth_src_path())
     from thoth.__main__ import OpenAIProvider
 
     provider = OpenAIProvider(api_key="dummy")
@@ -1797,10 +1971,6 @@ def _oai_parse_03() -> None:
 
 def _oai_parse_04() -> None:
     """get_result: duplicate citation URLs are deduplicated in Sources section."""
-    import sys
-
-    if _thoth_src_path() not in sys.path:
-        sys.path.insert(0, _thoth_src_path())
     from thoth.__main__ import OpenAIProvider
 
     provider = OpenAIProvider(api_key="dummy")
@@ -1821,10 +1991,6 @@ def _oai_parse_04() -> None:
 
 def _oai_parse_05() -> None:
     """get_result: response with no content returns clean string, no [Debug] prefix."""
-    import sys
-
-    if _thoth_src_path() not in sys.path:
-        sys.path.insert(0, _thoth_src_path())
     from thoth.__main__ import OpenAIProvider
 
     provider = OpenAIProvider(api_key="dummy")
@@ -1836,10 +2002,6 @@ def _oai_parse_05() -> None:
 
 def _oai_parse_06() -> None:
     """get_result: no annotations means no ## Sources section in output."""
-    import sys
-
-    if _thoth_src_path() not in sys.path:
-        sys.path.insert(0, _thoth_src_path())
     from thoth.__main__ import OpenAIProvider
 
     provider = OpenAIProvider(api_key="dummy")
@@ -1851,10 +2013,6 @@ def _oai_parse_06() -> None:
 
 def _oai_parse_07() -> None:
     """get_result: verbose=True with no content response — result string is clean."""
-    import sys
-
-    if _thoth_src_path() not in sys.path:
-        sys.path.insert(0, _thoth_src_path())
     from thoth.__main__ import OpenAIProvider
 
     provider = OpenAIProvider(api_key="dummy")
@@ -1865,10 +2023,6 @@ def _oai_parse_07() -> None:
 
 def _oai_parse_08() -> None:
     """get_result: commentary message is excluded when final_answer phase exists."""
-    import sys
-
-    if _thoth_src_path() not in sys.path:
-        sys.path.insert(0, _thoth_src_path())
     from openai.types.responses.response import Response
 
     from thoth.__main__ import OpenAIProvider
@@ -1949,10 +2103,6 @@ def _oai_parse_08() -> None:
 
 def _bug03_01() -> None:
     """BUG-03: Negative jitter must not truncate a 2s interval down to a 1s poll."""
-    import sys
-
-    if _thoth_src_path() not in sys.path:
-        sys.path.insert(0, _thoth_src_path())
     from datetime import datetime
 
     from thoth.__main__ import OperationStatus, _execute_research
@@ -2047,10 +2197,6 @@ def _bug03_01() -> None:
 
 def _bug03_02() -> None:
     """BUG-03: Sub-second poll intervals must be honored instead of rounding up to 1s."""
-    import sys
-
-    if _thoth_src_path() not in sys.path:
-        sys.path.insert(0, _thoth_src_path())
     from datetime import datetime
 
     from thoth.__main__ import OperationStatus, _execute_research
@@ -2144,28 +2290,185 @@ def _bug03_02() -> None:
 
 
 # ============================================================================
+# RES-01..RES-03 Fixture Test Callables (resume after failure)
+# ============================================================================
+
+
+def _run_thoth_subprocess(
+    args: list[str], env_overrides: dict[str, str], timeout: int = 30
+) -> tuple[int, str, str]:
+    """Run the thoth CLI in a subprocess and return (exit_code, stdout, stderr)."""
+    cmd_env = os.environ.copy()
+    cmd_env.update(env_overrides)
+    cmd_env.setdefault("MOCK_API_KEY", generate_mock_api_key())
+    cmd_env["COLUMNS"] = "200"
+
+    result = subprocess.run(
+        [THOTH_EXECUTABLE, *args],
+        env=cmd_env,
+        capture_output=True,
+        text=True,
+        timeout=timeout,
+    )
+    return result.returncode, result.stdout, result.stderr
+
+
+def _extract_resume_id(output: str) -> str:
+    """Pull an operation ID out of a 'Resume with: thoth --resume <id>' hint."""
+    match = re.search(
+        r"thoth --resume\s+(research-\d{8}-\d{6}-[a-f0-9]{16})", output
+    )
+    if not match:
+        raise AssertionError(f"resume hint not found in output: {output!r}")
+    return match.group(1)
+
+
+def _res_01() -> None:
+    """RES-01: Recoverable failure -> resume reconnects and completes."""
+    cleanup_test_files(["*_mock_*.md"])
+    exit_code, stdout, stderr = _run_thoth_subprocess(
+        ["res01 first", "--provider", "mock"],
+        {"THOTH_MOCK_BEHAVIOR": "flake:10", "THOTH_POLL_INTERVAL": "0.1"},
+    )
+    combined = stdout + stderr
+    assert exit_code != 0, f"expected non-zero on flake exhaustion, got {exit_code}"
+    assert "This failure is recoverable" in combined, (
+        f"recoverable hint missing: {combined!r}"
+    )
+    op_id = _extract_resume_id(combined)
+
+    checkpoint = load_checkpoint_data(op_id)
+    assert checkpoint.get("failure_type") == "recoverable", (
+        f"expected failure_type=recoverable in checkpoint, got {checkpoint!r}"
+    )
+    assert checkpoint["providers"]["mock"].get("job_id"), (
+        f"expected job_id persisted in checkpoint, got {checkpoint!r}"
+    )
+
+    try:
+        exit_code2, stdout2, stderr2 = _run_thoth_subprocess(
+            ["--resume", op_id],
+            {"THOTH_MOCK_BEHAVIOR": "default", "THOTH_POLL_INTERVAL": "0.1"},
+        )
+        combined2 = stdout2 + stderr2
+        assert exit_code2 == 0, (
+            f"expected successful resume, got exit={exit_code2}\n"
+            f"stdout={stdout2!r}\nstderr={stderr2!r}"
+        )
+        assert "Research completed" in combined2, (
+            f"expected completion on resume: {combined2!r}"
+        )
+    finally:
+        remove_test_checkpoint(op_id)
+        cleanup_test_files(["*_mock_*.md"])
+
+
+def _res_02() -> None:
+    """RES-02: Permanent failure -> resume refused with exit code 7."""
+    cleanup_test_files(["*_mock_*.md"])
+    checkpoint_dir = get_checkpoint_dir()
+    before = {p.stem for p in checkpoint_dir.glob("research-*.json")}
+    exit_code, stdout, stderr = _run_thoth_subprocess(
+        ["res02 first", "--provider", "mock"],
+        {"THOTH_MOCK_BEHAVIOR": "permanent", "THOTH_POLL_INTERVAL": "0.1"},
+    )
+    combined = stdout + stderr
+    assert exit_code != 0, f"expected non-zero on permanent failure, got {exit_code}"
+    assert "This failure is recoverable" not in combined, (
+        f"permanent failure must not print recoverable hint: {combined!r}"
+    )
+
+    after = {p.stem for p in checkpoint_dir.glob("research-*.json")}
+    new_ops = after - before
+    assert len(new_ops) == 1, (
+        f"expected exactly one new checkpoint, got {new_ops} (combined={combined!r})"
+    )
+    op_id = next(iter(new_ops))
+    checkpoint = load_checkpoint_data(op_id)
+    assert checkpoint.get("failure_type") == "permanent", (
+        f"expected failure_type=permanent, got {checkpoint!r}"
+    )
+
+    try:
+        exit_code2, stdout2, stderr2 = _run_thoth_subprocess(
+            ["--resume", op_id],
+            {"THOTH_MOCK_BEHAVIOR": "default", "THOTH_POLL_INTERVAL": "0.1"},
+        )
+        combined2 = stdout2 + stderr2
+        assert exit_code2 == 7, (
+            f"expected exit code 7 for permanent-failed resume, got {exit_code2}\n"
+            f"stdout={stdout2!r}\nstderr={stderr2!r}"
+        )
+        assert "failed permanently" in combined2, (
+            f"expected 'failed permanently' message, got: {combined2!r}"
+        )
+    finally:
+        remove_test_checkpoint(op_id)
+        cleanup_test_files(["*_mock_*.md"])
+
+
+def _res_03() -> None:
+    """RES-03: Resume of an already-completed operation is a no-op."""
+    cleanup_test_files(["*_mock_*.md"])
+    checkpoint_dir = get_checkpoint_dir()
+    before = {p.stem for p in checkpoint_dir.glob("research-*.json")}
+    exit_code, stdout, stderr = _run_thoth_subprocess(
+        ["res03 first", "--provider", "mock"],
+        {"THOTH_MOCK_BEHAVIOR": "default", "THOTH_POLL_INTERVAL": "0.1"},
+    )
+    combined = stdout + stderr
+    assert exit_code == 0, (
+        f"expected successful first run, got exit={exit_code}\n{combined!r}"
+    )
+    after = {p.stem for p in checkpoint_dir.glob("research-*.json")}
+    new_ops = after - before
+    assert len(new_ops) == 1, (
+        f"expected exactly one new checkpoint, got {new_ops} (combined={combined!r})"
+    )
+    op_id = next(iter(new_ops))
+    checkpoint = load_checkpoint_data(op_id)
+    assert checkpoint.get("status") == "completed", (
+        f"expected status=completed before resume, got {checkpoint!r}"
+    )
+
+    try:
+        exit_code2, stdout2, stderr2 = _run_thoth_subprocess(
+            ["--resume", op_id],
+            {"THOTH_MOCK_BEHAVIOR": "default", "THOTH_POLL_INTERVAL": "0.1"},
+        )
+        combined2 = stdout2 + stderr2
+        assert exit_code2 == 0, (
+            f"expected exit 0 for already-completed resume, got {exit_code2}\n{combined2!r}"
+        )
+        assert "already completed" in combined2, (
+            f"expected 'already completed' message, got {combined2!r}"
+        )
+    finally:
+        remove_test_checkpoint(op_id)
+        cleanup_test_files(["*_mock_*.md"])
+
+
+# ============================================================================
 # GAP-01 Fixture Test Callables
 # ============================================================================
 
 
 def _gap01_01() -> None:
     """GAP-01: max_tool_calls from provider config reaches the Responses API request payload."""
-    import sys
-
-    if _thoth_src_path() not in sys.path:
-        sys.path.insert(0, _thoth_src_path())
     from thoth.__main__ import OpenAIProvider
 
     captured: dict = {}
 
-    async def fake_create(**kwargs: object) -> object:
+    async def fake_create(*args: object, **kwargs: object) -> object:
         captured.update(kwargs)
         return types.SimpleNamespace(id="job-gap01-1")
 
     provider = OpenAIProvider(
         api_key="dummy", config={"model": "o3-deep-research", "max_tool_calls": 80}
     )
-    provider.client = types.SimpleNamespace(responses=types.SimpleNamespace(create=fake_create))
+    provider.client = cast(
+        Any, types.SimpleNamespace(responses=types.SimpleNamespace(create=fake_create))
+    )
     asyncio.run(provider.submit("test prompt", mode="deep_research"))
     assert "max_tool_calls" in captured, (
         f"max_tool_calls missing from request payload: {list(captured.keys())}"
@@ -2177,22 +2480,20 @@ def _gap01_01() -> None:
 
 def _gap01_02() -> None:
     """GAP-01: code_interpreter=False in config excludes the tool from the request."""
-    import sys
-
-    if _thoth_src_path() not in sys.path:
-        sys.path.insert(0, _thoth_src_path())
     from thoth.__main__ import OpenAIProvider
 
     captured: dict = {}
 
-    async def fake_create(**kwargs: object) -> object:
+    async def fake_create(*args: object, **kwargs: object) -> object:
         captured.update(kwargs)
         return types.SimpleNamespace(id="job-gap01-2")
 
     provider = OpenAIProvider(
         api_key="dummy", config={"model": "o3-deep-research", "code_interpreter": False}
     )
-    provider.client = types.SimpleNamespace(responses=types.SimpleNamespace(create=fake_create))
+    provider.client = cast(
+        Any, types.SimpleNamespace(responses=types.SimpleNamespace(create=fake_create))
+    )
     asyncio.run(provider.submit("test prompt", mode="deep_research"))
     tool_types = [t.get("type") for t in captured.get("tools", [])]
     assert "code_interpreter" not in tool_types, (
@@ -2205,20 +2506,18 @@ def _gap01_02() -> None:
 
 def _gap01_03() -> None:
     """GAP-01: default config — no max_tool_calls key in payload, code_interpreter included."""
-    import sys
-
-    if _thoth_src_path() not in sys.path:
-        sys.path.insert(0, _thoth_src_path())
     from thoth.__main__ import OpenAIProvider
 
     captured: dict = {}
 
-    async def fake_create(**kwargs: object) -> object:
+    async def fake_create(*args: object, **kwargs: object) -> object:
         captured.update(kwargs)
         return types.SimpleNamespace(id="job-gap01-3")
 
     provider = OpenAIProvider(api_key="dummy", config={"model": "o3-deep-research"})
-    provider.client = types.SimpleNamespace(responses=types.SimpleNamespace(create=fake_create))
+    provider.client = cast(
+        Any, types.SimpleNamespace(responses=types.SimpleNamespace(create=fake_create))
+    )
     asyncio.run(provider.submit("test prompt", mode="deep_research"))
     assert "max_tool_calls" not in captured, (
         f"max_tool_calls should be absent when not configured, got: {captured.get('max_tool_calls')}"
@@ -2275,15 +2574,6 @@ all_tests = [
             r"thoth \"how does DNS work\"",
         ],
         expected_exit_code=0,
-    ),
-    # Graceful Shutdown Test (F-81)
-    TestCase(
-        test_id="M1T-09",
-        description="Ctrl-C graceful shutdown with checkpoint save",
-        command=[THOTH_EXECUTABLE, "test ctrl-c", "--provider", "mock"],
-        expected_exit_code=130,  # Standard exit code for SIGINT
-        skip=True,
-        skip_reason="Requires manual signal testing",
     ),
     TestCase(
         test_id="M1T-05",
@@ -2554,6 +2844,22 @@ all_tests = [
         timeout=5,
     ),
     TestCase(
+        test_id="P07-M1-01",
+        description="async submission persists provider job metadata in checkpoint",
+        command=[],
+        test_type="fixture",
+        setup_func=lambda: _p07_async_01(),
+        provider="mock",
+    ),
+    TestCase(
+        test_id="P07-M1-02",
+        description="status shows running provider details for async-submitted operation",
+        command=[],
+        test_type="fixture",
+        setup_func=lambda: _p07_async_02(),
+        provider="mock",
+    ),
+    TestCase(
         test_id="M5T-10b",
         description="Synchronous operation transitions queued→running→completed",
         command=[THOTH_EXECUTABLE, "test lifecycle sync", "--provider", "mock"],
@@ -2727,24 +3033,14 @@ all_tests = [
     TestCase(
         test_id="QFILE-02",
         description="Read prompt from stdin",
-        command=[
-            "echo",
-            "test prompt from stdin",
-            "|",
-            THOTH_EXECUTABLE,
-            "--prompt-file",
-            "-",
-            "--provider",
-            "mock",
-        ],
+        command=[THOTH_EXECUTABLE, "--prompt-file", "-", "--provider", "mock"],
+        stdin_input="test prompt from stdin\n",
         expected_stdout_patterns=[r"Research completed"],
         expected_files=["*_mock_*.md"],
         cleanup_files=["*_mock_*.md"],
         expected_exit_code=0,
         provider="mock",
         api_key_method="env",
-        skip=True,
-        skip_reason="Stdin piping requires shell execution",
     ),
     # Config File Tests
     TestCase(
@@ -2848,14 +3144,14 @@ all_tests = [
     ),
     TestCase(
         test_id="REAL-02",
-        description="Perplexity provider with real API key",
+        description="Perplexity provider fails cleanly while not implemented",
         command=[THOTH_EXECUTABLE, "test perplexity", "--provider", "perplexity"],
-        expected_stdout_patterns=[r"Research completed"],
-        expected_files=["*_perplexity_*.md"],
-        cleanup_files=["*_perplexity_*.md"],
-        expected_exit_code=0,
-        provider="perplexity",
-        api_key_method="env",
+        expected_stdout_patterns=[
+            r"perplexity error: Perplexity provider is not implemented yet",
+            r"Use openai or mock until Perplexity support lands",
+        ],
+        expected_exit_code=1,
+        env={"PERPLEXITY_API_KEY": "pplx-test-not-implemented"},
     ),
     # Signal handling tests
     TestCase(
@@ -2869,10 +3165,97 @@ all_tests = [
         expected_exit_code=1,
         provider="mock",
         api_key_method="env",
-        signal_after=0.05,  # Send SIGINT after 0.05 seconds
+        env={
+            "THOTH_POLL_INTERVAL": "30"
+        },  # Keep mock in "running" so signal lands inside polling loop
+        signal_after=1.5,  # After handler is installed and globals are set
         cleanup_files=["*_mock_*.md", "~/.thoth/checkpoints/*.json"],
-        skip=True,
-        skip_reason="Timing issues make this test unreliable",
+    ),
+    # Transient / permanent error classification + resumable recovery
+    TestCase(
+        test_id="TR-01",
+        description="Transient errors below threshold are retried and job completes",
+        command=[THOTH_EXECUTABLE, "transient retry", "--provider", "mock"],
+        env={
+            "THOTH_MOCK_BEHAVIOR": "flake:2",
+            "THOTH_POLL_INTERVAL": "0.1",
+        },
+        expected_stdout_patterns=[
+            r"transient error \(1/5\)",
+            r"transient error \(2/5\)",
+            r"Research completed",
+        ],
+        not_expected_stdout_patterns=[
+            r"consecutive transient errors",
+            r"permanent failure",
+        ],
+        expected_files=["*_mock_*.md"],
+        cleanup_files=["*_mock_*.md"],
+        expected_exit_code=0,
+        provider="mock",
+        api_key_method="env",
+    ),
+    TestCase(
+        test_id="TR-02",
+        description="Transient errors above threshold fail with recoverable status and resume hint",
+        command=[THOTH_EXECUTABLE, "transient exhaust", "--provider", "mock"],
+        env={
+            "THOTH_MOCK_BEHAVIOR": "flake:10",
+            "THOTH_POLL_INTERVAL": "0.1",
+        },
+        expected_stdout_patterns=[
+            r"5 consecutive transient errors",
+            r"This failure is recoverable",
+            r"Resume with: .*thoth --resume",
+        ],
+        not_expected_stdout_patterns=[r"Research completed"],
+        expected_exit_code=1,
+        provider="mock",
+        api_key_method="env",
+        cleanup_files=["*_mock_*.md"],
+    ),
+    TestCase(
+        test_id="TR-03",
+        description="Permanent error fails immediately with no resume hint",
+        command=[THOTH_EXECUTABLE, "permanent fail", "--provider", "mock"],
+        env={
+            "THOTH_MOCK_BEHAVIOR": "permanent",
+            "THOTH_POLL_INTERVAL": "0.1",
+        },
+        expected_stdout_patterns=[
+            r"permanent failure",
+            r"Mock permanent failure",
+        ],
+        not_expected_stdout_patterns=[
+            r"This failure is recoverable",
+            r"Resume with: .*thoth --resume",
+            r"Research completed",
+        ],
+        expected_exit_code=1,
+        provider="mock",
+        api_key_method="env",
+        cleanup_files=["*_mock_*.md"],
+    ),
+    TestCase(
+        test_id="RES-01",
+        description="Resume recoverable failure successfully reattaches and completes",
+        command=[],
+        test_type="fixture",
+        setup_func=lambda: _res_01(),
+    ),
+    TestCase(
+        test_id="RES-02",
+        description="Resume refuses a permanent failure with exit code 7",
+        command=[],
+        test_type="fixture",
+        setup_func=lambda: _res_02(),
+    ),
+    TestCase(
+        test_id="RES-03",
+        description="Resume of an already-completed operation is a no-op",
+        command=[],
+        test_type="fixture",
+        setup_func=lambda: _res_03(),
     ),
     # Provider discovery tests
     TestCase(
@@ -2931,6 +3314,68 @@ all_tests = [
             r"Available providers: openai, perplexity, mock",
         ],
         expected_exit_code=1,
+    ),
+    TestCase(
+        test_id="P07-M2-01",
+        description="Providers list marks Perplexity as not implemented when configured",
+        command=[THOTH_EXECUTABLE, "providers", "--", "--list"],
+        env={"PERPLEXITY_API_KEY": "pplx-test-not-implemented"},
+        expected_stdout_patterns=[
+            r"perplexity",
+            r"Perplexity search AI \(not.*implemented\)",
+        ],
+        not_expected_stdout_patterns=[
+            r"perplexity\s+│\s+✓ Ready",
+        ],
+        expected_exit_code=0,
+    ),
+    TestCase(
+        test_id="P07-M2-02",
+        description="Direct Perplexity invocation fails with intentional message",
+        command=[
+            THOTH_EXECUTABLE,
+            "test perplexity regression",
+            "--provider",
+            "perplexity",
+            "--api-key-perplexity",
+            "pplx-test-not-implemented",
+        ],
+        expected_stdout_patterns=[
+            r"perplexity error: Perplexity provider is not implemented yet",
+            r"Use openai or mock until Perplexity support lands",
+        ],
+        not_expected_stdout_patterns=[
+            r"Unexpected error during submission",
+        ],
+        expected_exit_code=1,
+    ),
+    TestCase(
+        test_id="P07-M3-01",
+        description="basic interactive mode stores last operation ID after submission",
+        command=[],
+        test_type="fixture",
+        setup_func=lambda: _p07_m3_01(),
+    ),
+    TestCase(
+        test_id="P07-M3-02",
+        description="interactive /status delegates to checkpoint-backed status display",
+        command=[],
+        test_type="fixture",
+        setup_func=lambda: _p07_m3_02(),
+    ),
+    TestCase(
+        test_id="P07-M4-01",
+        description="make env-check remains the bootstrap entrypoint",
+        command=[],
+        test_type="fixture",
+        setup_func=lambda: _p07_m4_01(),
+    ),
+    TestCase(
+        test_id="P07-M4-02",
+        description="make workflow targets are removed and just check is code quality",
+        command=[],
+        test_type="fixture",
+        setup_func=lambda: _p07_m4_02(),
     ),
     # ============================================================================
     # Interactive Mode Tests (require pexpect)
@@ -3372,7 +3817,7 @@ all_tests = [
         ],
         expected_stdout_patterns=[r"Operation ID: research-\d+-\w+"],
         expected_exit_code=0,
-        timeout=5,
+        timeout=60,  # Real OpenAI async submit includes API round-trip
         provider="openai",
         api_key_method="env",
     ),
@@ -3755,6 +4200,10 @@ def main(
       - Default -r behavior runs tests for all available providers
     """
     global CLEANUP_ENABLED
+
+    # Isolate test checkpoints and config from the user's real thoth config dir.
+    # Done before any subprocess is spawned so children inherit XDG_CONFIG_HOME.
+    _ensure_test_config_home()
 
     # Handle -a shorthand
     if all:

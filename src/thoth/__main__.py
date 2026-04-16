@@ -45,6 +45,7 @@ from uuid import uuid4
 import aiofiles
 import click
 import httpx
+import openai
 from openai import AsyncOpenAI
 from platformdirs import user_config_dir
 from rich import box
@@ -217,6 +218,7 @@ class ConfigSchema:
                 "max_wait": 30,
                 "parallel_providers": True,
                 "retry_attempts": 3,
+                "max_transient_errors": 5,
                 "auto_input": True,
             },
             "output": {
@@ -286,6 +288,7 @@ class ConfigManager:
 
         # Merge all layers
         self.data = self._merge_layers()
+        self.data = self._substitute_env_vars(self.data)
 
         # Validate configuration
         self._validate_config()
@@ -514,8 +517,8 @@ VALID_STATE_TRANSITIONS = {
     "queued": {"running", "cancelled", "failed"},
     "running": {"completed", "failed", "cancelled"},
     "completed": set(),  # terminal state
-    "failed": set(),  # terminal state
-    "cancelled": set(),  # terminal state
+    "failed": {"running"},  # resumable when failure_type is "recoverable"
+    "cancelled": {"running"},  # resumable after Ctrl-C
 }
 
 
@@ -535,6 +538,7 @@ class OperationStatus:
     progress: float = 0.0  # 0.0 to 1.0
     project: str | None = None
     input_files: list[Path] = field(default_factory=list)
+    failure_type: str | None = None  # "recoverable" | "permanent" | None
 
     def transition_to(self, new_status: str, error: str | None = None) -> None:
         """Transition to a new status with validation.
@@ -1304,6 +1308,7 @@ def show_providers_help():
     console.print("  OpenAI models are fetched dynamically via API and cached locally.")
     console.print("  Model cache auto-refreshes after 1 week.")
     console.print("  Perplexity models are returned from a predefined list.")
+    console.print("  Perplexity research execution is not implemented yet.")
     console.print("\n[bold]Usage:[/bold]")
     console.print("  thoth providers -- [OPTIONS]")
     console.print("\n[bold]Options:[/bold]")
@@ -1317,7 +1322,7 @@ def show_providers_help():
     console.print("  Use -- before options to prevent parsing conflicts")
     console.print("\n[bold]Available providers:[/bold]")
     console.print("  • openai     - OpenAI GPT models (cached)")
-    console.print("  • perplexity - Perplexity Sonar models")
+    console.print("  • perplexity - Perplexity Sonar models (not implemented)")
     console.print("  • mock       - Mock provider for testing")
     console.print("\n[bold]Examples:[/bold]")
     console.print("  # List all available providers")
@@ -1424,6 +1429,8 @@ class CheckpointManager:
             data["updated_at"] = datetime.fromisoformat(data["updated_at"])
             data["output_paths"] = {k: Path(v) for k, v in data["output_paths"].items()}
             data["input_files"] = [Path(p) for p in data.get("input_files", [])]
+            # failure_type is new; default to None for checkpoints written before this field
+            data.setdefault("failure_type", None)
 
             return OperationStatus(**data)
         except (json.JSONDecodeError, KeyError, ValueError):
@@ -1753,9 +1760,31 @@ class ResearchProvider:
             return await self.list_models()
         return await self.list_models()
 
+    def is_implemented(self) -> bool:
+        """Whether this provider is currently operational for research runs."""
+        return True
+
+    def implementation_status(self) -> str | None:
+        """Optional user-facing implementation status string."""
+        return None
+
+    async def reconnect(self, job_id: str) -> None:
+        """Reattach to an existing background job after a fresh process start.
+
+        Subclasses that support resume override this to repopulate internal
+        job state from a persisted job identifier.
+        """
+        raise NotImplementedError(f"{type(self).__name__} does not support resume/reconnect")
+
 
 class MockProvider(ResearchProvider):
-    """Mock provider for testing and development"""
+    """Mock provider for testing and development.
+
+    Behavior is controlled by the THOTH_MOCK_BEHAVIOR env var:
+      - unset / "default": normal completion after ``delay`` seconds
+      - "flake:N": return ``transient_error`` N times, then complete
+      - "permanent": return ``permanent_error`` on first poll
+    """
 
     def __init__(self, name: str = "mock", delay: float = 0.1, api_key: str = ""):
         self.name = name
@@ -1763,6 +1792,7 @@ class MockProvider(ResearchProvider):
         self.api_key = api_key
         self.model = "None"  # Mock provider has no model
         self.jobs = {}
+        self._behavior = os.getenv("THOTH_MOCK_BEHAVIOR", "default")
 
     async def submit(
         self, prompt: str, mode: str, system_prompt: str | None = None, verbose: bool = False
@@ -1775,8 +1805,22 @@ class MockProvider(ResearchProvider):
             "status": "running",
             "progress": 0.0,
             "start_time": asyncio.get_event_loop().time(),
+            "transient_count": 0,
         }
         return job_id
+
+    async def reconnect(self, job_id: str) -> None:
+        """Re-attach to an existing mock job (for resume tests)."""
+        # Honor updated THOTH_MOCK_BEHAVIOR from the resume process environment.
+        self._behavior = os.getenv("THOTH_MOCK_BEHAVIOR", "default")
+        self.jobs[job_id] = {
+            "prompt": "",
+            "mode": "",
+            "status": "running",
+            "progress": 0.0,
+            "start_time": asyncio.get_event_loop().time(),
+            "transient_count": 0,
+        }
 
     async def check_status(self, job_id: str) -> dict[str, Any]:
         """Check mock job status"""
@@ -1784,6 +1828,26 @@ class MockProvider(ResearchProvider):
             return {"status": "not_found", "error": "Job not found"}
 
         job = self.jobs[job_id]
+
+        if self._behavior == "permanent":
+            return {
+                "status": "permanent_error",
+                "error": "Mock permanent failure",
+                "error_class": "MockPermanentError",
+            }
+        if self._behavior.startswith("flake:"):
+            try:
+                limit = int(self._behavior.split(":", 1)[1])
+            except ValueError:
+                limit = 0
+            if job["transient_count"] < limit:
+                job["transient_count"] += 1
+                return {
+                    "status": "transient_error",
+                    "error": f"Mock transient failure #{job['transient_count']}",
+                    "error_class": "MockTransientError",
+                }
+
         elapsed = asyncio.get_event_loop().time() - job["start_time"]
 
         if elapsed >= self.delay:
@@ -2038,29 +2102,71 @@ class OpenAIProvider(ResearchProvider):
                     return {"status": "running", "progress": progress}
                 elif response.status == "failed":
                     error_msg = getattr(response, "error", "Unknown error")
-                    return {"status": "failed", "error": str(error_msg)}
+                    return {"status": "permanent_error", "error": str(error_msg)}
                 elif response.status == "incomplete":
                     error_msg = (
                         getattr(response, "error", None)
                         or "Response was incomplete (output truncated)"
                     )
-                    return {"status": "failed", "error": str(error_msg)}
+                    return {"status": "permanent_error", "error": str(error_msg)}
                 elif response.status == "cancelled":
                     return {"status": "cancelled", "error": "Response was cancelled"}
                 elif response.status == "queued":
                     return {"status": "queued", "progress": 0.0}
                 else:
                     return {
-                        "status": "failed",
+                        "status": "permanent_error",
                         "error": f"Unexpected API status: {response.status!r}",
                     }
             else:
-                return {"status": "error", "error": "Response object has no status attribute"}
-        except Exception as e:
+                return {
+                    "status": "permanent_error",
+                    "error": "Response object has no status attribute",
+                }
+        except (
+            openai.APIConnectionError,
+            openai.APITimeoutError,
+            openai.RateLimitError,
+            openai.InternalServerError,
+        ) as e:
             cached = job_info.get("response")
             if cached and getattr(cached, "status", None) == "completed":
                 return {"status": "completed", "progress": 1.0}
-            return {"status": "error", "error": str(e)}
+            return {
+                "status": "transient_error",
+                "error": str(e),
+                "error_class": type(e).__name__,
+            }
+        except (
+            openai.AuthenticationError,
+            openai.PermissionDeniedError,
+            openai.BadRequestError,
+            openai.NotFoundError,
+        ) as e:
+            return {
+                "status": "permanent_error",
+                "error": str(e),
+                "error_class": type(e).__name__,
+            }
+        except Exception as e:
+            # Unknown — treat as transient so we don't kill long jobs over novel errors.
+            cached = job_info.get("response")
+            if cached and getattr(cached, "status", None) == "completed":
+                return {"status": "completed", "progress": 1.0}
+            return {
+                "status": "transient_error",
+                "error": f"Unexpected error ({type(e).__name__}): {e}",
+                "error_class": type(e).__name__,
+            }
+
+    async def reconnect(self, job_id: str) -> None:
+        """Re-attach to an existing background job after a fresh process start."""
+        response = await self.client.responses.retrieve(job_id)
+        self.jobs[job_id] = {
+            "response": response,
+            "background": True,
+            "created_at": datetime.now(),
+        }
 
     async def get_result(self, job_id: str, verbose: bool = False) -> str:
         """Get the Deep Research result"""
@@ -2313,8 +2419,16 @@ class PerplexityProvider(ResearchProvider):
         self, prompt: str, mode: str, system_prompt: str | None = None, verbose: bool = False
     ) -> str:
         """Submit to Perplexity"""
-        # TODO: Implement actual Perplexity submission
-        raise NotImplementedError("Perplexity provider not yet implemented")
+        raise ProviderError(
+            "perplexity",
+            "Perplexity provider is not implemented yet. Use openai or mock until Perplexity support lands.",
+        )
+
+    def is_implemented(self) -> bool:
+        return False
+
+    def implementation_status(self) -> str | None:
+        return "Not implemented"
 
     async def list_models(self) -> list[dict[str, Any]]:
         """Return hardcoded Perplexity models as specified"""
@@ -2708,15 +2822,41 @@ async def run_research(
                 console.print(f"[dim]{provider_name} Timeout: {timeout_value}s[/dim]")
 
     if async_mode:
-        # Submit and exit
-        if not quiet:
-            console.print("[green]✓[/green] Research submitted")
-        console.print(f"Operation ID: [bold]{operation_id}[/bold]")
-        if not quiet:
-            console.print(f"\nCheck status: [dim]thoth status {operation_id}[/dim]")
+        try:
+            for provider_name, provider_instance in providers.items():
+                system_prompt = mode_config.get("system_prompt", "")
+                job_id = await provider_instance.submit(
+                    prompt, mode, system_prompt, verbose=verbose
+                )
+                operation.providers[provider_name] = {
+                    "status": "running",
+                    "job_id": job_id,
+                }
 
-        # TODO: Actually submit async tasks
-        return
+            operation.transition_to("running")
+            await checkpoint_manager.save(operation)
+
+            if not quiet:
+                console.print("[green]✓[/green] Research submitted")
+            console.print(f"Operation ID: [bold]{operation_id}[/bold]")
+            if not quiet:
+                console.print(f"\nCheck status: [dim]thoth status {operation_id}[/dim]")
+            return operation_id
+        except (ProviderError, ThothError) as e:
+            operation.transition_to("failed", error=e.message)
+            await checkpoint_manager.save(operation)
+            console.print(f"[red]Error:[/red] {e.message}")
+            console.print(f"[yellow]Suggestion:[/yellow] {e.suggestion}")
+            if verbose and hasattr(e, "raw_error") and getattr(e, "raw_error", None):
+                console.print(f"[dim]Raw error: {e.raw_error}[/dim]")
+            raise click.Abort()
+        except Exception as e:
+            operation.transition_to("failed", error=str(e))
+            await checkpoint_manager.save(operation)
+            console.print(f"\n[red]Unexpected error during submission:[/red] {str(e)}")
+            if verbose:
+                console.print(f"[dim]Full error: {repr(e)}[/dim]")
+            raise click.Abort()
 
     # Synchronous execution with progress
     try:
@@ -2746,6 +2886,174 @@ async def run_research(
         await checkpoint_manager.save(operation)
         raise
 
+    if operation.status == "failed":
+        raise click.Abort()
+
+
+async def _run_polling_loop(
+    operation: OperationStatus,
+    jobs: dict[str, dict[str, Any]],
+    progress: Progress,
+    checkpoint_manager: "CheckpointManager",
+    output_manager: "OutputManager",
+    config: Config,
+    mode_config: dict,
+    output_dir: str | None,
+    verbose: bool,
+) -> tuple[set[str], set[str]]:
+    """Poll all jobs until each completes or fails.
+
+    Handles transient-error retries with per-provider backoff, permanent
+    failures, and timeouts. Updates ``operation`` in place (including
+    status transitions on timeout) and writes checkpoints after every
+    provider-level status change. Returns
+    ``(completed_providers, failed_providers)``.
+    """
+    global _current_checkpoint_manager, _current_operation
+
+    poll_refresh_interval = 1.0
+    poll_jitter_ratio = 0.10
+    min_poll_interval = 0.1
+
+    def _normalize_poll_interval(value: Any) -> float:
+        return max(min_poll_interval, float(value))
+
+    def _compute_poll_interval(base_interval: float) -> float:
+        jitter_multiplier = 1.0 + random.uniform(-poll_jitter_ratio, poll_jitter_ratio)
+        return max(min_poll_interval, base_interval * jitter_multiplier)
+
+    def _next_poll_countdown(now: float, next_poll_at: float) -> int:
+        return max(0, math.ceil(next_poll_at - now))
+
+    def _next_poll_sleep(now: float, next_poll_at: float) -> float:
+        return max(0.0, min(poll_refresh_interval, next_poll_at - now))
+
+    completed_providers: set[str] = set()
+    failed_providers: set[str] = set()
+    transient_error_counts: dict[str, int] = {p: 0 for p in jobs}
+    max_transient = int(config.data["execution"].get("max_transient_errors", 5))
+    base_poll_interval = _normalize_poll_interval(config.data["execution"]["poll_interval"])
+    max_wait = config.data["execution"]["max_wait"] * 60  # seconds
+    start_time = asyncio.get_running_loop().time()
+    effective_interval = base_poll_interval
+    next_poll_at = start_time  # prime: poll immediately on first tick
+    cached_statuses: dict[str, dict[str, Any]] = {}
+
+    while len(completed_providers) < len(jobs):
+        now = asyncio.get_running_loop().time()
+        should_poll = now >= next_poll_at
+
+        if should_poll:
+            effective_interval = _compute_poll_interval(base_poll_interval)
+            next_poll_at = now + effective_interval
+
+            for provider_name, job_info in jobs.items():
+                if provider_name in completed_providers:
+                    continue
+
+                status = await job_info["provider"].check_status(job_info["job_id"])
+                provider_status = status.get("status")
+
+                if provider_status in ("running", "queued"):
+                    transient_error_counts[provider_name] = 0
+                    cached_statuses[provider_name] = status
+                elif provider_status == "completed":
+                    transient_error_counts[provider_name] = 0
+                    progress.update(job_info["task_id"], completed=100, next_poll=0)
+                    completed_providers.add(provider_name)
+
+                    result_content = await job_info["provider"].get_result(
+                        job_info["job_id"], verbose=verbose
+                    )
+                    provider_model = getattr(job_info["provider"], "model", None)
+                    system_prompt = mode_config.get("system_prompt", "")
+                    output_path = await output_manager.save_result(
+                        operation,
+                        provider_name,
+                        result_content,
+                        output_dir,
+                        model=provider_model,
+                        system_prompt=system_prompt,
+                    )
+                    operation.output_paths[provider_name] = output_path
+                    operation.providers[provider_name]["status"] = "completed"
+                    operation.providers[provider_name].pop("failure_type", None)
+                    operation.providers[provider_name].pop("error", None)
+                    await checkpoint_manager.save(operation)
+                elif provider_status == "transient_error":
+                    transient_error_counts[provider_name] += 1
+                    count = transient_error_counts[provider_name]
+                    error_msg = status.get("error", "transient error")
+                    if count >= max_transient:
+                        console.print(
+                            f"\n[yellow]⚠[/yellow] {provider_name.title()}: "
+                            f"{count} consecutive transient errors — last: {error_msg}"
+                        )
+                        operation.providers[provider_name]["status"] = "failed"
+                        operation.providers[provider_name]["failure_type"] = "recoverable"
+                        operation.providers[provider_name]["error"] = error_msg
+                        completed_providers.add(provider_name)
+                        failed_providers.add(provider_name)
+                        await checkpoint_manager.save(operation)
+                    else:
+                        console.print(
+                            f"\n[dim]{provider_name.title()}: transient error "
+                            f"({count}/{max_transient}) — {error_msg}; retrying[/dim]"
+                        )
+                        backoff = min(effective_interval * (2 ** (count - 1)), 60.0)
+                        next_poll_at = now + backoff
+                        cached_statuses[provider_name] = {
+                            "status": "running",
+                            "progress": cached_statuses.get(provider_name, {}).get("progress", 0.0),
+                        }
+                elif provider_status == "permanent_error":
+                    error_msg = status.get("error", "permanent error")
+                    console.print(
+                        f"\n[red]✗[/red] {provider_name.title()} permanent failure: {error_msg}"
+                    )
+                    operation.providers[provider_name]["status"] = "failed"
+                    operation.providers[provider_name]["failure_type"] = "permanent"
+                    operation.providers[provider_name]["error"] = error_msg
+                    completed_providers.add(provider_name)
+                    failed_providers.add(provider_name)
+                    await checkpoint_manager.save(operation)
+                else:
+                    # Unknown status — treat as recoverable so the user can retry.
+                    error_msg = status.get("error", f"unknown status {provider_status!r}")
+                    console.print(f"\n[yellow]⚠[/yellow] {provider_name.title()}: {error_msg}")
+                    operation.providers[provider_name]["status"] = "failed"
+                    operation.providers[provider_name]["failure_type"] = "recoverable"
+                    operation.providers[provider_name]["error"] = error_msg
+                    completed_providers.add(provider_name)
+                    failed_providers.add(provider_name)
+                    await checkpoint_manager.save(operation)
+
+        # Refresh progress bars for still-running providers every tick.
+        for provider_name, job_info in jobs.items():
+            if provider_name in completed_providers:
+                continue
+            cached = cached_statuses.get(provider_name)
+            if cached is not None and cached.get("status") in ("running", "queued"):
+                progress_pct = int(cached.get("progress", 0) * 100)
+                next_poll = _next_poll_countdown(now, next_poll_at)
+                progress.update(job_info["task_id"], completed=progress_pct, next_poll=next_poll)
+
+        if len(completed_providers) >= len(jobs):
+            break
+
+        if asyncio.get_running_loop().time() - start_time > max_wait:
+            console.print(f"\n[red]Timeout exceeded ({max_wait / 60} minutes)[/red]")
+            operation.transition_to("failed", error=f"Timeout exceeded ({max_wait / 60} minutes)")
+            operation.failure_type = "recoverable"
+            _current_checkpoint_manager = None
+            _current_operation = None
+            await checkpoint_manager.save(operation)
+            return completed_providers, failed_providers
+
+        await asyncio.sleep(_next_poll_sleep(asyncio.get_running_loop().time(), next_poll_at))
+
+    return completed_providers, failed_providers
+
 
 async def _execute_research(
     operation: OperationStatus,
@@ -2764,22 +3072,6 @@ async def _execute_research(
 ):
     """Execute research with providers and track progress."""
     global _current_checkpoint_manager, _current_operation
-    poll_refresh_interval = 1.0
-    poll_jitter_ratio = 0.10
-    min_poll_interval = 0.1
-
-    def _normalize_poll_interval(value: Any) -> float:
-        return max(min_poll_interval, float(value))
-
-    def _compute_poll_interval(base_interval: float) -> float:
-        jitter_multiplier = 1.0 + random.uniform(-poll_jitter_ratio, poll_jitter_ratio)
-        return max(min_poll_interval, base_interval * jitter_multiplier)
-
-    def _next_poll_countdown(now: float, next_poll_at: float) -> int:
-        return max(0, math.ceil(next_poll_at - now))
-
-    def _next_poll_sleep(now: float, next_poll_at: float) -> float:
-        return max(0.0, min(poll_refresh_interval, next_poll_at - now))
 
     with Progress(
         SpinnerColumn(),
@@ -2829,104 +3121,50 @@ async def _execute_research(
         operation.transition_to("running")
         await checkpoint_manager.save(operation)
 
-        # Poll for completion
-        completed_providers: set[str] = set()  # done (success or failure)
-        failed_providers: set[str] = set()  # terminal failures only
-        base_poll_interval = _normalize_poll_interval(config.data["execution"]["poll_interval"])
-        max_wait = config.data["execution"]["max_wait"] * 60  # Convert to seconds
-        start_time = asyncio.get_running_loop().time()
-        effective_interval = base_poll_interval
-        next_poll_at = start_time  # prime: poll immediately on first tick
-        cached_statuses: dict[str, dict[str, Any]] = {}
+        completed_providers, failed_providers = await _run_polling_loop(
+            operation,
+            jobs,
+            progress,
+            checkpoint_manager,
+            output_manager,
+            config,
+            mode_config,
+            output_dir,
+            verbose,
+        )
 
-        while len(completed_providers) < len(jobs):
-            now = asyncio.get_running_loop().time()
-            should_poll = now >= next_poll_at
-
-            if should_poll:
-                effective_interval = _compute_poll_interval(base_poll_interval)
-                next_poll_at = now + effective_interval
-
-                for provider_name, job_info in jobs.items():
-                    if provider_name in completed_providers:
-                        continue  # Already done, skip re-polling
-
-                    status = await job_info["provider"].check_status(job_info["job_id"])
-                    provider_status = status.get("status")
-
-                    if provider_status in ("running", "queued"):
-                        cached_statuses[provider_name] = status
-                    elif provider_status == "completed":
-                        progress.update(job_info["task_id"], completed=100, next_poll=0)
-                        completed_providers.add(provider_name)
-
-                        result_content = await job_info["provider"].get_result(
-                            job_info["job_id"], verbose=verbose
-                        )
-                        provider_model = getattr(job_info["provider"], "model", None)
-                        system_prompt = mode_config.get("system_prompt", "")
-                        output_path = await output_manager.save_result(
-                            operation,
-                            provider_name,
-                            result_content,
-                            output_dir,
-                            model=provider_model,
-                            system_prompt=system_prompt,
-                        )
-                        operation.output_paths[provider_name] = output_path
-                        operation.providers[provider_name]["status"] = "completed"
-                        await checkpoint_manager.save(operation)
-                    else:
-                        # Any non-running/queued/completed status is a terminal failure for
-                        # this provider. Log it and continue polling the remaining providers.
-                        error_msg = status.get("error", f"Provider returned {provider_status!r}")
-                        console.print(
-                            f"\n[yellow]⚠[/yellow] {provider_name.title()} provider failed: {error_msg}"
-                        )
-                        operation.providers[provider_name]["status"] = "failed"
-                        operation.providers[provider_name]["error"] = error_msg
-                        completed_providers.add(provider_name)
-                        failed_providers.add(provider_name)
-                        await checkpoint_manager.save(operation)
-
-            # Update progress display for still-running providers on every 1-second tick
-            for provider_name, job_info in jobs.items():
-                if provider_name in completed_providers:
-                    continue
-                cached = cached_statuses.get(provider_name)
-                if cached is not None and cached.get("status") in ("running", "queued"):
-                    progress_pct = int(cached.get("progress", 0) * 100)
-                    next_poll = _next_poll_countdown(now, next_poll_at)
-                    progress.update(
-                        job_info["task_id"], completed=progress_pct, next_poll=next_poll
-                    )
-
-            # Exit the loop immediately if every provider has finished this iteration.
-            if len(completed_providers) >= len(jobs):
-                break
-
-            # Check timeout before sleeping
-            if asyncio.get_running_loop().time() - start_time > max_wait:
-                console.print(f"\n[red]Timeout exceeded ({max_wait / 60} minutes)[/red]")
-                operation.transition_to(
-                    "failed", error=f"Timeout exceeded ({max_wait / 60} minutes)"
+        # If timeout already set the operation to failed, exit early.
+        if operation.status == "failed":
+            if operation.failure_type == "recoverable":
+                console.print(
+                    f"\n[cyan]This failure is recoverable.[/cyan] "
+                    f"Resume with: [bold]thoth --resume {operation.id}[/bold]"
                 )
-                _current_checkpoint_manager = None
-                _current_operation = None
-                await checkpoint_manager.save(operation)
-                return
+            return
 
-            await asyncio.sleep(_next_poll_sleep(asyncio.get_running_loop().time(), next_poll_at))
-
-        # All providers are done. Fail the operation only when every provider failed.
+        # All providers done. Fail the operation when every provider failed.
         if len(failed_providers) == len(jobs):
             all_errors = "; ".join(
                 operation.providers[p].get("error", "unknown") for p in failed_providers
             )
+            op_failure_type = (
+                "permanent"
+                if all(
+                    operation.providers[p].get("failure_type") == "permanent"
+                    for p in failed_providers
+                )
+                else "recoverable"
+            )
             operation.transition_to("failed", error=f"All providers failed: {all_errors}")
+            operation.failure_type = op_failure_type
             _current_checkpoint_manager = None
             _current_operation = None
             await checkpoint_manager.save(operation)
+            if op_failure_type == "recoverable":
+                console.print(
+                    f"\n[cyan]This failure is recoverable.[/cyan] "
+                    f"Resume with: [bold]thoth --resume {operation.id}[/bold]"
+                )
             return
 
     # Generate combined report if multiple providers and combined flag is set
@@ -2969,15 +3207,17 @@ async def _execute_research(
     _current_checkpoint_manager = None
     _current_operation = None
 
-    return operation
+    return operation.id
 
 
 async def resume_operation(operation_id: str, verbose: bool):
-    """Resume an existing operation"""
+    """Resume an existing operation by reconnecting to its providers."""
+    global _current_checkpoint_manager, _current_operation
+
     config = get_config()
     checkpoint_manager = CheckpointManager(config)
+    output_manager = OutputManager(config)
 
-    # Load operation from checkpoint
     operation = await checkpoint_manager.load(operation_id)
     if not operation:
         console.print(f"[red]Error:[/red] Operation {operation_id} not found")
@@ -2988,8 +3228,143 @@ async def resume_operation(operation_id: str, verbose: bool):
     console.print(f"Mode: {operation.mode}")
     console.print(f"Status: {operation.status}")
 
-    # TODO: Implement actual resumption logic
-    console.print("[yellow]Full resume functionality not yet implemented[/yellow]")
+    if operation.status == "completed":
+        console.print(f"[green]Operation {operation_id} already completed.[/green]")
+        return
+    if operation.status == "cancelled" and not any(
+        p.get("status") != "completed" for p in operation.providers.values()
+    ):
+        console.print(
+            f"[yellow]Operation {operation_id} was cancelled with no pending work.[/yellow]"
+        )
+        return
+    if operation.status == "failed" and getattr(operation, "failure_type", None) == "permanent":
+        console.print(
+            f"[red]Operation {operation_id} failed permanently and cannot be resumed: "
+            f"{operation.error}[/red]"
+        )
+        sys.exit(7)
+
+    mode_config = config.get_mode_config(operation.mode)
+
+    # Rebuild provider instances by reconnecting to persisted job_ids.
+    provider_instances: dict[str, ResearchProvider] = {}
+    for provider_name, pdata in operation.providers.items():
+        if pdata.get("status") == "completed":
+            continue
+        job_id = pdata.get("job_id")
+        if not job_id:
+            console.print(f"[red]Provider {provider_name} has no job_id; cannot reconnect.[/red]")
+            continue
+        try:
+            provider = create_provider(provider_name, config, mode_config=mode_config)
+        except (APIKeyError, ProviderError, ThothError) as e:
+            console.print(f"[red]Error:[/red] {e.message}")
+            console.print(f"[yellow]Suggestion:[/yellow] {e.suggestion}")
+            sys.exit(1)
+
+        try:
+            await provider.reconnect(job_id)
+        except NotImplementedError as exc:
+            console.print(f"[red]Provider {provider_name} does not support resume: {exc}[/red]")
+            sys.exit(1)
+        provider_instances[provider_name] = provider
+
+    if not provider_instances:
+        console.print("[yellow]No providers to resume.[/yellow]")
+        return
+
+    # Reset failed state so the loop can re-run.
+    if operation.status in ("failed", "cancelled"):
+        operation.transition_to("running")
+        operation.error = None
+        operation.failure_type = None
+        for pdata in operation.providers.values():
+            if pdata.get("status") == "failed":
+                pdata["status"] = "running"
+                pdata.pop("failure_type", None)
+                pdata.pop("error", None)
+        await checkpoint_manager.save(operation)
+
+    _current_checkpoint_manager = checkpoint_manager
+    _current_operation = operation
+
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+        TimeElapsedColumn(),
+        TextColumn("| Next poll: {task.fields[next_poll]}s"),
+        console=console,
+    ) as progress:
+        jobs: dict[str, dict[str, Any]] = {}
+        for provider_name, provider in provider_instances.items():
+            job_id = operation.providers[provider_name]["job_id"]
+            jobs[provider_name] = {
+                "provider": provider,
+                "job_id": job_id,
+                "task_id": progress.add_task(
+                    f"{provider_name.title()} Research (resume)",
+                    total=100,
+                    next_poll=0,
+                ),
+            }
+
+        completed_providers, failed_providers = await _run_polling_loop(
+            operation,
+            jobs,
+            progress,
+            checkpoint_manager,
+            output_manager,
+            config,
+            mode_config,
+            None,
+            verbose,
+        )
+
+        if operation.status == "failed":
+            if operation.failure_type == "recoverable":
+                console.print(
+                    f"\n[cyan]This failure is recoverable.[/cyan] "
+                    f"Resume with: [bold]thoth --resume {operation.id}[/bold]"
+                )
+            raise click.Abort()
+
+        total_providers_to_watch = len(jobs)
+        if len(failed_providers) == total_providers_to_watch:
+            all_errors = "; ".join(
+                operation.providers[p].get("error", "unknown") for p in failed_providers
+            )
+            op_failure_type = (
+                "permanent"
+                if all(
+                    operation.providers[p].get("failure_type") == "permanent"
+                    for p in failed_providers
+                )
+                else "recoverable"
+            )
+            operation.transition_to("failed", error=f"All providers failed: {all_errors}")
+            operation.failure_type = op_failure_type
+            _current_checkpoint_manager = None
+            _current_operation = None
+            await checkpoint_manager.save(operation)
+            if op_failure_type == "recoverable":
+                console.print(
+                    f"\n[cyan]This failure is recoverable.[/cyan] "
+                    f"Resume with: [bold]thoth --resume {operation.id}[/bold]"
+                )
+            raise click.Abort()
+
+    operation.transition_to("completed")
+    await checkpoint_manager.save(operation)
+
+    console.print("\n[green]✓[/green] Research completed!")
+    for provider_name, path in operation.output_paths.items():
+        console.print(f"  • {path.name}")
+
+    _current_checkpoint_manager = None
+    _current_operation = None
 
 
 async def show_status(operation_id: str):
@@ -3168,7 +3543,7 @@ async def providers_command(
     # Provider descriptions
     provider_descriptions = {
         "openai": "OpenAI GPT models",
-        "perplexity": "Perplexity search AI",
+        "perplexity": "Perplexity search AI (not implemented)",
         "mock": "Mock provider for tests",
     }
 
@@ -3188,7 +3563,11 @@ async def providers_command(
 
                 # Check cache status for providers that support it
                 cache_info = "N/A"
-                if provider_name == "openai":
+                if not provider.is_implemented():
+                    status = (
+                        f"[yellow]⚠ {provider.implementation_status() or 'Unavailable'}[/yellow]"
+                    )
+                elif provider_name == "openai":
                     cache = ModelCache(provider_name)
                     age = cache.get_cache_age()
                     if age:
@@ -3463,7 +3842,7 @@ class SlashCommandRegistry:
                 )
                 desc = {
                     "openai": "OpenAI GPT models",
-                    "perplexity": "Perplexity search AI",
+                    "perplexity": "Perplexity search AI (not implemented)",
                     "mock": "Mock provider for testing",
                     "auto": "Automatic provider selection",
                 }.get(provider, "")
@@ -3511,7 +3890,7 @@ class SlashCommandRegistry:
             self.console.print("[yellow]No operations run in this session[/yellow]")
         else:
             self.console.print(f"[cyan]Last operation:[/cyan] {self.last_operation_id}")
-            # TODO: Actually check status using existing status_command
+            asyncio.run(show_status(self.last_operation_id))
         self.console.print()
         return "continue"
 
@@ -4054,9 +4433,8 @@ class InteractiveSession:
             run_in_terminal(lambda: print(f"Async mode: {status}"))
         elif command == "/status":
             if self.slash_registry.last_operation_id:
-                run_in_terminal(
-                    lambda: print(f"Last operation: {self.slash_registry.last_operation_id}")
-                )
+                operation_id = self.slash_registry.last_operation_id
+                run_in_terminal(lambda: asyncio.run(show_status(operation_id)))
             else:
                 run_in_terminal(lambda: print("No operations yet"))
         elif command in ["/exit", "/quit"]:
@@ -4155,7 +4533,7 @@ class InteractiveSession:
             print("\nAvailable providers:")
             providers = [
                 ("openai", "OpenAI GPT models"),
-                ("perplexity", "Perplexity search AI"),
+                ("perplexity", "Perplexity search AI (not implemented)"),
                 ("mock", "Mock provider for testing"),
                 ("auto", "Automatic provider selection"),
             ]
@@ -4431,7 +4809,7 @@ async def enter_interactive_mode(
 
                 if prompt.strip():
                     console.print(f"[green]Processing prompt:[/green] {prompt}")
-                    await run_research(
+                    slash_registry.last_operation_id = await run_research(
                         mode=slash_registry.current_mode,
                         prompt=prompt,
                         project=project,
@@ -4478,7 +4856,7 @@ async def enter_interactive_mode(
         # Use CLI API keys from initial settings if provided, otherwise empty dict
         api_keys = initial_settings.cli_api_keys if initial_settings.cli_api_keys else {}
 
-        await run_research(
+        session.slash_registry.last_operation_id = await run_research(
             mode=session.slash_registry.current_mode,
             prompt=prompt,
             project=project,
