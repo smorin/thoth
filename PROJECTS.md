@@ -1,4 +1,4 @@
-## [-] Project P05: VCR Cassette Replay Tests (v2.6.0)
+## [x] Project P05: VCR Cassette Replay Tests (v2.6.0)
 **Goal**: Add pytest-based VCR cassette replay tests that exercise OpenAIProvider against recorded API traffic, using Option B (separate pytest test file) from thoth_vcr.md.
 
 **Out of Scope**
@@ -16,7 +16,7 @@
 - [x] [P05-TS06] VCR-OAI-RESULT: get_result() returns substantial text
 - [x] [P05-TS07] VCR-OAI-RESULT: get_result() contains domain-relevant content
 - [x] [P05-T03] Add test-vcr justfile recipe and wire into just all
-- [-] [P05-T04] Update PROJECTS.md
+- [x] [P05-T04] Update PROJECTS.md
 
 ### Automated Verification
 - `make check` passes
@@ -24,7 +24,7 @@
 - `just all` completes without errors
 
 ### Regression Test Status
-- [ ] All existing thoth_test tests still pass
+- [x] All existing thoth_test tests still pass
 - [x] VCR tests run in `record_mode="none"` — no live API calls
 
 ---
