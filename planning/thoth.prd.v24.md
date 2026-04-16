@@ -104,7 +104,7 @@ Thoth is a command-line interface (CLI) tool that automates deep technical resea
 
 ### Core Value Propositions
 - **Instant research**: Just `thoth "your prompt"` – no mode selection needed
-- **Multi-provider intelligence**: Automatic parallel execution of OpenAI and Perplexity
+- **Multi-provider intelligence**: Automatic parallel execution of OpenAI and Perplexity (long-term goal; while Perplexity is pending implementation, default behavior is OpenAI-only)
 - **Zero-configuration deployment**: Works immediately with API keys
 - **Current directory output**: Results appear right where you are working
 - **Advanced features when needed**: Full mode control, projects, and async operations available
@@ -119,7 +119,7 @@ Create the simplest yet most powerful research tool where users can get comprehe
 
 ### Target Users
 - **Primary**: Anyone needing quick research results with minimal friction
-- **Secondary**: 
+- **Secondary**:
   - Researchers requiring deep technical analysis
   - Developers needing comprehensive API documentation research
   - Analysts conducting multi-source investigations
@@ -222,7 +222,7 @@ Create the simplest yet most powerful research tool where users can get comprehe
 | F-12 | `list` command shows all active/recent operations | Must | T-CMD-01 |
 | F-13 | `status` command shows detailed status of specific operation | Must | T-CMD-02 |
 | F-14 | `init` command runs interactive setup wizard | Must | T-CMD-03 |
-| F-15 | Dual-provider execution for deep_research mode by default (Note: Perplexity pending implementation in M11-M13) | Must | T-PROV-01 |
+| F-15 | Dual-provider execution for deep_research mode by default (Note: Perplexity pending implementation — while pending, default behavior is OpenAI-only) | Must | T-PROV-01 |
 | F-16 | Files created by default; filename pattern: `YYYY-MM-DD_HHMMSS_<mode>_<provider>_<slug>.md` | Must | T-OUT-02 |
 | F-17 | Show clear progress during research execution | Must | T-UX-01 |
 | F-18 | Display output file locations upon completion | Must | T-UX-02 |
@@ -357,15 +357,17 @@ Create the simplest yet most powerful research tool where users can get comprehe
 
 ### Perplexity Provider Requirements (v2.1)
 
-| ID | Requirement | Priority | Test ID |
-|----|-------------|----------|---------|
-| F-93 | Perplexity citation extraction and formatting | Must | T-PPLX-01 |
-| F-94 | Perplexity web search mode support | Must | T-PPLX-02 |
-| F-95 | Perplexity academic search mode | Should | T-PPLX-03 |
-| F-96 | Perplexity real-time data queries | Must | T-PPLX-04 |
-| F-97 | Perplexity search depth control | Should | T-PPLX-05 |
-| F-98 | Perplexity source filtering | Should | T-PPLX-06 |
-| F-99 | Perplexity source reliability scores | Should | T-PPLX-07 |
+All Perplexity requirements are **Planned** — the provider is not implemented yet. Until it ships, `--provider perplexity` fails with a clear `ProviderError`, and the default-providers set is OpenAI-only.
+
+| ID | Requirement | Priority | Test ID | Status |
+|----|-------------|----------|---------|--------|
+| F-93 | Perplexity citation extraction and formatting | Must | T-PPLX-01 | Planned |
+| F-94 | Perplexity web search mode support | Must | T-PPLX-02 | Planned |
+| F-95 | Perplexity academic search mode | Should | T-PPLX-03 | Planned |
+| F-96 | Perplexity real-time data queries | Must | T-PPLX-04 | Planned |
+| F-97 | Perplexity search depth control | Should | T-PPLX-05 | Planned |
+| F-98 | Perplexity source filtering | Should | T-PPLX-06 | Planned |
+| F-99 | Perplexity source reliability scores | Should | T-PPLX-07 | Planned |
 
 ### Advanced Multi-Provider Requirements (v2.1)
 
@@ -427,7 +429,7 @@ Create the simplest yet most powerful research tool where users can get comprehe
 | F-138 | Implement `/async` toggle command for async submission | Must | T-INT-10 |
 | F-139 | Support standard Unix line editing shortcuts (Ctrl+A, Ctrl+E, Ctrl+K) | Must | T-INT-11 |
 | F-140 | Execute prompt with same behavior as non-interactive mode after submission | Must | T-INT-12 |
-| F-141 | Implement `/status` command to check operation status | Must | T-INT-13 |
+| F-141 | Implement `/status [operation-id]` interactive command. With no argument, reports the last operation submitted in the current session; with an operation ID, delegates to the same code path as the top-level `thoth status <ID>` command. | Must | T-INT-13 |
 | F-142 | Display help text above input box in dimmed/light color with key commands | Must | T-INT-14 |
 
 ### Architecture and Code Organization Requirements (v2.4)
@@ -446,22 +448,24 @@ Create the simplest yet most powerful research tool where users can get comprehe
 
 ### Development Infrastructure Requirements (v2.5 - IMPLEMENTED)
 
+All quality tooling lives under `just`. `make` is bootstrap-only (`make env-check`, `make check-uv`, `make help`) and must not be used as a thin wrapper around `just`.
+
 | ID | Requirement | Priority | Test ID | Status |
 |----|-------------|----------|---------|--------|
-| F-152 | Separate Makefile targets for main executable (lint, format, typecheck, check, fix) | Must | - | ✓ Implemented |
-| F-153 | Separate Makefile targets for test suite (test-lint, test-format, test-typecheck, test-check, test-fix) | Must | - | ✓ Implemented |
-| F-154 | Combined Makefile targets for full codebase (lint-all, format-all, check-all, fix-all) | Must | - | ✓ Implemented |
+| F-152 | Separate `just` targets for main executable: `just lint`, `just format`, `just typecheck`, `just check`, `just fix` | Must | T-JUST-01 | ✓ Implemented |
+| F-153 | Separate `just` targets for test suite: `just test-lint`, `just test-format`, `just test-typecheck`, `just test-fix` | Must | T-JUST-02 | ✓ Implemented |
+| F-154 | Combined `just` targets for full codebase: `just lint-all`, `just format-all`, `just check-all`, `just fix-all` | Must | T-JUST-03 | ✓ Implemented |
 | F-155 | UV-based tool execution without installation requirement | Must | - | ✓ Implemented |
 | F-156 | Ruff integration for linting and formatting via UV | Must | - | ✓ Implemented |
 | F-157 | Ty integration for type checking via UV | Must | - | ✓ Implemented |
 | F-158 | Independent verification of main code vs test code | Must | - | ✓ Implemented |
-| F-159 | Comprehensive help target showing all available commands | Must | - | ✓ Implemented |
-| F-160 | Virtual environment creation with Python 3.11 via make venv | Must | - | ✓ Implemented |
-| F-161 | Extract and install embedded dependencies via make venv-install | Must | - | ✓ Implemented |
-| F-162 | Sync exact dependencies via make venv-sync | Must | - | ✓ Implemented |
-| F-163 | Clean virtual environment via make venv-clean | Must | - | ✓ Implemented |
-| F-164 | UV export integration for dependency extraction | Must | - | ✓ Implemented |
-| F-165 | Process substitution for direct pip install without temp files | Must | - | ✓ Implemented |
+| F-159 | `just` default recipe shows grouped task list (`just --list`) | Must | - | ✓ Implemented |
+| F-160 | Virtual environment creation with Python 3.11 via `just venv` | Must | T-JUST-04 | ✓ Implemented |
+| F-161 | Install package and dev dependencies into the venv via `just venv-install` | Must | - | ✓ Implemented |
+| F-162 | Sync exact dependencies via `just venv-sync` | Must | - | ✓ Implemented |
+| F-163 | Remove virtual environment via `just venv-clean` | Must | - | ✓ Implemented |
+| F-164 | UV-based dependency management (`uv sync`, `uv pip install -e ".[dev]"`) | Must | - | ✓ Implemented |
+| F-165 | Bootstrap environment check via `make env-check` (verifies `uv`, `python3`, `just`) | Must | - | ✓ Implemented |
 
 ### Interactive Clarification Mode Requirements (v2.6)
 
@@ -478,6 +482,12 @@ Create the simplest yet most powerful research tool where users can get comprehe
 | F-174 | Show mode toggle instructions below input box | Must | T-CLAR-09 |
 | F-175 | Preserve original prompt when switching modes | Must | T-CLAR-10 |
 | F-176 | Support Enter to accept clarification, Shift+Tab to return to edit | Must | T-CLAR-11 |
+
+### Async Submission Output Contract
+
+| ID | Requirement | Priority | Test ID |
+|----|-------------|----------|---------|
+| F-177 | On a successful `--async` submission, stdout must print exactly the following three lines — and must not print them on submission failure:<br>`Research submitted`<br>`Operation ID: <operation-id>`<br>`Check later with: thoth status <operation-id>` | Must | T-ASYNC-08 |
 
 ---
 
@@ -511,7 +521,7 @@ thoth -i                         # Enter interactive mode (Edit Mode)
 thoth --interactive              # Same as above
 thoth -i --clarify              # Start in Clarification Mode
 
-# ADVANCED USAGE - Full Control  
+# ADVANCED USAGE - Full Control
 thoth MODE PROMPT [OPTIONS]      # Specify mode and options
 thoth [COMMAND] [OPTIONS]        # Run specific commands
 
@@ -531,7 +541,7 @@ Interactive Mode Commands:
   /mode <mode>  Set research mode (with auto-completion)
   /provider <p> Set provider (openai, perplexity, mock)
   /async        Toggle async submission mode
-  /status       Check operation status
+  /status [id]  Check operation status (defaults to last operation in session)
   /exit, /quit  Exit without submitting prompt
 
 Interactive Mode Controls:
@@ -551,7 +561,7 @@ thoth "impact of quantum computing on cryptography"
 # This sends your exact prompt to the LLM without modification
 # Creates in current directory:
 #   ./2024-08-03_143022_default_openai_impact-of-quantum-computing.md
-#   ./2024-08-03_143022_default_perplexity_impact-of-quantum-computing.md  
+#   ./2024-08-03_143022_default_perplexity_impact-of-quantum-computing.md
 
 # With combined report (requires flag)
 thoth "impact of quantum computing on cryptography" --combined
@@ -704,7 +714,7 @@ thoth providers -- --models --no-cache        # Bypass cache completely without 
 ### 10.4 Commands Reference
 
 | Command | Description | Example |
-|---------|-------------|---------|  
+|---------|-------------|---------|
 | (default) | Run research with prompt | `thoth "your research prompt"` |
 | init | Setup wizard for API keys | `thoth init` |
 | status ID | Show operation details | `thoth status research-20240803-143022-xxx` |
@@ -735,31 +745,31 @@ USAGE:
 QUICK START:
     thoth "impact of quantum computing"
     thoth "best practices for REST APIs"
-    
+
 EXAMPLES:
     # Simple research (saves to current directory)
     thoth "how does blockchain consensus work"
-    
+
     # Research with single provider
     thoth "machine learning optimization" --provider openai
     thoth "machine learning optimization" -P openai
-    
+
     # Test with mock provider (no API key needed)
     thoth "test prompt" --provider mock
     thoth "test query" -P mock
-    
+
     # Async for long research
     thoth "comprehensive review of database architectures" --async
-    
+
     # Generate combined report
     thoth "cloud architecture patterns" --combined
-    
+
     # Clean old operations
     thoth clean --days 30
 
 COMMANDS:
     init      Setup API keys and configuration
-    status    Check research operation status  
+    status    Check research operation status
     list      List recent research operations
     update    Fix stale operation statuses
     clean     Clean up old checkpoints
@@ -806,7 +816,7 @@ Research completed in 8m 32s
 
 Files created:
   • 2024-08-03_143022_deep_research_openai_explain-how-dns-resolution.md
-  • 2024-08-03_143022_deep_research_perplexity_explain-how-dns-resolution.md  
+  • 2024-08-03_143022_deep_research_perplexity_explain-how-dns-resolution.md
 
 To generate a combined report, run with --combined flag
 ```
@@ -896,13 +906,13 @@ Cleaning up...
 $ thoth providers -- --list
 
 Available Providers:
-┌─────────────┬──────────┬─────────────────────────┬──────────────────────────────┐
-│ Provider    │ Status   │ Description             │ Model Cache                  │
-├─────────────┼──────────┼─────────────────────────┼──────────────────────────────┤
-│ openai      │ ✓ Ready  │ OpenAI GPT models       │ 3 days old (refresh in 4 days) │
-│ perplexity  │ ✗ No key │ Perplexity search AI    │ N/A                          │
-│ mock        │ ✓ Ready  │ Mock provider for tests │ N/A                          │
-└─────────────┴──────────┴─────────────────────────┴──────────────────────────────┘
+┌─────────────┬──────────────────┬─────────────────────────┬──────────────────────────────┐
+│ Provider    │ Status           │ Description             │ Model Cache                  │
+├─────────────┼──────────────────┼─────────────────────────┼──────────────────────────────┤
+│ openai      │ ✓ Ready          │ OpenAI GPT models       │ 3 days old (refresh in 4 days) │
+│ perplexity  │ ✗ Not implemented│ Perplexity search AI    │ N/A                          │
+│ mock        │ ✓ Ready          │ Mock provider for tests │ N/A                          │
+└─────────────┴──────────────────┴─────────────────────────┴──────────────────────────────┘
 
 To see available models, use: thoth providers -- --models
 To refresh model cache, use: thoth providers -- --models --refresh-cache
@@ -954,7 +964,7 @@ OpenAI Models:
 
 $ thoth providers -- --keys
 
-                Provider API Key Configuration                 
+                Provider API Key Configuration
 ╭───────────────┬────────────────────────┬───────────────────╮
 │ Provider      │ Environment Variable   │ CLI Argument      │
 ├───────────────┼────────────────────────┼───────────────────┤
@@ -1072,7 +1082,7 @@ default_mode = "default"          # Used when no mode specified (no system promp
 show_tips = true                  # Show helpful tips for new users
 auto_cleanup_days = 90           # Auto-clean operations older than this
 
-[execution]  
+[execution]
 poll_interval = 30               # seconds between status checks
 max_wait = 30                    # maximum minutes to wait
 parallel_providers = true        # run providers simultaneously
@@ -1149,16 +1159,16 @@ export PERPLEXITY_API_KEY="pplx-..."
 ### For New Users
 
 1. **Install**: Ensure Python 3.11+ is available
-2. **Set API Keys** (optional for testing): 
+2. **Set API Keys** (optional for testing):
    ```bash
    # For real usage
    export OPENAI_API_KEY="your-key"
    export PERPLEXITY_API_KEY="your-key"
-   
+
    # For testing
    thoth "test prompt" --provider mock
    ```
-3. **Research**: 
+3. **Research**:
    ```bash
    thoth "your research question"
    ```
@@ -1170,7 +1180,7 @@ export PERPLEXITY_API_KEY="pplx-..."
 # Quick technical explanation
 thoth "how does HTTPS work"
 
-# API documentation research  
+# API documentation research
 thoth "comprehensive guide to GraphQL"
 
 # Technology comparison
@@ -1220,7 +1230,7 @@ Error: Failed to connect after 3 attempts
 $ thoth "analyze all cloud provider services"
 This research may take 15-30 minutes. Consider using --async:
   thoth "analyze all cloud provider services" --async
-  
+
 Continue anyway? [Y/n]:
 
 # Invalid provider
@@ -1383,16 +1393,16 @@ While the primary use case is simple, power users can access:
 
 ### Provider Selection
 - `--provider openai` or `-P openai` - Use only OpenAI
-- `--provider perplexity` or `-P perplexity` - Use only Perplexity
+- `--provider perplexity` or `-P perplexity` - Use only Perplexity (currently returns a clear `ProviderError` — not implemented yet)
 - `--provider mock` or `-P mock` - Use mock provider for testing (accepts any API key value)
-- Default uses both OpenAI and Perplexity for comprehensive coverage
+- Default uses both OpenAI and Perplexity for comprehensive coverage (target behavior; while Perplexity is pending, default is OpenAI-only)
 
 ### Project Organization
 - `--project NAME` - Organize outputs in dedicated directories
 - Useful for ongoing research topics
 - Supports per-project configuration
 
-### Async Operations  
+### Async Operations
 - `--async` - Submit and continue working
 - Essential for very long research tasks
 - Full checkpoint/resume support
@@ -1566,7 +1576,7 @@ This specification prioritizes the simplest possible user experience while maint
 
 Key principles:
 - **Simple by default**: Just prompt and go
-- **Progressive disclosure**: Advanced features available when needed  
+- **Progressive disclosure**: Advanced features available when needed
 - **Current directory convenience**: Results appear where you work
 - **Clear communication**: Simple progress and obvious output locations
 - **Testability first**: Mock provider enables comprehensive testing
