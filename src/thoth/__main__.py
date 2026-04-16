@@ -34,6 +34,8 @@ import re
 import shutil
 import signal
 import sys
+import threading
+import time
 import tomllib
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timedelta
@@ -75,6 +77,21 @@ CONFIG_VERSION = "2.0"
 # Global variables for signal handling
 _current_checkpoint_manager = None
 _current_operation = None
+
+# Cooperative SIGINT cancellation state.
+# First Ctrl-C sets _interrupt_event; the async poll loop raises KeyboardInterrupt
+# at its next await boundary so in-flight writes can unwind cleanly.
+# A second Ctrl-C within _INTERRUPT_FORCE_EXIT_WINDOW_S force-exits.
+_interrupt_event: threading.Event = threading.Event()
+_last_interrupt_at: float | None = None
+_INTERRUPT_FORCE_EXIT_WINDOW_S = 2.0
+
+
+def _raise_if_interrupted() -> None:
+    """Raise KeyboardInterrupt if a SIGINT has been received."""
+    if _interrupt_event.is_set():
+        raise KeyboardInterrupt
+
 
 # Global config path
 _config_path = None
@@ -1558,9 +1575,20 @@ created_at: {operation.created_at.isoformat()}
 
             content = metadata + content
 
-        # Write file
-        async with aiofiles.open(output_path, "w", encoding="utf-8") as f:
-            await f.write(content)
+        # Atomic write: stage to sibling .tmp file, then rename.
+        # Ctrl-C mid-write leaves only the tmp file; the final path is never truncated.
+        tmp_path = output_path.with_name(output_path.name + ".tmp")
+        try:
+            async with aiofiles.open(tmp_path, "w", encoding="utf-8") as f:
+                await f.write(content)
+            os.replace(tmp_path, output_path)
+        except BaseException:
+            if tmp_path.exists():
+                try:
+                    tmp_path.unlink()
+                except OSError:
+                    pass
+            raise
 
         return output_path
 
@@ -2940,6 +2968,9 @@ async def _run_polling_loop(
     cached_statuses: dict[str, dict[str, Any]] = {}
 
     while len(completed_providers) < len(jobs):
+        # Cooperative cancellation: SIGINT handler sets _interrupt_event, and we
+        # raise here so the outer try/except path cleans up the checkpoint.
+        _raise_if_interrupted()
         now = asyncio.get_running_loop().time()
         should_poll = now >= next_poll_at
 
@@ -3045,9 +3076,9 @@ async def _run_polling_loop(
             console.print(f"\n[red]Timeout exceeded ({max_wait / 60} minutes)[/red]")
             operation.transition_to("failed", error=f"Timeout exceeded ({max_wait / 60} minutes)")
             operation.failure_type = "recoverable"
+            await checkpoint_manager.save(operation)
             _current_checkpoint_manager = None
             _current_operation = None
-            await checkpoint_manager.save(operation)
             return completed_providers, failed_providers
 
         await asyncio.sleep(_next_poll_sleep(asyncio.get_running_loop().time(), next_poll_at))
@@ -3157,9 +3188,9 @@ async def _execute_research(
             )
             operation.transition_to("failed", error=f"All providers failed: {all_errors}")
             operation.failure_type = op_failure_type
+            await checkpoint_manager.save(operation)
             _current_checkpoint_manager = None
             _current_operation = None
-            await checkpoint_manager.save(operation)
             if op_failure_type == "recoverable":
                 console.print(
                     f"\n[cyan]This failure is recoverable.[/cyan] "
@@ -3346,9 +3377,9 @@ async def resume_operation(operation_id: str, verbose: bool):
             )
             operation.transition_to("failed", error=f"All providers failed: {all_errors}")
             operation.failure_type = op_failure_type
+            await checkpoint_manager.save(operation)
             _current_checkpoint_manager = None
             _current_operation = None
-            await checkpoint_manager.save(operation)
             if op_failure_type == "recoverable":
                 console.print(
                     f"\n[cyan]This failure is recoverable.[/cyan] "
@@ -4885,15 +4916,34 @@ async def enter_interactive_mode(
 
 
 def handle_sigint(signum, frame):
-    """Handle Ctrl-C gracefully by saving checkpoint"""
+    """Handle Ctrl-C cooperatively.
+
+    First press: set the cancellation flag, write a synchronous checkpoint, and
+    return. The async poll loop picks up the flag at its next await boundary
+    and raises KeyboardInterrupt so in-flight aiofiles writes unwind cleanly.
+
+    Second press within _INTERRUPT_FORCE_EXIT_WINDOW_S: force-exit immediately.
+    """
+    global _last_interrupt_at
+
+    now = time.monotonic()
+    if (
+        _interrupt_event.is_set()
+        and _last_interrupt_at is not None
+        and now - _last_interrupt_at < _INTERRUPT_FORCE_EXIT_WINDOW_S
+    ):
+        console.print("\n[red]Force exit.[/red]")
+        sys.exit(1)
+
+    _last_interrupt_at = now
+    _interrupt_event.set()
+
     console.print("\n[yellow]Interrupt received. Saving checkpoint...[/yellow]")
 
     if _current_checkpoint_manager and _current_operation:
-        # Update operation status only if not already in a terminal state
         if _current_operation.status not in ("cancelled", "failed", "completed"):
             _current_operation.transition_to("cancelled")
 
-        # Save checkpoint synchronously (no event loop needed in signal handler)
         try:
             checkpoint_dir = _current_checkpoint_manager.checkpoint_dir
             checkpoint_file = checkpoint_dir / f"{_current_operation.id}.json"
@@ -4915,8 +4965,7 @@ def handle_sigint(signum, frame):
         except Exception as e:
             console.print(f"[red]Error saving checkpoint:[/red] {e}")
 
-    console.print("[red]Exiting...[/red]")
-    sys.exit(1)
+    console.print("[dim]Finishing current write; press Ctrl-C again to force exit.[/dim]")
 
 
 # ============================================================================
