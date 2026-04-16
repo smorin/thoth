@@ -105,8 +105,10 @@ class InputMode(Enum):
 
 
 def get_config():
-    """Get Config instance with custom path if provided"""
-    return Config(_config_path) if _config_path else Config()
+    """Get a fully-loaded ConfigManager instance with custom path if provided"""
+    manager = ConfigManager(_config_path) if _config_path else ConfigManager()
+    manager.load_all_layers()
+    return manager
 
 
 # Built-in mode definitions
@@ -210,7 +212,6 @@ BUILTIN_MODES = {
 # This section contains all configuration-related classes and functions:
 # - ConfigSchema: Defines configuration defaults and structure
 # - ConfigManager: Manages layered configuration with precedence
-# - Config: Legacy wrapper for backward compatibility
 # ============================================================================
 
 
@@ -468,19 +469,6 @@ class ConfigManager:
     def get_effective_config(self) -> dict[str, Any]:
         """Return the merged effective configuration"""
         return self.data
-
-
-# Keep old Config class for backward compatibility during migration
-class Config:
-    """Legacy Config class - redirects to ConfigManager"""
-
-    def __init__(self, config_path: Path | None = None):
-        self.manager = ConfigManager(config_path)
-        self.manager.load_all_layers()
-        self.data = self.manager.data
-
-    def get_mode_config(self, mode: str) -> dict[str, Any]:
-        return self.manager.get_mode_config(mode)
 
 
 # ============================================================================
@@ -1409,7 +1397,7 @@ def show_general_help(ctx):
 class CheckpointManager:
     """Handles operation persistence with corruption recovery"""
 
-    def __init__(self, config: Config):
+    def __init__(self, config: ConfigManager):
         self.checkpoint_dir = Path(config.data["paths"]["checkpoint_dir"])
         self.checkpoint_dir.mkdir(parents=True, exist_ok=True)
 
@@ -1480,7 +1468,7 @@ class CheckpointManager:
 class OutputManager:
     """Manages research output files"""
 
-    def __init__(self, config: Config, no_metadata: bool = False):
+    def __init__(self, config: ConfigManager, no_metadata: bool = False):
         self.config = config
         self.base_output_dir = Path(config.data["paths"]["base_output_dir"])
         self.format = config.data["output"]["format"]
@@ -2508,15 +2496,7 @@ class ProviderRegistry:
                 f"Valid providers are: {', '.join(self.providers.keys())}",
             )
 
-        # Get config data - handle both Config and ConfigManager
-        if hasattr(config, "data"):
-            config_data = config.data
-        elif hasattr(config, "get_effective_config"):
-            config_data = config.get_effective_config()
-        else:
-            config_data = config
-
-        provider_config = config_data.get("providers", {}).get(provider_name, {})
+        provider_config = config.data.get("providers", {}).get(provider_name, {})
 
         # Handle mock provider specially
         if provider_name == "mock":
@@ -2557,7 +2537,7 @@ provider_registry = ProviderRegistry()
 
 def create_provider(
     provider_name: str,
-    config: Config,
+    config: ConfigManager,
     cli_api_key: str | None = None,
     timeout_override: float | None = None,
     mode_config: dict[str, Any] | None = None,
@@ -2631,7 +2611,9 @@ def create_provider(
 # ============================================================================
 
 
-async def find_latest_outputs(current_mode: str, project: str | None, config: Config) -> list[Path]:
+async def find_latest_outputs(
+    current_mode: str, project: str | None, config: ConfigManager
+) -> list[Path]:
     """Find latest outputs from previous mode in chain"""
     mode_config = config.get_mode_config(current_mode)
     previous_mode = mode_config.get("previous")
@@ -2924,7 +2906,7 @@ async def _run_polling_loop(
     progress: Progress,
     checkpoint_manager: "CheckpointManager",
     output_manager: "OutputManager",
-    config: Config,
+    config: ConfigManager,
     mode_config: dict,
     output_dir: str | None,
     verbose: bool,
@@ -3090,7 +3072,7 @@ async def _execute_research(
     operation: OperationStatus,
     checkpoint_manager: "CheckpointManager",
     output_manager: "OutputManager",
-    config: Config,
+    config: ConfigManager,
     mode_config: dict,
     providers: dict,
     quiet: bool,
@@ -4038,7 +4020,7 @@ class InteractiveSession:
     def __init__(
         self,
         console: Console,
-        config: Config,
+        config: ConfigManager,
         initial_settings: InteractiveInitialSettings,
     ):
         self.console = console
