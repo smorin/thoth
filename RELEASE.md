@@ -63,7 +63,7 @@ The release stack is built entirely on [uv](https://docs.astral.sh/uv/) — no h
 | `.github/workflows/ci.yml` | Runs tests, lint, typecheck on push/PR |
 | `.github/workflows/publish.yml` | Builds and publishes on `v*` tag push |
 | `justfile` | Local task automation (`just build`, `just publish`) |
-| `Makefile` | Environment dependency checks (`make check`) |
+| `Makefile` | Environment dependency checks (`make env-check`) |
 | `CHANGELOG.md` | Release notes, one section per version |
 
 ---
@@ -79,7 +79,7 @@ The release stack is built entirely on [uv](https://docs.astral.sh/uv/) — no h
 
 **Verify your environment:**
 ```bash
-make check   # checks for uv and python3
+make env-check   # checks for uv, python3, and just
 ```
 
 ---

@@ -61,6 +61,7 @@ openai.env
 !planning/*.md
 !research/*.md
 !MILESTONES.md
+!thoth_vcr.md
 
 # Logs
 *.log

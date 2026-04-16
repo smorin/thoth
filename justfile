@@ -18,7 +18,8 @@ install-bin:
 # Check environment dependencies
 [group: 'setup']
 check:
-    @make check
+    uv run ruff check src/thoth/ --fix
+    uv run ty check src/thoth/
 
 # Clean build artifacts
 [group: 'setup']

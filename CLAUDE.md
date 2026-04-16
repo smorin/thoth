@@ -7,8 +7,9 @@ After making any code changes, follow this verification workflow:
 
 1. **Main Executable Verification** (thoth):
    ```bash
-   make check    # Run lint and typecheck on main executable
-   make fix      # Auto-fix any issues found
+   make env-check  # Verify bootstrap dependencies are installed
+   just fix        # Auto-fix any issues found
+   just check      # Run lint and typecheck on main executable
    ```
 
 2. **Run Tests**:
@@ -18,15 +19,18 @@ After making any code changes, follow this verification workflow:
 
 3. **Test Suite Verification** (thoth_test):
    ```bash
-   make test-check  # Run lint and typecheck on test suite
-   make test-fix    # Auto-fix any issues in test suite
+   just test-fix        # Auto-fix any issues in test suite
+   just test-lint       # Run lint on test suite
+   just test-typecheck  # Run typecheck on test suite
    ```
 
 4. **Final Verification**:
    - Only consider the change complete when:
-     - `make check` passes without errors
+     - `make env-check` passes without errors
+     - `just check` passes without errors
      - All tests pass
-     - `make test-check` passes without errors
+     - `just test-lint` passes without errors
+     - `just test-typecheck` passes without errors
 
 This ensures both the main executable and test suite maintain code quality standards.
 
@@ -36,12 +40,14 @@ This ensures both the main executable and test suite maintain code quality stand
 - Once fixed, run the full test suite to ensure no regressions
 - Systematically run `./thoth_test` with targeted test subsets
 - Always follow the verification steps:
-  1. `make check`
-  2. `make fix`
-  3. `./thoth_test`
-  4. `make test-check`
-  5. `make test-fix`
-  6. Verify all tests pass in the full test suite
+  1. `make env-check`
+  2. `just fix`
+  3. `just check`
+  4. `./thoth_test`
+  5. `just test-fix`
+  6. `just test-lint`
+  7. `just test-typecheck`
+  8. Verify all tests pass in the full test suite
 
 ## Planning Documents Management
 

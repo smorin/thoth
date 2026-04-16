@@ -1,16 +1,14 @@
-.PHONY: check help clean check-uv
+.PHONY: help env-check check-uv
 
 help:
 	@echo "Available targets:"
-	@echo "  check    - Check development environment"
-	@echo "  check-uv - Check if UV is installed"
-	@echo "  clean    - Remove build artifacts"
-	@echo "  help     - Show this help message"
+	@echo "  env-check - Check development environment bootstrap dependencies"
+	@echo "  check-uv  - Check if UV is installed"
+	@echo "  help      - Show this help message"
 	@echo ""
-	@echo "For all other commands, use 'just' (the primary task runner):"
-	@echo "  just --list"
+	@echo "Use 'just --list' for all development, quality, test, build, and release commands."
 
-check: check-uv
+env-check: check-uv
 	@echo "Checking development environment..."
 	@command -v uv >/dev/null 2>&1 || { echo "❌ uv not found. Install from: https://docs.astral.sh/uv/"; exit 1; }
 	@command -v python3 >/dev/null 2>&1 || { echo "❌ Python 3 not found"; exit 1; }
@@ -22,11 +20,3 @@ check: check-uv
 
 check-uv:
 	@command -v uv >/dev/null 2>&1 || { echo "UV not found. Install from: https://github.com/astral-sh/uv"; exit 1; }
-
-clean:
-	rm -rf build/ dist/ *.egg-info
-	rm -rf .pytest_cache/ .ruff_cache/
-	rm -rf htmlcov/ .coverage
-	find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
-	find . -type f -name "*.pyc" -delete 2>/dev/null || true
-	find . -type f -name ".DS_Store" -delete 2>/dev/null || true

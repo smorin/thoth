@@ -394,87 +394,38 @@ User: explain kubernetes
 
 ## Development
 
-### Makefile Targets
+### Bootstrap With `make`
 
-The Makefile provides separate targets for the main executable (`thoth`) and test suite (`thoth_test`) to ensure independent verification and fixes:
+`make` is bootstrap-only in this repo. Run `make env-check` first on a new machine or shell to verify the local environment before using `just`:
 
-#### Main Executable (thoth)
 ```bash
-make lint        # Lint thoth executable
-make format      # Format thoth executable
-make typecheck   # Type check thoth executable
-make check       # Run all checks on thoth (lint + typecheck)
-make fix         # Auto-fix lint issues and format thoth
+make env-check   # Verify uv, python3, and just are installed
+make check-uv    # Verify uv is installed
+make help        # Show bootstrap commands
 ```
 
-#### Test Suite (thoth_test)
+For all development, quality, test, build, and release workflows, use `just`:
+
 ```bash
-make test-lint              # Lint test suite
-make test-format            # Format test suite
-make test-typecheck         # Type check test suite
-make test-check             # Run all checks on test suite
-make test-fix               # Auto-fix lint issues and format test suite
-make test-skip-interactive  # Run tests skipping interactive (pexpect) tests — CI-safe
-```
-
-#### Snapshot Tests
-```bash
-make update-snapshots  # Regenerate pytest snapshot files
-```
-
-#### Combined Operations
-```bash
-make lint-all    # Lint both thoth and thoth_test
-make format-all  # Format both thoth and thoth_test
-make check-all   # Check both thoth and thoth_test
-make fix-all     # Fix and format both thoth and thoth_test
-```
-
-#### Build & Release
-```bash
-make build               # Build distribution packages (wheel + sdist)
-make publish-test        # Publish to TestPyPI for validation
-make publish             # Publish to PyPI (production)
-make bump TYPE=patch     # Bump version in pyproject.toml, commit, and tag
-make changelog           # Regenerate CHANGELOG.md from git history (git-cliff)
-make release TYPE=minor  # Full release: bump version + update changelog in one step
-```
-
-#### Virtual Environment Management
-```bash
-make venv         # Create virtual environment with Python 3.11
-make venv-install # Install thoth's embedded dependencies into venv
-make venv-sync    # Sync exact dependencies (replaces all packages)
-make venv-clean   # Remove virtual environment
-```
-
-The virtual environment commands use UV to extract dependencies directly from the `thoth` script's embedded dependency declarations. This ensures the development environment matches the runtime dependencies exactly.
-
-Example workflow:
-```bash
-# Create and set up virtual environment
-make venv-install
-
-# Activate the virtual environment
-source .venv/bin/activate
-
-# Work with the exact dependencies thoth uses
-python -c "import openai, rich, click"  # All available
-
-# When done, deactivate
-deactivate
-
-# Or clean up completely
-make venv-clean
-```
-
-#### General Commands
-```bash
-make help        # Show all available commands
-make install     # Install thoth to /usr/local/bin
-make test        # Run test suite
-make clean       # Remove generated files and venv
-make run         # Run example research prompt
+just --list              # Show all available tasks
+just check               # Run code-quality checks for src/thoth/
+just lint                # Lint src/thoth/
+just typecheck           # Type-check src/thoth/
+just fix                 # Auto-fix and format src/thoth/
+just test-lint           # Lint thoth_test
+just test-typecheck      # Type-check thoth_test
+just test-fix            # Auto-fix and format thoth_test
+just check-all           # Check src/thoth/ and thoth_test
+just fix-all             # Fix and format src/thoth/ and thoth_test
+just test                # Run ./thoth_test -r
+just test-skip-interactive  # Run tests skipping interactive coverage
+just test-vcr            # Run cassette-backed pytest coverage
+just update-snapshots    # Regenerate pytest snapshot files
+just clean               # Remove local build and cache artifacts
+just install             # Sync dependencies with uv
+just build               # Build distribution packages
+just publish-test        # Publish to TestPyPI
+just publish             # Publish to PyPI
 ```
 
 ### Running Tests
@@ -488,9 +439,9 @@ Use `thoth_test` for the actual regression suite. It mixes provider-agnostic CLI
 
 | Command | What it runs | When to use it |
 |------|---------|---------|
-| `make test` | Full `thoth_test` suite (`./thoth_test -r`) | Local full validation before merging |
+| `just test` | Full `thoth_test` suite (`./thoth_test -r`) | Local full validation before merging |
 | `./thoth_test -r` | All available tests for the current environment | Default comprehensive test run |
-| `make test-skip-interactive` | Mock + provider-agnostic tests, skipping interactive `pexpect` cases | Fast CI-safe pass or non-TTY environments |
+| `just test-skip-interactive` | Mock + provider-agnostic tests, skipping interactive `pexpect` cases | Fast CI-safe pass or non-TTY environments |
 | `./thoth_test -r --interactive` | Interactive-only `pexpect` tests (`INT-*`) | Debugging terminal UI and interactive mode |
 | `./thoth_test -r --provider mock` | Provider-agnostic tests plus mock-provider coverage | Fastest broad regression run with no real API keys |
 | `./thoth_test -r --provider openai` | Provider-agnostic tests plus OpenAI-specific cases | Validating OpenAI integration with a real key |
@@ -511,7 +462,7 @@ Useful commands:
 # Run tests skipping interactive (pexpect) tests — fast, CI-safe
 ./thoth_test -r --provider mock --skip-interactive
 # or equivalently
-make test-skip-interactive
+just test-skip-interactive
 
 # Run interactive tests only
 ./thoth_test -r --interactive
@@ -535,11 +486,15 @@ make test-skip-interactive
 Verification workflow used in this repo:
 
 ```bash
-make check
-make fix
+make env-check
+just fix
+just check
 ./thoth_test -r
-make test-check
-make test-fix
+just test-lint
+just test-typecheck
+just test-fix
+just test-lint
+just test-typecheck
 ```
 
 ## Environment Variables

@@ -7,8 +7,8 @@
 git clone https://github.com/smorin/thoth.git
 cd thoth
 
-# Check environment dependencies
-make check
+# Check bootstrap environment (uv, python3, just)
+make env-check
 
 # Install git hooks
 lefthook install
@@ -33,21 +33,21 @@ uv sync
 ## Code Quality
 
 ```bash
-# Check linting and types
-make check
+# Check linting and types (src/thoth/)
+just check
 
-# Auto-fix issues
-make fix
+# Auto-fix issues (src/thoth/)
+just fix
 
-# Check the test suite too
-make check-all
+# Check both src/thoth/ and thoth_test
+just check-all
 ```
 
 ## Submitting a PR
 
 1. Create a branch: `git checkout -b feat/your-feature`
 2. Make your changes (tests first per TDD practice)
-3. Run `make check-all` and `./thoth_test -r` — both must pass
+3. Run `just check-all` and `./thoth_test -r` — both must pass
 4. Push and open a PR against `main`
 
 ## API Keys
