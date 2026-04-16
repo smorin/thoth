@@ -1,0 +1,2342 @@
+interactions:
+- request:
+    body: '{"background":true,"input":"What are the three most significant recent breakthroughs in solid-state battery technology? Provide specific company names, dates, and technical details with citations.","model":"o4-mini-deep-research","tools":[{"type":"web_search_preview"}]}'
+    headers: {}
+    method: POST
+    uri: https://api.openai.com/v1/responses
+  response:
+    body:
+      encoding: utf-8
+      string: "{\n  \"id\": \"resp_0c13a25ee1a48f780069df079e0a58819cbde29d8a2906c590\",\n  \"object\": \"response\",\n  \"created_at\": 1776224158,\n  \"status\": \"queued\",\n  \"background\": true,\n  \"completed_at\": null,\n  \"error\": null,\n  \"frequency_penalty\": 0.0,\n  \"incomplete_details\": null,\n  \"instructions\": null,\n  \"max_output_tokens\": null,\n  \"max_tool_calls\": 225,\n  \"model\": \"o4-mini-deep-research-2025-06-26\",\n  \"output\": [],\n  \"parallel_tool_calls\": true,\n  \"presence_penalty\": 0.0,\n  \"previous_response_id\": null,\n  \"prompt_cache_key\": null,\n  \"prompt_cache_retention\": null,\n  \"reasoning\": {\n    \"effort\": \"medium\",\n    \"summary\": null\n  },\n  \"safety_identifier\": null,\n  \"service_tier\": \"auto\",\n  \"store\": true,\n  \"temperature\": 1.0,\n  \"text\": {\n    \"format\": {\n      \"type\": \"text\"\n    },\n    \"verbosity\": \"medium\"\n  },\n  \"tool_choice\": \"auto\",\n  \"tools\": [\n    {\n      \"type\": \"web_search_preview\",\n      \"search_context_size\": \"medium\",\n      \"user_location\": null\n    }\n  ],\n  \"top_logprobs\": 0,\n  \"top_p\": 1.0,\n  \"truncation\": \"disabled\",\n  \"usage\": null,\n  \"user\": null,\n  \"metadata\": {}\n}"
+    headers:
+      Alt-Svc:
+      - h3=":443"; ma=86400
+      Cf-Cache-Status:
+      - DYNAMIC
+      Cf-Ray:
+      - 9ec7e7361fb1f591-SJC
+      Connection:
+      - keep-alive
+      Content-Type:
+      - application/json
+      Date:
+      - Wed, 15 Apr 2026 03:35:58 GMT
+      Openai-Organization:
+      - user-vcklpsn7dsyfu2fz7wokpfo8
+      Openai-Processing-Ms:
+      - '526'
+      Openai-Project:
+      - proj_nyDPV41fTNlbZd43C6I5P3ih
+      Openai-Version:
+      - '2020-10-01'
+      Server:
+      - cloudflare
+      Strict-Transport-Security:
+      - max-age=31536000; includeSubDomains; preload
+      X-Content-Type-Options:
+      - nosniff
+      X-Request-Id:
+      - req_b9d847656253481b840a2fd544b12222
+    status:
+      code: 200
+      message: OK
+- request:
+    body: ''
+    headers: {}
+    method: GET
+    uri: https://api.openai.com/v1/responses/resp_0c13a25ee1a48f780069df079e0a58819cbde29d8a2906c590
+  response:
+    body:
+      encoding: utf-8
+      string: "{\n  \"id\": \"resp_0c13a25ee1a48f780069df079e0a58819cbde29d8a2906c590\",\n  \"object\": \"response\",\n  \"created_at\": 1776224158,\n  \"status\": \"in_progress\",\n  \"background\": true,\n  \"completed_at\": null,\n  \"error\": null,\n  \"frequency_penalty\": 0.0,\n  \"incomplete_details\": null,\n  \"instructions\": null,\n  \"max_output_tokens\": null,\n  \"max_tool_calls\": 225,\n  \"model\": \"o4-mini-deep-research-2025-06-26\",\n  \"output\": [],\n  \"parallel_tool_calls\": true,\n  \"presence_penalty\": 0.0,\n  \"previous_response_id\": null,\n  \"prompt_cache_key\": null,\n  \"prompt_cache_retention\": null,\n  \"reasoning\": {\n    \"effort\": \"medium\",\n    \"summary\": null\n  },\n  \"safety_identifier\": null,\n  \"service_tier\": \"auto\",\n  \"store\": true,\n  \"temperature\": 1.0,\n  \"text\": {\n    \"format\": {\n      \"type\": \"text\"\n    },\n    \"verbosity\": \"medium\"\n  },\n  \"tool_choice\": \"auto\",\n  \"tools\": [\n    {\n      \"type\": \"web_search_preview\",\n      \"search_context_size\": \"medium\",\n      \"user_location\": null\n    }\n  ],\n  \"top_logprobs\": 0,\n  \"top_p\": 1.0,\n  \"truncation\": \"disabled\",\n  \"usage\": null,\n  \"user\": null,\n  \"metadata\": {}\n}"
+    headers:
+      Alt-Svc:
+      - h3=":443"; ma=86400
+      Cf-Cache-Status:
+      - DYNAMIC
+      Cf-Ray:
+      - 9ec7e75ef921f591-SJC
+      Connection:
+      - keep-alive
+      Content-Type:
+      - application/json
+      Date:
+      - Wed, 15 Apr 2026 03:36:03 GMT
+      Openai-Organization:
+      - user-vcklpsn7dsyfu2fz7wokpfo8
+      Openai-Processing-Ms:
+      - '65'
+      Openai-Project:
+      - proj_nyDPV41fTNlbZd43C6I5P3ih
+      Openai-Version:
+      - '2020-10-01'
+      Server:
+      - cloudflare
+      Strict-Transport-Security:
+      - max-age=31536000; includeSubDomains; preload
+      X-Content-Type-Options:
+      - nosniff
+      X-Request-Id:
+      - req_71fad9f211ca4281b689224aaed86e5a
+    status:
+      code: 200
+      message: OK
+- request:
+    body: ''
+    headers: {}
+    method: GET
+    uri: https://api.openai.com/v1/responses/resp_0c13a25ee1a48f780069df079e0a58819cbde29d8a2906c590
+  response:
+    body:
+      encoding: utf-8
+      string: "{\n  \"id\": \"resp_0c13a25ee1a48f780069df079e0a58819cbde29d8a2906c590\",\n  \"object\": \"response\",\n  \"created_at\": 1776224158,\n  \"status\": \"in_progress\",\n  \"background\": true,\n  \"completed_at\": null,\n  \"error\": null,\n  \"frequency_penalty\": 0.0,\n  \"incomplete_details\": null,\n  \"instructions\": null,\n  \"max_output_tokens\": null,\n  \"max_tool_calls\": 225,\n  \"model\": \"o4-mini-deep-research-2025-06-26\",\n  \"output\": [],\n  \"parallel_tool_calls\": true,\n  \"presence_penalty\": 0.0,\n  \"previous_response_id\": null,\n  \"prompt_cache_key\": null,\n  \"prompt_cache_retention\": null,\n  \"reasoning\": {\n    \"effort\": \"medium\",\n    \"summary\": null\n  },\n  \"safety_identifier\": null,\n  \"service_tier\": \"auto\",\n  \"store\": true,\n  \"temperature\": 1.0,\n  \"text\": {\n    \"format\": {\n      \"type\": \"text\"\n    },\n    \"verbosity\": \"medium\"\n  },\n  \"tool_choice\": \"auto\",\n  \"tools\": [\n    {\n      \"type\": \"web_search_preview\",\n      \"search_context_size\": \"medium\",\n      \"user_location\": null\n    }\n  ],\n  \"top_logprobs\": 0,\n  \"top_p\": 1.0,\n  \"truncation\": \"disabled\",\n  \"usage\": null,\n  \"user\": null,\n  \"metadata\": {}\n}"
+    headers:
+      Alt-Svc:
+      - h3=":443"; ma=86400
+      Cf-Cache-Status:
+      - DYNAMIC
+      Cf-Ray:
+      - 9ec7e7827f01f591-SJC
+      Connection:
+      - keep-alive
+      Content-Type:
+      - application/json
+      Date:
+      - Wed, 15 Apr 2026 03:36:10 GMT
+      Openai-Organization:
+      - user-vcklpsn7dsyfu2fz7wokpfo8
+      Openai-Processing-Ms:
+      - '653'
+      Openai-Project:
+      - proj_nyDPV41fTNlbZd43C6I5P3ih
+      Openai-Version:
+      - '2020-10-01'
+      Server:
+      - cloudflare
+      Strict-Transport-Security:
+      - max-age=31536000; includeSubDomains; preload
+      X-Content-Type-Options:
+      - nosniff
+      X-Request-Id:
+      - req_364e8148918548ac9bfefffb02a88fb3
+    status:
+      code: 200
+      message: OK
+- request:
+    body: ''
+    headers: {}
+    method: GET
+    uri: https://api.openai.com/v1/responses/resp_0c13a25ee1a48f780069df079e0a58819cbde29d8a2906c590
+  response:
+    body:
+      encoding: utf-8
+      string: "{\n  \"id\": \"resp_0c13a25ee1a48f780069df079e0a58819cbde29d8a2906c590\",\n  \"object\": \"response\",\n  \"created_at\": 1776224158,\n  \"status\": \"in_progress\",\n  \"background\": true,\n  \"completed_at\": null,\n  \"error\": null,\n  \"frequency_penalty\": 0.0,\n  \"incomplete_details\": null,\n  \"instructions\": null,\n  \"max_output_tokens\": null,\n  \"max_tool_calls\": 225,\n  \"model\": \"o4-mini-deep-research-2025-06-26\",\n  \"output\": [],\n  \"parallel_tool_calls\": true,\n  \"presence_penalty\": 0.0,\n  \"previous_response_id\": null,\n  \"prompt_cache_key\": null,\n  \"prompt_cache_retention\": null,\n  \"reasoning\": {\n    \"effort\": \"medium\",\n    \"summary\": null\n  },\n  \"safety_identifier\": null,\n  \"service_tier\": \"auto\",\n  \"store\": true,\n  \"temperature\": 1.0,\n  \"text\": {\n    \"format\": {\n      \"type\": \"text\"\n    },\n    \"verbosity\": \"medium\"\n  },\n  \"tool_choice\": \"auto\",\n  \"tools\": [\n    {\n      \"type\": \"web_search_preview\",\n      \"search_context_size\": \"medium\",\n      \"user_location\": null\n    }\n  ],\n  \"top_logprobs\": 0,\n  \"top_p\": 1.0,\n  \"truncation\": \"disabled\",\n  \"usage\": null,\n  \"user\": null,\n  \"metadata\": {}\n}"
+    headers:
+      Alt-Svc:
+      - h3=":443"; ma=86400
+      Cf-Cache-Status:
+      - DYNAMIC
+      Cf-Ray:
+      - 9ec7e7abda75f591-SJC
+      Connection:
+      - keep-alive
+      Content-Type:
+      - application/json
+      Date:
+      - Wed, 15 Apr 2026 03:36:17 GMT
+      Openai-Organization:
+      - user-vcklpsn7dsyfu2fz7wokpfo8
+      Openai-Processing-Ms:
+      - '186'
+      Openai-Project:
+      - proj_nyDPV41fTNlbZd43C6I5P3ih
+      Openai-Version:
+      - '2020-10-01'
+      Server:
+      - cloudflare
+      Strict-Transport-Security:
+      - max-age=31536000; includeSubDomains; preload
+      X-Content-Type-Options:
+      - nosniff
+      X-Request-Id:
+      - req_cce41bb96fb34ab8a9d993a764bbcb4f
+    status:
+      code: 200
+      message: OK
+- request:
+    body: ''
+    headers: {}
+    method: GET
+    uri: https://api.openai.com/v1/responses/resp_0c13a25ee1a48f780069df079e0a58819cbde29d8a2906c590
+  response:
+    body:
+      encoding: utf-8
+      string: "{\n  \"id\": \"resp_0c13a25ee1a48f780069df079e0a58819cbde29d8a2906c590\",\n  \"object\": \"response\",\n  \"created_at\": 1776224158,\n  \"status\": \"in_progress\",\n  \"background\": true,\n  \"completed_at\": null,\n  \"error\": null,\n  \"frequency_penalty\": 0.0,\n  \"incomplete_details\": null,\n  \"instructions\": null,\n  \"max_output_tokens\": null,\n  \"max_tool_calls\": 225,\n  \"model\": \"o4-mini-deep-research-2025-06-26\",\n  \"output\": [],\n  \"parallel_tool_calls\": true,\n  \"presence_penalty\": 0.0,\n  \"previous_response_id\": null,\n  \"prompt_cache_key\": null,\n  \"prompt_cache_retention\": null,\n  \"reasoning\": {\n    \"effort\": \"medium\",\n    \"summary\": null\n  },\n  \"safety_identifier\": null,\n  \"service_tier\": \"auto\",\n  \"store\": true,\n  \"temperature\": 1.0,\n  \"text\": {\n    \"format\": {\n      \"type\": \"text\"\n    },\n    \"verbosity\": \"medium\"\n  },\n  \"tool_choice\": \"auto\",\n  \"tools\": [\n    {\n      \"type\": \"web_search_preview\",\n      \"search_context_size\": \"medium\",\n      \"user_location\": null\n    }\n  ],\n  \"top_logprobs\": 0,\n  \"top_p\": 1.0,\n  \"truncation\": \"disabled\",\n  \"usage\": null,\n  \"user\": null,\n  \"metadata\": {}\n}"
+    headers:
+      Alt-Svc:
+      - h3=":443"; ma=86400
+      Cf-Cache-Status:
+      - DYNAMIC
+      Cf-Ray:
+      - 9ec7e7d33deaf591-SJC
+      Connection:
+      - keep-alive
+      Content-Type:
+      - application/json
+      Date:
+      - Wed, 15 Apr 2026 03:36:22 GMT
+      Openai-Organization:
+      - user-vcklpsn7dsyfu2fz7wokpfo8
+      Openai-Processing-Ms:
+      - '153'
+      Openai-Project:
+      - proj_nyDPV41fTNlbZd43C6I5P3ih
+      Openai-Version:
+      - '2020-10-01'
+      Server:
+      - cloudflare
+      Strict-Transport-Security:
+      - max-age=31536000; includeSubDomains; preload
+      X-Content-Type-Options:
+      - nosniff
+      X-Request-Id:
+      - req_7ab8c0b1a235497ba2cca00c762ac642
+    status:
+      code: 200
+      message: OK
+- request:
+    body: ''
+    headers: {}
+    method: GET
+    uri: https://api.openai.com/v1/responses/resp_0c13a25ee1a48f780069df079e0a58819cbde29d8a2906c590
+  response:
+    body:
+      encoding: utf-8
+      string: "{\n  \"id\": \"resp_0c13a25ee1a48f780069df079e0a58819cbde29d8a2906c590\",\n  \"object\": \"response\",\n  \"created_at\": 1776224158,\n  \"status\": \"in_progress\",\n  \"background\": true,\n  \"completed_at\": null,\n  \"error\": null,\n  \"frequency_penalty\": 0.0,\n  \"incomplete_details\": null,\n  \"instructions\": null,\n  \"max_output_tokens\": null,\n  \"max_tool_calls\": 225,\n  \"model\": \"o4-mini-deep-research-2025-06-26\",\n  \"output\": [],\n  \"parallel_tool_calls\": true,\n  \"presence_penalty\": 0.0,\n  \"previous_response_id\": null,\n  \"prompt_cache_key\": null,\n  \"prompt_cache_retention\": null,\n  \"reasoning\": {\n    \"effort\": \"medium\",\n    \"summary\": null\n  },\n  \"safety_identifier\": null,\n  \"service_tier\": \"auto\",\n  \"store\": true,\n  \"temperature\": 1.0,\n  \"text\": {\n    \"format\": {\n      \"type\": \"text\"\n    },\n    \"verbosity\": \"medium\"\n  },\n  \"tool_choice\": \"auto\",\n  \"tools\": [\n    {\n      \"type\": \"web_search_preview\",\n      \"search_context_size\": \"medium\",\n      \"user_location\": null\n    }\n  ],\n  \"top_logprobs\": 0,\n  \"top_p\": 1.0,\n  \"truncation\": \"disabled\",\n  \"usage\": null,\n  \"user\": null,\n  \"metadata\": {}\n}"
+    headers:
+      Alt-Svc:
+      - h3=":443"; ma=86400
+      Cf-Cache-Status:
+      - DYNAMIC
+      Cf-Ray:
+      - 9ec7e7f47cfdf591-SJC
+      Connection:
+      - keep-alive
+      Content-Type:
+      - application/json
+      Date:
+      - Wed, 15 Apr 2026 03:36:27 GMT
+      Openai-Organization:
+      - user-vcklpsn7dsyfu2fz7wokpfo8
+      Openai-Processing-Ms:
+      - '89'
+      Openai-Project:
+      - proj_nyDPV41fTNlbZd43C6I5P3ih
+      Openai-Version:
+      - '2020-10-01'
+      Server:
+      - cloudflare
+      Strict-Transport-Security:
+      - max-age=31536000; includeSubDomains; preload
+      X-Content-Type-Options:
+      - nosniff
+      X-Request-Id:
+      - req_c88b2c1eb3a1466097b01dee772bba68
+    status:
+      code: 200
+      message: OK
+- request:
+    body: ''
+    headers: {}
+    method: GET
+    uri: https://api.openai.com/v1/responses/resp_0c13a25ee1a48f780069df079e0a58819cbde29d8a2906c590
+  response:
+    body:
+      encoding: utf-8
+      string: "{\n  \"id\": \"resp_0c13a25ee1a48f780069df079e0a58819cbde29d8a2906c590\",\n  \"object\": \"response\",\n  \"created_at\": 1776224158,\n  \"status\": \"in_progress\",\n  \"background\": true,\n  \"completed_at\": null,\n  \"error\": null,\n  \"frequency_penalty\": 0.0,\n  \"incomplete_details\": null,\n  \"instructions\": null,\n  \"max_output_tokens\": null,\n  \"max_tool_calls\": 225,\n  \"model\": \"o4-mini-deep-research-2025-06-26\",\n  \"output\": [],\n  \"parallel_tool_calls\": true,\n  \"presence_penalty\": 0.0,\n  \"previous_response_id\": null,\n  \"prompt_cache_key\": null,\n  \"prompt_cache_retention\": null,\n  \"reasoning\": {\n    \"effort\": \"medium\",\n    \"summary\": null\n  },\n  \"safety_identifier\": null,\n  \"service_tier\": \"auto\",\n  \"store\": true,\n  \"temperature\": 1.0,\n  \"text\": {\n    \"format\": {\n      \"type\": \"text\"\n    },\n    \"verbosity\": \"medium\"\n  },\n  \"tool_choice\": \"auto\",\n  \"tools\": [\n    {\n      \"type\": \"web_search_preview\",\n      \"search_context_size\": \"medium\",\n      \"user_location\": null\n    }\n  ],\n  \"top_logprobs\": 0,\n  \"top_p\": 1.0,\n  \"truncation\": \"disabled\",\n  \"usage\": null,\n  \"user\": null,\n  \"metadata\": {}\n}"
+    headers:
+      Alt-Svc:
+      - h3=":443"; ma=86400
+      Cf-Cache-Status:
+      - DYNAMIC
+      Cf-Ray:
+      - 9ec7e8165b66f591-SJC
+      Connection:
+      - keep-alive
+      Content-Type:
+      - application/json
+      Date:
+      - Wed, 15 Apr 2026 03:36:33 GMT
+      Openai-Organization:
+      - user-vcklpsn7dsyfu2fz7wokpfo8
+      Openai-Processing-Ms:
+      - '93'
+      Openai-Project:
+      - proj_nyDPV41fTNlbZd43C6I5P3ih
+      Openai-Version:
+      - '2020-10-01'
+      Server:
+      - cloudflare
+      Strict-Transport-Security:
+      - max-age=31536000; includeSubDomains; preload
+      X-Content-Type-Options:
+      - nosniff
+      X-Request-Id:
+      - req_0026a2266e8a4c949363bb11174930ea
+    status:
+      code: 200
+      message: OK
+- request:
+    body: ''
+    headers: {}
+    method: GET
+    uri: https://api.openai.com/v1/responses/resp_0c13a25ee1a48f780069df079e0a58819cbde29d8a2906c590
+  response:
+    body:
+      encoding: utf-8
+      string: "{\n  \"id\": \"resp_0c13a25ee1a48f780069df079e0a58819cbde29d8a2906c590\",\n  \"object\": \"response\",\n  \"created_at\": 1776224158,\n  \"status\": \"in_progress\",\n  \"background\": true,\n  \"completed_at\": null,\n  \"error\": null,\n  \"frequency_penalty\": 0.0,\n  \"incomplete_details\": null,\n  \"instructions\": null,\n  \"max_output_tokens\": null,\n  \"max_tool_calls\": 225,\n  \"model\": \"o4-mini-deep-research-2025-06-26\",\n  \"output\": [],\n  \"parallel_tool_calls\": true,\n  \"presence_penalty\": 0.0,\n  \"previous_response_id\": null,\n  \"prompt_cache_key\": null,\n  \"prompt_cache_retention\": null,\n  \"reasoning\": {\n    \"effort\": \"medium\",\n    \"summary\": null\n  },\n  \"safety_identifier\": null,\n  \"service_tier\": \"auto\",\n  \"store\": true,\n  \"temperature\": 1.0,\n  \"text\": {\n    \"format\": {\n      \"type\": \"text\"\n    },\n    \"verbosity\": \"medium\"\n  },\n  \"tool_choice\": \"auto\",\n  \"tools\": [\n    {\n      \"type\": \"web_search_preview\",\n      \"search_context_size\": \"medium\",\n      \"user_location\": null\n    }\n  ],\n  \"top_logprobs\": 0,\n  \"top_p\": 1.0,\n  \"truncation\": \"disabled\",\n  \"usage\": null,\n  \"user\": null,\n  \"metadata\": {}\n}"
+    headers:
+      Alt-Svc:
+      - h3=":443"; ma=86400
+      Cf-Cache-Status:
+      - DYNAMIC
+      Cf-Ray:
+      - 9ec7e838cc0cf591-SJC
+      Connection:
+      - keep-alive
+      Content-Type:
+      - application/json
+      Date:
+      - Wed, 15 Apr 2026 03:36:38 GMT
+      Openai-Organization:
+      - user-vcklpsn7dsyfu2fz7wokpfo8
+      Openai-Processing-Ms:
+      - '307'
+      Openai-Project:
+      - proj_nyDPV41fTNlbZd43C6I5P3ih
+      Openai-Version:
+      - '2020-10-01'
+      Server:
+      - cloudflare
+      Strict-Transport-Security:
+      - max-age=31536000; includeSubDomains; preload
+      X-Content-Type-Options:
+      - nosniff
+      X-Request-Id:
+      - req_48568b7ccc504ad8896e78b25df5eabc
+    status:
+      code: 200
+      message: OK
+- request:
+    body: ''
+    headers: {}
+    method: GET
+    uri: https://api.openai.com/v1/responses/resp_0c13a25ee1a48f780069df079e0a58819cbde29d8a2906c590
+  response:
+    body:
+      encoding: utf-8
+      string: "{\n  \"id\": \"resp_0c13a25ee1a48f780069df079e0a58819cbde29d8a2906c590\",\n  \"object\": \"response\",\n  \"created_at\": 1776224158,\n  \"status\": \"in_progress\",\n  \"background\": true,\n  \"completed_at\": null,\n  \"error\": null,\n  \"frequency_penalty\": 0.0,\n  \"incomplete_details\": null,\n  \"instructions\": null,\n  \"max_output_tokens\": null,\n  \"max_tool_calls\": 225,\n  \"model\": \"o4-mini-deep-research-2025-06-26\",\n  \"output\": [],\n  \"parallel_tool_calls\": true,\n  \"presence_penalty\": 0.0,\n  \"previous_response_id\": null,\n  \"prompt_cache_key\": null,\n  \"prompt_cache_retention\": null,\n  \"reasoning\": {\n    \"effort\": \"medium\",\n    \"summary\": null\n  },\n  \"safety_identifier\": null,\n  \"service_tier\": \"auto\",\n  \"store\": true,\n  \"temperature\": 1.0,\n  \"text\": {\n    \"format\": {\n      \"type\": \"text\"\n    },\n    \"verbosity\": \"medium\"\n  },\n  \"tool_choice\": \"auto\",\n  \"tools\": [\n    {\n      \"type\": \"web_search_preview\",\n      \"search_context_size\": \"medium\",\n      \"user_location\": null\n    }\n  ],\n  \"top_logprobs\": 0,\n  \"top_p\": 1.0,\n  \"truncation\": \"disabled\",\n  \"usage\": null,\n  \"user\": null,\n  \"metadata\": {}\n}"
+    headers:
+      Alt-Svc:
+      - h3=":443"; ma=86400
+      Cf-Cache-Status:
+      - DYNAMIC
+      Cf-Ray:
+      - 9ec7e85b189bf591-SJC
+      Connection:
+      - keep-alive
+      Content-Type:
+      - application/json
+      Date:
+      - Wed, 15 Apr 2026 03:36:44 GMT
+      Openai-Organization:
+      - user-vcklpsn7dsyfu2fz7wokpfo8
+      Openai-Processing-Ms:
+      - '79'
+      Openai-Project:
+      - proj_nyDPV41fTNlbZd43C6I5P3ih
+      Openai-Version:
+      - '2020-10-01'
+      Server:
+      - cloudflare
+      Strict-Transport-Security:
+      - max-age=31536000; includeSubDomains; preload
+      X-Content-Type-Options:
+      - nosniff
+      X-Request-Id:
+      - req_b6e7edb4bb9b40a4baa047d48b03e015
+    status:
+      code: 200
+      message: OK
+- request:
+    body: ''
+    headers: {}
+    method: GET
+    uri: https://api.openai.com/v1/responses/resp_0c13a25ee1a48f780069df079e0a58819cbde29d8a2906c590
+  response:
+    body:
+      encoding: utf-8
+      string: "{\n  \"id\": \"resp_0c13a25ee1a48f780069df079e0a58819cbde29d8a2906c590\",\n  \"object\": \"response\",\n  \"created_at\": 1776224158,\n  \"status\": \"in_progress\",\n  \"background\": true,\n  \"completed_at\": null,\n  \"error\": null,\n  \"frequency_penalty\": 0.0,\n  \"incomplete_details\": null,\n  \"instructions\": null,\n  \"max_output_tokens\": null,\n  \"max_tool_calls\": 225,\n  \"model\": \"o4-mini-deep-research-2025-06-26\",\n  \"output\": [],\n  \"parallel_tool_calls\": true,\n  \"presence_penalty\": 0.0,\n  \"previous_response_id\": null,\n  \"prompt_cache_key\": null,\n  \"prompt_cache_retention\": null,\n  \"reasoning\": {\n    \"effort\": \"medium\",\n    \"summary\": null\n  },\n  \"safety_identifier\": null,\n  \"service_tier\": \"auto\",\n  \"store\": true,\n  \"temperature\": 1.0,\n  \"text\": {\n    \"format\": {\n      \"type\": \"text\"\n    },\n    \"verbosity\": \"medium\"\n  },\n  \"tool_choice\": \"auto\",\n  \"tools\": [\n    {\n      \"type\": \"web_search_preview\",\n      \"search_context_size\": \"medium\",\n      \"user_location\": null\n    }\n  ],\n  \"top_logprobs\": 0,\n  \"top_p\": 1.0,\n  \"truncation\": \"disabled\",\n  \"usage\": null,\n  \"user\": null,\n  \"metadata\": {}\n}"
+    headers:
+      Alt-Svc:
+      - h3=":443"; ma=86400
+      Cf-Cache-Status:
+      - DYNAMIC
+      Cf-Ray:
+      - 9ec7e87ccf9bf591-SJC
+      Connection:
+      - keep-alive
+      Content-Type:
+      - application/json
+      Date:
+      - Wed, 15 Apr 2026 03:36:49 GMT
+      Openai-Organization:
+      - user-vcklpsn7dsyfu2fz7wokpfo8
+      Openai-Processing-Ms:
+      - '104'
+      Openai-Project:
+      - proj_nyDPV41fTNlbZd43C6I5P3ih
+      Openai-Version:
+      - '2020-10-01'
+      Server:
+      - cloudflare
+      Strict-Transport-Security:
+      - max-age=31536000; includeSubDomains; preload
+      X-Content-Type-Options:
+      - nosniff
+      X-Request-Id:
+      - req_c2d8b664c75d496b8919c443422a97bc
+    status:
+      code: 200
+      message: OK
+- request:
+    body: ''
+    headers: {}
+    method: GET
+    uri: https://api.openai.com/v1/responses/resp_0c13a25ee1a48f780069df079e0a58819cbde29d8a2906c590
+  response:
+    body:
+      encoding: utf-8
+      string: "{\n  \"id\": \"resp_0c13a25ee1a48f780069df079e0a58819cbde29d8a2906c590\",\n  \"object\": \"response\",\n  \"created_at\": 1776224158,\n  \"status\": \"in_progress\",\n  \"background\": true,\n  \"completed_at\": null,\n  \"error\": null,\n  \"frequency_penalty\": 0.0,\n  \"incomplete_details\": null,\n  \"instructions\": null,\n  \"max_output_tokens\": null,\n  \"max_tool_calls\": 225,\n  \"model\": \"o4-mini-deep-research-2025-06-26\",\n  \"output\": [],\n  \"parallel_tool_calls\": true,\n  \"presence_penalty\": 0.0,\n  \"previous_response_id\": null,\n  \"prompt_cache_key\": null,\n  \"prompt_cache_retention\": null,\n  \"reasoning\": {\n    \"effort\": \"medium\",\n    \"summary\": null\n  },\n  \"safety_identifier\": null,\n  \"service_tier\": \"auto\",\n  \"store\": true,\n  \"temperature\": 1.0,\n  \"text\": {\n    \"format\": {\n      \"type\": \"text\"\n    },\n    \"verbosity\": \"medium\"\n  },\n  \"tool_choice\": \"auto\",\n  \"tools\": [\n    {\n      \"type\": \"web_search_preview\",\n      \"search_context_size\": \"medium\",\n      \"user_location\": null\n    }\n  ],\n  \"top_logprobs\": 0,\n  \"top_p\": 1.0,\n  \"truncation\": \"disabled\",\n  \"usage\": null,\n  \"user\": null,\n  \"metadata\": {}\n}"
+    headers:
+      Alt-Svc:
+      - h3=":443"; ma=86400
+      Cf-Cache-Status:
+      - DYNAMIC
+      Cf-Ray:
+      - 9ec7e89e6951f591-SJC
+      Connection:
+      - keep-alive
+      Content-Type:
+      - application/json
+      Date:
+      - Wed, 15 Apr 2026 03:36:54 GMT
+      Openai-Organization:
+      - user-vcklpsn7dsyfu2fz7wokpfo8
+      Openai-Processing-Ms:
+      - '97'
+      Openai-Project:
+      - proj_nyDPV41fTNlbZd43C6I5P3ih
+      Openai-Version:
+      - '2020-10-01'
+      Server:
+      - cloudflare
+      Strict-Transport-Security:
+      - max-age=31536000; includeSubDomains; preload
+      X-Content-Type-Options:
+      - nosniff
+      X-Request-Id:
+      - req_206801f2c5dd4bc986b1a7c40966bce6
+    status:
+      code: 200
+      message: OK
+- request:
+    body: ''
+    headers: {}
+    method: GET
+    uri: https://api.openai.com/v1/responses/resp_0c13a25ee1a48f780069df079e0a58819cbde29d8a2906c590
+  response:
+    body:
+      encoding: utf-8
+      string: "{\n  \"id\": \"resp_0c13a25ee1a48f780069df079e0a58819cbde29d8a2906c590\",\n  \"object\": \"response\",\n  \"created_at\": 1776224158,\n  \"status\": \"in_progress\",\n  \"background\": true,\n  \"completed_at\": null,\n  \"error\": null,\n  \"frequency_penalty\": 0.0,\n  \"incomplete_details\": null,\n  \"instructions\": null,\n  \"max_output_tokens\": null,\n  \"max_tool_calls\": 225,\n  \"model\": \"o4-mini-deep-research-2025-06-26\",\n  \"output\": [],\n  \"parallel_tool_calls\": true,\n  \"presence_penalty\": 0.0,\n  \"previous_response_id\": null,\n  \"prompt_cache_key\": null,\n  \"prompt_cache_retention\": null,\n  \"reasoning\": {\n    \"effort\": \"medium\",\n    \"summary\": null\n  },\n  \"safety_identifier\": null,\n  \"service_tier\": \"auto\",\n  \"store\": true,\n  \"temperature\": 1.0,\n  \"text\": {\n    \"format\": {\n      \"type\": \"text\"\n    },\n    \"verbosity\": \"medium\"\n  },\n  \"tool_choice\": \"auto\",\n  \"tools\": [\n    {\n      \"type\": \"web_search_preview\",\n      \"search_context_size\": \"medium\",\n      \"user_location\": null\n    }\n  ],\n  \"top_logprobs\": 0,\n  \"top_p\": 1.0,\n  \"truncation\": \"disabled\",\n  \"usage\": null,\n  \"user\": null,\n  \"metadata\": {}\n}"
+    headers:
+      Alt-Svc:
+      - h3=":443"; ma=86400
+      Cf-Cache-Status:
+      - DYNAMIC
+      Cf-Ray:
+      - 9ec7e8bf5ef6f591-SJC
+      Connection:
+      - keep-alive
+      Content-Type:
+      - application/json
+      Date:
+      - Wed, 15 Apr 2026 03:37:00 GMT
+      Openai-Organization:
+      - user-vcklpsn7dsyfu2fz7wokpfo8
+      Openai-Processing-Ms:
+      - '182'
+      Openai-Project:
+      - proj_nyDPV41fTNlbZd43C6I5P3ih
+      Openai-Version:
+      - '2020-10-01'
+      Server:
+      - cloudflare
+      Strict-Transport-Security:
+      - max-age=31536000; includeSubDomains; preload
+      X-Content-Type-Options:
+      - nosniff
+      X-Request-Id:
+      - req_135ad88e835346e4ad48a0477e3634c3
+    status:
+      code: 200
+      message: OK
+- request:
+    body: ''
+    headers: {}
+    method: GET
+    uri: https://api.openai.com/v1/responses/resp_0c13a25ee1a48f780069df079e0a58819cbde29d8a2906c590
+  response:
+    body:
+      encoding: utf-8
+      string: "{\n  \"id\": \"resp_0c13a25ee1a48f780069df079e0a58819cbde29d8a2906c590\",\n  \"object\": \"response\",\n  \"created_at\": 1776224158,\n  \"status\": \"in_progress\",\n  \"background\": true,\n  \"completed_at\": null,\n  \"error\": null,\n  \"frequency_penalty\": 0.0,\n  \"incomplete_details\": null,\n  \"instructions\": null,\n  \"max_output_tokens\": null,\n  \"max_tool_calls\": 225,\n  \"model\": \"o4-mini-deep-research-2025-06-26\",\n  \"output\": [],\n  \"parallel_tool_calls\": true,\n  \"presence_penalty\": 0.0,\n  \"previous_response_id\": null,\n  \"prompt_cache_key\": null,\n  \"prompt_cache_retention\": null,\n  \"reasoning\": {\n    \"effort\": \"medium\",\n    \"summary\": null\n  },\n  \"safety_identifier\": null,\n  \"service_tier\": \"auto\",\n  \"store\": true,\n  \"temperature\": 1.0,\n  \"text\": {\n    \"format\": {\n      \"type\": \"text\"\n    },\n    \"verbosity\": \"medium\"\n  },\n  \"tool_choice\": \"auto\",\n  \"tools\": [\n    {\n      \"type\": \"web_search_preview\",\n      \"search_context_size\": \"medium\",\n      \"user_location\": null\n    }\n  ],\n  \"top_logprobs\": 0,\n  \"top_p\": 1.0,\n  \"truncation\": \"disabled\",\n  \"usage\": null,\n  \"user\": null,\n  \"metadata\": {}\n}"
+    headers:
+      Alt-Svc:
+      - h3=":443"; ma=86400
+      Cf-Cache-Status:
+      - DYNAMIC
+      Cf-Ray:
+      - 9ec7e8e0c850f591-SJC
+      Connection:
+      - keep-alive
+      Content-Type:
+      - application/json
+      Date:
+      - Wed, 15 Apr 2026 03:37:05 GMT
+      Openai-Organization:
+      - user-vcklpsn7dsyfu2fz7wokpfo8
+      Openai-Processing-Ms:
+      - '203'
+      Openai-Project:
+      - proj_nyDPV41fTNlbZd43C6I5P3ih
+      Openai-Version:
+      - '2020-10-01'
+      Server:
+      - cloudflare
+      Strict-Transport-Security:
+      - max-age=31536000; includeSubDomains; preload
+      X-Content-Type-Options:
+      - nosniff
+      X-Request-Id:
+      - req_a9e06fc45e334624bc03d56a944cb172
+    status:
+      code: 200
+      message: OK
+- request:
+    body: ''
+    headers: {}
+    method: GET
+    uri: https://api.openai.com/v1/responses/resp_0c13a25ee1a48f780069df079e0a58819cbde29d8a2906c590
+  response:
+    body:
+      encoding: utf-8
+      string: "{\n  \"id\": \"resp_0c13a25ee1a48f780069df079e0a58819cbde29d8a2906c590\",\n  \"object\": \"response\",\n  \"created_at\": 1776224158,\n  \"status\": \"in_progress\",\n  \"background\": true,\n  \"completed_at\": null,\n  \"error\": null,\n  \"frequency_penalty\": 0.0,\n  \"incomplete_details\": null,\n  \"instructions\": null,\n  \"max_output_tokens\": null,\n  \"max_tool_calls\": 225,\n  \"model\": \"o4-mini-deep-research-2025-06-26\",\n  \"output\": [],\n  \"parallel_tool_calls\": true,\n  \"presence_penalty\": 0.0,\n  \"previous_response_id\": null,\n  \"prompt_cache_key\": null,\n  \"prompt_cache_retention\": null,\n  \"reasoning\": {\n    \"effort\": \"medium\",\n    \"summary\": null\n  },\n  \"safety_identifier\": null,\n  \"service_tier\": \"auto\",\n  \"store\": true,\n  \"temperature\": 1.0,\n  \"text\": {\n    \"format\": {\n      \"type\": \"text\"\n    },\n    \"verbosity\": \"medium\"\n  },\n  \"tool_choice\": \"auto\",\n  \"tools\": [\n    {\n      \"type\": \"web_search_preview\",\n      \"search_context_size\": \"medium\",\n      \"user_location\": null\n    }\n  ],\n  \"top_logprobs\": 0,\n  \"top_p\": 1.0,\n  \"truncation\": \"disabled\",\n  \"usage\": null,\n  \"user\": null,\n  \"metadata\": {}\n}"
+    headers:
+      Alt-Svc:
+      - h3=":443"; ma=86400
+      Cf-Cache-Status:
+      - DYNAMIC
+      Cf-Ray:
+      - 9ec7e9040d15f591-SJC
+      Connection:
+      - keep-alive
+      Content-Type:
+      - application/json
+      Date:
+      - Wed, 15 Apr 2026 03:37:11 GMT
+      Openai-Organization:
+      - user-vcklpsn7dsyfu2fz7wokpfo8
+      Openai-Processing-Ms:
+      - '180'
+      Openai-Project:
+      - proj_nyDPV41fTNlbZd43C6I5P3ih
+      Openai-Version:
+      - '2020-10-01'
+      Server:
+      - cloudflare
+      Strict-Transport-Security:
+      - max-age=31536000; includeSubDomains; preload
+      X-Content-Type-Options:
+      - nosniff
+      X-Request-Id:
+      - req_0c38473ddba242ea824a6b00ea392641
+    status:
+      code: 200
+      message: OK
+- request:
+    body: ''
+    headers: {}
+    method: GET
+    uri: https://api.openai.com/v1/responses/resp_0c13a25ee1a48f780069df079e0a58819cbde29d8a2906c590
+  response:
+    body:
+      encoding: utf-8
+      string: "{\n  \"id\": \"resp_0c13a25ee1a48f780069df079e0a58819cbde29d8a2906c590\",\n  \"object\": \"response\",\n  \"created_at\": 1776224158,\n  \"status\": \"in_progress\",\n  \"background\": true,\n  \"completed_at\": null,\n  \"error\": null,\n  \"frequency_penalty\": 0.0,\n  \"incomplete_details\": null,\n  \"instructions\": null,\n  \"max_output_tokens\": null,\n  \"max_tool_calls\": 225,\n  \"model\": \"o4-mini-deep-research-2025-06-26\",\n  \"output\": [],\n  \"parallel_tool_calls\": true,\n  \"presence_penalty\": 0.0,\n  \"previous_response_id\": null,\n  \"prompt_cache_key\": null,\n  \"prompt_cache_retention\": null,\n  \"reasoning\": {\n    \"effort\": \"medium\",\n    \"summary\": null\n  },\n  \"safety_identifier\": null,\n  \"service_tier\": \"auto\",\n  \"store\": true,\n  \"temperature\": 1.0,\n  \"text\": {\n    \"format\": {\n      \"type\": \"text\"\n    },\n    \"verbosity\": \"medium\"\n  },\n  \"tool_choice\": \"auto\",\n  \"tools\": [\n    {\n      \"type\": \"web_search_preview\",\n      \"search_context_size\": \"medium\",\n      \"user_location\": null\n    }\n  ],\n  \"top_logprobs\": 0,\n  \"top_p\": 1.0,\n  \"truncation\": \"disabled\",\n  \"usage\": null,\n  \"user\": null,\n  \"metadata\": {}\n}"
+    headers:
+      Alt-Svc:
+      - h3=":443"; ma=86400
+      Cf-Cache-Status:
+      - DYNAMIC
+      Cf-Ray:
+      - 9ec7e9257c92f591-SJC
+      Connection:
+      - keep-alive
+      Content-Type:
+      - application/json
+      Date:
+      - Wed, 15 Apr 2026 03:37:16 GMT
+      Openai-Organization:
+      - user-vcklpsn7dsyfu2fz7wokpfo8
+      Openai-Processing-Ms:
+      - '82'
+      Openai-Project:
+      - proj_nyDPV41fTNlbZd43C6I5P3ih
+      Openai-Version:
+      - '2020-10-01'
+      Server:
+      - cloudflare
+      Strict-Transport-Security:
+      - max-age=31536000; includeSubDomains; preload
+      X-Content-Type-Options:
+      - nosniff
+      X-Request-Id:
+      - req_34e3f60f1ecb4f389cf4a8a085156b59
+    status:
+      code: 200
+      message: OK
+- request:
+    body: ''
+    headers: {}
+    method: GET
+    uri: https://api.openai.com/v1/responses/resp_0c13a25ee1a48f780069df079e0a58819cbde29d8a2906c590
+  response:
+    body:
+      encoding: utf-8
+      string: "{\n  \"id\": \"resp_0c13a25ee1a48f780069df079e0a58819cbde29d8a2906c590\",\n  \"object\": \"response\",\n  \"created_at\": 1776224158,\n  \"status\": \"in_progress\",\n  \"background\": true,\n  \"completed_at\": null,\n  \"error\": null,\n  \"frequency_penalty\": 0.0,\n  \"incomplete_details\": null,\n  \"instructions\": null,\n  \"max_output_tokens\": null,\n  \"max_tool_calls\": 225,\n  \"model\": \"o4-mini-deep-research-2025-06-26\",\n  \"output\": [],\n  \"parallel_tool_calls\": true,\n  \"presence_penalty\": 0.0,\n  \"previous_response_id\": null,\n  \"prompt_cache_key\": null,\n  \"prompt_cache_retention\": null,\n  \"reasoning\": {\n    \"effort\": \"medium\",\n    \"summary\": null\n  },\n  \"safety_identifier\": null,\n  \"service_tier\": \"auto\",\n  \"store\": true,\n  \"temperature\": 1.0,\n  \"text\": {\n    \"format\": {\n      \"type\": \"text\"\n    },\n    \"verbosity\": \"medium\"\n  },\n  \"tool_choice\": \"auto\",\n  \"tools\": [\n    {\n      \"type\": \"web_search_preview\",\n      \"search_context_size\": \"medium\",\n      \"user_location\": null\n    }\n  ],\n  \"top_logprobs\": 0,\n  \"top_p\": 1.0,\n  \"truncation\": \"disabled\",\n  \"usage\": null,\n  \"user\": null,\n  \"metadata\": {}\n}"
+    headers:
+      Alt-Svc:
+      - h3=":443"; ma=86400
+      Cf-Cache-Status:
+      - DYNAMIC
+      Cf-Ray:
+      - 9ec7e9467fa9f591-SJC
+      Connection:
+      - keep-alive
+      Content-Type:
+      - application/json
+      Date:
+      - Wed, 15 Apr 2026 03:37:21 GMT
+      Openai-Organization:
+      - user-vcklpsn7dsyfu2fz7wokpfo8
+      Openai-Processing-Ms:
+      - '252'
+      Openai-Project:
+      - proj_nyDPV41fTNlbZd43C6I5P3ih
+      Openai-Version:
+      - '2020-10-01'
+      Server:
+      - cloudflare
+      Strict-Transport-Security:
+      - max-age=31536000; includeSubDomains; preload
+      X-Content-Type-Options:
+      - nosniff
+      X-Request-Id:
+      - req_6c22ea9e0d55484385ded4d46a887152
+    status:
+      code: 200
+      message: OK
+- request:
+    body: ''
+    headers: {}
+    method: GET
+    uri: https://api.openai.com/v1/responses/resp_0c13a25ee1a48f780069df079e0a58819cbde29d8a2906c590
+  response:
+    body:
+      encoding: utf-8
+      string: "{\n  \"id\": \"resp_0c13a25ee1a48f780069df079e0a58819cbde29d8a2906c590\",\n  \"object\": \"response\",\n  \"created_at\": 1776224158,\n  \"status\": \"in_progress\",\n  \"background\": true,\n  \"completed_at\": null,\n  \"error\": null,\n  \"frequency_penalty\": 0.0,\n  \"incomplete_details\": null,\n  \"instructions\": null,\n  \"max_output_tokens\": null,\n  \"max_tool_calls\": 225,\n  \"model\": \"o4-mini-deep-research-2025-06-26\",\n  \"output\": [],\n  \"parallel_tool_calls\": true,\n  \"presence_penalty\": 0.0,\n  \"previous_response_id\": null,\n  \"prompt_cache_key\": null,\n  \"prompt_cache_retention\": null,\n  \"reasoning\": {\n    \"effort\": \"medium\",\n    \"summary\": null\n  },\n  \"safety_identifier\": null,\n  \"service_tier\": \"auto\",\n  \"store\": true,\n  \"temperature\": 1.0,\n  \"text\": {\n    \"format\": {\n      \"type\": \"text\"\n    },\n    \"verbosity\": \"medium\"\n  },\n  \"tool_choice\": \"auto\",\n  \"tools\": [\n    {\n      \"type\": \"web_search_preview\",\n      \"search_context_size\": \"medium\",\n      \"user_location\": null\n    }\n  ],\n  \"top_logprobs\": 0,\n  \"top_p\": 1.0,\n  \"truncation\": \"disabled\",\n  \"usage\": null,\n  \"user\": null,\n  \"metadata\": {}\n}"
+    headers:
+      Alt-Svc:
+      - h3=":443"; ma=86400
+      Cf-Cache-Status:
+      - DYNAMIC
+      Cf-Ray:
+      - 9ec7e9689cbaf591-SJC
+      Connection:
+      - keep-alive
+      Content-Type:
+      - application/json
+      Date:
+      - Wed, 15 Apr 2026 03:37:27 GMT
+      Openai-Organization:
+      - user-vcklpsn7dsyfu2fz7wokpfo8
+      Openai-Processing-Ms:
+      - '182'
+      Openai-Project:
+      - proj_nyDPV41fTNlbZd43C6I5P3ih
+      Openai-Version:
+      - '2020-10-01'
+      Server:
+      - cloudflare
+      Strict-Transport-Security:
+      - max-age=31536000; includeSubDomains; preload
+      X-Content-Type-Options:
+      - nosniff
+      X-Request-Id:
+      - req_cfa1ab1c4483425b9a0a928a8ba6a850
+    status:
+      code: 200
+      message: OK
+- request:
+    body: ''
+    headers: {}
+    method: GET
+    uri: https://api.openai.com/v1/responses/resp_0c13a25ee1a48f780069df079e0a58819cbde29d8a2906c590
+  response:
+    body:
+      encoding: utf-8
+      string: "{\n  \"id\": \"resp_0c13a25ee1a48f780069df079e0a58819cbde29d8a2906c590\",\n  \"object\": \"response\",\n  \"created_at\": 1776224158,\n  \"status\": \"in_progress\",\n  \"background\": true,\n  \"completed_at\": null,\n  \"error\": null,\n  \"frequency_penalty\": 0.0,\n  \"incomplete_details\": null,\n  \"instructions\": null,\n  \"max_output_tokens\": null,\n  \"max_tool_calls\": 225,\n  \"model\": \"o4-mini-deep-research-2025-06-26\",\n  \"output\": [],\n  \"parallel_tool_calls\": true,\n  \"presence_penalty\": 0.0,\n  \"previous_response_id\": null,\n  \"prompt_cache_key\": null,\n  \"prompt_cache_retention\": null,\n  \"reasoning\": {\n    \"effort\": \"medium\",\n    \"summary\": null\n  },\n  \"safety_identifier\": null,\n  \"service_tier\": \"auto\",\n  \"store\": true,\n  \"temperature\": 1.0,\n  \"text\": {\n    \"format\": {\n      \"type\": \"text\"\n    },\n    \"verbosity\": \"medium\"\n  },\n  \"tool_choice\": \"auto\",\n  \"tools\": [\n    {\n      \"type\": \"web_search_preview\",\n      \"search_context_size\": \"medium\",\n      \"user_location\": null\n    }\n  ],\n  \"top_logprobs\": 0,\n  \"top_p\": 1.0,\n  \"truncation\": \"disabled\",\n  \"usage\": null,\n  \"user\": null,\n  \"metadata\": {}\n}"
+    headers:
+      Alt-Svc:
+      - h3=":443"; ma=86400
+      Cf-Cache-Status:
+      - DYNAMIC
+      Cf-Ray:
+      - 9ec7e98a5d9af591-SJC
+      Connection:
+      - keep-alive
+      Content-Type:
+      - application/json
+      Date:
+      - Wed, 15 Apr 2026 03:37:32 GMT
+      Openai-Organization:
+      - user-vcklpsn7dsyfu2fz7wokpfo8
+      Openai-Processing-Ms:
+      - '92'
+      Openai-Project:
+      - proj_nyDPV41fTNlbZd43C6I5P3ih
+      Openai-Version:
+      - '2020-10-01'
+      Server:
+      - cloudflare
+      Strict-Transport-Security:
+      - max-age=31536000; includeSubDomains; preload
+      X-Content-Type-Options:
+      - nosniff
+      X-Request-Id:
+      - req_2aa7ca6a8c094de686e04ca889511b4d
+    status:
+      code: 200
+      message: OK
+- request:
+    body: ''
+    headers: {}
+    method: GET
+    uri: https://api.openai.com/v1/responses/resp_0c13a25ee1a48f780069df079e0a58819cbde29d8a2906c590
+  response:
+    body:
+      encoding: utf-8
+      string: "{\n  \"id\": \"resp_0c13a25ee1a48f780069df079e0a58819cbde29d8a2906c590\",\n  \"object\": \"response\",\n  \"created_at\": 1776224158,\n  \"status\": \"in_progress\",\n  \"background\": true,\n  \"completed_at\": null,\n  \"error\": null,\n  \"frequency_penalty\": 0.0,\n  \"incomplete_details\": null,\n  \"instructions\": null,\n  \"max_output_tokens\": null,\n  \"max_tool_calls\": 225,\n  \"model\": \"o4-mini-deep-research-2025-06-26\",\n  \"output\": [],\n  \"parallel_tool_calls\": true,\n  \"presence_penalty\": 0.0,\n  \"previous_response_id\": null,\n  \"prompt_cache_key\": null,\n  \"prompt_cache_retention\": null,\n  \"reasoning\": {\n    \"effort\": \"medium\",\n    \"summary\": null\n  },\n  \"safety_identifier\": null,\n  \"service_tier\": \"auto\",\n  \"store\": true,\n  \"temperature\": 1.0,\n  \"text\": {\n    \"format\": {\n      \"type\": \"text\"\n    },\n    \"verbosity\": \"medium\"\n  },\n  \"tool_choice\": \"auto\",\n  \"tools\": [\n    {\n      \"type\": \"web_search_preview\",\n      \"search_context_size\": \"medium\",\n      \"user_location\": null\n    }\n  ],\n  \"top_logprobs\": 0,\n  \"top_p\": 1.0,\n  \"truncation\": \"disabled\",\n  \"usage\": null,\n  \"user\": null,\n  \"metadata\": {}\n}"
+    headers:
+      Alt-Svc:
+      - h3=":443"; ma=86400
+      Cf-Cache-Status:
+      - DYNAMIC
+      Cf-Ray:
+      - 9ec7e9ab4ac2f591-SJC
+      Connection:
+      - keep-alive
+      Content-Type:
+      - application/json
+      Date:
+      - Wed, 15 Apr 2026 03:37:37 GMT
+      Openai-Organization:
+      - user-vcklpsn7dsyfu2fz7wokpfo8
+      Openai-Processing-Ms:
+      - '46'
+      Openai-Project:
+      - proj_nyDPV41fTNlbZd43C6I5P3ih
+      Openai-Version:
+      - '2020-10-01'
+      Server:
+      - cloudflare
+      Strict-Transport-Security:
+      - max-age=31536000; includeSubDomains; preload
+      X-Content-Type-Options:
+      - nosniff
+      X-Request-Id:
+      - req_2d38e9d944e94587a2b4163f36b7983d
+    status:
+      code: 200
+      message: OK
+- request:
+    body: ''
+    headers: {}
+    method: GET
+    uri: https://api.openai.com/v1/responses/resp_0c13a25ee1a48f780069df079e0a58819cbde29d8a2906c590
+  response:
+    body:
+      encoding: utf-8
+      string: "{\n  \"id\": \"resp_0c13a25ee1a48f780069df079e0a58819cbde29d8a2906c590\",\n  \"object\": \"response\",\n  \"created_at\": 1776224158,\n  \"status\": \"in_progress\",\n  \"background\": true,\n  \"completed_at\": null,\n  \"error\": null,\n  \"frequency_penalty\": 0.0,\n  \"incomplete_details\": null,\n  \"instructions\": null,\n  \"max_output_tokens\": null,\n  \"max_tool_calls\": 225,\n  \"model\": \"o4-mini-deep-research-2025-06-26\",\n  \"output\": [],\n  \"parallel_tool_calls\": true,\n  \"presence_penalty\": 0.0,\n  \"previous_response_id\": null,\n  \"prompt_cache_key\": null,\n  \"prompt_cache_retention\": null,\n  \"reasoning\": {\n    \"effort\": \"medium\",\n    \"summary\": null\n  },\n  \"safety_identifier\": null,\n  \"service_tier\": \"auto\",\n  \"store\": true,\n  \"temperature\": 1.0,\n  \"text\": {\n    \"format\": {\n      \"type\": \"text\"\n    },\n    \"verbosity\": \"medium\"\n  },\n  \"tool_choice\": \"auto\",\n  \"tools\": [\n    {\n      \"type\": \"web_search_preview\",\n      \"search_context_size\": \"medium\",\n      \"user_location\": null\n    }\n  ],\n  \"top_logprobs\": 0,\n  \"top_p\": 1.0,\n  \"truncation\": \"disabled\",\n  \"usage\": null,\n  \"user\": null,\n  \"metadata\": {}\n}"
+    headers:
+      Alt-Svc:
+      - h3=":443"; ma=86400
+      Cf-Cache-Status:
+      - DYNAMIC
+      Cf-Ray:
+      - 9ec7e9cc4962f591-SJC
+      Connection:
+      - keep-alive
+      Content-Type:
+      - application/json
+      Date:
+      - Wed, 15 Apr 2026 03:37:43 GMT
+      Openai-Organization:
+      - user-vcklpsn7dsyfu2fz7wokpfo8
+      Openai-Processing-Ms:
+      - '94'
+      Openai-Project:
+      - proj_nyDPV41fTNlbZd43C6I5P3ih
+      Openai-Version:
+      - '2020-10-01'
+      Server:
+      - cloudflare
+      Strict-Transport-Security:
+      - max-age=31536000; includeSubDomains; preload
+      X-Content-Type-Options:
+      - nosniff
+      X-Request-Id:
+      - req_a45bb57192cc40118b0e3dad95db7d71
+    status:
+      code: 200
+      message: OK
+- request:
+    body: ''
+    headers: {}
+    method: GET
+    uri: https://api.openai.com/v1/responses/resp_0c13a25ee1a48f780069df079e0a58819cbde29d8a2906c590
+  response:
+    body:
+      encoding: utf-8
+      string: "{\n  \"id\": \"resp_0c13a25ee1a48f780069df079e0a58819cbde29d8a2906c590\",\n  \"object\": \"response\",\n  \"created_at\": 1776224158,\n  \"status\": \"in_progress\",\n  \"background\": true,\n  \"completed_at\": null,\n  \"error\": null,\n  \"frequency_penalty\": 0.0,\n  \"incomplete_details\": null,\n  \"instructions\": null,\n  \"max_output_tokens\": null,\n  \"max_tool_calls\": 225,\n  \"model\": \"o4-mini-deep-research-2025-06-26\",\n  \"output\": [],\n  \"parallel_tool_calls\": true,\n  \"presence_penalty\": 0.0,\n  \"previous_response_id\": null,\n  \"prompt_cache_key\": null,\n  \"prompt_cache_retention\": null,\n  \"reasoning\": {\n    \"effort\": \"medium\",\n    \"summary\": null\n  },\n  \"safety_identifier\": null,\n  \"service_tier\": \"auto\",\n  \"store\": true,\n  \"temperature\": 1.0,\n  \"text\": {\n    \"format\": {\n      \"type\": \"text\"\n    },\n    \"verbosity\": \"medium\"\n  },\n  \"tool_choice\": \"auto\",\n  \"tools\": [\n    {\n      \"type\": \"web_search_preview\",\n      \"search_context_size\": \"medium\",\n      \"user_location\": null\n    }\n  ],\n  \"top_logprobs\": 0,\n  \"top_p\": 1.0,\n  \"truncation\": \"disabled\",\n  \"usage\": null,\n  \"user\": null,\n  \"metadata\": {}\n}"
+    headers:
+      Alt-Svc:
+      - h3=":443"; ma=86400
+      Cf-Cache-Status:
+      - DYNAMIC
+      Cf-Ray:
+      - 9ec7e9ed6b09f591-SJC
+      Connection:
+      - keep-alive
+      Content-Type:
+      - application/json
+      Date:
+      - Wed, 15 Apr 2026 03:37:48 GMT
+      Openai-Organization:
+      - user-vcklpsn7dsyfu2fz7wokpfo8
+      Openai-Processing-Ms:
+      - '195'
+      Openai-Project:
+      - proj_nyDPV41fTNlbZd43C6I5P3ih
+      Openai-Version:
+      - '2020-10-01'
+      Server:
+      - cloudflare
+      Strict-Transport-Security:
+      - max-age=31536000; includeSubDomains; preload
+      X-Content-Type-Options:
+      - nosniff
+      X-Request-Id:
+      - req_6ec8d3e0a0454928a479f343d2c291d3
+    status:
+      code: 200
+      message: OK
+- request:
+    body: ''
+    headers: {}
+    method: GET
+    uri: https://api.openai.com/v1/responses/resp_0c13a25ee1a48f780069df079e0a58819cbde29d8a2906c590
+  response:
+    body:
+      encoding: utf-8
+      string: "{\n  \"id\": \"resp_0c13a25ee1a48f780069df079e0a58819cbde29d8a2906c590\",\n  \"object\": \"response\",\n  \"created_at\": 1776224158,\n  \"status\": \"in_progress\",\n  \"background\": true,\n  \"completed_at\": null,\n  \"error\": null,\n  \"frequency_penalty\": 0.0,\n  \"incomplete_details\": null,\n  \"instructions\": null,\n  \"max_output_tokens\": null,\n  \"max_tool_calls\": 225,\n  \"model\": \"o4-mini-deep-research-2025-06-26\",\n  \"output\": [],\n  \"parallel_tool_calls\": true,\n  \"presence_penalty\": 0.0,\n  \"previous_response_id\": null,\n  \"prompt_cache_key\": null,\n  \"prompt_cache_retention\": null,\n  \"reasoning\": {\n    \"effort\": \"medium\",\n    \"summary\": null\n  },\n  \"safety_identifier\": null,\n  \"service_tier\": \"auto\",\n  \"store\": true,\n  \"temperature\": 1.0,\n  \"text\": {\n    \"format\": {\n      \"type\": \"text\"\n    },\n    \"verbosity\": \"medium\"\n  },\n  \"tool_choice\": \"auto\",\n  \"tools\": [\n    {\n      \"type\": \"web_search_preview\",\n      \"search_context_size\": \"medium\",\n      \"user_location\": null\n    }\n  ],\n  \"top_logprobs\": 0,\n  \"top_p\": 1.0,\n  \"truncation\": \"disabled\",\n  \"usage\": null,\n  \"user\": null,\n  \"metadata\": {}\n}"
+    headers:
+      Alt-Svc:
+      - h3=":443"; ma=86400
+      Cf-Cache-Status:
+      - DYNAMIC
+      Cf-Ray:
+      - 9ec7ea0f6eb7f591-SJC
+      Connection:
+      - keep-alive
+      Content-Type:
+      - application/json
+      Date:
+      - Wed, 15 Apr 2026 03:37:54 GMT
+      Openai-Organization:
+      - user-vcklpsn7dsyfu2fz7wokpfo8
+      Openai-Processing-Ms:
+      - '87'
+      Openai-Project:
+      - proj_nyDPV41fTNlbZd43C6I5P3ih
+      Openai-Version:
+      - '2020-10-01'
+      Server:
+      - cloudflare
+      Strict-Transport-Security:
+      - max-age=31536000; includeSubDomains; preload
+      X-Content-Type-Options:
+      - nosniff
+      X-Request-Id:
+      - req_d73b97da8be64cd280e4fe5884f6e08a
+    status:
+      code: 200
+      message: OK
+- request:
+    body: ''
+    headers: {}
+    method: GET
+    uri: https://api.openai.com/v1/responses/resp_0c13a25ee1a48f780069df079e0a58819cbde29d8a2906c590
+  response:
+    body:
+      encoding: utf-8
+      string: "{\n  \"id\": \"resp_0c13a25ee1a48f780069df079e0a58819cbde29d8a2906c590\",\n  \"object\": \"response\",\n  \"created_at\": 1776224158,\n  \"status\": \"in_progress\",\n  \"background\": true,\n  \"completed_at\": null,\n  \"error\": null,\n  \"frequency_penalty\": 0.0,\n  \"incomplete_details\": null,\n  \"instructions\": null,\n  \"max_output_tokens\": null,\n  \"max_tool_calls\": 225,\n  \"model\": \"o4-mini-deep-research-2025-06-26\",\n  \"output\": [],\n  \"parallel_tool_calls\": true,\n  \"presence_penalty\": 0.0,\n  \"previous_response_id\": null,\n  \"prompt_cache_key\": null,\n  \"prompt_cache_retention\": null,\n  \"reasoning\": {\n    \"effort\": \"medium\",\n    \"summary\": null\n  },\n  \"safety_identifier\": null,\n  \"service_tier\": \"auto\",\n  \"store\": true,\n  \"temperature\": 1.0,\n  \"text\": {\n    \"format\": {\n      \"type\": \"text\"\n    },\n    \"verbosity\": \"medium\"\n  },\n  \"tool_choice\": \"auto\",\n  \"tools\": [\n    {\n      \"type\": \"web_search_preview\",\n      \"search_context_size\": \"medium\",\n      \"user_location\": null\n    }\n  ],\n  \"top_logprobs\": 0,\n  \"top_p\": 1.0,\n  \"truncation\": \"disabled\",\n  \"usage\": null,\n  \"user\": null,\n  \"metadata\": {}\n}"
+    headers:
+      Alt-Svc:
+      - h3=":443"; ma=86400
+      Cf-Cache-Status:
+      - DYNAMIC
+      Cf-Ray:
+      - 9ec7ea318872f591-SJC
+      Connection:
+      - keep-alive
+      Content-Type:
+      - application/json
+      Date:
+      - Wed, 15 Apr 2026 03:37:59 GMT
+      Openai-Organization:
+      - user-vcklpsn7dsyfu2fz7wokpfo8
+      Openai-Processing-Ms:
+      - '124'
+      Openai-Project:
+      - proj_nyDPV41fTNlbZd43C6I5P3ih
+      Openai-Version:
+      - '2020-10-01'
+      Server:
+      - cloudflare
+      Strict-Transport-Security:
+      - max-age=31536000; includeSubDomains; preload
+      X-Content-Type-Options:
+      - nosniff
+      X-Request-Id:
+      - req_89829adaf4e7412d83c6e7e5ad534814
+    status:
+      code: 200
+      message: OK
+- request:
+    body: ''
+    headers: {}
+    method: GET
+    uri: https://api.openai.com/v1/responses/resp_0c13a25ee1a48f780069df079e0a58819cbde29d8a2906c590
+  response:
+    body:
+      encoding: utf-8
+      string: "{\n  \"id\": \"resp_0c13a25ee1a48f780069df079e0a58819cbde29d8a2906c590\",\n  \"object\": \"response\",\n  \"created_at\": 1776224158,\n  \"status\": \"in_progress\",\n  \"background\": true,\n  \"completed_at\": null,\n  \"error\": null,\n  \"frequency_penalty\": 0.0,\n  \"incomplete_details\": null,\n  \"instructions\": null,\n  \"max_output_tokens\": null,\n  \"max_tool_calls\": 225,\n  \"model\": \"o4-mini-deep-research-2025-06-26\",\n  \"output\": [],\n  \"parallel_tool_calls\": true,\n  \"presence_penalty\": 0.0,\n  \"previous_response_id\": null,\n  \"prompt_cache_key\": null,\n  \"prompt_cache_retention\": null,\n  \"reasoning\": {\n    \"effort\": \"medium\",\n    \"summary\": null\n  },\n  \"safety_identifier\": null,\n  \"service_tier\": \"auto\",\n  \"store\": true,\n  \"temperature\": 1.0,\n  \"text\": {\n    \"format\": {\n      \"type\": \"text\"\n    },\n    \"verbosity\": \"medium\"\n  },\n  \"tool_choice\": \"auto\",\n  \"tools\": [\n    {\n      \"type\": \"web_search_preview\",\n      \"search_context_size\": \"medium\",\n      \"user_location\": null\n    }\n  ],\n  \"top_logprobs\": 0,\n  \"top_p\": 1.0,\n  \"truncation\": \"disabled\",\n  \"usage\": null,\n  \"user\": null,\n  \"metadata\": {}\n}"
+    headers:
+      Alt-Svc:
+      - h3=":443"; ma=86400
+      Cf-Cache-Status:
+      - DYNAMIC
+      Cf-Ray:
+      - 9ec7ea52dd1ff591-SJC
+      Connection:
+      - keep-alive
+      Content-Type:
+      - application/json
+      Date:
+      - Wed, 15 Apr 2026 03:38:04 GMT
+      Openai-Organization:
+      - user-vcklpsn7dsyfu2fz7wokpfo8
+      Openai-Processing-Ms:
+      - '95'
+      Openai-Project:
+      - proj_nyDPV41fTNlbZd43C6I5P3ih
+      Openai-Version:
+      - '2020-10-01'
+      Server:
+      - cloudflare
+      Strict-Transport-Security:
+      - max-age=31536000; includeSubDomains; preload
+      X-Content-Type-Options:
+      - nosniff
+      X-Request-Id:
+      - req_982be07e3e714cd39e01898a996ff6fe
+    status:
+      code: 200
+      message: OK
+- request:
+    body: ''
+    headers: {}
+    method: GET
+    uri: https://api.openai.com/v1/responses/resp_0c13a25ee1a48f780069df079e0a58819cbde29d8a2906c590
+  response:
+    body:
+      encoding: utf-8
+      string: "{\n  \"id\": \"resp_0c13a25ee1a48f780069df079e0a58819cbde29d8a2906c590\",\n  \"object\": \"response\",\n  \"created_at\": 1776224158,\n  \"status\": \"in_progress\",\n  \"background\": true,\n  \"completed_at\": null,\n  \"error\": null,\n  \"frequency_penalty\": 0.0,\n  \"incomplete_details\": null,\n  \"instructions\": null,\n  \"max_output_tokens\": null,\n  \"max_tool_calls\": 225,\n  \"model\": \"o4-mini-deep-research-2025-06-26\",\n  \"output\": [],\n  \"parallel_tool_calls\": true,\n  \"presence_penalty\": 0.0,\n  \"previous_response_id\": null,\n  \"prompt_cache_key\": null,\n  \"prompt_cache_retention\": null,\n  \"reasoning\": {\n    \"effort\": \"medium\",\n    \"summary\": null\n  },\n  \"safety_identifier\": null,\n  \"service_tier\": \"auto\",\n  \"store\": true,\n  \"temperature\": 1.0,\n  \"text\": {\n    \"format\": {\n      \"type\": \"text\"\n    },\n    \"verbosity\": \"medium\"\n  },\n  \"tool_choice\": \"auto\",\n  \"tools\": [\n    {\n      \"type\": \"web_search_preview\",\n      \"search_context_size\": \"medium\",\n      \"user_location\": null\n    }\n  ],\n  \"top_logprobs\": 0,\n  \"top_p\": 1.0,\n  \"truncation\": \"disabled\",\n  \"usage\": null,\n  \"user\": null,\n  \"metadata\": {}\n}"
+    headers:
+      Alt-Svc:
+      - h3=":443"; ma=86400
+      Cf-Cache-Status:
+      - DYNAMIC
+      Cf-Ray:
+      - 9ec7ea73c921f591-SJC
+      Connection:
+      - keep-alive
+      Content-Type:
+      - application/json
+      Date:
+      - Wed, 15 Apr 2026 03:38:10 GMT
+      Openai-Organization:
+      - user-vcklpsn7dsyfu2fz7wokpfo8
+      Openai-Processing-Ms:
+      - '75'
+      Openai-Project:
+      - proj_nyDPV41fTNlbZd43C6I5P3ih
+      Openai-Version:
+      - '2020-10-01'
+      Server:
+      - cloudflare
+      Strict-Transport-Security:
+      - max-age=31536000; includeSubDomains; preload
+      X-Content-Type-Options:
+      - nosniff
+      X-Request-Id:
+      - req_1091f441123b4a1fa05b972ac4f988c6
+    status:
+      code: 200
+      message: OK
+- request:
+    body: ''
+    headers: {}
+    method: GET
+    uri: https://api.openai.com/v1/responses/resp_0c13a25ee1a48f780069df079e0a58819cbde29d8a2906c590
+  response:
+    body:
+      encoding: utf-8
+      string: "{\n  \"id\": \"resp_0c13a25ee1a48f780069df079e0a58819cbde29d8a2906c590\",\n  \"object\": \"response\",\n  \"created_at\": 1776224158,\n  \"status\": \"in_progress\",\n  \"background\": true,\n  \"completed_at\": null,\n  \"error\": null,\n  \"frequency_penalty\": 0.0,\n  \"incomplete_details\": null,\n  \"instructions\": null,\n  \"max_output_tokens\": null,\n  \"max_tool_calls\": 225,\n  \"model\": \"o4-mini-deep-research-2025-06-26\",\n  \"output\": [],\n  \"parallel_tool_calls\": true,\n  \"presence_penalty\": 0.0,\n  \"previous_response_id\": null,\n  \"prompt_cache_key\": null,\n  \"prompt_cache_retention\": null,\n  \"reasoning\": {\n    \"effort\": \"medium\",\n    \"summary\": null\n  },\n  \"safety_identifier\": null,\n  \"service_tier\": \"auto\",\n  \"store\": true,\n  \"temperature\": 1.0,\n  \"text\": {\n    \"format\": {\n      \"type\": \"text\"\n    },\n    \"verbosity\": \"medium\"\n  },\n  \"tool_choice\": \"auto\",\n  \"tools\": [\n    {\n      \"type\": \"web_search_preview\",\n      \"search_context_size\": \"medium\",\n      \"user_location\": null\n    }\n  ],\n  \"top_logprobs\": 0,\n  \"top_p\": 1.0,\n  \"truncation\": \"disabled\",\n  \"usage\": null,\n  \"user\": null,\n  \"metadata\": {}\n}"
+    headers:
+      Alt-Svc:
+      - h3=":443"; ma=86400
+      Cf-Cache-Status:
+      - DYNAMIC
+      Cf-Ray:
+      - 9ec7ea94ba08f591-SJC
+      Connection:
+      - keep-alive
+      Content-Type:
+      - application/json
+      Date:
+      - Wed, 15 Apr 2026 03:38:15 GMT
+      Openai-Organization:
+      - user-vcklpsn7dsyfu2fz7wokpfo8
+      Openai-Processing-Ms:
+      - '85'
+      Openai-Project:
+      - proj_nyDPV41fTNlbZd43C6I5P3ih
+      Openai-Version:
+      - '2020-10-01'
+      Server:
+      - cloudflare
+      Strict-Transport-Security:
+      - max-age=31536000; includeSubDomains; preload
+      X-Content-Type-Options:
+      - nosniff
+      X-Request-Id:
+      - req_da535a5ae4c640e0ac94a0c1e5842949
+    status:
+      code: 200
+      message: OK
+- request:
+    body: ''
+    headers: {}
+    method: GET
+    uri: https://api.openai.com/v1/responses/resp_0c13a25ee1a48f780069df079e0a58819cbde29d8a2906c590
+  response:
+    body:
+      encoding: utf-8
+      string: "{\n  \"id\": \"resp_0c13a25ee1a48f780069df079e0a58819cbde29d8a2906c590\",\n  \"object\": \"response\",\n  \"created_at\": 1776224158,\n  \"status\": \"in_progress\",\n  \"background\": true,\n  \"completed_at\": null,\n  \"error\": null,\n  \"frequency_penalty\": 0.0,\n  \"incomplete_details\": null,\n  \"instructions\": null,\n  \"max_output_tokens\": null,\n  \"max_tool_calls\": 225,\n  \"model\": \"o4-mini-deep-research-2025-06-26\",\n  \"output\": [],\n  \"parallel_tool_calls\": true,\n  \"presence_penalty\": 0.0,\n  \"previous_response_id\": null,\n  \"prompt_cache_key\": null,\n  \"prompt_cache_retention\": null,\n  \"reasoning\": {\n    \"effort\": \"medium\",\n    \"summary\": null\n  },\n  \"safety_identifier\": null,\n  \"service_tier\": \"auto\",\n  \"store\": true,\n  \"temperature\": 1.0,\n  \"text\": {\n    \"format\": {\n      \"type\": \"text\"\n    },\n    \"verbosity\": \"medium\"\n  },\n  \"tool_choice\": \"auto\",\n  \"tools\": [\n    {\n      \"type\": \"web_search_preview\",\n      \"search_context_size\": \"medium\",\n      \"user_location\": null\n    }\n  ],\n  \"top_logprobs\": 0,\n  \"top_p\": 1.0,\n  \"truncation\": \"disabled\",\n  \"usage\": null,\n  \"user\": null,\n  \"metadata\": {}\n}"
+    headers:
+      Alt-Svc:
+      - h3=":443"; ma=86400
+      Cf-Cache-Status:
+      - DYNAMIC
+      Cf-Ray:
+      - 9ec7eab5ac2bf591-SJC
+      Connection:
+      - keep-alive
+      Content-Type:
+      - application/json
+      Date:
+      - Wed, 15 Apr 2026 03:38:20 GMT
+      Openai-Organization:
+      - user-vcklpsn7dsyfu2fz7wokpfo8
+      Openai-Processing-Ms:
+      - '69'
+      Openai-Project:
+      - proj_nyDPV41fTNlbZd43C6I5P3ih
+      Openai-Version:
+      - '2020-10-01'
+      Server:
+      - cloudflare
+      Strict-Transport-Security:
+      - max-age=31536000; includeSubDomains; preload
+      X-Content-Type-Options:
+      - nosniff
+      X-Request-Id:
+      - req_0701791f96d7423693ebff411a13e35f
+    status:
+      code: 200
+      message: OK
+- request:
+    body: ''
+    headers: {}
+    method: GET
+    uri: https://api.openai.com/v1/responses/resp_0c13a25ee1a48f780069df079e0a58819cbde29d8a2906c590
+  response:
+    body:
+      encoding: utf-8
+      string: "{\n  \"id\": \"resp_0c13a25ee1a48f780069df079e0a58819cbde29d8a2906c590\",\n  \"object\": \"response\",\n  \"created_at\": 1776224158,\n  \"status\": \"in_progress\",\n  \"background\": true,\n  \"completed_at\": null,\n  \"error\": null,\n  \"frequency_penalty\": 0.0,\n  \"incomplete_details\": null,\n  \"instructions\": null,\n  \"max_output_tokens\": null,\n  \"max_tool_calls\": 225,\n  \"model\": \"o4-mini-deep-research-2025-06-26\",\n  \"output\": [],\n  \"parallel_tool_calls\": true,\n  \"presence_penalty\": 0.0,\n  \"previous_response_id\": null,\n  \"prompt_cache_key\": null,\n  \"prompt_cache_retention\": null,\n  \"reasoning\": {\n    \"effort\": \"medium\",\n    \"summary\": null\n  },\n  \"safety_identifier\": null,\n  \"service_tier\": \"auto\",\n  \"store\": true,\n  \"temperature\": 1.0,\n  \"text\": {\n    \"format\": {\n      \"type\": \"text\"\n    },\n    \"verbosity\": \"medium\"\n  },\n  \"tool_choice\": \"auto\",\n  \"tools\": [\n    {\n      \"type\": \"web_search_preview\",\n      \"search_context_size\": \"medium\",\n      \"user_location\": null\n    }\n  ],\n  \"top_logprobs\": 0,\n  \"top_p\": 1.0,\n  \"truncation\": \"disabled\",\n  \"usage\": null,\n  \"user\": null,\n  \"metadata\": {}\n}"
+    headers:
+      Alt-Svc:
+      - h3=":443"; ma=86400
+      Cf-Cache-Status:
+      - DYNAMIC
+      Cf-Ray:
+      - 9ec7ead6989cf591-SJC
+      Connection:
+      - keep-alive
+      Content-Type:
+      - application/json
+      Date:
+      - Wed, 15 Apr 2026 03:38:25 GMT
+      Openai-Organization:
+      - user-vcklpsn7dsyfu2fz7wokpfo8
+      Openai-Processing-Ms:
+      - '69'
+      Openai-Project:
+      - proj_nyDPV41fTNlbZd43C6I5P3ih
+      Openai-Version:
+      - '2020-10-01'
+      Server:
+      - cloudflare
+      Strict-Transport-Security:
+      - max-age=31536000; includeSubDomains; preload
+      X-Content-Type-Options:
+      - nosniff
+      X-Request-Id:
+      - req_a1c635c6a11c482a969a05be648b545a
+    status:
+      code: 200
+      message: OK
+- request:
+    body: ''
+    headers: {}
+    method: GET
+    uri: https://api.openai.com/v1/responses/resp_0c13a25ee1a48f780069df079e0a58819cbde29d8a2906c590
+  response:
+    body:
+      encoding: utf-8
+      string: "{\n  \"id\": \"resp_0c13a25ee1a48f780069df079e0a58819cbde29d8a2906c590\",\n  \"object\": \"response\",\n  \"created_at\": 1776224158,\n  \"status\": \"in_progress\",\n  \"background\": true,\n  \"completed_at\": null,\n  \"error\": null,\n  \"frequency_penalty\": 0.0,\n  \"incomplete_details\": null,\n  \"instructions\": null,\n  \"max_output_tokens\": null,\n  \"max_tool_calls\": 225,\n  \"model\": \"o4-mini-deep-research-2025-06-26\",\n  \"output\": [],\n  \"parallel_tool_calls\": true,\n  \"presence_penalty\": 0.0,\n  \"previous_response_id\": null,\n  \"prompt_cache_key\": null,\n  \"prompt_cache_retention\": null,\n  \"reasoning\": {\n    \"effort\": \"medium\",\n    \"summary\": null\n  },\n  \"safety_identifier\": null,\n  \"service_tier\": \"auto\",\n  \"store\": true,\n  \"temperature\": 1.0,\n  \"text\": {\n    \"format\": {\n      \"type\": \"text\"\n    },\n    \"verbosity\": \"medium\"\n  },\n  \"tool_choice\": \"auto\",\n  \"tools\": [\n    {\n      \"type\": \"web_search_preview\",\n      \"search_context_size\": \"medium\",\n      \"user_location\": null\n    }\n  ],\n  \"top_logprobs\": 0,\n  \"top_p\": 1.0,\n  \"truncation\": \"disabled\",\n  \"usage\": null,\n  \"user\": null,\n  \"metadata\": {}\n}"
+    headers:
+      Alt-Svc:
+      - h3=":443"; ma=86400
+      Cf-Cache-Status:
+      - DYNAMIC
+      Cf-Ray:
+      - 9ec7eaf74d24f591-SJC
+      Connection:
+      - keep-alive
+      Content-Type:
+      - application/json
+      Date:
+      - Wed, 15 Apr 2026 03:38:31 GMT
+      Openai-Organization:
+      - user-vcklpsn7dsyfu2fz7wokpfo8
+      Openai-Processing-Ms:
+      - '164'
+      Openai-Project:
+      - proj_nyDPV41fTNlbZd43C6I5P3ih
+      Openai-Version:
+      - '2020-10-01'
+      Server:
+      - cloudflare
+      Strict-Transport-Security:
+      - max-age=31536000; includeSubDomains; preload
+      X-Content-Type-Options:
+      - nosniff
+      X-Request-Id:
+      - req_ea45603e088d4801ae8ddad447122c2a
+    status:
+      code: 200
+      message: OK
+- request:
+    body: ''
+    headers: {}
+    method: GET
+    uri: https://api.openai.com/v1/responses/resp_0c13a25ee1a48f780069df079e0a58819cbde29d8a2906c590
+  response:
+    body:
+      encoding: utf-8
+      string: "{\n  \"id\": \"resp_0c13a25ee1a48f780069df079e0a58819cbde29d8a2906c590\",\n  \"object\": \"response\",\n  \"created_at\": 1776224158,\n  \"status\": \"in_progress\",\n  \"background\": true,\n  \"completed_at\": null,\n  \"error\": null,\n  \"frequency_penalty\": 0.0,\n  \"incomplete_details\": null,\n  \"instructions\": null,\n  \"max_output_tokens\": null,\n  \"max_tool_calls\": 225,\n  \"model\": \"o4-mini-deep-research-2025-06-26\",\n  \"output\": [],\n  \"parallel_tool_calls\": true,\n  \"presence_penalty\": 0.0,\n  \"previous_response_id\": null,\n  \"prompt_cache_key\": null,\n  \"prompt_cache_retention\": null,\n  \"reasoning\": {\n    \"effort\": \"medium\",\n    \"summary\": null\n  },\n  \"safety_identifier\": null,\n  \"service_tier\": \"auto\",\n  \"store\": true,\n  \"temperature\": 1.0,\n  \"text\": {\n    \"format\": {\n      \"type\": \"text\"\n    },\n    \"verbosity\": \"medium\"\n  },\n  \"tool_choice\": \"auto\",\n  \"tools\": [\n    {\n      \"type\": \"web_search_preview\",\n      \"search_context_size\": \"medium\",\n      \"user_location\": null\n    }\n  ],\n  \"top_logprobs\": 0,\n  \"top_p\": 1.0,\n  \"truncation\": \"disabled\",\n  \"usage\": null,\n  \"user\": null,\n  \"metadata\": {}\n}"
+    headers:
+      Alt-Svc:
+      - h3=":443"; ma=86400
+      Cf-Cache-Status:
+      - DYNAMIC
+      Cf-Ray:
+      - 9ec7eb191a80f591-SJC
+      Connection:
+      - keep-alive
+      Content-Type:
+      - application/json
+      Date:
+      - Wed, 15 Apr 2026 03:38:36 GMT
+      Openai-Organization:
+      - user-vcklpsn7dsyfu2fz7wokpfo8
+      Openai-Processing-Ms:
+      - '73'
+      Openai-Project:
+      - proj_nyDPV41fTNlbZd43C6I5P3ih
+      Openai-Version:
+      - '2020-10-01'
+      Server:
+      - cloudflare
+      Strict-Transport-Security:
+      - max-age=31536000; includeSubDomains; preload
+      X-Content-Type-Options:
+      - nosniff
+      X-Request-Id:
+      - req_b6f676406e7941a8ad6e1e733f3bb0fb
+    status:
+      code: 200
+      message: OK
+- request:
+    body: ''
+    headers: {}
+    method: GET
+    uri: https://api.openai.com/v1/responses/resp_0c13a25ee1a48f780069df079e0a58819cbde29d8a2906c590
+  response:
+    body:
+      encoding: utf-8
+      string: "{\n  \"id\": \"resp_0c13a25ee1a48f780069df079e0a58819cbde29d8a2906c590\",\n  \"object\": \"response\",\n  \"created_at\": 1776224158,\n  \"status\": \"in_progress\",\n  \"background\": true,\n  \"completed_at\": null,\n  \"error\": null,\n  \"frequency_penalty\": 0.0,\n  \"incomplete_details\": null,\n  \"instructions\": null,\n  \"max_output_tokens\": null,\n  \"max_tool_calls\": 225,\n  \"model\": \"o4-mini-deep-research-2025-06-26\",\n  \"output\": [],\n  \"parallel_tool_calls\": true,\n  \"presence_penalty\": 0.0,\n  \"previous_response_id\": null,\n  \"prompt_cache_key\": null,\n  \"prompt_cache_retention\": null,\n  \"reasoning\": {\n    \"effort\": \"medium\",\n    \"summary\": null\n  },\n  \"safety_identifier\": null,\n  \"service_tier\": \"auto\",\n  \"store\": true,\n  \"temperature\": 1.0,\n  \"text\": {\n    \"format\": {\n      \"type\": \"text\"\n    },\n    \"verbosity\": \"medium\"\n  },\n  \"tool_choice\": \"auto\",\n  \"tools\": [\n    {\n      \"type\": \"web_search_preview\",\n      \"search_context_size\": \"medium\",\n      \"user_location\": null\n    }\n  ],\n  \"top_logprobs\": 0,\n  \"top_p\": 1.0,\n  \"truncation\": \"disabled\",\n  \"usage\": null,\n  \"user\": null,\n  \"metadata\": {}\n}"
+    headers:
+      Alt-Svc:
+      - h3=":443"; ma=86400
+      Cf-Cache-Status:
+      - DYNAMIC
+      Cf-Ray:
+      - 9ec7eb3aea57f591-SJC
+      Connection:
+      - keep-alive
+      Content-Type:
+      - application/json
+      Date:
+      - Wed, 15 Apr 2026 03:38:41 GMT
+      Openai-Organization:
+      - user-vcklpsn7dsyfu2fz7wokpfo8
+      Openai-Processing-Ms:
+      - '105'
+      Openai-Project:
+      - proj_nyDPV41fTNlbZd43C6I5P3ih
+      Openai-Version:
+      - '2020-10-01'
+      Server:
+      - cloudflare
+      Strict-Transport-Security:
+      - max-age=31536000; includeSubDomains; preload
+      X-Content-Type-Options:
+      - nosniff
+      X-Request-Id:
+      - req_cde02df461d8451faa615da57fe514cb
+    status:
+      code: 200
+      message: OK
+- request:
+    body: ''
+    headers: {}
+    method: GET
+    uri: https://api.openai.com/v1/responses/resp_0c13a25ee1a48f780069df079e0a58819cbde29d8a2906c590
+  response:
+    body:
+      encoding: utf-8
+      string: "{\n  \"id\": \"resp_0c13a25ee1a48f780069df079e0a58819cbde29d8a2906c590\",\n  \"object\": \"response\",\n  \"created_at\": 1776224158,\n  \"status\": \"in_progress\",\n  \"background\": true,\n  \"completed_at\": null,\n  \"error\": null,\n  \"frequency_penalty\": 0.0,\n  \"incomplete_details\": null,\n  \"instructions\": null,\n  \"max_output_tokens\": null,\n  \"max_tool_calls\": 225,\n  \"model\": \"o4-mini-deep-research-2025-06-26\",\n  \"output\": [],\n  \"parallel_tool_calls\": true,\n  \"presence_penalty\": 0.0,\n  \"previous_response_id\": null,\n  \"prompt_cache_key\": null,\n  \"prompt_cache_retention\": null,\n  \"reasoning\": {\n    \"effort\": \"medium\",\n    \"summary\": null\n  },\n  \"safety_identifier\": null,\n  \"service_tier\": \"auto\",\n  \"store\": true,\n  \"temperature\": 1.0,\n  \"text\": {\n    \"format\": {\n      \"type\": \"text\"\n    },\n    \"verbosity\": \"medium\"\n  },\n  \"tool_choice\": \"auto\",\n  \"tools\": [\n    {\n      \"type\": \"web_search_preview\",\n      \"search_context_size\": \"medium\",\n      \"user_location\": null\n    }\n  ],\n  \"top_logprobs\": 0,\n  \"top_p\": 1.0,\n  \"truncation\": \"disabled\",\n  \"usage\": null,\n  \"user\": null,\n  \"metadata\": {}\n}"
+    headers:
+      Alt-Svc:
+      - h3=":443"; ma=86400
+      Cf-Cache-Status:
+      - DYNAMIC
+      Cf-Ray:
+      - 9ec7eb5c1ed5f591-SJC
+      Connection:
+      - keep-alive
+      Content-Type:
+      - application/json
+      Date:
+      - Wed, 15 Apr 2026 03:38:47 GMT
+      Openai-Organization:
+      - user-vcklpsn7dsyfu2fz7wokpfo8
+      Openai-Processing-Ms:
+      - '87'
+      Openai-Project:
+      - proj_nyDPV41fTNlbZd43C6I5P3ih
+      Openai-Version:
+      - '2020-10-01'
+      Server:
+      - cloudflare
+      Strict-Transport-Security:
+      - max-age=31536000; includeSubDomains; preload
+      X-Content-Type-Options:
+      - nosniff
+      X-Request-Id:
+      - req_6fc7f8fe6ed141bfac78c0ee0be1808a
+    status:
+      code: 200
+      message: OK
+- request:
+    body: ''
+    headers: {}
+    method: GET
+    uri: https://api.openai.com/v1/responses/resp_0c13a25ee1a48f780069df079e0a58819cbde29d8a2906c590
+  response:
+    body:
+      encoding: utf-8
+      string: "{\n  \"id\": \"resp_0c13a25ee1a48f780069df079e0a58819cbde29d8a2906c590\",\n  \"object\": \"response\",\n  \"created_at\": 1776224158,\n  \"status\": \"in_progress\",\n  \"background\": true,\n  \"completed_at\": null,\n  \"error\": null,\n  \"frequency_penalty\": 0.0,\n  \"incomplete_details\": null,\n  \"instructions\": null,\n  \"max_output_tokens\": null,\n  \"max_tool_calls\": 225,\n  \"model\": \"o4-mini-deep-research-2025-06-26\",\n  \"output\": [],\n  \"parallel_tool_calls\": true,\n  \"presence_penalty\": 0.0,\n  \"previous_response_id\": null,\n  \"prompt_cache_key\": null,\n  \"prompt_cache_retention\": null,\n  \"reasoning\": {\n    \"effort\": \"medium\",\n    \"summary\": null\n  },\n  \"safety_identifier\": null,\n  \"service_tier\": \"auto\",\n  \"store\": true,\n  \"temperature\": 1.0,\n  \"text\": {\n    \"format\": {\n      \"type\": \"text\"\n    },\n    \"verbosity\": \"medium\"\n  },\n  \"tool_choice\": \"auto\",\n  \"tools\": [\n    {\n      \"type\": \"web_search_preview\",\n      \"search_context_size\": \"medium\",\n      \"user_location\": null\n    }\n  ],\n  \"top_logprobs\": 0,\n  \"top_p\": 1.0,\n  \"truncation\": \"disabled\",\n  \"usage\": null,\n  \"user\": null,\n  \"metadata\": {}\n}"
+    headers:
+      Alt-Svc:
+      - h3=":443"; ma=86400
+      Cf-Cache-Status:
+      - DYNAMIC
+      Cf-Ray:
+      - 9ec7eb7cefadf591-SJC
+      Connection:
+      - keep-alive
+      Content-Type:
+      - application/json
+      Date:
+      - Wed, 15 Apr 2026 03:38:52 GMT
+      Openai-Organization:
+      - user-vcklpsn7dsyfu2fz7wokpfo8
+      Openai-Processing-Ms:
+      - '111'
+      Openai-Project:
+      - proj_nyDPV41fTNlbZd43C6I5P3ih
+      Openai-Version:
+      - '2020-10-01'
+      Server:
+      - cloudflare
+      Strict-Transport-Security:
+      - max-age=31536000; includeSubDomains; preload
+      X-Content-Type-Options:
+      - nosniff
+      X-Request-Id:
+      - req_1c7feed623974960b9a40796d23d258d
+    status:
+      code: 200
+      message: OK
+- request:
+    body: ''
+    headers: {}
+    method: GET
+    uri: https://api.openai.com/v1/responses/resp_0c13a25ee1a48f780069df079e0a58819cbde29d8a2906c590
+  response:
+    body:
+      encoding: utf-8
+      string: "{\n  \"id\": \"resp_0c13a25ee1a48f780069df079e0a58819cbde29d8a2906c590\",\n  \"object\": \"response\",\n  \"created_at\": 1776224158,\n  \"status\": \"in_progress\",\n  \"background\": true,\n  \"completed_at\": null,\n  \"error\": null,\n  \"frequency_penalty\": 0.0,\n  \"incomplete_details\": null,\n  \"instructions\": null,\n  \"max_output_tokens\": null,\n  \"max_tool_calls\": 225,\n  \"model\": \"o4-mini-deep-research-2025-06-26\",\n  \"output\": [],\n  \"parallel_tool_calls\": true,\n  \"presence_penalty\": 0.0,\n  \"previous_response_id\": null,\n  \"prompt_cache_key\": null,\n  \"prompt_cache_retention\": null,\n  \"reasoning\": {\n    \"effort\": \"medium\",\n    \"summary\": null\n  },\n  \"safety_identifier\": null,\n  \"service_tier\": \"auto\",\n  \"store\": true,\n  \"temperature\": 1.0,\n  \"text\": {\n    \"format\": {\n      \"type\": \"text\"\n    },\n    \"verbosity\": \"medium\"\n  },\n  \"tool_choice\": \"auto\",\n  \"tools\": [\n    {\n      \"type\": \"web_search_preview\",\n      \"search_context_size\": \"medium\",\n      \"user_location\": null\n    }\n  ],\n  \"top_logprobs\": 0,\n  \"top_p\": 1.0,\n  \"truncation\": \"disabled\",\n  \"usage\": null,\n  \"user\": null,\n  \"metadata\": {}\n}"
+    headers:
+      Alt-Svc:
+      - h3=":443"; ma=86400
+      Cf-Cache-Status:
+      - DYNAMIC
+      Cf-Ray:
+      - 9ec7eb9e1cadf591-SJC
+      Connection:
+      - keep-alive
+      Content-Type:
+      - application/json
+      Date:
+      - Wed, 15 Apr 2026 03:38:57 GMT
+      Openai-Organization:
+      - user-vcklpsn7dsyfu2fz7wokpfo8
+      Openai-Processing-Ms:
+      - '75'
+      Openai-Project:
+      - proj_nyDPV41fTNlbZd43C6I5P3ih
+      Openai-Version:
+      - '2020-10-01'
+      Server:
+      - cloudflare
+      Strict-Transport-Security:
+      - max-age=31536000; includeSubDomains; preload
+      X-Content-Type-Options:
+      - nosniff
+      X-Request-Id:
+      - req_f7715a3be95944689d681cd82b69d723
+    status:
+      code: 200
+      message: OK
+- request:
+    body: ''
+    headers: {}
+    method: GET
+    uri: https://api.openai.com/v1/responses/resp_0c13a25ee1a48f780069df079e0a58819cbde29d8a2906c590
+  response:
+    body:
+      encoding: utf-8
+      string: "{\n  \"id\": \"resp_0c13a25ee1a48f780069df079e0a58819cbde29d8a2906c590\",\n  \"object\": \"response\",\n  \"created_at\": 1776224158,\n  \"status\": \"in_progress\",\n  \"background\": true,\n  \"completed_at\": null,\n  \"error\": null,\n  \"frequency_penalty\": 0.0,\n  \"incomplete_details\": null,\n  \"instructions\": null,\n  \"max_output_tokens\": null,\n  \"max_tool_calls\": 225,\n  \"model\": \"o4-mini-deep-research-2025-06-26\",\n  \"output\": [],\n  \"parallel_tool_calls\": true,\n  \"presence_penalty\": 0.0,\n  \"previous_response_id\": null,\n  \"prompt_cache_key\": null,\n  \"prompt_cache_retention\": null,\n  \"reasoning\": {\n    \"effort\": \"medium\",\n    \"summary\": null\n  },\n  \"safety_identifier\": null,\n  \"service_tier\": \"auto\",\n  \"store\": true,\n  \"temperature\": 1.0,\n  \"text\": {\n    \"format\": {\n      \"type\": \"text\"\n    },\n    \"verbosity\": \"medium\"\n  },\n  \"tool_choice\": \"auto\",\n  \"tools\": [\n    {\n      \"type\": \"web_search_preview\",\n      \"search_context_size\": \"medium\",\n      \"user_location\": null\n    }\n  ],\n  \"top_logprobs\": 0,\n  \"top_p\": 1.0,\n  \"truncation\": \"disabled\",\n  \"usage\": null,\n  \"user\": null,\n  \"metadata\": {}\n}"
+    headers:
+      Alt-Svc:
+      - h3=":443"; ma=86400
+      Cf-Cache-Status:
+      - DYNAMIC
+      Cf-Ray:
+      - 9ec7ebbed818f591-SJC
+      Connection:
+      - keep-alive
+      Content-Type:
+      - application/json
+      Date:
+      - Wed, 15 Apr 2026 03:39:03 GMT
+      Openai-Organization:
+      - user-vcklpsn7dsyfu2fz7wokpfo8
+      Openai-Processing-Ms:
+      - '139'
+      Openai-Project:
+      - proj_nyDPV41fTNlbZd43C6I5P3ih
+      Openai-Version:
+      - '2020-10-01'
+      Server:
+      - cloudflare
+      Strict-Transport-Security:
+      - max-age=31536000; includeSubDomains; preload
+      X-Content-Type-Options:
+      - nosniff
+      X-Request-Id:
+      - req_8d09dfc09a7e45ee8ee1edf4a0fbd4b0
+    status:
+      code: 200
+      message: OK
+- request:
+    body: ''
+    headers: {}
+    method: GET
+    uri: https://api.openai.com/v1/responses/resp_0c13a25ee1a48f780069df079e0a58819cbde29d8a2906c590
+  response:
+    body:
+      encoding: utf-8
+      string: "{\n  \"id\": \"resp_0c13a25ee1a48f780069df079e0a58819cbde29d8a2906c590\",\n  \"object\": \"response\",\n  \"created_at\": 1776224158,\n  \"status\": \"in_progress\",\n  \"background\": true,\n  \"completed_at\": null,\n  \"error\": null,\n  \"frequency_penalty\": 0.0,\n  \"incomplete_details\": null,\n  \"instructions\": null,\n  \"max_output_tokens\": null,\n  \"max_tool_calls\": 225,\n  \"model\": \"o4-mini-deep-research-2025-06-26\",\n  \"output\": [],\n  \"parallel_tool_calls\": true,\n  \"presence_penalty\": 0.0,\n  \"previous_response_id\": null,\n  \"prompt_cache_key\": null,\n  \"prompt_cache_retention\": null,\n  \"reasoning\": {\n    \"effort\": \"medium\",\n    \"summary\": null\n  },\n  \"safety_identifier\": null,\n  \"service_tier\": \"auto\",\n  \"store\": true,\n  \"temperature\": 1.0,\n  \"text\": {\n    \"format\": {\n      \"type\": \"text\"\n    },\n    \"verbosity\": \"medium\"\n  },\n  \"tool_choice\": \"auto\",\n  \"tools\": [\n    {\n      \"type\": \"web_search_preview\",\n      \"search_context_size\": \"medium\",\n      \"user_location\": null\n    }\n  ],\n  \"top_logprobs\": 0,\n  \"top_p\": 1.0,\n  \"truncation\": \"disabled\",\n  \"usage\": null,\n  \"user\": null,\n  \"metadata\": {}\n}"
+    headers:
+      Alt-Svc:
+      - h3=":443"; ma=86400
+      Cf-Cache-Status:
+      - DYNAMIC
+      Cf-Ray:
+      - 9ec7ebdfc9fcf591-SJC
+      Connection:
+      - keep-alive
+      Content-Type:
+      - application/json
+      Date:
+      - Wed, 15 Apr 2026 03:39:08 GMT
+      Openai-Organization:
+      - user-vcklpsn7dsyfu2fz7wokpfo8
+      Openai-Processing-Ms:
+      - '97'
+      Openai-Project:
+      - proj_nyDPV41fTNlbZd43C6I5P3ih
+      Openai-Version:
+      - '2020-10-01'
+      Server:
+      - cloudflare
+      Strict-Transport-Security:
+      - max-age=31536000; includeSubDomains; preload
+      X-Content-Type-Options:
+      - nosniff
+      X-Request-Id:
+      - req_85b7a31007a6470fa21a275415a170d9
+    status:
+      code: 200
+      message: OK
+- request:
+    body: ''
+    headers: {}
+    method: GET
+    uri: https://api.openai.com/v1/responses/resp_0c13a25ee1a48f780069df079e0a58819cbde29d8a2906c590
+  response:
+    body:
+      encoding: utf-8
+      string: "{\n  \"id\": \"resp_0c13a25ee1a48f780069df079e0a58819cbde29d8a2906c590\",\n  \"object\": \"response\",\n  \"created_at\": 1776224158,\n  \"status\": \"in_progress\",\n  \"background\": true,\n  \"completed_at\": null,\n  \"error\": null,\n  \"frequency_penalty\": 0.0,\n  \"incomplete_details\": null,\n  \"instructions\": null,\n  \"max_output_tokens\": null,\n  \"max_tool_calls\": 225,\n  \"model\": \"o4-mini-deep-research-2025-06-26\",\n  \"output\": [],\n  \"parallel_tool_calls\": true,\n  \"presence_penalty\": 0.0,\n  \"previous_response_id\": null,\n  \"prompt_cache_key\": null,\n  \"prompt_cache_retention\": null,\n  \"reasoning\": {\n    \"effort\": \"medium\",\n    \"summary\": null\n  },\n  \"safety_identifier\": null,\n  \"service_tier\": \"auto\",\n  \"store\": true,\n  \"temperature\": 1.0,\n  \"text\": {\n    \"format\": {\n      \"type\": \"text\"\n    },\n    \"verbosity\": \"medium\"\n  },\n  \"tool_choice\": \"auto\",\n  \"tools\": [\n    {\n      \"type\": \"web_search_preview\",\n      \"search_context_size\": \"medium\",\n      \"user_location\": null\n    }\n  ],\n  \"top_logprobs\": 0,\n  \"top_p\": 1.0,\n  \"truncation\": \"disabled\",\n  \"usage\": null,\n  \"user\": null,\n  \"metadata\": {}\n}"
+    headers:
+      Alt-Svc:
+      - h3=":443"; ma=86400
+      Cf-Cache-Status:
+      - DYNAMIC
+      Cf-Ray:
+      - 9ec7ec00ef5df591-SJC
+      Connection:
+      - keep-alive
+      Content-Type:
+      - application/json
+      Date:
+      - Wed, 15 Apr 2026 03:39:13 GMT
+      Openai-Organization:
+      - user-vcklpsn7dsyfu2fz7wokpfo8
+      Openai-Processing-Ms:
+      - '179'
+      Openai-Project:
+      - proj_nyDPV41fTNlbZd43C6I5P3ih
+      Openai-Version:
+      - '2020-10-01'
+      Server:
+      - cloudflare
+      Strict-Transport-Security:
+      - max-age=31536000; includeSubDomains; preload
+      X-Content-Type-Options:
+      - nosniff
+      X-Request-Id:
+      - req_97caf42ccaaf4cd0aaf3357b07671f7d
+    status:
+      code: 200
+      message: OK
+- request:
+    body: ''
+    headers: {}
+    method: GET
+    uri: https://api.openai.com/v1/responses/resp_0c13a25ee1a48f780069df079e0a58819cbde29d8a2906c590
+  response:
+    body:
+      encoding: utf-8
+      string: "{\n  \"id\": \"resp_0c13a25ee1a48f780069df079e0a58819cbde29d8a2906c590\",\n  \"object\": \"response\",\n  \"created_at\": 1776224158,\n  \"status\": \"in_progress\",\n  \"background\": true,\n  \"completed_at\": null,\n  \"error\": null,\n  \"frequency_penalty\": 0.0,\n  \"incomplete_details\": null,\n  \"instructions\": null,\n  \"max_output_tokens\": null,\n  \"max_tool_calls\": 225,\n  \"model\": \"o4-mini-deep-research-2025-06-26\",\n  \"output\": [],\n  \"parallel_tool_calls\": true,\n  \"presence_penalty\": 0.0,\n  \"previous_response_id\": null,\n  \"prompt_cache_key\": null,\n  \"prompt_cache_retention\": null,\n  \"reasoning\": {\n    \"effort\": \"medium\",\n    \"summary\": null\n  },\n  \"safety_identifier\": null,\n  \"service_tier\": \"auto\",\n  \"store\": true,\n  \"temperature\": 1.0,\n  \"text\": {\n    \"format\": {\n      \"type\": \"text\"\n    },\n    \"verbosity\": \"medium\"\n  },\n  \"tool_choice\": \"auto\",\n  \"tools\": [\n    {\n      \"type\": \"web_search_preview\",\n      \"search_context_size\": \"medium\",\n      \"user_location\": null\n    }\n  ],\n  \"top_logprobs\": 0,\n  \"top_p\": 1.0,\n  \"truncation\": \"disabled\",\n  \"usage\": null,\n  \"user\": null,\n  \"metadata\": {}\n}"
+    headers:
+      Alt-Svc:
+      - h3=":443"; ma=86400
+      Cf-Cache-Status:
+      - DYNAMIC
+      Cf-Ray:
+      - 9ec7ec23c92bf591-SJC
+      Connection:
+      - keep-alive
+      Content-Type:
+      - application/json
+      Date:
+      - Wed, 15 Apr 2026 03:39:21 GMT
+      Openai-Organization:
+      - user-vcklpsn7dsyfu2fz7wokpfo8
+      Openai-Processing-Ms:
+      - '1628'
+      Openai-Project:
+      - proj_nyDPV41fTNlbZd43C6I5P3ih
+      Openai-Version:
+      - '2020-10-01'
+      Server:
+      - cloudflare
+      Strict-Transport-Security:
+      - max-age=31536000; includeSubDomains; preload
+      X-Content-Type-Options:
+      - nosniff
+      X-Request-Id:
+      - req_fb8a9cdca4e945e2a05e81beb32eb5c5
+    status:
+      code: 200
+      message: OK
+- request:
+    body: ''
+    headers: {}
+    method: GET
+    uri: https://api.openai.com/v1/responses/resp_0c13a25ee1a48f780069df079e0a58819cbde29d8a2906c590
+  response:
+    body:
+      encoding: utf-8
+      string: "{\n  \"id\": \"resp_0c13a25ee1a48f780069df079e0a58819cbde29d8a2906c590\",\n  \"object\": \"response\",\n  \"created_at\": 1776224158,\n  \"status\": \"in_progress\",\n  \"background\": true,\n  \"completed_at\": null,\n  \"error\": null,\n  \"frequency_penalty\": 0.0,\n  \"incomplete_details\": null,\n  \"instructions\": null,\n  \"max_output_tokens\": null,\n  \"max_tool_calls\": 225,\n  \"model\": \"o4-mini-deep-research-2025-06-26\",\n  \"output\": [],\n  \"parallel_tool_calls\": true,\n  \"presence_penalty\": 0.0,\n  \"previous_response_id\": null,\n  \"prompt_cache_key\": null,\n  \"prompt_cache_retention\": null,\n  \"reasoning\": {\n    \"effort\": \"medium\",\n    \"summary\": null\n  },\n  \"safety_identifier\": null,\n  \"service_tier\": \"auto\",\n  \"store\": true,\n  \"temperature\": 1.0,\n  \"text\": {\n    \"format\": {\n      \"type\": \"text\"\n    },\n    \"verbosity\": \"medium\"\n  },\n  \"tool_choice\": \"auto\",\n  \"tools\": [\n    {\n      \"type\": \"web_search_preview\",\n      \"search_context_size\": \"medium\",\n      \"user_location\": null\n    }\n  ],\n  \"top_logprobs\": 0,\n  \"top_p\": 1.0,\n  \"truncation\": \"disabled\",\n  \"usage\": null,\n  \"user\": null,\n  \"metadata\": {}\n}"
+    headers:
+      Alt-Svc:
+      - h3=":443"; ma=86400
+      Cf-Cache-Status:
+      - DYNAMIC
+      Cf-Ray:
+      - 9ec7ec502e92f591-SJC
+      Connection:
+      - keep-alive
+      Content-Type:
+      - application/json
+      Date:
+      - Wed, 15 Apr 2026 03:39:26 GMT
+      Openai-Organization:
+      - user-vcklpsn7dsyfu2fz7wokpfo8
+      Openai-Processing-Ms:
+      - '179'
+      Openai-Project:
+      - proj_nyDPV41fTNlbZd43C6I5P3ih
+      Openai-Version:
+      - '2020-10-01'
+      Server:
+      - cloudflare
+      Strict-Transport-Security:
+      - max-age=31536000; includeSubDomains; preload
+      X-Content-Type-Options:
+      - nosniff
+      X-Request-Id:
+      - req_3abaeb99d8704d2c9fa1642f14fdd0be
+    status:
+      code: 200
+      message: OK
+- request:
+    body: ''
+    headers: {}
+    method: GET
+    uri: https://api.openai.com/v1/responses/resp_0c13a25ee1a48f780069df079e0a58819cbde29d8a2906c590
+  response:
+    body:
+      encoding: utf-8
+      string: "{\n  \"id\": \"resp_0c13a25ee1a48f780069df079e0a58819cbde29d8a2906c590\",\n  \"object\": \"response\",\n  \"created_at\": 1776224158,\n  \"status\": \"in_progress\",\n  \"background\": true,\n  \"completed_at\": null,\n  \"error\": null,\n  \"frequency_penalty\": 0.0,\n  \"incomplete_details\": null,\n  \"instructions\": null,\n  \"max_output_tokens\": null,\n  \"max_tool_calls\": 225,\n  \"model\": \"o4-mini-deep-research-2025-06-26\",\n  \"output\": [],\n  \"parallel_tool_calls\": true,\n  \"presence_penalty\": 0.0,\n  \"previous_response_id\": null,\n  \"prompt_cache_key\": null,\n  \"prompt_cache_retention\": null,\n  \"reasoning\": {\n    \"effort\": \"medium\",\n    \"summary\": null\n  },\n  \"safety_identifier\": null,\n  \"service_tier\": \"auto\",\n  \"store\": true,\n  \"temperature\": 1.0,\n  \"text\": {\n    \"format\": {\n      \"type\": \"text\"\n    },\n    \"verbosity\": \"medium\"\n  },\n  \"tool_choice\": \"auto\",\n  \"tools\": [\n    {\n      \"type\": \"web_search_preview\",\n      \"search_context_size\": \"medium\",\n      \"user_location\": null\n    }\n  ],\n  \"top_logprobs\": 0,\n  \"top_p\": 1.0,\n  \"truncation\": \"disabled\",\n  \"usage\": null,\n  \"user\": null,\n  \"metadata\": {}\n}"
+    headers:
+      Alt-Svc:
+      - h3=":443"; ma=86400
+      Cf-Cache-Status:
+      - DYNAMIC
+      Cf-Ray:
+      - 9ec7ec715ad5f591-SJC
+      Connection:
+      - keep-alive
+      Content-Type:
+      - application/json
+      Date:
+      - Wed, 15 Apr 2026 03:39:31 GMT
+      Openai-Organization:
+      - user-vcklpsn7dsyfu2fz7wokpfo8
+      Openai-Processing-Ms:
+      - '90'
+      Openai-Project:
+      - proj_nyDPV41fTNlbZd43C6I5P3ih
+      Openai-Version:
+      - '2020-10-01'
+      Server:
+      - cloudflare
+      Strict-Transport-Security:
+      - max-age=31536000; includeSubDomains; preload
+      X-Content-Type-Options:
+      - nosniff
+      X-Request-Id:
+      - req_d0d57c73af1545ed87d92ebdeb1d1e86
+    status:
+      code: 200
+      message: OK
+- request:
+    body: ''
+    headers: {}
+    method: GET
+    uri: https://api.openai.com/v1/responses/resp_0c13a25ee1a48f780069df079e0a58819cbde29d8a2906c590
+  response:
+    body:
+      encoding: utf-8
+      string: "{\n  \"id\": \"resp_0c13a25ee1a48f780069df079e0a58819cbde29d8a2906c590\",\n  \"object\": \"response\",\n  \"created_at\": 1776224158,\n  \"status\": \"in_progress\",\n  \"background\": true,\n  \"completed_at\": null,\n  \"error\": null,\n  \"frequency_penalty\": 0.0,\n  \"incomplete_details\": null,\n  \"instructions\": null,\n  \"max_output_tokens\": null,\n  \"max_tool_calls\": 225,\n  \"model\": \"o4-mini-deep-research-2025-06-26\",\n  \"output\": [],\n  \"parallel_tool_calls\": true,\n  \"presence_penalty\": 0.0,\n  \"previous_response_id\": null,\n  \"prompt_cache_key\": null,\n  \"prompt_cache_retention\": null,\n  \"reasoning\": {\n    \"effort\": \"medium\",\n    \"summary\": null\n  },\n  \"safety_identifier\": null,\n  \"service_tier\": \"auto\",\n  \"store\": true,\n  \"temperature\": 1.0,\n  \"text\": {\n    \"format\": {\n      \"type\": \"text\"\n    },\n    \"verbosity\": \"medium\"\n  },\n  \"tool_choice\": \"auto\",\n  \"tools\": [\n    {\n      \"type\": \"web_search_preview\",\n      \"search_context_size\": \"medium\",\n      \"user_location\": null\n    }\n  ],\n  \"top_logprobs\": 0,\n  \"top_p\": 1.0,\n  \"truncation\": \"disabled\",\n  \"usage\": null,\n  \"user\": null,\n  \"metadata\": {}\n}"
+    headers:
+      Alt-Svc:
+      - h3=":443"; ma=86400
+      Cf-Cache-Status:
+      - DYNAMIC
+      Cf-Ray:
+      - 9ec7ec9248b5f591-SJC
+      Connection:
+      - keep-alive
+      Content-Type:
+      - application/json
+      Date:
+      - Wed, 15 Apr 2026 03:39:36 GMT
+      Openai-Organization:
+      - user-vcklpsn7dsyfu2fz7wokpfo8
+      Openai-Processing-Ms:
+      - '146'
+      Openai-Project:
+      - proj_nyDPV41fTNlbZd43C6I5P3ih
+      Openai-Version:
+      - '2020-10-01'
+      Server:
+      - cloudflare
+      Strict-Transport-Security:
+      - max-age=31536000; includeSubDomains; preload
+      X-Content-Type-Options:
+      - nosniff
+      X-Request-Id:
+      - req_97a37ad82d2745c896fde56dd87f1298
+    status:
+      code: 200
+      message: OK
+- request:
+    body: ''
+    headers: {}
+    method: GET
+    uri: https://api.openai.com/v1/responses/resp_0c13a25ee1a48f780069df079e0a58819cbde29d8a2906c590
+  response:
+    body:
+      encoding: utf-8
+      string: "{\n  \"id\": \"resp_0c13a25ee1a48f780069df079e0a58819cbde29d8a2906c590\",\n  \"object\": \"response\",\n  \"created_at\": 1776224158,\n  \"status\": \"in_progress\",\n  \"background\": true,\n  \"completed_at\": null,\n  \"error\": null,\n  \"frequency_penalty\": 0.0,\n  \"incomplete_details\": null,\n  \"instructions\": null,\n  \"max_output_tokens\": null,\n  \"max_tool_calls\": 225,\n  \"model\": \"o4-mini-deep-research-2025-06-26\",\n  \"output\": [],\n  \"parallel_tool_calls\": true,\n  \"presence_penalty\": 0.0,\n  \"previous_response_id\": null,\n  \"prompt_cache_key\": null,\n  \"prompt_cache_retention\": null,\n  \"reasoning\": {\n    \"effort\": \"medium\",\n    \"summary\": null\n  },\n  \"safety_identifier\": null,\n  \"service_tier\": \"auto\",\n  \"store\": true,\n  \"temperature\": 1.0,\n  \"text\": {\n    \"format\": {\n      \"type\": \"text\"\n    },\n    \"verbosity\": \"medium\"\n  },\n  \"tool_choice\": \"auto\",\n  \"tools\": [\n    {\n      \"type\": \"web_search_preview\",\n      \"search_context_size\": \"medium\",\n      \"user_location\": null\n    }\n  ],\n  \"top_logprobs\": 0,\n  \"top_p\": 1.0,\n  \"truncation\": \"disabled\",\n  \"usage\": null,\n  \"user\": null,\n  \"metadata\": {}\n}"
+    headers:
+      Alt-Svc:
+      - h3=":443"; ma=86400
+      Cf-Cache-Status:
+      - DYNAMIC
+      Cf-Ray:
+      - 9ec7ecb3bfccf591-SJC
+      Connection:
+      - keep-alive
+      Content-Type:
+      - application/json
+      Date:
+      - Wed, 15 Apr 2026 03:39:42 GMT
+      Openai-Organization:
+      - user-vcklpsn7dsyfu2fz7wokpfo8
+      Openai-Processing-Ms:
+      - '166'
+      Openai-Project:
+      - proj_nyDPV41fTNlbZd43C6I5P3ih
+      Openai-Version:
+      - '2020-10-01'
+      Server:
+      - cloudflare
+      Strict-Transport-Security:
+      - max-age=31536000; includeSubDomains; preload
+      X-Content-Type-Options:
+      - nosniff
+      X-Request-Id:
+      - req_a9f91475b84e4573b1b72f5d3bec17f5
+    status:
+      code: 200
+      message: OK
+- request:
+    body: ''
+    headers: {}
+    method: GET
+    uri: https://api.openai.com/v1/responses/resp_0c13a25ee1a48f780069df079e0a58819cbde29d8a2906c590
+  response:
+    body:
+      encoding: utf-8
+      string: "{\n  \"id\": \"resp_0c13a25ee1a48f780069df079e0a58819cbde29d8a2906c590\",\n  \"object\": \"response\",\n  \"created_at\": 1776224158,\n  \"status\": \"in_progress\",\n  \"background\": true,\n  \"completed_at\": null,\n  \"error\": null,\n  \"frequency_penalty\": 0.0,\n  \"incomplete_details\": null,\n  \"instructions\": null,\n  \"max_output_tokens\": null,\n  \"max_tool_calls\": 225,\n  \"model\": \"o4-mini-deep-research-2025-06-26\",\n  \"output\": [],\n  \"parallel_tool_calls\": true,\n  \"presence_penalty\": 0.0,\n  \"previous_response_id\": null,\n  \"prompt_cache_key\": null,\n  \"prompt_cache_retention\": null,\n  \"reasoning\": {\n    \"effort\": \"medium\",\n    \"summary\": null\n  },\n  \"safety_identifier\": null,\n  \"service_tier\": \"auto\",\n  \"store\": true,\n  \"temperature\": 1.0,\n  \"text\": {\n    \"format\": {\n      \"type\": \"text\"\n    },\n    \"verbosity\": \"medium\"\n  },\n  \"tool_choice\": \"auto\",\n  \"tools\": [\n    {\n      \"type\": \"web_search_preview\",\n      \"search_context_size\": \"medium\",\n      \"user_location\": null\n    }\n  ],\n  \"top_logprobs\": 0,\n  \"top_p\": 1.0,\n  \"truncation\": \"disabled\",\n  \"usage\": null,\n  \"user\": null,\n  \"metadata\": {}\n}"
+    headers:
+      Alt-Svc:
+      - h3=":443"; ma=86400
+      Cf-Cache-Status:
+      - DYNAMIC
+      Cf-Ray:
+      - 9ec7ecd4bb23f591-SJC
+      Connection:
+      - keep-alive
+      Content-Type:
+      - application/json
+      Date:
+      - Wed, 15 Apr 2026 03:39:47 GMT
+      Openai-Organization:
+      - user-vcklpsn7dsyfu2fz7wokpfo8
+      Openai-Processing-Ms:
+      - '204'
+      Openai-Project:
+      - proj_nyDPV41fTNlbZd43C6I5P3ih
+      Openai-Version:
+      - '2020-10-01'
+      Server:
+      - cloudflare
+      Strict-Transport-Security:
+      - max-age=31536000; includeSubDomains; preload
+      X-Content-Type-Options:
+      - nosniff
+      X-Request-Id:
+      - req_b9081271064b44fcacde2a1dd9a11a4b
+    status:
+      code: 200
+      message: OK
+- request:
+    body: ''
+    headers: {}
+    method: GET
+    uri: https://api.openai.com/v1/responses/resp_0c13a25ee1a48f780069df079e0a58819cbde29d8a2906c590
+  response:
+    body:
+      encoding: utf-8
+      string: "{\n  \"id\": \"resp_0c13a25ee1a48f780069df079e0a58819cbde29d8a2906c590\",\n  \"object\": \"response\",\n  \"created_at\": 1776224158,\n  \"status\": \"in_progress\",\n  \"background\": true,\n  \"completed_at\": null,\n  \"error\": null,\n  \"frequency_penalty\": 0.0,\n  \"incomplete_details\": null,\n  \"instructions\": null,\n  \"max_output_tokens\": null,\n  \"max_tool_calls\": 225,\n  \"model\": \"o4-mini-deep-research-2025-06-26\",\n  \"output\": [],\n  \"parallel_tool_calls\": true,\n  \"presence_penalty\": 0.0,\n  \"previous_response_id\": null,\n  \"prompt_cache_key\": null,\n  \"prompt_cache_retention\": null,\n  \"reasoning\": {\n    \"effort\": \"medium\",\n    \"summary\": null\n  },\n  \"safety_identifier\": null,\n  \"service_tier\": \"auto\",\n  \"store\": true,\n  \"temperature\": 1.0,\n  \"text\": {\n    \"format\": {\n      \"type\": \"text\"\n    },\n    \"verbosity\": \"medium\"\n  },\n  \"tool_choice\": \"auto\",\n  \"tools\": [\n    {\n      \"type\": \"web_search_preview\",\n      \"search_context_size\": \"medium\",\n      \"user_location\": null\n    }\n  ],\n  \"top_logprobs\": 0,\n  \"top_p\": 1.0,\n  \"truncation\": \"disabled\",\n  \"usage\": null,\n  \"user\": null,\n  \"metadata\": {}\n}"
+    headers:
+      Alt-Svc:
+      - h3=":443"; ma=86400
+      Cf-Cache-Status:
+      - DYNAMIC
+      Cf-Ray:
+      - 9ec7ecf659b8f591-SJC
+      Connection:
+      - keep-alive
+      Content-Type:
+      - application/json
+      Date:
+      - Wed, 15 Apr 2026 03:39:53 GMT
+      Openai-Organization:
+      - user-vcklpsn7dsyfu2fz7wokpfo8
+      Openai-Processing-Ms:
+      - '347'
+      Openai-Project:
+      - proj_nyDPV41fTNlbZd43C6I5P3ih
+      Openai-Version:
+      - '2020-10-01'
+      Server:
+      - cloudflare
+      Strict-Transport-Security:
+      - max-age=31536000; includeSubDomains; preload
+      X-Content-Type-Options:
+      - nosniff
+      X-Request-Id:
+      - req_866f01e16b264e20b6f491ade8225beb
+    status:
+      code: 200
+      message: OK
+- request:
+    body: ''
+    headers: {}
+    method: GET
+    uri: https://api.openai.com/v1/responses/resp_0c13a25ee1a48f780069df079e0a58819cbde29d8a2906c590
+  response:
+    body:
+      encoding: utf-8
+      string: "{\n  \"id\": \"resp_0c13a25ee1a48f780069df079e0a58819cbde29d8a2906c590\",\n  \"object\": \"response\",\n  \"created_at\": 1776224158,\n  \"status\": \"in_progress\",\n  \"background\": true,\n  \"completed_at\": null,\n  \"error\": null,\n  \"frequency_penalty\": 0.0,\n  \"incomplete_details\": null,\n  \"instructions\": null,\n  \"max_output_tokens\": null,\n  \"max_tool_calls\": 225,\n  \"model\": \"o4-mini-deep-research-2025-06-26\",\n  \"output\": [],\n  \"parallel_tool_calls\": true,\n  \"presence_penalty\": 0.0,\n  \"previous_response_id\": null,\n  \"prompt_cache_key\": null,\n  \"prompt_cache_retention\": null,\n  \"reasoning\": {\n    \"effort\": \"medium\",\n    \"summary\": null\n  },\n  \"safety_identifier\": null,\n  \"service_tier\": \"auto\",\n  \"store\": true,\n  \"temperature\": 1.0,\n  \"text\": {\n    \"format\": {\n      \"type\": \"text\"\n    },\n    \"verbosity\": \"medium\"\n  },\n  \"tool_choice\": \"auto\",\n  \"tools\": [\n    {\n      \"type\": \"web_search_preview\",\n      \"search_context_size\": \"medium\",\n      \"user_location\": null\n    }\n  ],\n  \"top_logprobs\": 0,\n  \"top_p\": 1.0,\n  \"truncation\": \"disabled\",\n  \"usage\": null,\n  \"user\": null,\n  \"metadata\": {}\n}"
+    headers:
+      Alt-Svc:
+      - h3=":443"; ma=86400
+      Cf-Cache-Status:
+      - DYNAMIC
+      Cf-Ray:
+      - 9ec7ed18b94bf591-SJC
+      Connection:
+      - keep-alive
+      Content-Type:
+      - application/json
+      Date:
+      - Wed, 15 Apr 2026 03:39:58 GMT
+      Openai-Organization:
+      - user-vcklpsn7dsyfu2fz7wokpfo8
+      Openai-Processing-Ms:
+      - '178'
+      Openai-Project:
+      - proj_nyDPV41fTNlbZd43C6I5P3ih
+      Openai-Version:
+      - '2020-10-01'
+      Server:
+      - cloudflare
+      Strict-Transport-Security:
+      - max-age=31536000; includeSubDomains; preload
+      X-Content-Type-Options:
+      - nosniff
+      X-Request-Id:
+      - req_1ba438bcf63149d6a26f34fc92155c54
+    status:
+      code: 200
+      message: OK
+- request:
+    body: ''
+    headers: {}
+    method: GET
+    uri: https://api.openai.com/v1/responses/resp_0c13a25ee1a48f780069df079e0a58819cbde29d8a2906c590
+  response:
+    body:
+      encoding: utf-8
+      string: "{\n  \"id\": \"resp_0c13a25ee1a48f780069df079e0a58819cbde29d8a2906c590\",\n  \"object\": \"response\",\n  \"created_at\": 1776224158,\n  \"status\": \"in_progress\",\n  \"background\": true,\n  \"completed_at\": null,\n  \"error\": null,\n  \"frequency_penalty\": 0.0,\n  \"incomplete_details\": null,\n  \"instructions\": null,\n  \"max_output_tokens\": null,\n  \"max_tool_calls\": 225,\n  \"model\": \"o4-mini-deep-research-2025-06-26\",\n  \"output\": [],\n  \"parallel_tool_calls\": true,\n  \"presence_penalty\": 0.0,\n  \"previous_response_id\": null,\n  \"prompt_cache_key\": null,\n  \"prompt_cache_retention\": null,\n  \"reasoning\": {\n    \"effort\": \"medium\",\n    \"summary\": null\n  },\n  \"safety_identifier\": null,\n  \"service_tier\": \"auto\",\n  \"store\": true,\n  \"temperature\": 1.0,\n  \"text\": {\n    \"format\": {\n      \"type\": \"text\"\n    },\n    \"verbosity\": \"medium\"\n  },\n  \"tool_choice\": \"auto\",\n  \"tools\": [\n    {\n      \"type\": \"web_search_preview\",\n      \"search_context_size\": \"medium\",\n      \"user_location\": null\n    }\n  ],\n  \"top_logprobs\": 0,\n  \"top_p\": 1.0,\n  \"truncation\": \"disabled\",\n  \"usage\": null,\n  \"user\": null,\n  \"metadata\": {}\n}"
+    headers:
+      Alt-Svc:
+      - h3=":443"; ma=86400
+      Cf-Cache-Status:
+      - DYNAMIC
+      Cf-Ray:
+      - 9ec7ed3a0a3cf591-SJC
+      Connection:
+      - keep-alive
+      Content-Type:
+      - application/json
+      Date:
+      - Wed, 15 Apr 2026 03:40:03 GMT
+      Openai-Organization:
+      - user-vcklpsn7dsyfu2fz7wokpfo8
+      Openai-Processing-Ms:
+      - '181'
+      Openai-Project:
+      - proj_nyDPV41fTNlbZd43C6I5P3ih
+      Openai-Version:
+      - '2020-10-01'
+      Server:
+      - cloudflare
+      Strict-Transport-Security:
+      - max-age=31536000; includeSubDomains; preload
+      X-Content-Type-Options:
+      - nosniff
+      X-Request-Id:
+      - req_452cb37194a84d229c83d1e168cf0fb2
+    status:
+      code: 200
+      message: OK
+- request:
+    body: ''
+    headers: {}
+    method: GET
+    uri: https://api.openai.com/v1/responses/resp_0c13a25ee1a48f780069df079e0a58819cbde29d8a2906c590
+  response:
+    body:
+      encoding: utf-8
+      string: "{\n  \"id\": \"resp_0c13a25ee1a48f780069df079e0a58819cbde29d8a2906c590\",\n  \"object\": \"response\",\n  \"created_at\": 1776224158,\n  \"status\": \"in_progress\",\n  \"background\": true,\n  \"completed_at\": null,\n  \"error\": null,\n  \"frequency_penalty\": 0.0,\n  \"incomplete_details\": null,\n  \"instructions\": null,\n  \"max_output_tokens\": null,\n  \"max_tool_calls\": 225,\n  \"model\": \"o4-mini-deep-research-2025-06-26\",\n  \"output\": [],\n  \"parallel_tool_calls\": true,\n  \"presence_penalty\": 0.0,\n  \"previous_response_id\": null,\n  \"prompt_cache_key\": null,\n  \"prompt_cache_retention\": null,\n  \"reasoning\": {\n    \"effort\": \"medium\",\n    \"summary\": null\n  },\n  \"safety_identifier\": null,\n  \"service_tier\": \"auto\",\n  \"store\": true,\n  \"temperature\": 1.0,\n  \"text\": {\n    \"format\": {\n      \"type\": \"text\"\n    },\n    \"verbosity\": \"medium\"\n  },\n  \"tool_choice\": \"auto\",\n  \"tools\": [\n    {\n      \"type\": \"web_search_preview\",\n      \"search_context_size\": \"medium\",\n      \"user_location\": null\n    }\n  ],\n  \"top_logprobs\": 0,\n  \"top_p\": 1.0,\n  \"truncation\": \"disabled\",\n  \"usage\": null,\n  \"user\": null,\n  \"metadata\": {}\n}"
+    headers:
+      Alt-Svc:
+      - h3=":443"; ma=86400
+      Cf-Cache-Status:
+      - DYNAMIC
+      Cf-Ray:
+      - 9ec7ed5b9a6df591-SJC
+      Connection:
+      - keep-alive
+      Content-Type:
+      - application/json
+      Date:
+      - Wed, 15 Apr 2026 03:40:09 GMT
+      Openai-Organization:
+      - user-vcklpsn7dsyfu2fz7wokpfo8
+      Openai-Processing-Ms:
+      - '161'
+      Openai-Project:
+      - proj_nyDPV41fTNlbZd43C6I5P3ih
+      Openai-Version:
+      - '2020-10-01'
+      Server:
+      - cloudflare
+      Strict-Transport-Security:
+      - max-age=31536000; includeSubDomains; preload
+      X-Content-Type-Options:
+      - nosniff
+      X-Request-Id:
+      - req_4aeb260ee0e94c8e81497bea32ddfa64
+    status:
+      code: 200
+      message: OK
+- request:
+    body: ''
+    headers: {}
+    method: GET
+    uri: https://api.openai.com/v1/responses/resp_0c13a25ee1a48f780069df079e0a58819cbde29d8a2906c590
+  response:
+    body:
+      encoding: utf-8
+      string: "{\n  \"id\": \"resp_0c13a25ee1a48f780069df079e0a58819cbde29d8a2906c590\",\n  \"object\": \"response\",\n  \"created_at\": 1776224158,\n  \"status\": \"in_progress\",\n  \"background\": true,\n  \"completed_at\": null,\n  \"error\": null,\n  \"frequency_penalty\": 0.0,\n  \"incomplete_details\": null,\n  \"instructions\": null,\n  \"max_output_tokens\": null,\n  \"max_tool_calls\": 225,\n  \"model\": \"o4-mini-deep-research-2025-06-26\",\n  \"output\": [],\n  \"parallel_tool_calls\": true,\n  \"presence_penalty\": 0.0,\n  \"previous_response_id\": null,\n  \"prompt_cache_key\": null,\n  \"prompt_cache_retention\": null,\n  \"reasoning\": {\n    \"effort\": \"medium\",\n    \"summary\": null\n  },\n  \"safety_identifier\": null,\n  \"service_tier\": \"auto\",\n  \"store\": true,\n  \"temperature\": 1.0,\n  \"text\": {\n    \"format\": {\n      \"type\": \"text\"\n    },\n    \"verbosity\": \"medium\"\n  },\n  \"tool_choice\": \"auto\",\n  \"tools\": [\n    {\n      \"type\": \"web_search_preview\",\n      \"search_context_size\": \"medium\",\n      \"user_location\": null\n    }\n  ],\n  \"top_logprobs\": 0,\n  \"top_p\": 1.0,\n  \"truncation\": \"disabled\",\n  \"usage\": null,\n  \"user\": null,\n  \"metadata\": {}\n}"
+    headers:
+      Alt-Svc:
+      - h3=":443"; ma=86400
+      Cf-Cache-Status:
+      - DYNAMIC
+      Cf-Ray:
+      - 9ec7ed7ce951f591-SJC
+      Connection:
+      - keep-alive
+      Content-Type:
+      - application/json
+      Date:
+      - Wed, 15 Apr 2026 03:40:14 GMT
+      Openai-Organization:
+      - user-vcklpsn7dsyfu2fz7wokpfo8
+      Openai-Processing-Ms:
+      - '103'
+      Openai-Project:
+      - proj_nyDPV41fTNlbZd43C6I5P3ih
+      Openai-Version:
+      - '2020-10-01'
+      Server:
+      - cloudflare
+      Strict-Transport-Security:
+      - max-age=31536000; includeSubDomains; preload
+      X-Content-Type-Options:
+      - nosniff
+      X-Request-Id:
+      - req_15f41a13afa14d02a67151dd3aff9aed
+    status:
+      code: 200
+      message: OK
+- request:
+    body: ''
+    headers: {}
+    method: GET
+    uri: https://api.openai.com/v1/responses/resp_0c13a25ee1a48f780069df079e0a58819cbde29d8a2906c590
+  response:
+    body:
+      encoding: utf-8
+      string: "{\n  \"id\": \"resp_0c13a25ee1a48f780069df079e0a58819cbde29d8a2906c590\",\n  \"object\": \"response\",\n  \"created_at\": 1776224158,\n  \"status\": \"in_progress\",\n  \"background\": true,\n  \"completed_at\": null,\n  \"error\": null,\n  \"frequency_penalty\": 0.0,\n  \"incomplete_details\": null,\n  \"instructions\": null,\n  \"max_output_tokens\": null,\n  \"max_tool_calls\": 225,\n  \"model\": \"o4-mini-deep-research-2025-06-26\",\n  \"output\": [],\n  \"parallel_tool_calls\": true,\n  \"presence_penalty\": 0.0,\n  \"previous_response_id\": null,\n  \"prompt_cache_key\": null,\n  \"prompt_cache_retention\": null,\n  \"reasoning\": {\n    \"effort\": \"medium\",\n    \"summary\": null\n  },\n  \"safety_identifier\": null,\n  \"service_tier\": \"auto\",\n  \"store\": true,\n  \"temperature\": 1.0,\n  \"text\": {\n    \"format\": {\n      \"type\": \"text\"\n    },\n    \"verbosity\": \"medium\"\n  },\n  \"tool_choice\": \"auto\",\n  \"tools\": [\n    {\n      \"type\": \"web_search_preview\",\n      \"search_context_size\": \"medium\",\n      \"user_location\": null\n    }\n  ],\n  \"top_logprobs\": 0,\n  \"top_p\": 1.0,\n  \"truncation\": \"disabled\",\n  \"usage\": null,\n  \"user\": null,\n  \"metadata\": {}\n}"
+    headers:
+      Alt-Svc:
+      - h3=":443"; ma=86400
+      Cf-Cache-Status:
+      - DYNAMIC
+      Cf-Ray:
+      - 9ec7ed9dde31f591-SJC
+      Connection:
+      - keep-alive
+      Content-Type:
+      - application/json
+      Date:
+      - Wed, 15 Apr 2026 03:40:19 GMT
+      Openai-Organization:
+      - user-vcklpsn7dsyfu2fz7wokpfo8
+      Openai-Processing-Ms:
+      - '134'
+      Openai-Project:
+      - proj_nyDPV41fTNlbZd43C6I5P3ih
+      Openai-Version:
+      - '2020-10-01'
+      Server:
+      - cloudflare
+      Strict-Transport-Security:
+      - max-age=31536000; includeSubDomains; preload
+      X-Content-Type-Options:
+      - nosniff
+      X-Request-Id:
+      - req_dbd124d9a135484aa356f3f202ded22d
+    status:
+      code: 200
+      message: OK
+- request:
+    body: ''
+    headers: {}
+    method: GET
+    uri: https://api.openai.com/v1/responses/resp_0c13a25ee1a48f780069df079e0a58819cbde29d8a2906c590
+  response:
+    body:
+      encoding: utf-8
+      string: "{\n  \"id\": \"resp_0c13a25ee1a48f780069df079e0a58819cbde29d8a2906c590\",\n  \"object\": \"response\",\n  \"created_at\": 1776224158,\n  \"status\": \"in_progress\",\n  \"background\": true,\n  \"completed_at\": null,\n  \"error\": null,\n  \"frequency_penalty\": 0.0,\n  \"incomplete_details\": null,\n  \"instructions\": null,\n  \"max_output_tokens\": null,\n  \"max_tool_calls\": 225,\n  \"model\": \"o4-mini-deep-research-2025-06-26\",\n  \"output\": [],\n  \"parallel_tool_calls\": true,\n  \"presence_penalty\": 0.0,\n  \"previous_response_id\": null,\n  \"prompt_cache_key\": null,\n  \"prompt_cache_retention\": null,\n  \"reasoning\": {\n    \"effort\": \"medium\",\n    \"summary\": null\n  },\n  \"safety_identifier\": null,\n  \"service_tier\": \"auto\",\n  \"store\": true,\n  \"temperature\": 1.0,\n  \"text\": {\n    \"format\": {\n      \"type\": \"text\"\n    },\n    \"verbosity\": \"medium\"\n  },\n  \"tool_choice\": \"auto\",\n  \"tools\": [\n    {\n      \"type\": \"web_search_preview\",\n      \"search_context_size\": \"medium\",\n      \"user_location\": null\n    }\n  ],\n  \"top_logprobs\": 0,\n  \"top_p\": 1.0,\n  \"truncation\": \"disabled\",\n  \"usage\": null,\n  \"user\": null,\n  \"metadata\": {}\n}"
+    headers:
+      Alt-Svc:
+      - h3=":443"; ma=86400
+      Cf-Cache-Status:
+      - DYNAMIC
+      Cf-Ray:
+      - 9ec7edbf2cc3f591-SJC
+      Connection:
+      - keep-alive
+      Content-Type:
+      - application/json
+      Date:
+      - Wed, 15 Apr 2026 03:40:24 GMT
+      Openai-Organization:
+      - user-vcklpsn7dsyfu2fz7wokpfo8
+      Openai-Processing-Ms:
+      - '73'
+      Openai-Project:
+      - proj_nyDPV41fTNlbZd43C6I5P3ih
+      Openai-Version:
+      - '2020-10-01'
+      Server:
+      - cloudflare
+      Strict-Transport-Security:
+      - max-age=31536000; includeSubDomains; preload
+      X-Content-Type-Options:
+      - nosniff
+      X-Request-Id:
+      - req_0c63484ead3a4cf08168cc85e4b8b825
+    status:
+      code: 200
+      message: OK
+- request:
+    body: ''
+    headers: {}
+    method: GET
+    uri: https://api.openai.com/v1/responses/resp_0c13a25ee1a48f780069df079e0a58819cbde29d8a2906c590
+  response:
+    body:
+      encoding: utf-8
+      string: "{\n  \"id\": \"resp_0c13a25ee1a48f780069df079e0a58819cbde29d8a2906c590\",\n  \"object\": \"response\",\n  \"created_at\": 1776224158,\n  \"status\": \"in_progress\",\n  \"background\": true,\n  \"completed_at\": null,\n  \"error\": null,\n  \"frequency_penalty\": 0.0,\n  \"incomplete_details\": null,\n  \"instructions\": null,\n  \"max_output_tokens\": null,\n  \"max_tool_calls\": 225,\n  \"model\": \"o4-mini-deep-research-2025-06-26\",\n  \"output\": [],\n  \"parallel_tool_calls\": true,\n  \"presence_penalty\": 0.0,\n  \"previous_response_id\": null,\n  \"prompt_cache_key\": null,\n  \"prompt_cache_retention\": null,\n  \"reasoning\": {\n    \"effort\": \"medium\",\n    \"summary\": null\n  },\n  \"safety_identifier\": null,\n  \"service_tier\": \"auto\",\n  \"store\": true,\n  \"temperature\": 1.0,\n  \"text\": {\n    \"format\": {\n      \"type\": \"text\"\n    },\n    \"verbosity\": \"medium\"\n  },\n  \"tool_choice\": \"auto\",\n  \"tools\": [\n    {\n      \"type\": \"web_search_preview\",\n      \"search_context_size\": \"medium\",\n      \"user_location\": null\n    }\n  ],\n  \"top_logprobs\": 0,\n  \"top_p\": 1.0,\n  \"truncation\": \"disabled\",\n  \"usage\": null,\n  \"user\": null,\n  \"metadata\": {}\n}"
+    headers:
+      Alt-Svc:
+      - h3=":443"; ma=86400
+      Cf-Cache-Status:
+      - DYNAMIC
+      Cf-Ray:
+      - 9ec7ede02817f591-SJC
+      Connection:
+      - keep-alive
+      Content-Type:
+      - application/json
+      Date:
+      - Wed, 15 Apr 2026 03:40:30 GMT
+      Openai-Organization:
+      - user-vcklpsn7dsyfu2fz7wokpfo8
+      Openai-Processing-Ms:
+      - '89'
+      Openai-Project:
+      - proj_nyDPV41fTNlbZd43C6I5P3ih
+      Openai-Version:
+      - '2020-10-01'
+      Server:
+      - cloudflare
+      Strict-Transport-Security:
+      - max-age=31536000; includeSubDomains; preload
+      X-Content-Type-Options:
+      - nosniff
+      X-Request-Id:
+      - req_5d67237e44a44d03aafe3610e6bdd6e8
+    status:
+      code: 200
+      message: OK
+- request:
+    body: ''
+    headers: {}
+    method: GET
+    uri: https://api.openai.com/v1/responses/resp_0c13a25ee1a48f780069df079e0a58819cbde29d8a2906c590
+  response:
+    body:
+      encoding: utf-8
+      string: "{\n  \"id\": \"resp_0c13a25ee1a48f780069df079e0a58819cbde29d8a2906c590\",\n  \"object\": \"response\",\n  \"created_at\": 1776224158,\n  \"status\": \"in_progress\",\n  \"background\": true,\n  \"completed_at\": null,\n  \"error\": null,\n  \"frequency_penalty\": 0.0,\n  \"incomplete_details\": null,\n  \"instructions\": null,\n  \"max_output_tokens\": null,\n  \"max_tool_calls\": 225,\n  \"model\": \"o4-mini-deep-research-2025-06-26\",\n  \"output\": [],\n  \"parallel_tool_calls\": true,\n  \"presence_penalty\": 0.0,\n  \"previous_response_id\": null,\n  \"prompt_cache_key\": null,\n  \"prompt_cache_retention\": null,\n  \"reasoning\": {\n    \"effort\": \"medium\",\n    \"summary\": null\n  },\n  \"safety_identifier\": null,\n  \"service_tier\": \"auto\",\n  \"store\": true,\n  \"temperature\": 1.0,\n  \"text\": {\n    \"format\": {\n      \"type\": \"text\"\n    },\n    \"verbosity\": \"medium\"\n  },\n  \"tool_choice\": \"auto\",\n  \"tools\": [\n    {\n      \"type\": \"web_search_preview\",\n      \"search_context_size\": \"medium\",\n      \"user_location\": null\n    }\n  ],\n  \"top_logprobs\": 0,\n  \"top_p\": 1.0,\n  \"truncation\": \"disabled\",\n  \"usage\": null,\n  \"user\": null,\n  \"metadata\": {}\n}"
+    headers:
+      Alt-Svc:
+      - h3=":443"; ma=86400
+      Cf-Cache-Status:
+      - DYNAMIC
+      Cf-Ray:
+      - 9ec7ee010cd4f591-SJC
+      Connection:
+      - keep-alive
+      Content-Type:
+      - application/json
+      Date:
+      - Wed, 15 Apr 2026 03:40:35 GMT
+      Openai-Organization:
+      - user-vcklpsn7dsyfu2fz7wokpfo8
+      Openai-Processing-Ms:
+      - '77'
+      Openai-Project:
+      - proj_nyDPV41fTNlbZd43C6I5P3ih
+      Openai-Version:
+      - '2020-10-01'
+      Server:
+      - cloudflare
+      Strict-Transport-Security:
+      - max-age=31536000; includeSubDomains; preload
+      X-Content-Type-Options:
+      - nosniff
+      X-Request-Id:
+      - req_212cf606c69b433393d752bfa6442791
+    status:
+      code: 200
+      message: OK
+- request:
+    body: ''
+    headers: {}
+    method: GET
+    uri: https://api.openai.com/v1/responses/resp_0c13a25ee1a48f780069df079e0a58819cbde29d8a2906c590
+  response:
+    body:
+      encoding: utf-8
+      string: "{\n  \"id\": \"resp_0c13a25ee1a48f780069df079e0a58819cbde29d8a2906c590\",\n  \"object\": \"response\",\n  \"created_at\": 1776224158,\n  \"status\": \"in_progress\",\n  \"background\": true,\n  \"completed_at\": null,\n  \"error\": null,\n  \"frequency_penalty\": 0.0,\n  \"incomplete_details\": null,\n  \"instructions\": null,\n  \"max_output_tokens\": null,\n  \"max_tool_calls\": 225,\n  \"model\": \"o4-mini-deep-research-2025-06-26\",\n  \"output\": [],\n  \"parallel_tool_calls\": true,\n  \"presence_penalty\": 0.0,\n  \"previous_response_id\": null,\n  \"prompt_cache_key\": null,\n  \"prompt_cache_retention\": null,\n  \"reasoning\": {\n    \"effort\": \"medium\",\n    \"summary\": null\n  },\n  \"safety_identifier\": null,\n  \"service_tier\": \"auto\",\n  \"store\": true,\n  \"temperature\": 1.0,\n  \"text\": {\n    \"format\": {\n      \"type\": \"text\"\n    },\n    \"verbosity\": \"medium\"\n  },\n  \"tool_choice\": \"auto\",\n  \"tools\": [\n    {\n      \"type\": \"web_search_preview\",\n      \"search_context_size\": \"medium\",\n      \"user_location\": null\n    }\n  ],\n  \"top_logprobs\": 0,\n  \"top_p\": 1.0,\n  \"truncation\": \"disabled\",\n  \"usage\": null,\n  \"user\": null,\n  \"metadata\": {}\n}"
+    headers:
+      Alt-Svc:
+      - h3=":443"; ma=86400
+      Cf-Cache-Status:
+      - DYNAMIC
+      Cf-Ray:
+      - 9ec7ee21daa0f591-SJC
+      Connection:
+      - keep-alive
+      Content-Type:
+      - application/json
+      Date:
+      - Wed, 15 Apr 2026 03:40:40 GMT
+      Openai-Organization:
+      - user-vcklpsn7dsyfu2fz7wokpfo8
+      Openai-Processing-Ms:
+      - '176'
+      Openai-Project:
+      - proj_nyDPV41fTNlbZd43C6I5P3ih
+      Openai-Version:
+      - '2020-10-01'
+      Server:
+      - cloudflare
+      Strict-Transport-Security:
+      - max-age=31536000; includeSubDomains; preload
+      X-Content-Type-Options:
+      - nosniff
+      X-Request-Id:
+      - req_b17d58e2d6714bd99fddd2246133b916
+    status:
+      code: 200
+      message: OK
+- request:
+    body: ''
+    headers: {}
+    method: GET
+    uri: https://api.openai.com/v1/responses/resp_0c13a25ee1a48f780069df079e0a58819cbde29d8a2906c590
+  response:
+    body:
+      encoding: utf-8
+      string: "{\n  \"id\": \"resp_0c13a25ee1a48f780069df079e0a58819cbde29d8a2906c590\",\n  \"object\": \"response\",\n  \"created_at\": 1776224158,\n  \"status\": \"in_progress\",\n  \"background\": true,\n  \"completed_at\": null,\n  \"error\": null,\n  \"frequency_penalty\": 0.0,\n  \"incomplete_details\": null,\n  \"instructions\": null,\n  \"max_output_tokens\": null,\n  \"max_tool_calls\": 225,\n  \"model\": \"o4-mini-deep-research-2025-06-26\",\n  \"output\": [],\n  \"parallel_tool_calls\": true,\n  \"presence_penalty\": 0.0,\n  \"previous_response_id\": null,\n  \"prompt_cache_key\": null,\n  \"prompt_cache_retention\": null,\n  \"reasoning\": {\n    \"effort\": \"medium\",\n    \"summary\": null\n  },\n  \"safety_identifier\": null,\n  \"service_tier\": \"auto\",\n  \"store\": true,\n  \"temperature\": 1.0,\n  \"text\": {\n    \"format\": {\n      \"type\": \"text\"\n    },\n    \"verbosity\": \"medium\"\n  },\n  \"tool_choice\": \"auto\",\n  \"tools\": [\n    {\n      \"type\": \"web_search_preview\",\n      \"search_context_size\": \"medium\",\n      \"user_location\": null\n    }\n  ],\n  \"top_logprobs\": 0,\n  \"top_p\": 1.0,\n  \"truncation\": \"disabled\",\n  \"usage\": null,\n  \"user\": null,\n  \"metadata\": {}\n}"
+    headers:
+      Alt-Svc:
+      - h3=":443"; ma=86400
+      Cf-Cache-Status:
+      - DYNAMIC
+      Cf-Ray:
+      - 9ec7ee438b2ef591-SJC
+      Connection:
+      - keep-alive
+      Content-Type:
+      - application/json
+      Date:
+      - Wed, 15 Apr 2026 03:40:46 GMT
+      Openai-Organization:
+      - user-vcklpsn7dsyfu2fz7wokpfo8
+      Openai-Processing-Ms:
+      - '131'
+      Openai-Project:
+      - proj_nyDPV41fTNlbZd43C6I5P3ih
+      Openai-Version:
+      - '2020-10-01'
+      Server:
+      - cloudflare
+      Strict-Transport-Security:
+      - max-age=31536000; includeSubDomains; preload
+      X-Content-Type-Options:
+      - nosniff
+      X-Request-Id:
+      - req_e0297f27243d48afb72b842aaaeab4a5
+    status:
+      code: 200
+      message: OK
+- request:
+    body: ''
+    headers: {}
+    method: GET
+    uri: https://api.openai.com/v1/responses/resp_0c13a25ee1a48f780069df079e0a58819cbde29d8a2906c590
+  response:
+    body:
+      encoding: utf-8
+      string: "{\n  \"id\": \"resp_0c13a25ee1a48f780069df079e0a58819cbde29d8a2906c590\",\n  \"object\": \"response\",\n  \"created_at\": 1776224158,\n  \"status\": \"in_progress\",\n  \"background\": true,\n  \"completed_at\": null,\n  \"error\": null,\n  \"frequency_penalty\": 0.0,\n  \"incomplete_details\": null,\n  \"instructions\": null,\n  \"max_output_tokens\": null,\n  \"max_tool_calls\": 225,\n  \"model\": \"o4-mini-deep-research-2025-06-26\",\n  \"output\": [],\n  \"parallel_tool_calls\": true,\n  \"presence_penalty\": 0.0,\n  \"previous_response_id\": null,\n  \"prompt_cache_key\": null,\n  \"prompt_cache_retention\": null,\n  \"reasoning\": {\n    \"effort\": \"medium\",\n    \"summary\": null\n  },\n  \"safety_identifier\": null,\n  \"service_tier\": \"auto\",\n  \"store\": true,\n  \"temperature\": 1.0,\n  \"text\": {\n    \"format\": {\n      \"type\": \"text\"\n    },\n    \"verbosity\": \"medium\"\n  },\n  \"tool_choice\": \"auto\",\n  \"tools\": [\n    {\n      \"type\": \"web_search_preview\",\n      \"search_context_size\": \"medium\",\n      \"user_location\": null\n    }\n  ],\n  \"top_logprobs\": 0,\n  \"top_p\": 1.0,\n  \"truncation\": \"disabled\",\n  \"usage\": null,\n  \"user\": null,\n  \"metadata\": {}\n}"
+    headers:
+      Alt-Svc:
+      - h3=":443"; ma=86400
+      Cf-Cache-Status:
+      - DYNAMIC
+      Cf-Ray:
+      - 9ec7ee647943f591-SJC
+      Connection:
+      - keep-alive
+      Content-Type:
+      - application/json
+      Date:
+      - Wed, 15 Apr 2026 03:40:51 GMT
+      Openai-Organization:
+      - user-vcklpsn7dsyfu2fz7wokpfo8
+      Openai-Processing-Ms:
+      - '61'
+      Openai-Project:
+      - proj_nyDPV41fTNlbZd43C6I5P3ih
+      Openai-Version:
+      - '2020-10-01'
+      Server:
+      - cloudflare
+      Strict-Transport-Security:
+      - max-age=31536000; includeSubDomains; preload
+      X-Content-Type-Options:
+      - nosniff
+      X-Request-Id:
+      - req_47b691e01769441fac4b65129c0e1810
+    status:
+      code: 200
+      message: OK
+- request:
+    body: ''
+    headers: {}
+    method: GET
+    uri: https://api.openai.com/v1/responses/resp_0c13a25ee1a48f780069df079e0a58819cbde29d8a2906c590
+  response:
+    body:
+      encoding: utf-8
+      string: "{\n  \"id\": \"resp_0c13a25ee1a48f780069df079e0a58819cbde29d8a2906c590\",\n  \"object\": \"response\",\n  \"created_at\": 1776224158,\n  \"status\": \"in_progress\",\n  \"background\": true,\n  \"completed_at\": null,\n  \"error\": null,\n  \"frequency_penalty\": 0.0,\n  \"incomplete_details\": null,\n  \"instructions\": null,\n  \"max_output_tokens\": null,\n  \"max_tool_calls\": 225,\n  \"model\": \"o4-mini-deep-research-2025-06-26\",\n  \"output\": [],\n  \"parallel_tool_calls\": true,\n  \"presence_penalty\": 0.0,\n  \"previous_response_id\": null,\n  \"prompt_cache_key\": null,\n  \"prompt_cache_retention\": null,\n  \"reasoning\": {\n    \"effort\": \"medium\",\n    \"summary\": null\n  },\n  \"safety_identifier\": null,\n  \"service_tier\": \"auto\",\n  \"store\": true,\n  \"temperature\": 1.0,\n  \"text\": {\n    \"format\": {\n      \"type\": \"text\"\n    },\n    \"verbosity\": \"medium\"\n  },\n  \"tool_choice\": \"auto\",\n  \"tools\": [\n    {\n      \"type\": \"web_search_preview\",\n      \"search_context_size\": \"medium\",\n      \"user_location\": null\n    }\n  ],\n  \"top_logprobs\": 0,\n  \"top_p\": 1.0,\n  \"truncation\": \"disabled\",\n  \"usage\": null,\n  \"user\": null,\n  \"metadata\": {}\n}"
+    headers:
+      Alt-Svc:
+      - h3=":443"; ma=86400
+      Cf-Cache-Status:
+      - DYNAMIC
+      Cf-Ray:
+      - 9ec7ee853957f591-SJC
+      Connection:
+      - keep-alive
+      Content-Type:
+      - application/json
+      Date:
+      - Wed, 15 Apr 2026 03:40:56 GMT
+      Openai-Organization:
+      - user-vcklpsn7dsyfu2fz7wokpfo8
+      Openai-Processing-Ms:
+      - '248'
+      Openai-Project:
+      - proj_nyDPV41fTNlbZd43C6I5P3ih
+      Openai-Version:
+      - '2020-10-01'
+      Server:
+      - cloudflare
+      Strict-Transport-Security:
+      - max-age=31536000; includeSubDomains; preload
+      X-Content-Type-Options:
+      - nosniff
+      X-Request-Id:
+      - req_8938cc95a9a1427888b83d9fbb041f5d
+    status:
+      code: 200
+      message: OK
+- request:
+    body: ''
+    headers: {}
+    method: GET
+    uri: https://api.openai.com/v1/responses/resp_0c13a25ee1a48f780069df079e0a58819cbde29d8a2906c590
+  response:
+    body:
+      encoding: utf-8
+      string: "{\n  \"id\": \"resp_0c13a25ee1a48f780069df079e0a58819cbde29d8a2906c590\",\n  \"object\": \"response\",\n  \"created_at\": 1776224158,\n  \"status\": \"completed\",\n  \"background\": true,\n  \"billing\": {\n    \"payer\": \"developer\"\n  },\n  \"completed_at\": 1776224460,\n  \"error\": null,\n  \"frequency_penalty\": 0.0,\n  \"incomplete_details\": null,\n  \"instructions\": null,\n  \"max_output_tokens\": null,\n  \"max_tool_calls\": 225,\n  \"model\": \"o4-mini-deep-research-2025-06-26\",\n  \"output\": [\n    {\n      \"id\": \"rs_0c13a25ee1a48f780069df07a0fd34819c969068cc66142d72\",\n      \"type\": \"reasoning\",\n      \"summary\": []\n    },\n    {\n      \"id\": \"ws_0c13a25ee1a48f780069df07a6e274819caf1adbf0128172d5\",\n      \"type\": \"web_search_call\",\n      \"status\": \"completed\",\n      \"action\": {\n        \"type\": \"search\",\n        \"query\": \"recent breakthroughs solid-state battery technology companies\"\n      }\n    },\n    {\n      \"id\": \"rs_0c13a25ee1a48f780069df07a7b194819c8b1558a70e2100f0\",\n      \"type\": \"reasoning\",\n      \"summary\": []\n    },\n    {\n      \"id\": \"ws_0c13a25ee1a48f780069df07b558e4819c8b60a2de130c985b\",\n      \"type\": \"web_search_call\",\n      \"status\": \"completed\",\n      \"action\": {\n        \"type\": \"search\",\n        \"query\": \"\\\"solid-state battery\\\" breakthrough 2023 2024\"\n      }\n    },\n    {\n      \"id\": \"rs_0c13a25ee1a48f780069df07b5f2b4819c9de1b25573f1312e\",\n      \"type\": \"reasoning\",\n      \"summary\": []\n    },\n    {\n      \"id\": \"ws_0c13a25ee1a48f780069df07c91794819c833128fdde95d2da\",\n      \"type\": \"web_search_call\",\n      \"status\": \"completed\",\n      \"action\": {\n        \"type\": \"search\",\n        \"query\": \"\\\"QuantumScape\\\" \\\"solid-state battery\\\" breakthrough\"\n      }\n    },\n    {\n      \"id\": \"rs_0c13a25ee1a48f780069df07c9b250819cacdc7bdbdd6d6535\",\n      \"type\": \"reasoning\",\n      \"summary\": []\n    },\n    {\n      \"id\": \"ws_0c13a25ee1a48f780069df07cc58f4819cb3e450b35900887a\",\n      \"type\": \"web_search_call\",\n      \"status\": \"completed\",\n      \"action\": {\n        \"type\": \"search\",\n        \"query\": \"Breakthrough \\\"solid-state battery\\\" 2024 company name\"\n      }\n    },\n    {\n      \"id\": \"rs_0c13a25ee1a48f780069df07cce844819c88532fda6dff1ef6\",\n      \"type\": \"reasoning\",\n      \"summary\": []\n    },\n    {\n      \"id\": \"ws_0c13a25ee1a48f780069df07d431c8819ca00704df5a52daab\",\n      \"type\": \"web_search_call\",\n      \"status\": \"completed\",\n      \"action\": {\n        \"type\": \"search\",\n        \"query\": \"\\\"solid-state battery\\\" nanotechnology lithium researcher breakthrough\"\n      }\n    },\n    {\n      \"id\": \"rs_0c13a25ee1a48f780069df07d4da38819cb8795c404c67b8e8\",\n      \"type\": \"reasoning\",\n      \"summary\": []\n    },\n    {\n      \"id\": \"ws_0c13a25ee1a48f780069df07d909dc819c9cf42d04b4aabde9\",\n      \"type\": \"web_search_call\",\n      \"status\": \"completed\",\n      \"action\": {\n        \"type\": \"search\",\n        \"query\": \"\\\"solid-state battery\\\" 2023 demonstrate energy density\"\n      }\n    },\n    {\n      \"id\": \"rs_0c13a25ee1a48f780069df07d9a3f4819c938edec68b5b4b4f\",\n      \"type\": \"reasoning\",\n      \"summary\": []\n    },\n    {\n      \"id\": \"ws_0c13a25ee1a48f780069df07dca5cc819c862e39c0bd94d381\",\n      \"type\": \"web_search_call\",\n      \"status\": \"completed\",\n      \"action\": {\n        \"type\": \"search\",\n        \"query\": \"\\\"Wh/kg\\\" solid-state battery record\"\n      }\n    },\n    {\n      \"id\": \"rs_0c13a25ee1a48f780069df07dd42fc819c9f8d7ccf791a504d\",\n      \"type\": \"reasoning\",\n      \"summary\": []\n    },\n    {\n      \"id\": \"ws_0c13a25ee1a48f780069df07e24178819cbc0150fa7b401e6c\",\n      \"type\": \"web_search_call\",\n      \"status\": \"completed\",\n      \"action\": {\n        \"type\": \"open_page\",\n        \"url\": \"https://www.techradar.com/vehicle-tech/hybrid-electric-vehicles/the-end-of-range-anxiety-mercedes-solid-state-battery-tech-just-drove-749-miles-without-a-stop\"\n      }\n    },\n    {\n      \"id\": \"rs_0c13a25ee1a48f780069df07e2d874819cab1da55f520323f6\",\n      \"type\": \"reasoning\",\n      \"summary\": []\n    },\n    {\n      \"id\": \"ws_0c13a25ee1a48f780069df07effe58819cbf168fbe514d6090\",\n      \"type\": \"web_search_call\",\n      \"status\": \"completed\",\n      \"action\": {\n        \"type\": \"open_page\",\n        \"url\": \"https://www.techradar.com/vehicle-tech/hybrid-electric-vehicles/verge-announces-world-first-motorcycle-with-solid-state-batteries-for-a-370-mile-range-and-10-minute-charge-times\"\n      }\n    },\n    {\n      \"id\": \"rs_0c13a25ee1a48f780069df07f0940c819cbf7b1ca7804d01f2\",\n      \"type\": \"reasoning\",\n      \"summary\": []\n    },\n    {\n      \"id\": \"ws_0c13a25ee1a48f780069df07f4db14819c842096c45077b393\",\n      \"type\": \"web_search_call\",\n      \"status\": \"completed\",\n      \"action\": {\n        \"type\": \"open_page\",\n        \"url\": \"https://www.livescience.com/technology/electric-vehicles/new-battery-breakthrough-could-make-electric-cars-and-grid-scale-storage-far-safer\"\n      }\n    },\n    {\n      \"id\": \"rs_0c13a25ee1a48f780069df07f5662c819c9cc635b56ca306c0\",\n      \"type\": \"reasoning\",\n      \"summary\": []\n    },\n    {\n      \"id\": \"ws_0c13a25ee1a48f780069df07fb221c819ca3d0b338677f3d3f\",\n      \"type\": \"web_search_call\",\n      \"status\": \"completed\",\n      \"action\": {\n        \"type\": \"open_page\",\n        \"url\": \"https://www.techradar.com/vehicle-tech/hybrid-electric-vehicles/650-miles-from-one-charge-volvos-parent-company-beats-tesla-to-the-punch-with-first-production-ready-solid-state-battery\"\n      }\n    },\n    {\n      \"id\": \"rs_0c13a25ee1a48f780069df07fbfabc819c965ed73ad57b1ae2\",\n      \"type\": \"reasoning\",\n      \"summary\": []\n    },\n    {\n      \"id\": \"ws_0c13a25ee1a48f780069df0800afa0819c9adb29b735cc732f\",\n      \"type\": \"web_search_call\",\n      \"status\": \"completed\",\n      \"action\": {\n        \"type\": \"open_page\",\n        \"url\": \"https://www.techradar.com/vehicle-tech/hybrid-electric-vehicles/nissan-edges-closer-to-solid-state-battery-breakthrough-but-this-ev-race-could-have-one-big-downside\"\n      }\n    },\n    {\n      \"id\": \"rs_0c13a25ee1a48f780069df08015eec819c9a557e15eae8efea\",\n      \"type\": \"reasoning\",\n      \"summary\": []\n    },\n    {\n      \"id\": \"ws_0c13a25ee1a48f780069df080e1ce0819cbc29d9cc0bacfb82\",\n      \"type\": \"web_search_call\",\n      \"status\": \"completed\",\n      \"action\": {\n        \"type\": \"open_page\",\n        \"url\": \"https://www.livescience.com/technology/electric-vehicles/chinese-ev-maker-claims-worlds-first-semi-solid-state-ev-battery-with-huge-620-mile-range\"\n      }\n    },\n    {\n      \"id\": \"rs_0c13a25ee1a48f780069df080ed5e0819c9d18a2c2b5b58200\",\n      \"type\": \"reasoning\",\n      \"summary\": []\n    },\n    {\n      \"id\": \"ws_0c13a25ee1a48f780069df081665c8819cab20435197f4b85a\",\n      \"type\": \"web_search_call\",\n      \"status\": \"completed\",\n      \"action\": {\n        \"type\": \"search\",\n        \"query\": \"Toyota solid-state battery demonstration 2022 2025 cathode\"\n      }\n    },\n    {\n      \"id\": \"rs_0c13a25ee1a48f780069df08171350819c920c9b5d2351d01c\",\n      \"type\": \"reasoning\",\n      \"summary\": []\n    },\n    {\n      \"id\": \"ws_0c13a25ee1a48f780069df0825dbac819cbc12f39172ce216d\",\n      \"type\": \"web_search_call\",\n      \"status\": \"completed\",\n      \"action\": {\n        \"type\": \"open_page\",\n        \"url\": null\n      }\n    },\n    {\n      \"id\": \"rs_0c13a25ee1a48f780069df082677d4819cbe8a7fbadf3b19c6\",\n      \"type\": \"reasoning\",\n      \"summary\": []\n    },\n    {\n      \"id\": \"ws_0c13a25ee1a48f780069df0827b140819c94c93f9ef1247786\",\n      \"type\": \"web_search_call\",\n      \"status\": \"completed\",\n      \"action\": {\n        \"type\": \"open_page\",\n        \"url\": \"https://www.metal.com/en/newscontent/103633667\"\n      }\n    },\n    {\n      \"id\": \"rs_0c13a25ee1a48f780069df08285560819c944182633e533fa5\",\n      \"type\": \"reasoning\",\n      \"summary\": []\n    },\n    {\n      \"id\": \"ws_0c13a25ee1a48f780069df082f1948819cb841fabbff3c1e90\",\n      \"type\": \"web_search_call\",\n      \"status\": \"completed\",\n      \"action\": {\n        \"type\": \"open_page\",\n        \"url\": \"https://www.techradar.com/vehicle-tech/hybrid-electric-vehicles/toyota-says-it-will-launch-the-worlds-first-solid-state-evs-in-2027-but-is-that-realistic-heres-what-experts-say\"\n      }\n    },\n    {\n      \"id\": \"rs_0c13a25ee1a48f780069df082fd980819c9732005267221190\",\n      \"type\": \"reasoning\",\n      \"summary\": []\n    },\n    {\n      \"id\": \"ws_0c13a25ee1a48f780069df08366624819c8d73ab54008c1355\",\n      \"type\": \"web_search_call\",\n      \"status\": \"completed\",\n      \"action\": {\n        \"type\": \"open_page\",\n        \"url\": \"https://www.pcgamer.com/hardware/gaming-laptops/this-kickstarter-backed-battery-maker-claims-you-can-smash-a-nail-through-its-solid-state-usb-c-pack-and-it-will-still-work/\"\n      }\n    },\n    {\n      \"id\": \"rs_0c13a25ee1a48f780069df08371f54819cbd9dcc09bd32a33b\",\n      \"type\": \"reasoning\",\n      \"summary\": []\n    },\n    {\n      \"id\": \"ws_0c13a25ee1a48f780069df083cac14819ca1f4effa994b4b19\",\n      \"type\": \"web_search_call\",\n      \"status\": \"completed\",\n      \"action\": {\n        \"type\": \"search\",\n        \"query\": \"Samsung solid-state battery breakthrough 2023 commercial\"\n      }\n    },\n    {\n      \"id\": \"rs_0c13a25ee1a48f780069df083d6680819ca6cc8f8a4025c0a4\",\n      \"type\": \"reasoning\",\n      \"summary\": []\n    },\n    {\n\
+        \      \"id\": \"ws_0c13a25ee1a48f780069df08406d90819c9de88fcebbfa969e\",\n      \"type\": \"web_search_call\",\n      \"status\": \"completed\",\n      \"action\": {\n        \"type\": \"open_page\",\n        \"url\": \"https://news.samsungsdi.com/global/articleView?seq=48\"\n      }\n    },\n    {\n      \"id\": \"rs_0c13a25ee1a48f780069df0841143c819c86d9767866eb5260\",\n      \"type\": \"reasoning\",\n      \"summary\": []\n    },\n    {\n      \"id\": \"ws_0c13a25ee1a48f780069df084ee2f0819caac222a777d4fff3\",\n      \"type\": \"web_search_call\",\n      \"status\": \"completed\",\n      \"action\": {\n        \"type\": \"search\",\n        \"query\": \"\\\"solid electrolyte\\\" breakthrough 2023 2024\"\n      }\n    },\n    {\n      \"id\": \"rs_0c13a25ee1a48f780069df084f8cc4819cbee525e7d313dfae\",\n      \"type\": \"reasoning\",\n      \"summary\": []\n    },\n    {\n      \"id\": \"ws_0c13a25ee1a48f780069df08508a90819ca962c5820d915f36\",\n      \"type\": \"web_search_call\",\n      \"status\": \"completed\",\n      \"action\": {\n        \"type\": \"open_page\",\n        \"url\": \"https://www.techradar.com/vehicle-tech/hybrid-electric-vehicles/chinese-researchers-develop-the-first-semi-solid-state-ev-battery-with-a-massive-620-mile-range-but-questions-remain\"\n      }\n    },\n    {\n      \"id\": \"rs_0c13a25ee1a48f780069df08513514819cbdea965be1489076\",\n      \"type\": \"reasoning\",\n      \"summary\": []\n    },\n    {\n      \"id\": \"ws_0c13a25ee1a48f780069df085d7ec8819ca8f5a881031aafc0\",\n      \"type\": \"web_search_call\",\n      \"status\": \"completed\",\n      \"action\": {\n        \"type\": \"search\",\n        \"query\": \"QuantumScape breakthrough 2023 solid-state EV\"\n      }\n    },\n    {\n      \"id\": \"rs_0c13a25ee1a48f780069df085e38c8819caccb78b8a6eee660\",\n      \"type\": \"reasoning\",\n      \"summary\": []\n    },\n    {\n      \"id\": \"ws_0c13a25ee1a48f780069df0883e2b4819c8722b720199d39f8\",\n      \"type\": \"web_search_call\",\n      \"status\": \"completed\",\n      \"action\": {\n        \"type\": \"find_in_page\",\n        \"pattern\": \"Li-ion batteries\",\n        \"url\": \"https://www.livescience.com/technology/electric-vehicles/chinese-ev-maker-claims-worlds-first-semi-solid-state-ev-battery-with-huge-620-mile-range\"\n      }\n    },\n    {\n      \"id\": \"rs_0c13a25ee1a48f780069df0884faa0819cb72aa5e10608c6fc\",\n      \"type\": \"reasoning\",\n      \"summary\": []\n    },\n    {\n      \"id\": \"ws_0c13a25ee1a48f780069df0885e12c819c9eb6c71653f2a312\",\n      \"type\": \"web_search_call\",\n      \"status\": \"completed\",\n      \"action\": {\n        \"type\": \"open_page\",\n        \"url\": \"https://www.livescience.com/technology/electric-vehicles/new-battery-breakthrough-could-make-electric-cars-and-grid-scale-storage-far-safer\"\n      }\n    },\n    {\n      \"id\": \"rs_0c13a25ee1a48f780069df0886a0fc819ca1257d2a3118ea1d\",\n      \"type\": \"reasoning\",\n      \"summary\": []\n    },\n    {\n      \"id\": \"ws_0c13a25ee1a48f780069df088979d8819c8656dee1dd24a5f0\",\n      \"type\": \"web_search_call\",\n      \"status\": \"completed\",\n      \"action\": {\n        \"type\": \"open_page\",\n        \"url\": \"https://www.livescience.com/technology/electric-vehicles/new-battery-breakthrough-could-make-electric-cars-and-grid-scale-storage-far-safer\"\n      }\n    },\n    {\n      \"id\": \"rs_0c13a25ee1a48f780069df088a9c18819cac1c92ac2d4bafda\",\n      \"type\": \"reasoning\",\n      \"summary\": []\n    },\n    {\n      \"id\": \"ws_0c13a25ee1a48f780069df08ac7ec8819c81fb43e6a0f88b2d\",\n      \"type\": \"web_search_call\",\n      \"status\": \"completed\",\n      \"action\": {\n        \"type\": \"open_page\",\n        \"url\": null\n      }\n    },\n    {\n      \"id\": \"rs_0c13a25ee1a48f780069df08ad40f4819c8965e5befcee7b67\",\n      \"type\": \"reasoning\",\n      \"summary\": []\n    },\n    {\n      \"id\": \"msg_0c13a25ee1a48f780069df08bfa9f8819c8e7886d44d57325c\",\n      \"type\": \"message\",\n      \"status\": \"completed\",\n      \"content\": [\n        {\n          \"type\": \"output_text\",\n          \"annotations\": [\n            {\n              \"type\": \"url_citation\",\n              \"end_index\": 398,\n              \"start_index\": 267,\n              \"title\": \"SAMSUNG SDI to Present Essence of Super-Gap Battery Technology at InterBattery 2024\",\n              \"url\": \"https://news.samsungsdi.com/global/articleView?seq=48#:~:text=Mass,top%20energy%20density%20of%20900Wh%2FL\"\n            },\n            {\n              \"type\": \"url_citation\",\n              \"end_index\": 692,\n              \"start_index\": 561,\n              \"title\": \"SAMSUNG SDI to Present Essence of Super-Gap Battery Technology at InterBattery 2024\",\n              \"url\": \"https://news.samsungsdi.com/global/articleView?seq=48#:~:text=Mass,top%20energy%20density%20of%20900Wh%2FL\"\n            },\n            {\n              \"type\": \"url_citation\",\n              \"end_index\": 837,\n              \"start_index\": 693,\n              \"title\": \"SAMSUNG SDI to Present Essence of Super-Gap Battery Technology at InterBattery 2024\",\n              \"url\": \"https://news.samsungsdi.com/global/articleView?seq=48#:~:text=Company%20unveils%20mass,pack%20%28CTP%29%20configuration\"\n            },\n            {\n              \"type\": \"url_citation\",\n              \"end_index\": 1544,\n              \"start_index\": 1294,\n              \"title\": \"The end of range anxiety? Mercedes' solid-state battery tech just drove 749 miles without a stop\",\n              \"url\": \"https://www.techradar.com/vehicle-tech/hybrid-electric-vehicles/the-end-of-range-anxiety-mercedes-solid-state-battery-tech-just-drove-749-miles-without-a-stop#:~:text=Existing%20lithium,were%20made%20through%20passive%20airflow\"\n            },\n            {\n              \"type\": \"url_citation\",\n              \"end_index\": 1910,\n              \"start_index\": 1676,\n              \"title\": \"The end of range anxiety? Mercedes' solid-state battery tech just drove 749 miles without a stop\",\n              \"url\": \"https://www.techradar.com/vehicle-tech/hybrid-electric-vehicles/the-end-of-range-anxiety-mercedes-solid-state-battery-tech-just-drove-749-miles-without-a-stop#:~:text=Mercedes,as%20energy%20needs%20for%20heating\"\n            },\n            {\n              \"type\": \"url_citation\",\n              \"end_index\": 2161,\n              \"start_index\": 1911,\n              \"title\": \"The end of range anxiety? Mercedes' solid-state battery tech just drove 749 miles without a stop\",\n              \"url\": \"https://www.techradar.com/vehicle-tech/hybrid-electric-vehicles/the-end-of-range-anxiety-mercedes-solid-state-battery-tech-just-drove-749-miles-without-a-stop#:~:text=Existing%20lithium,were%20made%20through%20passive%20airflow\"\n            },\n            {\n              \"type\": \"url_citation\",\n              \"end_index\": 3026,\n              \"start_index\": 2751,\n              \"title\": \"Chinese researchers develop the first semi-solid-state EV battery with a massive 620-mile range - but questions remain\",\n              \"url\": \"https://www.techradar.com/vehicle-tech/hybrid-electric-vehicles/chinese-researchers-develop-the-first-semi-solid-state-ev-battery-with-a-massive-620-mile-range-but-questions-remain#:~:text=leading%20lithium,maximizing%20contact%20between%20itself%20and\"\n            },\n            {\n              \"type\": \"url_citation\",\n              \"end_index\": 3482,\n              \"start_index\": 3199,\n              \"title\": \"Chinese researchers develop the first semi-solid-state EV battery with a massive 620-mile range - but questions remain\",\n              \"url\": \"https://www.techradar.com/vehicle-tech/hybrid-electric-vehicles/chinese-researchers-develop-the-first-semi-solid-state-ev-battery-with-a-massive-620-mile-range-but-questions-remain#:~:text=state%20battery%20pack%20delivers%20an,of%20over%201%2C000%20km%20after\"\n            },\n            {\n              \"type\": \"url_citation\",\n              \"end_index\": 3843,\n              \"start_index\": 3560,\n              \"title\": \"Chinese researchers develop the first semi-solid-state EV battery with a massive 620-mile range - but questions remain\",\n              \"url\": \"https://www.techradar.com/vehicle-tech/hybrid-electric-vehicles/chinese-researchers-develop-the-first-semi-solid-state-ev-battery-with-a-massive-620-mile-range-but-questions-remain#:~:text=state%20battery%20pack%20delivers%20an,of%20over%201%2C000%20km%20after\"\n            },\n            {\n              \"type\": \"url_citation\",\n              \"end_index\": 4349,\n              \"start_index\": 4066,\n              \"title\": \"Chinese researchers develop the first semi-solid-state EV battery with a massive 620-mile range - but questions remain\",\n              \"url\": \"https://www.techradar.com/vehicle-tech/hybrid-electric-vehicles/chinese-researchers-develop-the-first-semi-solid-state-ev-battery-with-a-massive-620-mile-range-but-questions-remain#:~:text=state%20battery%20pack%20delivers%20an,of%20over%201%2C000%20km%20after\"\n            },\n            {\n              \"type\": \"url_citation\",\n              \"end_index\": 4625,\n              \"start_index\": 4350,\n              \"title\": \"Chinese researchers develop the first semi-solid-state EV battery with a massive 620-mile range - but questions remain\",\n              \"url\": \"https://www.techradar.com/vehicle-tech/hybrid-electric-vehicles/chinese-researchers-develop-the-first-semi-solid-state-ev-battery-with-a-massive-620-mile-range-but-questions-remain#:~:text=leading%20lithium,maximizing%20contact%20between%20itself%20and\"\n            },\n            {\n              \"type\": \"url_citation\",\n              \"end_index\": 5286,\n              \"start_index\"\
+        : 5052,\n              \"title\": \"The end of range anxiety? Mercedes' solid-state battery tech just drove 749 miles without a stop\",\n              \"url\": \"https://www.techradar.com/vehicle-tech/hybrid-electric-vehicles/the-end-of-range-anxiety-mercedes-solid-state-battery-tech-just-drove-749-miles-without-a-stop#:~:text=Mercedes,as%20energy%20needs%20for%20heating\"\n            },\n            {\n              \"type\": \"url_citation\",\n              \"end_index\": 5537,\n              \"start_index\": 5287,\n              \"title\": \"The end of range anxiety? Mercedes' solid-state battery tech just drove 749 miles without a stop\",\n              \"url\": \"https://www.techradar.com/vehicle-tech/hybrid-electric-vehicles/the-end-of-range-anxiety-mercedes-solid-state-battery-tech-just-drove-749-miles-without-a-stop#:~:text=Existing%20lithium,were%20made%20through%20passive%20airflow\"\n            },\n            {\n              \"type\": \"url_citation\",\n              \"end_index\": 5669,\n              \"start_index\": 5538,\n              \"title\": \"SAMSUNG SDI to Present Essence of Super-Gap Battery Technology at InterBattery 2024\",\n              \"url\": \"https://news.samsungsdi.com/global/articleView?seq=48#:~:text=Mass,top%20energy%20density%20of%20900Wh%2FL\"\n            },\n            {\n              \"type\": \"url_citation\",\n              \"end_index\": 5814,\n              \"start_index\": 5670,\n              \"title\": \"SAMSUNG SDI to Present Essence of Super-Gap Battery Technology at InterBattery 2024\",\n              \"url\": \"https://news.samsungsdi.com/global/articleView?seq=48#:~:text=Company%20unveils%20mass,pack%20%28CTP%29%20configuration\"\n            },\n            {\n              \"type\": \"url_citation\",\n              \"end_index\": 6098,\n              \"start_index\": 5815,\n              \"title\": \"Chinese researchers develop the first semi-solid-state EV battery with a massive 620-mile range - but questions remain\",\n              \"url\": \"https://www.techradar.com/vehicle-tech/hybrid-electric-vehicles/chinese-researchers-develop-the-first-semi-solid-state-ev-battery-with-a-massive-620-mile-range-but-questions-remain#:~:text=state%20battery%20pack%20delivers%20an,of%20over%201%2C000%20km%20after\"\n            },\n            {\n              \"type\": \"url_citation\",\n              \"end_index\": 6374,\n              \"start_index\": 6099,\n              \"title\": \"Chinese researchers develop the first semi-solid-state EV battery with a massive 620-mile range - but questions remain\",\n              \"url\": \"https://www.techradar.com/vehicle-tech/hybrid-electric-vehicles/chinese-researchers-develop-the-first-semi-solid-state-ev-battery-with-a-massive-620-mile-range-but-questions-remain#:~:text=leading%20lithium,maximizing%20contact%20between%20itself%20and\"\n            }\n          ],\n          \"logprobs\": [],\n          \"text\": \"# Recent solid-state battery breakthroughs\\n\\n- **Samsung SDI (March 2024)** \\u2013 At InterBattery 2024, Samsung SDI unveiled a \\u201csuper-gap\\u201d all-solid-state battery (ASB) roadmap targeting **~900 Wh/L** energy density (roughly 40% higher than its current lithium-ion cells) ([news.samsungsdi.com](https://news.samsungsdi.com/global/articleView?seq=48#:~:text=Mass,top%20energy%20density%20of%20900Wh%2FL)).  The roadmap also promises ultra-fast charging (80% charge in ~9 minutes) and >20-year cycle life by using a proprietary solid electrolyte and anode-less design ([news.samsungsdi.com](https://news.samsungsdi.com/global/articleView?seq=48#:~:text=Mass,top%20energy%20density%20of%20900Wh%2FL)) ([news.samsungsdi.com](https://news.samsungsdi.com/global/articleView?seq=48#:~:text=Company%20unveils%20mass,pack%20%28CTP%29%20configuration)).  Samsung described this as a demonstration of mass-production readiness for solid-state cells with industry-leading energy density.  \\n\\n- **Mercedes-Benz / Factorial Energy (Sep 2025)** \\u2013 In September 2025 Mercedes engineers replaced the battery pack in an EQS sedan with **Factorial Energy**\\u2019s lithium-metal solid-state cells.  The experimental pack delivered about **25% more usable energy** than a conventional Li-ion pack of comparable size and weight ([www.techradar.com](https://www.techradar.com/vehicle-tech/hybrid-electric-vehicles/the-end-of-range-anxiety-mercedes-solid-state-battery-tech-just-drove-749-miles-without-a-stop#:~:text=Existing%20lithium,were%20made%20through%20passive%20airflow)).  Using just this solid-state pack, the car drove a *record* 749 miles on one charge (ending with ~85 miles of capacity remaining) ([www.techradar.com](https://www.techradar.com/vehicle-tech/hybrid-electric-vehicles/the-end-of-range-anxiety-mercedes-solid-state-battery-tech-just-drove-749-miles-without-a-stop#:~:text=Mercedes,as%20energy%20needs%20for%20heating)) ([www.techradar.com](https://www.techradar.com/vehicle-tech/hybrid-electric-vehicles/the-end-of-range-anxiety-mercedes-solid-state-battery-tech-just-drove-749-miles-without-a-stop#:~:text=Existing%20lithium,were%20made%20through%20passive%20airflow)).  This demonstration (with Mercedes-AMG\\u2019s high-performance tuning) is one of the first real\\u2010world tests showing the range and efficiency benefits of solid-state, lithium-metal batteries in a production EV.  \\n\\n- **Nankai Univ. / FAW Group (Mar 2026)** \\u2013 Chinese researchers (Nankai University, in collaboration with FAW\\u2019s battery arm CANEB) reported in early 2026 a **semi-solid-state** EV pack with unprecedented energy density.  The 142 kWh prototype pack uses a lithium-rich manganese cathode and a hybrid solid\\u2013liquid electrolyte (\\u201csuper-wetting\\u201d composite) to boost ionic conductivity ([www.techradar.com](https://www.techradar.com/vehicle-tech/hybrid-electric-vehicles/chinese-researchers-develop-the-first-semi-solid-state-ev-battery-with-a-massive-620-mile-range-but-questions-remain#:~:text=leading%20lithium,maximizing%20contact%20between%20itself%20and)).  It achieved a *cell-level* density of ~500 Wh/kg and a *pack-level* density of ~288 Wh/kg (after accounting for cooling and structure) \\u2013 about 30% above top Li-ion packs ([www.techradar.com](https://www.techradar.com/vehicle-tech/hybrid-electric-vehicles/chinese-researchers-develop-the-first-semi-solid-state-ev-battery-with-a-massive-620-mile-range-but-questions-remain#:~:text=state%20battery%20pack%20delivers%20an,of%20over%201%2C000%20km%20after)).  At this density the vehicle range exceeds 1,000 km (\\u2248620 miles) per charge ([www.techradar.com](https://www.techradar.com/vehicle-tech/hybrid-electric-vehicles/chinese-researchers-develop-the-first-semi-solid-state-ev-battery-with-a-massive-620-mile-range-but-questions-remain#:~:text=state%20battery%20pack%20delivers%20an,of%20over%201%2C000%20km%20after)).  The team also introduced a new \\u201clithium anode\\u201d design intended to simplify manufacturing and extend cycle life.  These results mark a major step toward high-energy, solid-state EV batteries with multi-hundred-mile range ([www.techradar.com](https://www.techradar.com/vehicle-tech/hybrid-electric-vehicles/chinese-researchers-develop-the-first-semi-solid-state-ev-battery-with-a-massive-620-mile-range-but-questions-remain#:~:text=state%20battery%20pack%20delivers%20an,of%20over%201%2C000%20km%20after)) ([www.techradar.com](https://www.techradar.com/vehicle-tech/hybrid-electric-vehicles/chinese-researchers-develop-the-first-semi-solid-state-ev-battery-with-a-massive-620-mile-range-but-questions-remain#:~:text=leading%20lithium,maximizing%20contact%20between%20itself%20and)).  \\n\\nEach of the above represents a concrete technical advance: Samsung\\u2019s roadmap demonstrates sub-product readiness of ~900 Wh/L SSB cells; Mercedes/Factorial showed >25% higher energy density in a real car; and Nankai/FAW demonstrated a 500 Wh/kg (cell) semi-solid pack enabling 620 mile range.  (All dates and figures are from cited company and research announcements.) \\n\\n**Sources:** Recent press releases and news reports ([www.techradar.com](https://www.techradar.com/vehicle-tech/hybrid-electric-vehicles/the-end-of-range-anxiety-mercedes-solid-state-battery-tech-just-drove-749-miles-without-a-stop#:~:text=Mercedes,as%20energy%20needs%20for%20heating)) ([www.techradar.com](https://www.techradar.com/vehicle-tech/hybrid-electric-vehicles/the-end-of-range-anxiety-mercedes-solid-state-battery-tech-just-drove-749-miles-without-a-stop#:~:text=Existing%20lithium,were%20made%20through%20passive%20airflow)) ([news.samsungsdi.com](https://news.samsungsdi.com/global/articleView?seq=48#:~:text=Mass,top%20energy%20density%20of%20900Wh%2FL)) ([news.samsungsdi.com](https://news.samsungsdi.com/global/articleView?seq=48#:~:text=Company%20unveils%20mass,pack%20%28CTP%29%20configuration)) ([www.techradar.com](https://www.techradar.com/vehicle-tech/hybrid-electric-vehicles/chinese-researchers-develop-the-first-semi-solid-state-ev-battery-with-a-massive-620-mile-range-but-questions-remain#:~:text=state%20battery%20pack%20delivers%20an,of%20over%201%2C000%20km%20after)) ([www.techradar.com](https://www.techradar.com/vehicle-tech/hybrid-electric-vehicles/chinese-researchers-develop-the-first-semi-solid-state-ev-battery-with-a-massive-620-mile-range-but-questions-remain#:~:text=leading%20lithium,maximizing%20contact%20between%20itself%20and)). Each item above cites the original announcement or demo. \\n\\n\"\n        }\n      ],\n      \"role\": \"assistant\"\n    }\n  ],\n  \"parallel_tool_calls\": true,\n  \"presence_penalty\": 0.0,\n  \"previous_response_id\": null,\n  \"prompt_cache_key\": null,\n  \"prompt_cache_retention\": null,\n  \"reasoning\": {\n    \"effort\": \"medium\",\n    \"summary\": null\n  },\n  \"safety_identifier\": null,\n  \"service_tier\": \"default\",\n  \"store\": true,\n  \"temperature\": 1.0,\n  \"text\": {\n    \"format\": {\n      \"type\"\
+        : \"text\"\n    },\n    \"verbosity\": \"medium\"\n  },\n  \"tool_choice\": \"auto\",\n  \"tools\": [\n    {\n      \"type\": \"web_search_preview\",\n      \"search_context_size\": \"medium\",\n      \"user_location\": null\n    }\n  ],\n  \"top_logprobs\": 0,\n  \"top_p\": 1.0,\n  \"truncation\": \"disabled\",\n  \"usage\": {\n    \"input_tokens\": 34844,\n    \"input_tokens_details\": {\n      \"cached_tokens\": 0\n    },\n    \"output_tokens\": 15918,\n    \"output_tokens_details\": {\n      \"reasoning_tokens\": 14208\n    },\n    \"total_tokens\": 50762\n  },\n  \"user\": null,\n  \"metadata\": {}\n}"
+    headers:
+      Alt-Svc:
+      - h3=":443"; ma=86400
+      Cf-Cache-Status:
+      - DYNAMIC
+      Cf-Ray:
+      - 9ec7eea72ce9f591-SJC
+      Connection:
+      - keep-alive
+      Content-Type:
+      - application/json
+      Date:
+      - Wed, 15 Apr 2026 03:41:02 GMT
+      Openai-Organization:
+      - user-vcklpsn7dsyfu2fz7wokpfo8
+      Openai-Processing-Ms:
+      - '166'
+      Openai-Project:
+      - proj_nyDPV41fTNlbZd43C6I5P3ih
+      Openai-Version:
+      - '2020-10-01'
+      Server:
+      - cloudflare
+      Strict-Transport-Security:
+      - max-age=31536000; includeSubDomains; preload
+      X-Content-Type-Options:
+      - nosniff
+      X-Request-Id:
+      - req_bedd9310c905472aae756ad002cb07b3
+    status:
+      code: 200
+      message: OK
+version: 1

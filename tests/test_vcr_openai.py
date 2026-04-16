@@ -98,15 +98,18 @@ class TestOpenAIResult:
         provider = _make_provider()
         job_id = _run(provider.submit(prompt=CASSETTE_PROMPT, mode="deep-research"))
 
-        # Poll through all in_progress interactions to reach completed
         for _ in range(60):
             info = _run(provider.check_status(job_id))
             if info["status"] == "completed":
                 break
 
-        # get_result() will try another retrieve call; VCR raises CannotSendRequest
-        # since the cassette is exhausted, but get_result() catches the exception
-        # and falls back to the cached response from the last check_status() call.
+        # Force get_result() to use the cached response instead of issuing
+        # another live retrieve; this exercises the cache fallback path
+        # deterministically without relying on cassette exhaustion.
+        async def _fail_retrieve(*args, **kwargs):
+            raise RuntimeError("cached-path test: retrieve disabled")
+
+        provider.client.responses.retrieve = _fail_retrieve
         result = _run(provider.get_result(job_id))
         assert len(result) > 100, f"expected substantial output, got {len(result)} chars"
 
@@ -121,6 +124,10 @@ class TestOpenAIResult:
             if info["status"] == "completed":
                 break
 
+        async def _fail_retrieve(*args, **kwargs):
+            raise RuntimeError("cached-path test: retrieve disabled")
+
+        provider.client.responses.retrieve = _fail_retrieve
         result = _run(provider.get_result(job_id))
         # The cassette output discusses solid-state batteries
         assert "solid" in result.lower() or "battery" in result.lower(), (
