@@ -31,6 +31,7 @@ from rich.progress import (
 import thoth.signals as _thoth_signals
 from thoth.checkpoint import CheckpointManager
 from thoth.config import ConfigManager, get_config
+from thoth.context import AppContext
 from thoth.errors import APIKeyError, DiskSpaceError, ProviderError, ThothError
 from thoth.models import OperationStatus
 from thoth.output import OutputManager
@@ -117,10 +118,20 @@ async def run_research(
     quiet: bool = False,
     no_metadata: bool = False,
     timeout_override: float | None = None,
+    ctx: AppContext | None = None,
 ):
-    """Execute research operation"""
+    """Execute research operation.
+
+    ``ctx`` carries the shared runtime dependencies (config, console,
+    interrupt event). When not provided, a fresh one is constructed from
+    ``get_config()`` so thoth_test can keep calling this function without
+    threading ctx through every test case.
+    """
 
     config = get_config()
+    if ctx is None:
+        ctx = AppContext(config=config, verbose=verbose)
+    console = ctx.console  # noqa: F811 — shadow module-level console with ctx's
 
     output_path = Path(output_dir) if output_dir else Path.cwd()
 
@@ -169,6 +180,11 @@ async def run_research(
     checkpoint_manager = CheckpointManager(config)
     output_manager = OutputManager(config, no_metadata=no_metadata)
 
+    ctx.checkpoint_manager = checkpoint_manager
+    ctx.output_manager = output_manager
+    ctx.current_operation = operation
+    # Mirror into signals module globals so the SIGINT handler and tests
+    # that read thoth.__main__._current_* observe the same state.
     _thoth_signals._current_checkpoint_manager = checkpoint_manager
     _thoth_signals._current_operation = operation
 
@@ -275,6 +291,7 @@ async def run_research(
             project,
             mode,
             prompt,
+            ctx=ctx,
         )
     except (click.Abort, KeyboardInterrupt):
         if operation.status not in ("cancelled", "failed", "completed"):
@@ -300,6 +317,7 @@ async def _run_polling_loop(
     mode_config: dict,
     output_dir: str | None,
     verbose: bool,
+    ctx: AppContext | None = None,
 ) -> tuple[set[str], set[str]]:
     """Poll all jobs until each completes or fails.
 
@@ -309,6 +327,10 @@ async def _run_polling_loop(
     provider-level status change. Returns
     ``(completed_providers, failed_providers)``.
     """
+
+    if ctx is None:
+        ctx = AppContext(config=config, verbose=verbose)
+    console = ctx.console  # noqa: F811 — shadow module-level console with ctx's
 
     poll_refresh_interval = 1.0
     poll_jitter_ratio = 0.10
@@ -444,6 +466,8 @@ async def _run_polling_loop(
             operation.transition_to("failed", error=f"Timeout exceeded ({max_wait / 60} minutes)")
             operation.failure_type = "recoverable"
             await checkpoint_manager.save(operation)
+            ctx.checkpoint_manager = None
+            ctx.current_operation = None
             _thoth_signals._current_checkpoint_manager = None
             _thoth_signals._current_operation = None
             return completed_providers, failed_providers
@@ -467,8 +491,13 @@ async def _execute_research(
     project: str | None,
     mode: str,
     prompt: str,
+    ctx: AppContext | None = None,
 ):
     """Execute research with providers and track progress."""
+
+    if ctx is None:
+        ctx = AppContext(config=config, verbose=verbose)
+    console = ctx.console  # noqa: F811 — shadow module-level console with ctx's
 
     with Progress(
         SpinnerColumn(),
@@ -526,6 +555,7 @@ async def _execute_research(
             mode_config,
             output_dir,
             verbose,
+            ctx=ctx,
         )
 
         if operation.status == "failed":
@@ -551,6 +581,8 @@ async def _execute_research(
             operation.transition_to("failed", error=f"All providers failed: {all_errors}")
             operation.failure_type = op_failure_type
             await checkpoint_manager.save(operation)
+            ctx.checkpoint_manager = None
+            ctx.current_operation = None
             _thoth_signals._current_checkpoint_manager = None
             _thoth_signals._current_operation = None
             if op_failure_type == "recoverable":
@@ -592,16 +624,25 @@ async def _execute_research(
     if not quiet and len(operation.output_paths) > 1 and "combined" not in operation.output_paths:
         console.print("\nTo generate a combined report, run with --combined flag")
 
+    ctx.checkpoint_manager = None
+    ctx.current_operation = None
     _thoth_signals._current_checkpoint_manager = None
     _thoth_signals._current_operation = None
 
     return operation.id
 
 
-async def resume_operation(operation_id: str, verbose: bool):
+async def resume_operation(
+    operation_id: str,
+    verbose: bool,
+    ctx: AppContext | None = None,
+):
     """Resume an existing operation by reconnecting to its providers."""
 
     config = get_config()
+    if ctx is None:
+        ctx = AppContext(config=config, verbose=verbose)
+    console = ctx.console  # noqa: F811 — shadow module-level console with ctx's
     checkpoint_manager = CheckpointManager(config)
     output_manager = OutputManager(config)
 
@@ -671,6 +712,9 @@ async def resume_operation(operation_id: str, verbose: bool):
                 pdata.pop("error", None)
         await checkpoint_manager.save(operation)
 
+    ctx.checkpoint_manager = checkpoint_manager
+    ctx.output_manager = output_manager
+    ctx.current_operation = operation
     _thoth_signals._current_checkpoint_manager = checkpoint_manager
     _thoth_signals._current_operation = operation
 
@@ -706,6 +750,7 @@ async def resume_operation(operation_id: str, verbose: bool):
             mode_config,
             None,
             verbose,
+            ctx=ctx,
         )
 
         if operation.status == "failed":
@@ -732,6 +777,8 @@ async def resume_operation(operation_id: str, verbose: bool):
             operation.transition_to("failed", error=f"All providers failed: {all_errors}")
             operation.failure_type = op_failure_type
             await checkpoint_manager.save(operation)
+            ctx.checkpoint_manager = None
+            ctx.current_operation = None
             _thoth_signals._current_checkpoint_manager = None
             _thoth_signals._current_operation = None
             if op_failure_type == "recoverable":
@@ -748,6 +795,8 @@ async def resume_operation(operation_id: str, verbose: bool):
     for provider_name, path in operation.output_paths.items():
         console.print(f"  • {path.name}")
 
+    ctx.checkpoint_manager = None
+    ctx.current_operation = None
     _thoth_signals._current_checkpoint_manager = None
     _thoth_signals._current_operation = None
 

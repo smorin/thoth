@@ -16,8 +16,10 @@ from pathlib import Path
 import click
 
 import thoth.config as _thoth_config
+import thoth.signals as _thoth_signals
 from thoth.commands import CommandHandler, providers_command
 from thoth.config import BUILTIN_MODES, THOTH_VERSION, ConfigManager
+from thoth.context import AppContext
 from thoth.errors import ThothError
 from thoth.help import (
     ThothCommand,
@@ -31,6 +33,20 @@ from thoth.interactive import enter_interactive_mode
 from thoth.models import InteractiveInitialSettings
 from thoth.run import console, resume_operation, run_research
 from thoth.signals import handle_sigint
+
+
+def _build_app_context(verbose: bool) -> AppContext:
+    """Construct the per-invocation AppContext.
+
+    The returned ctx shares its `interrupt_event` with `thoth.signals` so that
+    the cooperative SIGINT handler's `set()` is observable via `ctx`.
+    """
+    return AppContext(
+        config=ConfigManager(),
+        console=console,
+        interrupt_event=_thoth_signals._interrupt_event,
+        verbose=verbose,
+    )
 
 
 def handle_error(error: Exception):
@@ -295,13 +311,15 @@ def cli(
         raise click.BadParameter("Prompt cannot be empty")
 
     if resume_id:
-        asyncio.run(resume_operation(resume_id, verbose))
+        app_ctx = _build_app_context(verbose)
+        asyncio.run(resume_operation(resume_id, verbose, ctx=app_ctx))
     elif final_mode and final_prompt:
         cli_api_keys = {
             "openai": api_key_openai,
             "perplexity": api_key_perplexity,
             "mock": api_key_mock,
         }
+        app_ctx = _build_app_context(verbose)
         asyncio.run(
             run_research(
                 mode=final_mode,
@@ -318,6 +336,7 @@ def cli(
                 quiet=quiet,
                 no_metadata=no_metadata,
                 timeout_override=timeout,
+                ctx=app_ctx,
             )
         )
     else:
