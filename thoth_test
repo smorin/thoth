@@ -1219,56 +1219,6 @@ api_key = "{api_key}"
         sys.exit(0 if failed_tests == 0 else 1)
 
 
-def _p07_async_01() -> None:
-    """P07-M1: async submission must persist provider job metadata in the checkpoint."""
-    env = {"MOCK_API_KEY": generate_mock_api_key(), "THOTH_POLL_INTERVAL": "1"}
-    exit_code, stdout, stderr = run_command(
-        [THOTH_EXECUTABLE, "test async persistence", "--async", "--provider", "mock"],
-        env=env,
-        timeout=5,
-    )
-    assert exit_code == 0, f"unexpected exit code {exit_code}\nstdout={stdout}\nstderr={stderr}"
-    operation_id = extract_operation_id(stdout)
-    try:
-        data = load_checkpoint_data(operation_id)
-        providers = data.get("providers", {})
-        assert data.get("status") == "running", f"expected running checkpoint, got: {data}"
-        assert "mock" in providers, f"mock provider missing from checkpoint: {data}"
-        assert providers["mock"].get("status") == "running", f"expected running provider: {data}"
-        job_id = providers["mock"].get("job_id")
-        assert isinstance(job_id, str) and job_id.startswith("mock-"), (
-            f"expected mock job id in checkpoint, got: {job_id!r}"
-        )
-    finally:
-        remove_test_checkpoint(operation_id)
-
-
-def _p07_async_02() -> None:
-    """P07-M1: status must show provider state for an async-submitted operation."""
-    env = {"MOCK_API_KEY": generate_mock_api_key(), "THOTH_POLL_INTERVAL": "1"}
-    exit_code, stdout, stderr = run_command(
-        [THOTH_EXECUTABLE, "test async status", "--async", "--provider", "mock"],
-        env=env,
-        timeout=5,
-    )
-    assert exit_code == 0, f"unexpected exit code {exit_code}\nstdout={stdout}\nstderr={stderr}"
-    operation_id = extract_operation_id(stdout)
-    try:
-        status_exit, status_stdout, status_stderr = run_command(
-            [THOTH_EXECUTABLE, "status", operation_id],
-            timeout=5,
-        )
-        assert status_exit == 0, (
-            f"unexpected status exit code {status_exit}\nstdout={status_stdout}\nstderr={status_stderr}"
-        )
-        assert "Provider Status:" in status_stdout, f"provider status missing: {status_stdout!r}"
-        assert re.search(r"Mock:\s+▶\s+Running", status_stdout), (
-            f"running mock status missing: {status_stdout!r}"
-        )
-    finally:
-        remove_test_checkpoint(operation_id)
-
-
 def _p07_m3_01() -> None:
     """P07-M3: basic interactive mode stores the last operation ID after submission."""
     import builtins
@@ -1552,157 +1502,6 @@ def _bug03_02() -> None:
         "expected a 0.25s poll interval to be honored exactly in the scheduler, "
         f"got: {provider.poll_times}"
     )
-
-
-# ============================================================================
-# RES-01..RES-03 Fixture Test Callables (resume after failure)
-# ============================================================================
-
-
-def _run_thoth_subprocess(
-    args: list[str], env_overrides: dict[str, str], timeout: int = 30
-) -> tuple[int, str, str]:
-    """Run the thoth CLI in a subprocess and return (exit_code, stdout, stderr)."""
-    cmd_env = os.environ.copy()
-    cmd_env.update(env_overrides)
-    cmd_env.setdefault("MOCK_API_KEY", generate_mock_api_key())
-    cmd_env["COLUMNS"] = "200"
-
-    result = subprocess.run(
-        [THOTH_EXECUTABLE, *args],
-        env=cmd_env,
-        capture_output=True,
-        text=True,
-        timeout=timeout,
-    )
-    return result.returncode, result.stdout, result.stderr
-
-
-def _extract_resume_id(output: str) -> str:
-    """Pull an operation ID out of a 'Resume with: thoth --resume <id>' hint."""
-    match = re.search(r"thoth --resume\s+(research-\d{8}-\d{6}-[a-f0-9]{16})", output)
-    if not match:
-        raise AssertionError(f"resume hint not found in output: {output!r}")
-    return match.group(1)
-
-
-def _res_01() -> None:
-    """RES-01: Recoverable failure -> resume reconnects and completes."""
-    cleanup_test_files(["*_mock_*.md"])
-    exit_code, stdout, stderr = _run_thoth_subprocess(
-        ["res01 first", "--provider", "mock"],
-        {"THOTH_MOCK_BEHAVIOR": "flake:10", "THOTH_POLL_INTERVAL": "0.1"},
-    )
-    combined = stdout + stderr
-    assert exit_code != 0, f"expected non-zero on flake exhaustion, got {exit_code}"
-    assert "This failure is recoverable" in combined, f"recoverable hint missing: {combined!r}"
-    op_id = _extract_resume_id(combined)
-
-    checkpoint = load_checkpoint_data(op_id)
-    assert checkpoint.get("failure_type") == "recoverable", (
-        f"expected failure_type=recoverable in checkpoint, got {checkpoint!r}"
-    )
-    assert checkpoint["providers"]["mock"].get("job_id"), (
-        f"expected job_id persisted in checkpoint, got {checkpoint!r}"
-    )
-
-    try:
-        exit_code2, stdout2, stderr2 = _run_thoth_subprocess(
-            ["--resume", op_id],
-            {"THOTH_MOCK_BEHAVIOR": "default", "THOTH_POLL_INTERVAL": "0.1"},
-        )
-        combined2 = stdout2 + stderr2
-        assert exit_code2 == 0, (
-            f"expected successful resume, got exit={exit_code2}\n"
-            f"stdout={stdout2!r}\nstderr={stderr2!r}"
-        )
-        assert "Research completed" in combined2, f"expected completion on resume: {combined2!r}"
-    finally:
-        remove_test_checkpoint(op_id)
-        cleanup_test_files(["*_mock_*.md"])
-
-
-def _res_02() -> None:
-    """RES-02: Permanent failure -> resume refused with exit code 7."""
-    cleanup_test_files(["*_mock_*.md"])
-    checkpoint_dir = get_checkpoint_dir()
-    before = {p.stem for p in checkpoint_dir.glob("research-*.json")}
-    exit_code, stdout, stderr = _run_thoth_subprocess(
-        ["res02 first", "--provider", "mock"],
-        {"THOTH_MOCK_BEHAVIOR": "permanent", "THOTH_POLL_INTERVAL": "0.1"},
-    )
-    combined = stdout + stderr
-    assert exit_code != 0, f"expected non-zero on permanent failure, got {exit_code}"
-    assert "This failure is recoverable" not in combined, (
-        f"permanent failure must not print recoverable hint: {combined!r}"
-    )
-
-    after = {p.stem for p in checkpoint_dir.glob("research-*.json")}
-    new_ops = after - before
-    assert len(new_ops) == 1, (
-        f"expected exactly one new checkpoint, got {new_ops} (combined={combined!r})"
-    )
-    op_id = next(iter(new_ops))
-    checkpoint = load_checkpoint_data(op_id)
-    assert checkpoint.get("failure_type") == "permanent", (
-        f"expected failure_type=permanent, got {checkpoint!r}"
-    )
-
-    try:
-        exit_code2, stdout2, stderr2 = _run_thoth_subprocess(
-            ["--resume", op_id],
-            {"THOTH_MOCK_BEHAVIOR": "default", "THOTH_POLL_INTERVAL": "0.1"},
-        )
-        combined2 = stdout2 + stderr2
-        assert exit_code2 == 7, (
-            f"expected exit code 7 for permanent-failed resume, got {exit_code2}\n"
-            f"stdout={stdout2!r}\nstderr={stderr2!r}"
-        )
-        assert "failed permanently" in combined2, (
-            f"expected 'failed permanently' message, got: {combined2!r}"
-        )
-    finally:
-        remove_test_checkpoint(op_id)
-        cleanup_test_files(["*_mock_*.md"])
-
-
-def _res_03() -> None:
-    """RES-03: Resume of an already-completed operation is a no-op."""
-    cleanup_test_files(["*_mock_*.md"])
-    checkpoint_dir = get_checkpoint_dir()
-    before = {p.stem for p in checkpoint_dir.glob("research-*.json")}
-    exit_code, stdout, stderr = _run_thoth_subprocess(
-        ["res03 first", "--provider", "mock"],
-        {"THOTH_MOCK_BEHAVIOR": "default", "THOTH_POLL_INTERVAL": "0.1"},
-    )
-    combined = stdout + stderr
-    assert exit_code == 0, f"expected successful first run, got exit={exit_code}\n{combined!r}"
-    after = {p.stem for p in checkpoint_dir.glob("research-*.json")}
-    new_ops = after - before
-    assert len(new_ops) == 1, (
-        f"expected exactly one new checkpoint, got {new_ops} (combined={combined!r})"
-    )
-    op_id = next(iter(new_ops))
-    checkpoint = load_checkpoint_data(op_id)
-    assert checkpoint.get("status") == "completed", (
-        f"expected status=completed before resume, got {checkpoint!r}"
-    )
-
-    try:
-        exit_code2, stdout2, stderr2 = _run_thoth_subprocess(
-            ["--resume", op_id],
-            {"THOTH_MOCK_BEHAVIOR": "default", "THOTH_POLL_INTERVAL": "0.1"},
-        )
-        combined2 = stdout2 + stderr2
-        assert exit_code2 == 0, (
-            f"expected exit 0 for already-completed resume, got {exit_code2}\n{combined2!r}"
-        )
-        assert "already completed" in combined2, (
-            f"expected 'already completed' message, got {combined2!r}"
-        )
-    finally:
-        remove_test_checkpoint(op_id)
-        cleanup_test_files(["*_mock_*.md"])
 
 
 # ============================================================================
@@ -2028,22 +1827,6 @@ all_tests = [
         provider="mock",
         api_key_method="env",
         timeout=5,
-    ),
-    TestCase(
-        test_id="P07-M1-01",
-        description="async submission persists provider job metadata in checkpoint",
-        command=[],
-        test_type="fixture",
-        setup_func=lambda: _p07_async_01(),
-        provider="mock",
-    ),
-    TestCase(
-        test_id="P07-M1-02",
-        description="status shows running provider details for async-submitted operation",
-        command=[],
-        test_type="fixture",
-        setup_func=lambda: _p07_async_02(),
-        provider="mock",
     ),
     TestCase(
         test_id="M5T-10b",
@@ -2421,27 +2204,6 @@ all_tests = [
         provider="mock",
         api_key_method="env",
         cleanup_files=["*_mock_*.md"],
-    ),
-    TestCase(
-        test_id="RES-01",
-        description="Resume recoverable failure successfully reattaches and completes",
-        command=[],
-        test_type="fixture",
-        setup_func=lambda: _res_01(),
-    ),
-    TestCase(
-        test_id="RES-02",
-        description="Resume refuses a permanent failure with exit code 7",
-        command=[],
-        test_type="fixture",
-        setup_func=lambda: _res_02(),
-    ),
-    TestCase(
-        test_id="RES-03",
-        description="Resume of an already-completed operation is a no-op",
-        command=[],
-        test_type="fixture",
-        setup_func=lambda: _res_03(),
     ),
     # Provider discovery tests
     TestCase(

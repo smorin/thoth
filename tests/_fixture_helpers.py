@@ -8,10 +8,69 @@ side effects.
 from __future__ import annotations
 
 import json
+import os
+import re
+import subprocess
 import types
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
+
+THOTH_BIN = str(Path(__file__).resolve().parent.parent / "thoth")
+
+
+def run_thoth(
+    args: list[str],
+    env_overrides: dict[str, str] | None = None,
+    timeout: int = 30,
+    cwd: str | Path | None = None,
+) -> tuple[int, str, str]:
+    """Run the thoth CLI in a subprocess and return (exit_code, stdout, stderr).
+
+    Inherits `os.environ` so `monkeypatch.setenv("XDG_CONFIG_HOME", ...)` from
+    the `isolated_thoth_home` fixture propagates into the subprocess.
+    """
+    cmd_env = os.environ.copy()
+    if env_overrides:
+        cmd_env.update(env_overrides)
+    cmd_env.setdefault("MOCK_API_KEY", f"mock-key-{uuid4().hex[:16]}")
+    cmd_env["COLUMNS"] = "200"
+
+    result = subprocess.run(
+        [THOTH_BIN, *args],
+        env=cmd_env,
+        capture_output=True,
+        text=True,
+        timeout=timeout,
+        cwd=str(cwd) if cwd is not None else None,
+    )
+    return result.returncode, result.stdout, result.stderr
+
+
+def extract_operation_id(output: str) -> str:
+    """Extract an operation ID from 'Operation ID: ...' CLI output."""
+    match = re.search(r"Operation ID:\s*(research-\d{8}-\d{6}-[a-f0-9]{16})", output)
+    if not match:
+        raise AssertionError(f"operation ID not found in output: {output!r}")
+    return match.group(1)
+
+
+def extract_resume_id(output: str) -> str:
+    """Extract an operation ID from a 'thoth --resume <id>' hint."""
+    match = re.search(r"thoth --resume\s+(research-\d{8}-\d{6}-[a-f0-9]{16})", output)
+    if not match:
+        raise AssertionError(f"resume hint not found in output: {output!r}")
+    return match.group(1)
+
+
+def load_checkpoint(checkpoint_dir: Path, operation_id: str) -> dict[str, Any]:
+    """Load a checkpoint file as JSON for assertions."""
+    checkpoint_file = checkpoint_dir / f"{operation_id}.json"
+    if not checkpoint_file.exists():
+        raise AssertionError(f"checkpoint not found: {checkpoint_file}")
+    with open(checkpoint_file) as f:
+        return json.load(f)
 
 
 class FakeLoop:
