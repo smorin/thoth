@@ -1,0 +1,128 @@
+"""Provider registry and factory.
+
+PROVIDERS is the single source of truth for name → class dispatch.
+create_provider() handles API-key resolution plus provider-specific
+config tweaks (mock validation, timeout override, mode-driven model,
+deep-research background mode).
+"""
+
+from __future__ import annotations
+
+import os
+from typing import TYPE_CHECKING, Any
+
+from thoth.errors import APIKeyError, ThothError
+from thoth.providers.base import ResearchProvider
+from thoth.providers.mock import MockProvider
+from thoth.providers.openai import OpenAIProvider, _map_openai_error
+from thoth.providers.perplexity import PerplexityProvider
+from thoth.utils import _is_placeholder
+
+if TYPE_CHECKING:
+    from thoth.config import ConfigManager
+
+
+PROVIDERS: dict[str, type[ResearchProvider]] = {
+    "openai": OpenAIProvider,
+    "perplexity": PerplexityProvider,
+    "mock": MockProvider,
+}
+
+PROVIDER_ENV_VARS: dict[str, str] = {
+    "openai": "OPENAI_API_KEY",
+    "perplexity": "PERPLEXITY_API_KEY",
+    "mock": "MOCK_API_KEY",
+}
+
+
+def resolve_api_key(
+    provider_name: str,
+    cli_api_key: str | None,
+    provider_config: dict[str, Any],
+    env_var_name: str | None = None,
+) -> str:
+    """Resolve a provider API key with precedence: CLI > env > config.
+
+    Empty strings and unresolved `${VAR}` placeholders are treated as missing
+    at every tier, so an empty --api-key flag falls through to the env var.
+    Raises APIKeyError if nothing resolves.
+    """
+    env_name = env_var_name or PROVIDER_ENV_VARS.get(provider_name)
+
+    if cli_api_key and not _is_placeholder(cli_api_key):
+        return cli_api_key
+
+    if env_name:
+        env_val = os.getenv(env_name, "")
+        if env_val and not _is_placeholder(env_val):
+            return env_val
+
+    cfg_val = provider_config.get("api_key", "") or ""
+    if cfg_val and not _is_placeholder(cfg_val):
+        return cfg_val
+
+    raise APIKeyError(provider_name)
+
+
+def create_provider(
+    provider_name: str,
+    config: ConfigManager,
+    cli_api_key: str | None = None,
+    timeout_override: float | None = None,
+    mode_config: dict[str, Any] | None = None,
+) -> ResearchProvider:
+    """Create a provider instance with proper configuration and error handling.
+
+    Replaces the old ProviderRegistry.create + create_provider duplication.
+    Dispatch happens through the PROVIDERS registry dict; per-provider config
+    shaping (timeout override, mode-driven model, deep-research background)
+    is applied before instantiation.
+    """
+    if provider_name not in PROVIDERS:
+        raise ThothError(
+            f"Unknown provider: {provider_name}",
+            f"Valid providers are: {', '.join(sorted(PROVIDERS))}",
+        )
+
+    provider_config = config.data["providers"].get(provider_name, {}).copy()
+
+    if provider_name == "mock":
+        mock_api_key = resolve_api_key("mock", cli_api_key, provider_config)
+        # Special validation for testing: reject "invalid" as API key
+        if mock_api_key == "invalid":
+            raise ThothError(
+                "Invalid mock API key format",
+                "Mock API key should not be 'invalid'",
+            )
+        return MockProvider(name=provider_name, delay=0.1, api_key=mock_api_key)
+
+    api_key = resolve_api_key(provider_name, cli_api_key, provider_config)
+
+    # Apply timeout override if provided
+    if timeout_override is not None and provider_name in ("openai", "perplexity"):
+        provider_config["timeout"] = timeout_override
+
+    # Apply model from mode configuration if specified
+    if mode_config and "model" in mode_config and provider_name == "openai":
+        provider_config["model"] = mode_config["model"]
+
+    # Apply background mode for deep research models
+    if provider_name == "openai" and provider_config.get("model", ""):
+        if "deep-research" in provider_config["model"]:
+            provider_config["background"] = True
+
+    cls = PROVIDERS[provider_name]
+    return cls(api_key=api_key, config=provider_config)
+
+
+__all__ = [
+    "PROVIDERS",
+    "PROVIDER_ENV_VARS",
+    "MockProvider",
+    "OpenAIProvider",
+    "PerplexityProvider",
+    "ResearchProvider",
+    "_map_openai_error",
+    "create_provider",
+    "resolve_api_key",
+]
