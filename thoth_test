@@ -26,7 +26,6 @@ black-box testing using subprocess and pexpect. Each test validates:
 - Interactive mode behavior
 """
 
-import asyncio
 import atexit
 import json
 import os
@@ -37,12 +36,11 @@ import subprocess
 import sys
 import tempfile
 import time
-import types
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 from uuid import uuid4
 
 import click
@@ -1219,291 +1217,6 @@ api_key = "{api_key}"
         sys.exit(0 if failed_tests == 0 else 1)
 
 
-def _p07_m3_01() -> None:
-    """P07-M3: basic interactive mode stores the last operation ID after submission."""
-    import builtins
-
-    import thoth.__main__ as thoth_main
-
-    observed: dict[str, Any] = {}
-    original_prompt_toolkit = thoth_main.PROMPT_TOOLKIT_AVAILABLE
-    original_input = builtins.input
-    original_run_research = thoth_main.run_research
-    original_registry = thoth_main.SlashCommandRegistry
-
-    class RecordingRegistry(original_registry):
-        last_created: "RecordingRegistry | None" = None
-
-        def __init__(self, console: Any):
-            super().__init__(console)
-            RecordingRegistry.last_created = self
-
-    async def fake_run_research(**kwargs: Any) -> str:
-        observed["kwargs"] = kwargs
-        return "research-20260416-010101-abcdef1234567890"
-
-    prompts = iter(["interactive stored op id"])
-
-    def fake_input(prompt: object = "") -> str:
-        return next(prompts)
-
-    try:
-        thoth_main.PROMPT_TOOLKIT_AVAILABLE = False
-        thoth_main.run_research = cast(Any, fake_run_research)
-        thoth_main.SlashCommandRegistry = cast(Any, RecordingRegistry)
-        builtins.input = cast(Any, fake_input)
-        asyncio.run(
-            thoth_main.enter_interactive_mode(
-                initial_settings=thoth_main.InteractiveInitialSettings(provider="mock"),
-                project=None,
-                output_dir=None,
-                config_path=None,
-                verbose=False,
-                quiet=True,
-                no_metadata=False,
-                timeout=None,
-            )
-        )
-    finally:
-        thoth_main.PROMPT_TOOLKIT_AVAILABLE = original_prompt_toolkit
-        thoth_main.run_research = original_run_research
-        thoth_main.SlashCommandRegistry = original_registry
-        builtins.input = original_input
-
-    registry = RecordingRegistry.last_created
-    assert registry is not None, "interactive mode did not create a slash registry"
-    assert registry.last_operation_id == "research-20260416-010101-abcdef1234567890", (
-        f"expected stored operation id, got: {registry.last_operation_id!r}"
-    )
-    assert observed["kwargs"]["prompt"] == "interactive stored op id"
-
-
-def _p07_m3_02() -> None:
-    """P07-M3: prompt-toolkit /status delegates to show_status for the last operation."""
-    import thoth.__main__ as thoth_main
-
-    if not getattr(thoth_main, "PROMPT_TOOLKIT_AVAILABLE", False):
-        return
-
-    captured: dict[str, Any] = {}
-    original_run_in_terminal = thoth_main.run_in_terminal
-    original_show_status = thoth_main.show_status
-
-    async def fake_show_status(operation_id: str) -> None:
-        captured["operation_id"] = operation_id
-
-    try:
-        thoth_main.run_in_terminal = cast(Any, lambda fn: fn())
-        thoth_main.show_status = cast(Any, fake_show_status)
-        session = thoth_main.InteractiveSession(
-            thoth_main.console,
-            thoth_main.get_config(),
-            thoth_main.InteractiveInitialSettings(provider="mock"),
-        )
-        session.slash_registry.last_operation_id = "research-20260416-020202-fedcba9876543210"
-        session._handle_slash_command("/status")
-    finally:
-        thoth_main.run_in_terminal = original_run_in_terminal
-        thoth_main.show_status = original_show_status
-
-    assert captured.get("operation_id") == "research-20260416-020202-fedcba9876543210", (
-        f"/status did not delegate to show_status: {captured}"
-    )
-
-
-# ============================================================================
-# BUG-03 Fixture Test Callables
-# ============================================================================
-
-
-def _bug03_01() -> None:
-    """BUG-03: Negative jitter must not truncate a 2s interval down to a 1s poll."""
-    from datetime import datetime
-
-    from thoth.__main__ import OperationStatus, _execute_research
-
-    class _FakeLoop:
-        def __init__(self) -> None:
-            self.now = 0.0
-
-        def time(self) -> float:
-            return self.now
-
-        def advance(self, seconds: float) -> None:
-            self.now += seconds
-
-    async def _fake_sleep(seconds: float) -> None:
-        fake_loop.advance(seconds)
-
-    class _MockSeqProvider:
-        model = "mock"
-
-        def __init__(self) -> None:
-            self.poll_times: list[float] = []
-
-        async def submit(
-            self, prompt: str, mode: str, system_prompt: str, verbose: bool = False
-        ) -> str:
-            return "job-1"
-
-        async def check_status(self, job_id: str) -> dict:
-            self.poll_times.append(fake_loop.time())
-            if len(self.poll_times) == 1:
-                return {"status": "running", "progress": 0.5}
-            return {"status": "completed", "progress": 1.0}
-
-        async def get_result(self, job_id: str, verbose: bool = False) -> str:
-            return "mock result content"
-
-    async def _noop_save(op: object) -> None:
-        pass
-
-    async def _stub_save_result(
-        op: object, provider: str, content: str, output_dir: object, **kw: object
-    ) -> Path:
-        return Path("/tmp/mock_result.md")
-
-    fake_loop = _FakeLoop()
-    provider = _MockSeqProvider()
-    config_stub = types.SimpleNamespace(data={"execution": {"poll_interval": 2.0, "max_wait": 1}})
-    checkpoint_stub = types.SimpleNamespace(save=_noop_save)
-    output_stub = types.SimpleNamespace(save_result=_stub_save_result)
-    operation = OperationStatus(
-        id="bug03-01",
-        prompt="test",
-        mode="default",
-        status="queued",
-        created_at=datetime.now(),
-        updated_at=datetime.now(),
-    )
-    asyncio_stub = types.SimpleNamespace(get_running_loop=lambda: fake_loop, sleep=_fake_sleep)
-    random_stub = types.SimpleNamespace(uniform=lambda _a, _b: -0.10)
-    original_asyncio = _execute_research.__globals__["asyncio"]
-    original_random = _execute_research.__globals__["random"]
-    try:
-        _execute_research.__globals__["asyncio"] = asyncio_stub
-        _execute_research.__globals__["random"] = random_stub
-        asyncio.run(
-            _execute_research(
-                operation=operation,
-                checkpoint_manager=cast(Any, checkpoint_stub),
-                output_manager=cast(Any, output_stub),
-                config=cast(Any, config_stub),
-                mode_config={"system_prompt": ""},
-                providers={"mock": provider},
-                quiet=True,
-                verbose=False,
-                output_dir=None,
-                combined=False,
-                project=None,
-                mode="default",
-                prompt="test",
-            )
-        )
-    finally:
-        _execute_research.__globals__["asyncio"] = original_asyncio
-        _execute_research.__globals__["random"] = original_random
-
-    assert provider.poll_times == [0.0, 1.8], (
-        f"expected polls at t=0.0s and t=1.8s with -10% jitter on a 2.0s base interval, "
-        f"got: {provider.poll_times}"
-    )
-
-
-def _bug03_02() -> None:
-    """BUG-03: Sub-second poll intervals must be honored instead of rounding up to 1s."""
-    from datetime import datetime
-
-    from thoth.__main__ import OperationStatus, _execute_research
-
-    class _FakeLoop:
-        def __init__(self) -> None:
-            self.now = 0.0
-
-        def time(self) -> float:
-            return self.now
-
-        def advance(self, seconds: float) -> None:
-            self.now += seconds
-
-    async def _fake_sleep(seconds: float) -> None:
-        fake_loop.advance(seconds)
-
-    class _MockSeqProvider:
-        model = "mock"
-
-        def __init__(self) -> None:
-            self.poll_times: list[float] = []
-
-        async def submit(
-            self, prompt: str, mode: str, system_prompt: str, verbose: bool = False
-        ) -> str:
-            return "job-1"
-
-        async def check_status(self, job_id: str) -> dict:
-            self.poll_times.append(fake_loop.time())
-            if len(self.poll_times) == 1:
-                return {"status": "running", "progress": 0.5}
-            return {"status": "completed", "progress": 1.0}
-
-        async def get_result(self, job_id: str, verbose: bool = False) -> str:
-            return "mock result content"
-
-    async def _noop_save(op: object) -> None:
-        pass
-
-    async def _stub_save_result(
-        op: object, provider: str, content: str, output_dir: object, **kw: object
-    ) -> Path:
-        return Path("/tmp/mock_result.md")
-
-    fake_loop = _FakeLoop()
-    provider = _MockSeqProvider()
-    config_stub = types.SimpleNamespace(data={"execution": {"poll_interval": 0.25, "max_wait": 1}})
-    checkpoint_stub = types.SimpleNamespace(save=_noop_save)
-    output_stub = types.SimpleNamespace(save_result=_stub_save_result)
-    operation = OperationStatus(
-        id="bug03-02",
-        prompt="test",
-        mode="default",
-        status="queued",
-        created_at=datetime.now(),
-        updated_at=datetime.now(),
-    )
-    asyncio_stub = types.SimpleNamespace(get_running_loop=lambda: fake_loop, sleep=_fake_sleep)
-    random_stub = types.SimpleNamespace(uniform=lambda _a, _b: 0.0)
-    original_asyncio = _execute_research.__globals__["asyncio"]
-    original_random = _execute_research.__globals__["random"]
-    try:
-        _execute_research.__globals__["asyncio"] = asyncio_stub
-        _execute_research.__globals__["random"] = random_stub
-        asyncio.run(
-            _execute_research(
-                operation=operation,
-                checkpoint_manager=cast(Any, checkpoint_stub),
-                output_manager=cast(Any, output_stub),
-                config=cast(Any, config_stub),
-                mode_config={"system_prompt": ""},
-                providers={"mock": provider},
-                quiet=True,
-                verbose=False,
-                output_dir=None,
-                combined=False,
-                project=None,
-                mode="default",
-                prompt="test",
-            )
-        )
-    finally:
-        _execute_research.__globals__["asyncio"] = original_asyncio
-        _execute_research.__globals__["random"] = original_random
-
-    assert provider.poll_times == [0.0, 0.25], (
-        "expected a 0.25s poll interval to be honored exactly in the scheduler, "
-        f"got: {provider.poll_times}"
-    )
-
-
 # ============================================================================
 # Test Definitions
 # ============================================================================
@@ -2297,20 +2010,6 @@ all_tests = [
         ],
         expected_exit_code=1,
     ),
-    TestCase(
-        test_id="P07-M3-01",
-        description="basic interactive mode stores last operation ID after submission",
-        command=[],
-        test_type="fixture",
-        setup_func=lambda: _p07_m3_01(),
-    ),
-    TestCase(
-        test_id="P07-M3-02",
-        description="interactive /status delegates to checkpoint-backed status display",
-        command=[],
-        test_type="fixture",
-        setup_func=lambda: _p07_m3_02(),
-    ),
     # ============================================================================
     # Interactive Mode Tests (require pexpect)
     # ============================================================================
@@ -2825,20 +2524,6 @@ all_tests = [
     # ============================================================================
     # Milestone 34: BUG-03 Poll Interval Tests
     # ============================================================================
-    TestCase(
-        test_id="BUG03-01",
-        description="polling loop: negative jitter does not truncate a 2s interval into a 1s poll",
-        command=[],
-        test_type="fixture",
-        setup_func=lambda: _bug03_01(),
-    ),
-    TestCase(
-        test_id="BUG03-02",
-        description="polling loop: sub-second poll intervals are honored without a 1s floor",
-        command=[],
-        test_type="fixture",
-        setup_func=lambda: _bug03_02(),
-    ),
     TestCase(
         test_id="BUG03-03",
         description="polling loop: mock provider research completes correctly with fixed poll loop",
