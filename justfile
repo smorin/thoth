@@ -102,10 +102,16 @@ fix-all: fix test-fix
 
 # ─── Testing ──────────────────────────────────────────────────────────
 
-# Run test suite
+# Run full test suite (pytest in parallel + thoth_test integration suite)
 [group: 'testing']
 test:
+    uv run pytest tests/ -n auto -v
     ./thoth_test -r
+
+# Run pytest suite serially (for debugging xdist flakiness)
+[group: 'testing']
+test-serial:
+    uv run pytest tests/ -v
 
 # Run tests skipping interactive mode (fast, CI-safe)
 [group: 'testing']
