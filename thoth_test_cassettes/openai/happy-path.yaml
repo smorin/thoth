@@ -13,20 +13,14 @@ interactions:
       - h3=":443"; ma=86400
       Cf-Cache-Status:
       - DYNAMIC
-      Cf-Ray:
-      - 9ec7e7361fb1f591-SJC
       Connection:
       - keep-alive
       Content-Type:
       - application/json
       Date:
       - Wed, 15 Apr 2026 03:35:58 GMT
-      Openai-Organization:
-      - user-vcklpsn7dsyfu2fz7wokpfo8
       Openai-Processing-Ms:
       - '526'
-      Openai-Project:
-      - proj_nyDPV41fTNlbZd43C6I5P3ih
       Openai-Version:
       - '2020-10-01'
       Server:
@@ -35,8 +29,6 @@ interactions:
       - max-age=31536000; includeSubDomains; preload
       X-Content-Type-Options:
       - nosniff
-      X-Request-Id:
-      - req_b9d847656253481b840a2fd544b12222
     status:
       code: 200
       message: OK
@@ -54,20 +46,14 @@ interactions:
       - h3=":443"; ma=86400
       Cf-Cache-Status:
       - DYNAMIC
-      Cf-Ray:
-      - 9ec7e75ef921f591-SJC
       Connection:
       - keep-alive
       Content-Type:
       - application/json
       Date:
       - Wed, 15 Apr 2026 03:36:03 GMT
-      Openai-Organization:
-      - user-vcklpsn7dsyfu2fz7wokpfo8
       Openai-Processing-Ms:
       - '65'
-      Openai-Project:
-      - proj_nyDPV41fTNlbZd43C6I5P3ih
       Openai-Version:
       - '2020-10-01'
       Server:
@@ -76,8 +62,6 @@ interactions:
       - max-age=31536000; includeSubDomains; preload
       X-Content-Type-Options:
       - nosniff
-      X-Request-Id:
-      - req_71fad9f211ca4281b689224aaed86e5a
     status:
       code: 200
       message: OK
@@ -95,20 +79,14 @@ interactions:
       - h3=":443"; ma=86400
       Cf-Cache-Status:
       - DYNAMIC
-      Cf-Ray:
-      - 9ec7e7827f01f591-SJC
       Connection:
       - keep-alive
       Content-Type:
       - application/json
       Date:
       - Wed, 15 Apr 2026 03:36:10 GMT
-      Openai-Organization:
-      - user-vcklpsn7dsyfu2fz7wokpfo8
       Openai-Processing-Ms:
       - '653'
-      Openai-Project:
-      - proj_nyDPV41fTNlbZd43C6I5P3ih
       Openai-Version:
       - '2020-10-01'
       Server:
@@ -117,8 +95,6 @@ interactions:
       - max-age=31536000; includeSubDomains; preload
       X-Content-Type-Options:
       - nosniff
-      X-Request-Id:
-      - req_364e8148918548ac9bfefffb02a88fb3
     status:
       code: 200
       message: OK
@@ -136,20 +112,14 @@ interactions:
       - h3=":443"; ma=86400
       Cf-Cache-Status:
       - DYNAMIC
-      Cf-Ray:
-      - 9ec7e7abda75f591-SJC
       Connection:
       - keep-alive
       Content-Type:
       - application/json
       Date:
       - Wed, 15 Apr 2026 03:36:17 GMT
-      Openai-Organization:
-      - user-vcklpsn7dsyfu2fz7wokpfo8
       Openai-Processing-Ms:
       - '186'
-      Openai-Project:
-      - proj_nyDPV41fTNlbZd43C6I5P3ih
       Openai-Version:
       - '2020-10-01'
       Server:
@@ -158,8 +128,6 @@ interactions:
       - max-age=31536000; includeSubDomains; preload
       X-Content-Type-Options:
       - nosniff
-      X-Request-Id:
-      - req_cce41bb96fb34ab8a9d993a764bbcb4f
     status:
       code: 200
       message: OK
@@ -177,20 +145,14 @@ interactions:
       - h3=":443"; ma=86400
       Cf-Cache-Status:
       - DYNAMIC
-      Cf-Ray:
-      - 9ec7e7d33deaf591-SJC
       Connection:
       - keep-alive
       Content-Type:
       - application/json
       Date:
       - Wed, 15 Apr 2026 03:36:22 GMT
-      Openai-Organization:
-      - user-vcklpsn7dsyfu2fz7wokpfo8
       Openai-Processing-Ms:
       - '153'
-      Openai-Project:
-      - proj_nyDPV41fTNlbZd43C6I5P3ih
       Openai-Version:
       - '2020-10-01'
       Server:
@@ -199,8 +161,6 @@ interactions:
       - max-age=31536000; includeSubDomains; preload
       X-Content-Type-Options:
       - nosniff
-      X-Request-Id:
-      - req_7ab8c0b1a235497ba2cca00c762ac642
     status:
       code: 200
       message: OK
@@ -218,20 +178,14 @@ interactions:
       - h3=":443"; ma=86400
       Cf-Cache-Status:
       - DYNAMIC
-      Cf-Ray:
-      - 9ec7e7f47cfdf591-SJC
       Connection:
       - keep-alive
       Content-Type:
       - application/json
       Date:
       - Wed, 15 Apr 2026 03:36:27 GMT
-      Openai-Organization:
-      - user-vcklpsn7dsyfu2fz7wokpfo8
       Openai-Processing-Ms:
       - '89'
-      Openai-Project:
-      - proj_nyDPV41fTNlbZd43C6I5P3ih
       Openai-Version:
       - '2020-10-01'
       Server:
@@ -240,8 +194,6 @@ interactions:
       - max-age=31536000; includeSubDomains; preload
       X-Content-Type-Options:
       - nosniff
-      X-Request-Id:
-      - req_c88b2c1eb3a1466097b01dee772bba68
     status:
       code: 200
       message: OK
@@ -259,20 +211,14 @@ interactions:
       - h3=":443"; ma=86400
       Cf-Cache-Status:
       - DYNAMIC
-      Cf-Ray:
-      - 9ec7e8165b66f591-SJC
       Connection:
       - keep-alive
       Content-Type:
       - application/json
       Date:
       - Wed, 15 Apr 2026 03:36:33 GMT
-      Openai-Organization:
-      - user-vcklpsn7dsyfu2fz7wokpfo8
       Openai-Processing-Ms:
       - '93'
-      Openai-Project:
-      - proj_nyDPV41fTNlbZd43C6I5P3ih
       Openai-Version:
       - '2020-10-01'
       Server:
@@ -281,8 +227,6 @@ interactions:
       - max-age=31536000; includeSubDomains; preload
       X-Content-Type-Options:
       - nosniff
-      X-Request-Id:
-      - req_0026a2266e8a4c949363bb11174930ea
     status:
       code: 200
       message: OK
@@ -300,20 +244,14 @@ interactions:
       - h3=":443"; ma=86400
       Cf-Cache-Status:
       - DYNAMIC
-      Cf-Ray:
-      - 9ec7e838cc0cf591-SJC
       Connection:
       - keep-alive
       Content-Type:
       - application/json
       Date:
       - Wed, 15 Apr 2026 03:36:38 GMT
-      Openai-Organization:
-      - user-vcklpsn7dsyfu2fz7wokpfo8
       Openai-Processing-Ms:
       - '307'
-      Openai-Project:
-      - proj_nyDPV41fTNlbZd43C6I5P3ih
       Openai-Version:
       - '2020-10-01'
       Server:
@@ -322,8 +260,6 @@ interactions:
       - max-age=31536000; includeSubDomains; preload
       X-Content-Type-Options:
       - nosniff
-      X-Request-Id:
-      - req_48568b7ccc504ad8896e78b25df5eabc
     status:
       code: 200
       message: OK
@@ -341,20 +277,14 @@ interactions:
       - h3=":443"; ma=86400
       Cf-Cache-Status:
       - DYNAMIC
-      Cf-Ray:
-      - 9ec7e85b189bf591-SJC
       Connection:
       - keep-alive
       Content-Type:
       - application/json
       Date:
       - Wed, 15 Apr 2026 03:36:44 GMT
-      Openai-Organization:
-      - user-vcklpsn7dsyfu2fz7wokpfo8
       Openai-Processing-Ms:
       - '79'
-      Openai-Project:
-      - proj_nyDPV41fTNlbZd43C6I5P3ih
       Openai-Version:
       - '2020-10-01'
       Server:
@@ -363,8 +293,6 @@ interactions:
       - max-age=31536000; includeSubDomains; preload
       X-Content-Type-Options:
       - nosniff
-      X-Request-Id:
-      - req_b6e7edb4bb9b40a4baa047d48b03e015
     status:
       code: 200
       message: OK
@@ -382,20 +310,14 @@ interactions:
       - h3=":443"; ma=86400
       Cf-Cache-Status:
       - DYNAMIC
-      Cf-Ray:
-      - 9ec7e87ccf9bf591-SJC
       Connection:
       - keep-alive
       Content-Type:
       - application/json
       Date:
       - Wed, 15 Apr 2026 03:36:49 GMT
-      Openai-Organization:
-      - user-vcklpsn7dsyfu2fz7wokpfo8
       Openai-Processing-Ms:
       - '104'
-      Openai-Project:
-      - proj_nyDPV41fTNlbZd43C6I5P3ih
       Openai-Version:
       - '2020-10-01'
       Server:
@@ -404,8 +326,6 @@ interactions:
       - max-age=31536000; includeSubDomains; preload
       X-Content-Type-Options:
       - nosniff
-      X-Request-Id:
-      - req_c2d8b664c75d496b8919c443422a97bc
     status:
       code: 200
       message: OK
@@ -423,20 +343,14 @@ interactions:
       - h3=":443"; ma=86400
       Cf-Cache-Status:
       - DYNAMIC
-      Cf-Ray:
-      - 9ec7e89e6951f591-SJC
       Connection:
       - keep-alive
       Content-Type:
       - application/json
       Date:
       - Wed, 15 Apr 2026 03:36:54 GMT
-      Openai-Organization:
-      - user-vcklpsn7dsyfu2fz7wokpfo8
       Openai-Processing-Ms:
       - '97'
-      Openai-Project:
-      - proj_nyDPV41fTNlbZd43C6I5P3ih
       Openai-Version:
       - '2020-10-01'
       Server:
@@ -445,8 +359,6 @@ interactions:
       - max-age=31536000; includeSubDomains; preload
       X-Content-Type-Options:
       - nosniff
-      X-Request-Id:
-      - req_206801f2c5dd4bc986b1a7c40966bce6
     status:
       code: 200
       message: OK
@@ -464,20 +376,14 @@ interactions:
       - h3=":443"; ma=86400
       Cf-Cache-Status:
       - DYNAMIC
-      Cf-Ray:
-      - 9ec7e8bf5ef6f591-SJC
       Connection:
       - keep-alive
       Content-Type:
       - application/json
       Date:
       - Wed, 15 Apr 2026 03:37:00 GMT
-      Openai-Organization:
-      - user-vcklpsn7dsyfu2fz7wokpfo8
       Openai-Processing-Ms:
       - '182'
-      Openai-Project:
-      - proj_nyDPV41fTNlbZd43C6I5P3ih
       Openai-Version:
       - '2020-10-01'
       Server:
@@ -486,8 +392,6 @@ interactions:
       - max-age=31536000; includeSubDomains; preload
       X-Content-Type-Options:
       - nosniff
-      X-Request-Id:
-      - req_135ad88e835346e4ad48a0477e3634c3
     status:
       code: 200
       message: OK
@@ -505,20 +409,14 @@ interactions:
       - h3=":443"; ma=86400
       Cf-Cache-Status:
       - DYNAMIC
-      Cf-Ray:
-      - 9ec7e8e0c850f591-SJC
       Connection:
       - keep-alive
       Content-Type:
       - application/json
       Date:
       - Wed, 15 Apr 2026 03:37:05 GMT
-      Openai-Organization:
-      - user-vcklpsn7dsyfu2fz7wokpfo8
       Openai-Processing-Ms:
       - '203'
-      Openai-Project:
-      - proj_nyDPV41fTNlbZd43C6I5P3ih
       Openai-Version:
       - '2020-10-01'
       Server:
@@ -527,8 +425,6 @@ interactions:
       - max-age=31536000; includeSubDomains; preload
       X-Content-Type-Options:
       - nosniff
-      X-Request-Id:
-      - req_a9e06fc45e334624bc03d56a944cb172
     status:
       code: 200
       message: OK
@@ -546,20 +442,14 @@ interactions:
       - h3=":443"; ma=86400
       Cf-Cache-Status:
       - DYNAMIC
-      Cf-Ray:
-      - 9ec7e9040d15f591-SJC
       Connection:
       - keep-alive
       Content-Type:
       - application/json
       Date:
       - Wed, 15 Apr 2026 03:37:11 GMT
-      Openai-Organization:
-      - user-vcklpsn7dsyfu2fz7wokpfo8
       Openai-Processing-Ms:
       - '180'
-      Openai-Project:
-      - proj_nyDPV41fTNlbZd43C6I5P3ih
       Openai-Version:
       - '2020-10-01'
       Server:
@@ -568,8 +458,6 @@ interactions:
       - max-age=31536000; includeSubDomains; preload
       X-Content-Type-Options:
       - nosniff
-      X-Request-Id:
-      - req_0c38473ddba242ea824a6b00ea392641
     status:
       code: 200
       message: OK
@@ -587,20 +475,14 @@ interactions:
       - h3=":443"; ma=86400
       Cf-Cache-Status:
       - DYNAMIC
-      Cf-Ray:
-      - 9ec7e9257c92f591-SJC
       Connection:
       - keep-alive
       Content-Type:
       - application/json
       Date:
       - Wed, 15 Apr 2026 03:37:16 GMT
-      Openai-Organization:
-      - user-vcklpsn7dsyfu2fz7wokpfo8
       Openai-Processing-Ms:
       - '82'
-      Openai-Project:
-      - proj_nyDPV41fTNlbZd43C6I5P3ih
       Openai-Version:
       - '2020-10-01'
       Server:
@@ -609,8 +491,6 @@ interactions:
       - max-age=31536000; includeSubDomains; preload
       X-Content-Type-Options:
       - nosniff
-      X-Request-Id:
-      - req_34e3f60f1ecb4f389cf4a8a085156b59
     status:
       code: 200
       message: OK
@@ -628,20 +508,14 @@ interactions:
       - h3=":443"; ma=86400
       Cf-Cache-Status:
       - DYNAMIC
-      Cf-Ray:
-      - 9ec7e9467fa9f591-SJC
       Connection:
       - keep-alive
       Content-Type:
       - application/json
       Date:
       - Wed, 15 Apr 2026 03:37:21 GMT
-      Openai-Organization:
-      - user-vcklpsn7dsyfu2fz7wokpfo8
       Openai-Processing-Ms:
       - '252'
-      Openai-Project:
-      - proj_nyDPV41fTNlbZd43C6I5P3ih
       Openai-Version:
       - '2020-10-01'
       Server:
@@ -650,8 +524,6 @@ interactions:
       - max-age=31536000; includeSubDomains; preload
       X-Content-Type-Options:
       - nosniff
-      X-Request-Id:
-      - req_6c22ea9e0d55484385ded4d46a887152
     status:
       code: 200
       message: OK
@@ -669,20 +541,14 @@ interactions:
       - h3=":443"; ma=86400
       Cf-Cache-Status:
       - DYNAMIC
-      Cf-Ray:
-      - 9ec7e9689cbaf591-SJC
       Connection:
       - keep-alive
       Content-Type:
       - application/json
       Date:
       - Wed, 15 Apr 2026 03:37:27 GMT
-      Openai-Organization:
-      - user-vcklpsn7dsyfu2fz7wokpfo8
       Openai-Processing-Ms:
       - '182'
-      Openai-Project:
-      - proj_nyDPV41fTNlbZd43C6I5P3ih
       Openai-Version:
       - '2020-10-01'
       Server:
@@ -691,8 +557,6 @@ interactions:
       - max-age=31536000; includeSubDomains; preload
       X-Content-Type-Options:
       - nosniff
-      X-Request-Id:
-      - req_cfa1ab1c4483425b9a0a928a8ba6a850
     status:
       code: 200
       message: OK
@@ -710,20 +574,14 @@ interactions:
       - h3=":443"; ma=86400
       Cf-Cache-Status:
       - DYNAMIC
-      Cf-Ray:
-      - 9ec7e98a5d9af591-SJC
       Connection:
       - keep-alive
       Content-Type:
       - application/json
       Date:
       - Wed, 15 Apr 2026 03:37:32 GMT
-      Openai-Organization:
-      - user-vcklpsn7dsyfu2fz7wokpfo8
       Openai-Processing-Ms:
       - '92'
-      Openai-Project:
-      - proj_nyDPV41fTNlbZd43C6I5P3ih
       Openai-Version:
       - '2020-10-01'
       Server:
@@ -732,8 +590,6 @@ interactions:
       - max-age=31536000; includeSubDomains; preload
       X-Content-Type-Options:
       - nosniff
-      X-Request-Id:
-      - req_2aa7ca6a8c094de686e04ca889511b4d
     status:
       code: 200
       message: OK
@@ -751,20 +607,14 @@ interactions:
       - h3=":443"; ma=86400
       Cf-Cache-Status:
       - DYNAMIC
-      Cf-Ray:
-      - 9ec7e9ab4ac2f591-SJC
       Connection:
       - keep-alive
       Content-Type:
       - application/json
       Date:
       - Wed, 15 Apr 2026 03:37:37 GMT
-      Openai-Organization:
-      - user-vcklpsn7dsyfu2fz7wokpfo8
       Openai-Processing-Ms:
       - '46'
-      Openai-Project:
-      - proj_nyDPV41fTNlbZd43C6I5P3ih
       Openai-Version:
       - '2020-10-01'
       Server:
@@ -773,8 +623,6 @@ interactions:
       - max-age=31536000; includeSubDomains; preload
       X-Content-Type-Options:
       - nosniff
-      X-Request-Id:
-      - req_2d38e9d944e94587a2b4163f36b7983d
     status:
       code: 200
       message: OK
@@ -792,20 +640,14 @@ interactions:
       - h3=":443"; ma=86400
       Cf-Cache-Status:
       - DYNAMIC
-      Cf-Ray:
-      - 9ec7e9cc4962f591-SJC
       Connection:
       - keep-alive
       Content-Type:
       - application/json
       Date:
       - Wed, 15 Apr 2026 03:37:43 GMT
-      Openai-Organization:
-      - user-vcklpsn7dsyfu2fz7wokpfo8
       Openai-Processing-Ms:
       - '94'
-      Openai-Project:
-      - proj_nyDPV41fTNlbZd43C6I5P3ih
       Openai-Version:
       - '2020-10-01'
       Server:
@@ -814,8 +656,6 @@ interactions:
       - max-age=31536000; includeSubDomains; preload
       X-Content-Type-Options:
       - nosniff
-      X-Request-Id:
-      - req_a45bb57192cc40118b0e3dad95db7d71
     status:
       code: 200
       message: OK
@@ -833,20 +673,14 @@ interactions:
       - h3=":443"; ma=86400
       Cf-Cache-Status:
       - DYNAMIC
-      Cf-Ray:
-      - 9ec7e9ed6b09f591-SJC
       Connection:
       - keep-alive
       Content-Type:
       - application/json
       Date:
       - Wed, 15 Apr 2026 03:37:48 GMT
-      Openai-Organization:
-      - user-vcklpsn7dsyfu2fz7wokpfo8
       Openai-Processing-Ms:
       - '195'
-      Openai-Project:
-      - proj_nyDPV41fTNlbZd43C6I5P3ih
       Openai-Version:
       - '2020-10-01'
       Server:
@@ -855,8 +689,6 @@ interactions:
       - max-age=31536000; includeSubDomains; preload
       X-Content-Type-Options:
       - nosniff
-      X-Request-Id:
-      - req_6ec8d3e0a0454928a479f343d2c291d3
     status:
       code: 200
       message: OK
@@ -874,20 +706,14 @@ interactions:
       - h3=":443"; ma=86400
       Cf-Cache-Status:
       - DYNAMIC
-      Cf-Ray:
-      - 9ec7ea0f6eb7f591-SJC
       Connection:
       - keep-alive
       Content-Type:
       - application/json
       Date:
       - Wed, 15 Apr 2026 03:37:54 GMT
-      Openai-Organization:
-      - user-vcklpsn7dsyfu2fz7wokpfo8
       Openai-Processing-Ms:
       - '87'
-      Openai-Project:
-      - proj_nyDPV41fTNlbZd43C6I5P3ih
       Openai-Version:
       - '2020-10-01'
       Server:
@@ -896,8 +722,6 @@ interactions:
       - max-age=31536000; includeSubDomains; preload
       X-Content-Type-Options:
       - nosniff
-      X-Request-Id:
-      - req_d73b97da8be64cd280e4fe5884f6e08a
     status:
       code: 200
       message: OK
@@ -915,20 +739,14 @@ interactions:
       - h3=":443"; ma=86400
       Cf-Cache-Status:
       - DYNAMIC
-      Cf-Ray:
-      - 9ec7ea318872f591-SJC
       Connection:
       - keep-alive
       Content-Type:
       - application/json
       Date:
       - Wed, 15 Apr 2026 03:37:59 GMT
-      Openai-Organization:
-      - user-vcklpsn7dsyfu2fz7wokpfo8
       Openai-Processing-Ms:
       - '124'
-      Openai-Project:
-      - proj_nyDPV41fTNlbZd43C6I5P3ih
       Openai-Version:
       - '2020-10-01'
       Server:
@@ -937,8 +755,6 @@ interactions:
       - max-age=31536000; includeSubDomains; preload
       X-Content-Type-Options:
       - nosniff
-      X-Request-Id:
-      - req_89829adaf4e7412d83c6e7e5ad534814
     status:
       code: 200
       message: OK
@@ -956,20 +772,14 @@ interactions:
       - h3=":443"; ma=86400
       Cf-Cache-Status:
       - DYNAMIC
-      Cf-Ray:
-      - 9ec7ea52dd1ff591-SJC
       Connection:
       - keep-alive
       Content-Type:
       - application/json
       Date:
       - Wed, 15 Apr 2026 03:38:04 GMT
-      Openai-Organization:
-      - user-vcklpsn7dsyfu2fz7wokpfo8
       Openai-Processing-Ms:
       - '95'
-      Openai-Project:
-      - proj_nyDPV41fTNlbZd43C6I5P3ih
       Openai-Version:
       - '2020-10-01'
       Server:
@@ -978,8 +788,6 @@ interactions:
       - max-age=31536000; includeSubDomains; preload
       X-Content-Type-Options:
       - nosniff
-      X-Request-Id:
-      - req_982be07e3e714cd39e01898a996ff6fe
     status:
       code: 200
       message: OK
@@ -997,20 +805,14 @@ interactions:
       - h3=":443"; ma=86400
       Cf-Cache-Status:
       - DYNAMIC
-      Cf-Ray:
-      - 9ec7ea73c921f591-SJC
       Connection:
       - keep-alive
       Content-Type:
       - application/json
       Date:
       - Wed, 15 Apr 2026 03:38:10 GMT
-      Openai-Organization:
-      - user-vcklpsn7dsyfu2fz7wokpfo8
       Openai-Processing-Ms:
       - '75'
-      Openai-Project:
-      - proj_nyDPV41fTNlbZd43C6I5P3ih
       Openai-Version:
       - '2020-10-01'
       Server:
@@ -1019,8 +821,6 @@ interactions:
       - max-age=31536000; includeSubDomains; preload
       X-Content-Type-Options:
       - nosniff
-      X-Request-Id:
-      - req_1091f441123b4a1fa05b972ac4f988c6
     status:
       code: 200
       message: OK
@@ -1038,20 +838,14 @@ interactions:
       - h3=":443"; ma=86400
       Cf-Cache-Status:
       - DYNAMIC
-      Cf-Ray:
-      - 9ec7ea94ba08f591-SJC
       Connection:
       - keep-alive
       Content-Type:
       - application/json
       Date:
       - Wed, 15 Apr 2026 03:38:15 GMT
-      Openai-Organization:
-      - user-vcklpsn7dsyfu2fz7wokpfo8
       Openai-Processing-Ms:
       - '85'
-      Openai-Project:
-      - proj_nyDPV41fTNlbZd43C6I5P3ih
       Openai-Version:
       - '2020-10-01'
       Server:
@@ -1060,8 +854,6 @@ interactions:
       - max-age=31536000; includeSubDomains; preload
       X-Content-Type-Options:
       - nosniff
-      X-Request-Id:
-      - req_da535a5ae4c640e0ac94a0c1e5842949
     status:
       code: 200
       message: OK
@@ -1079,20 +871,14 @@ interactions:
       - h3=":443"; ma=86400
       Cf-Cache-Status:
       - DYNAMIC
-      Cf-Ray:
-      - 9ec7eab5ac2bf591-SJC
       Connection:
       - keep-alive
       Content-Type:
       - application/json
       Date:
       - Wed, 15 Apr 2026 03:38:20 GMT
-      Openai-Organization:
-      - user-vcklpsn7dsyfu2fz7wokpfo8
       Openai-Processing-Ms:
       - '69'
-      Openai-Project:
-      - proj_nyDPV41fTNlbZd43C6I5P3ih
       Openai-Version:
       - '2020-10-01'
       Server:
@@ -1101,8 +887,6 @@ interactions:
       - max-age=31536000; includeSubDomains; preload
       X-Content-Type-Options:
       - nosniff
-      X-Request-Id:
-      - req_0701791f96d7423693ebff411a13e35f
     status:
       code: 200
       message: OK
@@ -1120,20 +904,14 @@ interactions:
       - h3=":443"; ma=86400
       Cf-Cache-Status:
       - DYNAMIC
-      Cf-Ray:
-      - 9ec7ead6989cf591-SJC
       Connection:
       - keep-alive
       Content-Type:
       - application/json
       Date:
       - Wed, 15 Apr 2026 03:38:25 GMT
-      Openai-Organization:
-      - user-vcklpsn7dsyfu2fz7wokpfo8
       Openai-Processing-Ms:
       - '69'
-      Openai-Project:
-      - proj_nyDPV41fTNlbZd43C6I5P3ih
       Openai-Version:
       - '2020-10-01'
       Server:
@@ -1142,8 +920,6 @@ interactions:
       - max-age=31536000; includeSubDomains; preload
       X-Content-Type-Options:
       - nosniff
-      X-Request-Id:
-      - req_a1c635c6a11c482a969a05be648b545a
     status:
       code: 200
       message: OK
@@ -1161,20 +937,14 @@ interactions:
       - h3=":443"; ma=86400
       Cf-Cache-Status:
       - DYNAMIC
-      Cf-Ray:
-      - 9ec7eaf74d24f591-SJC
       Connection:
       - keep-alive
       Content-Type:
       - application/json
       Date:
       - Wed, 15 Apr 2026 03:38:31 GMT
-      Openai-Organization:
-      - user-vcklpsn7dsyfu2fz7wokpfo8
       Openai-Processing-Ms:
       - '164'
-      Openai-Project:
-      - proj_nyDPV41fTNlbZd43C6I5P3ih
       Openai-Version:
       - '2020-10-01'
       Server:
@@ -1183,8 +953,6 @@ interactions:
       - max-age=31536000; includeSubDomains; preload
       X-Content-Type-Options:
       - nosniff
-      X-Request-Id:
-      - req_ea45603e088d4801ae8ddad447122c2a
     status:
       code: 200
       message: OK
@@ -1202,20 +970,14 @@ interactions:
       - h3=":443"; ma=86400
       Cf-Cache-Status:
       - DYNAMIC
-      Cf-Ray:
-      - 9ec7eb191a80f591-SJC
       Connection:
       - keep-alive
       Content-Type:
       - application/json
       Date:
       - Wed, 15 Apr 2026 03:38:36 GMT
-      Openai-Organization:
-      - user-vcklpsn7dsyfu2fz7wokpfo8
       Openai-Processing-Ms:
       - '73'
-      Openai-Project:
-      - proj_nyDPV41fTNlbZd43C6I5P3ih
       Openai-Version:
       - '2020-10-01'
       Server:
@@ -1224,8 +986,6 @@ interactions:
       - max-age=31536000; includeSubDomains; preload
       X-Content-Type-Options:
       - nosniff
-      X-Request-Id:
-      - req_b6f676406e7941a8ad6e1e733f3bb0fb
     status:
       code: 200
       message: OK
@@ -1243,20 +1003,14 @@ interactions:
       - h3=":443"; ma=86400
       Cf-Cache-Status:
       - DYNAMIC
-      Cf-Ray:
-      - 9ec7eb3aea57f591-SJC
       Connection:
       - keep-alive
       Content-Type:
       - application/json
       Date:
       - Wed, 15 Apr 2026 03:38:41 GMT
-      Openai-Organization:
-      - user-vcklpsn7dsyfu2fz7wokpfo8
       Openai-Processing-Ms:
       - '105'
-      Openai-Project:
-      - proj_nyDPV41fTNlbZd43C6I5P3ih
       Openai-Version:
       - '2020-10-01'
       Server:
@@ -1265,8 +1019,6 @@ interactions:
       - max-age=31536000; includeSubDomains; preload
       X-Content-Type-Options:
       - nosniff
-      X-Request-Id:
-      - req_cde02df461d8451faa615da57fe514cb
     status:
       code: 200
       message: OK
@@ -1284,20 +1036,14 @@ interactions:
       - h3=":443"; ma=86400
       Cf-Cache-Status:
       - DYNAMIC
-      Cf-Ray:
-      - 9ec7eb5c1ed5f591-SJC
       Connection:
       - keep-alive
       Content-Type:
       - application/json
       Date:
       - Wed, 15 Apr 2026 03:38:47 GMT
-      Openai-Organization:
-      - user-vcklpsn7dsyfu2fz7wokpfo8
       Openai-Processing-Ms:
       - '87'
-      Openai-Project:
-      - proj_nyDPV41fTNlbZd43C6I5P3ih
       Openai-Version:
       - '2020-10-01'
       Server:
@@ -1306,8 +1052,6 @@ interactions:
       - max-age=31536000; includeSubDomains; preload
       X-Content-Type-Options:
       - nosniff
-      X-Request-Id:
-      - req_6fc7f8fe6ed141bfac78c0ee0be1808a
     status:
       code: 200
       message: OK
@@ -1325,20 +1069,14 @@ interactions:
       - h3=":443"; ma=86400
       Cf-Cache-Status:
       - DYNAMIC
-      Cf-Ray:
-      - 9ec7eb7cefadf591-SJC
       Connection:
       - keep-alive
       Content-Type:
       - application/json
       Date:
       - Wed, 15 Apr 2026 03:38:52 GMT
-      Openai-Organization:
-      - user-vcklpsn7dsyfu2fz7wokpfo8
       Openai-Processing-Ms:
       - '111'
-      Openai-Project:
-      - proj_nyDPV41fTNlbZd43C6I5P3ih
       Openai-Version:
       - '2020-10-01'
       Server:
@@ -1347,8 +1085,6 @@ interactions:
       - max-age=31536000; includeSubDomains; preload
       X-Content-Type-Options:
       - nosniff
-      X-Request-Id:
-      - req_1c7feed623974960b9a40796d23d258d
     status:
       code: 200
       message: OK
@@ -1366,20 +1102,14 @@ interactions:
       - h3=":443"; ma=86400
       Cf-Cache-Status:
       - DYNAMIC
-      Cf-Ray:
-      - 9ec7eb9e1cadf591-SJC
       Connection:
       - keep-alive
       Content-Type:
       - application/json
       Date:
       - Wed, 15 Apr 2026 03:38:57 GMT
-      Openai-Organization:
-      - user-vcklpsn7dsyfu2fz7wokpfo8
       Openai-Processing-Ms:
       - '75'
-      Openai-Project:
-      - proj_nyDPV41fTNlbZd43C6I5P3ih
       Openai-Version:
       - '2020-10-01'
       Server:
@@ -1388,8 +1118,6 @@ interactions:
       - max-age=31536000; includeSubDomains; preload
       X-Content-Type-Options:
       - nosniff
-      X-Request-Id:
-      - req_f7715a3be95944689d681cd82b69d723
     status:
       code: 200
       message: OK
@@ -1407,20 +1135,14 @@ interactions:
       - h3=":443"; ma=86400
       Cf-Cache-Status:
       - DYNAMIC
-      Cf-Ray:
-      - 9ec7ebbed818f591-SJC
       Connection:
       - keep-alive
       Content-Type:
       - application/json
       Date:
       - Wed, 15 Apr 2026 03:39:03 GMT
-      Openai-Organization:
-      - user-vcklpsn7dsyfu2fz7wokpfo8
       Openai-Processing-Ms:
       - '139'
-      Openai-Project:
-      - proj_nyDPV41fTNlbZd43C6I5P3ih
       Openai-Version:
       - '2020-10-01'
       Server:
@@ -1429,8 +1151,6 @@ interactions:
       - max-age=31536000; includeSubDomains; preload
       X-Content-Type-Options:
       - nosniff
-      X-Request-Id:
-      - req_8d09dfc09a7e45ee8ee1edf4a0fbd4b0
     status:
       code: 200
       message: OK
@@ -1448,20 +1168,14 @@ interactions:
       - h3=":443"; ma=86400
       Cf-Cache-Status:
       - DYNAMIC
-      Cf-Ray:
-      - 9ec7ebdfc9fcf591-SJC
       Connection:
       - keep-alive
       Content-Type:
       - application/json
       Date:
       - Wed, 15 Apr 2026 03:39:08 GMT
-      Openai-Organization:
-      - user-vcklpsn7dsyfu2fz7wokpfo8
       Openai-Processing-Ms:
       - '97'
-      Openai-Project:
-      - proj_nyDPV41fTNlbZd43C6I5P3ih
       Openai-Version:
       - '2020-10-01'
       Server:
@@ -1470,8 +1184,6 @@ interactions:
       - max-age=31536000; includeSubDomains; preload
       X-Content-Type-Options:
       - nosniff
-      X-Request-Id:
-      - req_85b7a31007a6470fa21a275415a170d9
     status:
       code: 200
       message: OK
@@ -1489,20 +1201,14 @@ interactions:
       - h3=":443"; ma=86400
       Cf-Cache-Status:
       - DYNAMIC
-      Cf-Ray:
-      - 9ec7ec00ef5df591-SJC
       Connection:
       - keep-alive
       Content-Type:
       - application/json
       Date:
       - Wed, 15 Apr 2026 03:39:13 GMT
-      Openai-Organization:
-      - user-vcklpsn7dsyfu2fz7wokpfo8
       Openai-Processing-Ms:
       - '179'
-      Openai-Project:
-      - proj_nyDPV41fTNlbZd43C6I5P3ih
       Openai-Version:
       - '2020-10-01'
       Server:
@@ -1511,8 +1217,6 @@ interactions:
       - max-age=31536000; includeSubDomains; preload
       X-Content-Type-Options:
       - nosniff
-      X-Request-Id:
-      - req_97caf42ccaaf4cd0aaf3357b07671f7d
     status:
       code: 200
       message: OK
@@ -1530,20 +1234,14 @@ interactions:
       - h3=":443"; ma=86400
       Cf-Cache-Status:
       - DYNAMIC
-      Cf-Ray:
-      - 9ec7ec23c92bf591-SJC
       Connection:
       - keep-alive
       Content-Type:
       - application/json
       Date:
       - Wed, 15 Apr 2026 03:39:21 GMT
-      Openai-Organization:
-      - user-vcklpsn7dsyfu2fz7wokpfo8
       Openai-Processing-Ms:
       - '1628'
-      Openai-Project:
-      - proj_nyDPV41fTNlbZd43C6I5P3ih
       Openai-Version:
       - '2020-10-01'
       Server:
@@ -1552,8 +1250,6 @@ interactions:
       - max-age=31536000; includeSubDomains; preload
       X-Content-Type-Options:
       - nosniff
-      X-Request-Id:
-      - req_fb8a9cdca4e945e2a05e81beb32eb5c5
     status:
       code: 200
       message: OK
@@ -1571,20 +1267,14 @@ interactions:
       - h3=":443"; ma=86400
       Cf-Cache-Status:
       - DYNAMIC
-      Cf-Ray:
-      - 9ec7ec502e92f591-SJC
       Connection:
       - keep-alive
       Content-Type:
       - application/json
       Date:
       - Wed, 15 Apr 2026 03:39:26 GMT
-      Openai-Organization:
-      - user-vcklpsn7dsyfu2fz7wokpfo8
       Openai-Processing-Ms:
       - '179'
-      Openai-Project:
-      - proj_nyDPV41fTNlbZd43C6I5P3ih
       Openai-Version:
       - '2020-10-01'
       Server:
@@ -1593,8 +1283,6 @@ interactions:
       - max-age=31536000; includeSubDomains; preload
       X-Content-Type-Options:
       - nosniff
-      X-Request-Id:
-      - req_3abaeb99d8704d2c9fa1642f14fdd0be
     status:
       code: 200
       message: OK
@@ -1612,20 +1300,14 @@ interactions:
       - h3=":443"; ma=86400
       Cf-Cache-Status:
       - DYNAMIC
-      Cf-Ray:
-      - 9ec7ec715ad5f591-SJC
       Connection:
       - keep-alive
       Content-Type:
       - application/json
       Date:
       - Wed, 15 Apr 2026 03:39:31 GMT
-      Openai-Organization:
-      - user-vcklpsn7dsyfu2fz7wokpfo8
       Openai-Processing-Ms:
       - '90'
-      Openai-Project:
-      - proj_nyDPV41fTNlbZd43C6I5P3ih
       Openai-Version:
       - '2020-10-01'
       Server:
@@ -1634,8 +1316,6 @@ interactions:
       - max-age=31536000; includeSubDomains; preload
       X-Content-Type-Options:
       - nosniff
-      X-Request-Id:
-      - req_d0d57c73af1545ed87d92ebdeb1d1e86
     status:
       code: 200
       message: OK
@@ -1653,20 +1333,14 @@ interactions:
       - h3=":443"; ma=86400
       Cf-Cache-Status:
       - DYNAMIC
-      Cf-Ray:
-      - 9ec7ec9248b5f591-SJC
       Connection:
       - keep-alive
       Content-Type:
       - application/json
       Date:
       - Wed, 15 Apr 2026 03:39:36 GMT
-      Openai-Organization:
-      - user-vcklpsn7dsyfu2fz7wokpfo8
       Openai-Processing-Ms:
       - '146'
-      Openai-Project:
-      - proj_nyDPV41fTNlbZd43C6I5P3ih
       Openai-Version:
       - '2020-10-01'
       Server:
@@ -1675,8 +1349,6 @@ interactions:
       - max-age=31536000; includeSubDomains; preload
       X-Content-Type-Options:
       - nosniff
-      X-Request-Id:
-      - req_97a37ad82d2745c896fde56dd87f1298
     status:
       code: 200
       message: OK
@@ -1694,20 +1366,14 @@ interactions:
       - h3=":443"; ma=86400
       Cf-Cache-Status:
       - DYNAMIC
-      Cf-Ray:
-      - 9ec7ecb3bfccf591-SJC
       Connection:
       - keep-alive
       Content-Type:
       - application/json
       Date:
       - Wed, 15 Apr 2026 03:39:42 GMT
-      Openai-Organization:
-      - user-vcklpsn7dsyfu2fz7wokpfo8
       Openai-Processing-Ms:
       - '166'
-      Openai-Project:
-      - proj_nyDPV41fTNlbZd43C6I5P3ih
       Openai-Version:
       - '2020-10-01'
       Server:
@@ -1716,8 +1382,6 @@ interactions:
       - max-age=31536000; includeSubDomains; preload
       X-Content-Type-Options:
       - nosniff
-      X-Request-Id:
-      - req_a9f91475b84e4573b1b72f5d3bec17f5
     status:
       code: 200
       message: OK
@@ -1735,20 +1399,14 @@ interactions:
       - h3=":443"; ma=86400
       Cf-Cache-Status:
       - DYNAMIC
-      Cf-Ray:
-      - 9ec7ecd4bb23f591-SJC
       Connection:
       - keep-alive
       Content-Type:
       - application/json
       Date:
       - Wed, 15 Apr 2026 03:39:47 GMT
-      Openai-Organization:
-      - user-vcklpsn7dsyfu2fz7wokpfo8
       Openai-Processing-Ms:
       - '204'
-      Openai-Project:
-      - proj_nyDPV41fTNlbZd43C6I5P3ih
       Openai-Version:
       - '2020-10-01'
       Server:
@@ -1757,8 +1415,6 @@ interactions:
       - max-age=31536000; includeSubDomains; preload
       X-Content-Type-Options:
       - nosniff
-      X-Request-Id:
-      - req_b9081271064b44fcacde2a1dd9a11a4b
     status:
       code: 200
       message: OK
@@ -1776,20 +1432,14 @@ interactions:
       - h3=":443"; ma=86400
       Cf-Cache-Status:
       - DYNAMIC
-      Cf-Ray:
-      - 9ec7ecf659b8f591-SJC
       Connection:
       - keep-alive
       Content-Type:
       - application/json
       Date:
       - Wed, 15 Apr 2026 03:39:53 GMT
-      Openai-Organization:
-      - user-vcklpsn7dsyfu2fz7wokpfo8
       Openai-Processing-Ms:
       - '347'
-      Openai-Project:
-      - proj_nyDPV41fTNlbZd43C6I5P3ih
       Openai-Version:
       - '2020-10-01'
       Server:
@@ -1798,8 +1448,6 @@ interactions:
       - max-age=31536000; includeSubDomains; preload
       X-Content-Type-Options:
       - nosniff
-      X-Request-Id:
-      - req_866f01e16b264e20b6f491ade8225beb
     status:
       code: 200
       message: OK
@@ -1817,20 +1465,14 @@ interactions:
       - h3=":443"; ma=86400
       Cf-Cache-Status:
       - DYNAMIC
-      Cf-Ray:
-      - 9ec7ed18b94bf591-SJC
       Connection:
       - keep-alive
       Content-Type:
       - application/json
       Date:
       - Wed, 15 Apr 2026 03:39:58 GMT
-      Openai-Organization:
-      - user-vcklpsn7dsyfu2fz7wokpfo8
       Openai-Processing-Ms:
       - '178'
-      Openai-Project:
-      - proj_nyDPV41fTNlbZd43C6I5P3ih
       Openai-Version:
       - '2020-10-01'
       Server:
@@ -1839,8 +1481,6 @@ interactions:
       - max-age=31536000; includeSubDomains; preload
       X-Content-Type-Options:
       - nosniff
-      X-Request-Id:
-      - req_1ba438bcf63149d6a26f34fc92155c54
     status:
       code: 200
       message: OK
@@ -1858,20 +1498,14 @@ interactions:
       - h3=":443"; ma=86400
       Cf-Cache-Status:
       - DYNAMIC
-      Cf-Ray:
-      - 9ec7ed3a0a3cf591-SJC
       Connection:
       - keep-alive
       Content-Type:
       - application/json
       Date:
       - Wed, 15 Apr 2026 03:40:03 GMT
-      Openai-Organization:
-      - user-vcklpsn7dsyfu2fz7wokpfo8
       Openai-Processing-Ms:
       - '181'
-      Openai-Project:
-      - proj_nyDPV41fTNlbZd43C6I5P3ih
       Openai-Version:
       - '2020-10-01'
       Server:
@@ -1880,8 +1514,6 @@ interactions:
       - max-age=31536000; includeSubDomains; preload
       X-Content-Type-Options:
       - nosniff
-      X-Request-Id:
-      - req_452cb37194a84d229c83d1e168cf0fb2
     status:
       code: 200
       message: OK
@@ -1899,20 +1531,14 @@ interactions:
       - h3=":443"; ma=86400
       Cf-Cache-Status:
       - DYNAMIC
-      Cf-Ray:
-      - 9ec7ed5b9a6df591-SJC
       Connection:
       - keep-alive
       Content-Type:
       - application/json
       Date:
       - Wed, 15 Apr 2026 03:40:09 GMT
-      Openai-Organization:
-      - user-vcklpsn7dsyfu2fz7wokpfo8
       Openai-Processing-Ms:
       - '161'
-      Openai-Project:
-      - proj_nyDPV41fTNlbZd43C6I5P3ih
       Openai-Version:
       - '2020-10-01'
       Server:
@@ -1921,8 +1547,6 @@ interactions:
       - max-age=31536000; includeSubDomains; preload
       X-Content-Type-Options:
       - nosniff
-      X-Request-Id:
-      - req_4aeb260ee0e94c8e81497bea32ddfa64
     status:
       code: 200
       message: OK
@@ -1940,20 +1564,14 @@ interactions:
       - h3=":443"; ma=86400
       Cf-Cache-Status:
       - DYNAMIC
-      Cf-Ray:
-      - 9ec7ed7ce951f591-SJC
       Connection:
       - keep-alive
       Content-Type:
       - application/json
       Date:
       - Wed, 15 Apr 2026 03:40:14 GMT
-      Openai-Organization:
-      - user-vcklpsn7dsyfu2fz7wokpfo8
       Openai-Processing-Ms:
       - '103'
-      Openai-Project:
-      - proj_nyDPV41fTNlbZd43C6I5P3ih
       Openai-Version:
       - '2020-10-01'
       Server:
@@ -1962,8 +1580,6 @@ interactions:
       - max-age=31536000; includeSubDomains; preload
       X-Content-Type-Options:
       - nosniff
-      X-Request-Id:
-      - req_15f41a13afa14d02a67151dd3aff9aed
     status:
       code: 200
       message: OK
@@ -1981,20 +1597,14 @@ interactions:
       - h3=":443"; ma=86400
       Cf-Cache-Status:
       - DYNAMIC
-      Cf-Ray:
-      - 9ec7ed9dde31f591-SJC
       Connection:
       - keep-alive
       Content-Type:
       - application/json
       Date:
       - Wed, 15 Apr 2026 03:40:19 GMT
-      Openai-Organization:
-      - user-vcklpsn7dsyfu2fz7wokpfo8
       Openai-Processing-Ms:
       - '134'
-      Openai-Project:
-      - proj_nyDPV41fTNlbZd43C6I5P3ih
       Openai-Version:
       - '2020-10-01'
       Server:
@@ -2003,8 +1613,6 @@ interactions:
       - max-age=31536000; includeSubDomains; preload
       X-Content-Type-Options:
       - nosniff
-      X-Request-Id:
-      - req_dbd124d9a135484aa356f3f202ded22d
     status:
       code: 200
       message: OK
@@ -2022,20 +1630,14 @@ interactions:
       - h3=":443"; ma=86400
       Cf-Cache-Status:
       - DYNAMIC
-      Cf-Ray:
-      - 9ec7edbf2cc3f591-SJC
       Connection:
       - keep-alive
       Content-Type:
       - application/json
       Date:
       - Wed, 15 Apr 2026 03:40:24 GMT
-      Openai-Organization:
-      - user-vcklpsn7dsyfu2fz7wokpfo8
       Openai-Processing-Ms:
       - '73'
-      Openai-Project:
-      - proj_nyDPV41fTNlbZd43C6I5P3ih
       Openai-Version:
       - '2020-10-01'
       Server:
@@ -2044,8 +1646,6 @@ interactions:
       - max-age=31536000; includeSubDomains; preload
       X-Content-Type-Options:
       - nosniff
-      X-Request-Id:
-      - req_0c63484ead3a4cf08168cc85e4b8b825
     status:
       code: 200
       message: OK
@@ -2063,20 +1663,14 @@ interactions:
       - h3=":443"; ma=86400
       Cf-Cache-Status:
       - DYNAMIC
-      Cf-Ray:
-      - 9ec7ede02817f591-SJC
       Connection:
       - keep-alive
       Content-Type:
       - application/json
       Date:
       - Wed, 15 Apr 2026 03:40:30 GMT
-      Openai-Organization:
-      - user-vcklpsn7dsyfu2fz7wokpfo8
       Openai-Processing-Ms:
       - '89'
-      Openai-Project:
-      - proj_nyDPV41fTNlbZd43C6I5P3ih
       Openai-Version:
       - '2020-10-01'
       Server:
@@ -2085,8 +1679,6 @@ interactions:
       - max-age=31536000; includeSubDomains; preload
       X-Content-Type-Options:
       - nosniff
-      X-Request-Id:
-      - req_5d67237e44a44d03aafe3610e6bdd6e8
     status:
       code: 200
       message: OK
@@ -2104,20 +1696,14 @@ interactions:
       - h3=":443"; ma=86400
       Cf-Cache-Status:
       - DYNAMIC
-      Cf-Ray:
-      - 9ec7ee010cd4f591-SJC
       Connection:
       - keep-alive
       Content-Type:
       - application/json
       Date:
       - Wed, 15 Apr 2026 03:40:35 GMT
-      Openai-Organization:
-      - user-vcklpsn7dsyfu2fz7wokpfo8
       Openai-Processing-Ms:
       - '77'
-      Openai-Project:
-      - proj_nyDPV41fTNlbZd43C6I5P3ih
       Openai-Version:
       - '2020-10-01'
       Server:
@@ -2126,8 +1712,6 @@ interactions:
       - max-age=31536000; includeSubDomains; preload
       X-Content-Type-Options:
       - nosniff
-      X-Request-Id:
-      - req_212cf606c69b433393d752bfa6442791
     status:
       code: 200
       message: OK
@@ -2145,20 +1729,14 @@ interactions:
       - h3=":443"; ma=86400
       Cf-Cache-Status:
       - DYNAMIC
-      Cf-Ray:
-      - 9ec7ee21daa0f591-SJC
       Connection:
       - keep-alive
       Content-Type:
       - application/json
       Date:
       - Wed, 15 Apr 2026 03:40:40 GMT
-      Openai-Organization:
-      - user-vcklpsn7dsyfu2fz7wokpfo8
       Openai-Processing-Ms:
       - '176'
-      Openai-Project:
-      - proj_nyDPV41fTNlbZd43C6I5P3ih
       Openai-Version:
       - '2020-10-01'
       Server:
@@ -2167,8 +1745,6 @@ interactions:
       - max-age=31536000; includeSubDomains; preload
       X-Content-Type-Options:
       - nosniff
-      X-Request-Id:
-      - req_b17d58e2d6714bd99fddd2246133b916
     status:
       code: 200
       message: OK
@@ -2186,20 +1762,14 @@ interactions:
       - h3=":443"; ma=86400
       Cf-Cache-Status:
       - DYNAMIC
-      Cf-Ray:
-      - 9ec7ee438b2ef591-SJC
       Connection:
       - keep-alive
       Content-Type:
       - application/json
       Date:
       - Wed, 15 Apr 2026 03:40:46 GMT
-      Openai-Organization:
-      - user-vcklpsn7dsyfu2fz7wokpfo8
       Openai-Processing-Ms:
       - '131'
-      Openai-Project:
-      - proj_nyDPV41fTNlbZd43C6I5P3ih
       Openai-Version:
       - '2020-10-01'
       Server:
@@ -2208,8 +1778,6 @@ interactions:
       - max-age=31536000; includeSubDomains; preload
       X-Content-Type-Options:
       - nosniff
-      X-Request-Id:
-      - req_e0297f27243d48afb72b842aaaeab4a5
     status:
       code: 200
       message: OK
@@ -2227,20 +1795,14 @@ interactions:
       - h3=":443"; ma=86400
       Cf-Cache-Status:
       - DYNAMIC
-      Cf-Ray:
-      - 9ec7ee647943f591-SJC
       Connection:
       - keep-alive
       Content-Type:
       - application/json
       Date:
       - Wed, 15 Apr 2026 03:40:51 GMT
-      Openai-Organization:
-      - user-vcklpsn7dsyfu2fz7wokpfo8
       Openai-Processing-Ms:
       - '61'
-      Openai-Project:
-      - proj_nyDPV41fTNlbZd43C6I5P3ih
       Openai-Version:
       - '2020-10-01'
       Server:
@@ -2249,8 +1811,6 @@ interactions:
       - max-age=31536000; includeSubDomains; preload
       X-Content-Type-Options:
       - nosniff
-      X-Request-Id:
-      - req_47b691e01769441fac4b65129c0e1810
     status:
       code: 200
       message: OK
@@ -2268,20 +1828,14 @@ interactions:
       - h3=":443"; ma=86400
       Cf-Cache-Status:
       - DYNAMIC
-      Cf-Ray:
-      - 9ec7ee853957f591-SJC
       Connection:
       - keep-alive
       Content-Type:
       - application/json
       Date:
       - Wed, 15 Apr 2026 03:40:56 GMT
-      Openai-Organization:
-      - user-vcklpsn7dsyfu2fz7wokpfo8
       Openai-Processing-Ms:
       - '248'
-      Openai-Project:
-      - proj_nyDPV41fTNlbZd43C6I5P3ih
       Openai-Version:
       - '2020-10-01'
       Server:
@@ -2290,8 +1844,6 @@ interactions:
       - max-age=31536000; includeSubDomains; preload
       X-Content-Type-Options:
       - nosniff
-      X-Request-Id:
-      - req_8938cc95a9a1427888b83d9fbb041f5d
     status:
       code: 200
       message: OK
@@ -2312,20 +1864,14 @@ interactions:
       - h3=":443"; ma=86400
       Cf-Cache-Status:
       - DYNAMIC
-      Cf-Ray:
-      - 9ec7eea72ce9f591-SJC
       Connection:
       - keep-alive
       Content-Type:
       - application/json
       Date:
       - Wed, 15 Apr 2026 03:41:02 GMT
-      Openai-Organization:
-      - user-vcklpsn7dsyfu2fz7wokpfo8
       Openai-Processing-Ms:
       - '166'
-      Openai-Project:
-      - proj_nyDPV41fTNlbZd43C6I5P3ih
       Openai-Version:
       - '2020-10-01'
       Server:
@@ -2334,8 +1880,6 @@ interactions:
       - max-age=31536000; includeSubDomains; preload
       X-Content-Type-Options:
       - nosniff
-      X-Request-Id:
-      - req_bedd9310c905472aae756ad002cb07b3
     status:
       code: 200
       message: OK
