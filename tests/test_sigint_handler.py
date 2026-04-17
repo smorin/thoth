@@ -12,6 +12,7 @@ from types import SimpleNamespace
 import pytest
 
 from thoth import __main__ as thoth_main
+from thoth import signals as thoth_signals
 from thoth.__main__ import (
     CheckpointManager,
     OperationStatus,
@@ -54,16 +55,20 @@ def _make_stub_checkpoint_manager(tmp_path: Path) -> SimpleNamespace:
 
 @pytest.fixture(autouse=True)
 def _reset_interrupt_globals():
-    """Ensure each test starts with cleared interrupt state."""
-    thoth_main._interrupt_event.clear()
-    thoth_main._last_interrupt_at = None
-    thoth_main._current_checkpoint_manager = None
-    thoth_main._current_operation = None
+    """Ensure each test starts with cleared interrupt state.
+
+    Target thoth.signals directly for rebinds: writes to thoth.__main__ only
+    affect the re-export shim, but handle_sigint reads from thoth.signals.
+    """
+    thoth_signals._interrupt_event.clear()
+    thoth_signals._last_interrupt_at = None
+    thoth_signals._current_checkpoint_manager = None
+    thoth_signals._current_operation = None
     yield
-    thoth_main._interrupt_event.clear()
-    thoth_main._last_interrupt_at = None
-    thoth_main._current_checkpoint_manager = None
-    thoth_main._current_operation = None
+    thoth_signals._interrupt_event.clear()
+    thoth_signals._last_interrupt_at = None
+    thoth_signals._current_checkpoint_manager = None
+    thoth_signals._current_operation = None
 
 
 class TestSaveResultAtomic:
@@ -133,32 +138,32 @@ class TestInterruptFlag:
     """The cooperative interrupt flag raises KeyboardInterrupt when set."""
 
     def test_raise_if_interrupted_raises_when_flag_set(self) -> None:
-        thoth_main._interrupt_event.set()
+        thoth_signals._interrupt_event.set()
         with pytest.raises(KeyboardInterrupt):
-            thoth_main._raise_if_interrupted()
+            thoth_signals._raise_if_interrupted()
 
     def test_raise_if_interrupted_no_raise_when_clear(self) -> None:
-        assert not thoth_main._interrupt_event.is_set()
-        thoth_main._raise_if_interrupted()
+        assert not thoth_signals._interrupt_event.is_set()
+        thoth_signals._raise_if_interrupted()
 
 
 class TestHandleSigint:
     """handle_sigint: cooperative on first press, force-exit on quick second press."""
 
     def test_first_press_sets_flag_and_returns(self, tmp_path: Path) -> None:
-        thoth_main._current_checkpoint_manager = _make_stub_checkpoint_manager(tmp_path)
-        thoth_main._current_operation = _make_operation(tmp_path)
+        thoth_signals._current_checkpoint_manager = _make_stub_checkpoint_manager(tmp_path)
+        thoth_signals._current_operation = _make_operation(tmp_path)
 
         handle_sigint(signal.SIGINT, None)
 
-        assert thoth_main._interrupt_event.is_set()
-        assert thoth_main._last_interrupt_at is not None
+        assert thoth_signals._interrupt_event.is_set()
+        assert thoth_signals._last_interrupt_at is not None
 
     def test_first_press_writes_checkpoint(self, tmp_path: Path) -> None:
         cm = _make_stub_checkpoint_manager(tmp_path)
         op = _make_operation(tmp_path)
-        thoth_main._current_checkpoint_manager = cm
-        thoth_main._current_operation = op
+        thoth_signals._current_checkpoint_manager = cm
+        thoth_signals._current_operation = op
 
         handle_sigint(signal.SIGINT, None)
 
@@ -168,8 +173,8 @@ class TestHandleSigint:
         assert data["status"] == "cancelled"
 
     def test_second_press_within_window_force_exits(self, tmp_path: Path) -> None:
-        thoth_main._current_checkpoint_manager = _make_stub_checkpoint_manager(tmp_path)
-        thoth_main._current_operation = _make_operation(tmp_path)
+        thoth_signals._current_checkpoint_manager = _make_stub_checkpoint_manager(tmp_path)
+        thoth_signals._current_operation = _make_operation(tmp_path)
 
         handle_sigint(signal.SIGINT, None)
 
@@ -180,34 +185,34 @@ class TestHandleSigint:
     def test_press_after_window_is_cooperative_again(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        thoth_main._current_checkpoint_manager = _make_stub_checkpoint_manager(tmp_path)
-        thoth_main._current_operation = _make_operation(tmp_path)
+        thoth_signals._current_checkpoint_manager = _make_stub_checkpoint_manager(tmp_path)
+        thoth_signals._current_operation = _make_operation(tmp_path)
 
         clock = {"t": 1000.0}
 
         def fake_monotonic() -> float:
             return clock["t"]
 
-        monkeypatch.setattr(thoth_main.time, "monotonic", fake_monotonic)
+        monkeypatch.setattr(thoth_signals.time, "monotonic", fake_monotonic)
 
         handle_sigint(signal.SIGINT, None)
-        first_ts = thoth_main._last_interrupt_at
+        first_ts = thoth_signals._last_interrupt_at
 
         clock["t"] += 5.0  # outside the 2s second-press window
 
         handle_sigint(signal.SIGINT, None)
 
-        assert thoth_main._interrupt_event.is_set()
-        assert thoth_main._last_interrupt_at is not None
-        assert thoth_main._last_interrupt_at > first_ts
+        assert thoth_signals._interrupt_event.is_set()
+        assert thoth_signals._last_interrupt_at is not None
+        assert thoth_signals._last_interrupt_at > first_ts
 
     def test_first_press_with_no_active_operation_is_noop(self) -> None:
-        thoth_main._current_checkpoint_manager = None
-        thoth_main._current_operation = None
+        thoth_signals._current_checkpoint_manager = None
+        thoth_signals._current_operation = None
 
         handle_sigint(signal.SIGINT, None)
 
-        assert thoth_main._interrupt_event.is_set()
+        assert thoth_signals._interrupt_event.is_set()
 
 
 class TestCheckpointManagerStillWorks:

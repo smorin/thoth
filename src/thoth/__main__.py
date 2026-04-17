@@ -26,16 +26,12 @@ SECTION 18: MAIN ENTRY POINT             - Application entry point
 """
 
 import asyncio
-import json
 import math
 import os
 import random
 import re
 import signal
 import sys
-import threading
-import time
-from dataclasses import asdict
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -68,30 +64,18 @@ from tenacity import (
 console = Console()
 
 # Re-export version constants from thoth.config (single source of truth).
-from thoth.config import CONFIG_VERSION, THOTH_VERSION  # noqa: E402
-
-# Global variables for signal handling
-_current_checkpoint_manager = None
-_current_operation = None
-
-# Cooperative SIGINT cancellation state.
-# First Ctrl-C sets _interrupt_event; the async poll loop raises KeyboardInterrupt
-# at its next await boundary so in-flight writes can unwind cleanly.
-# A second Ctrl-C within _INTERRUPT_FORCE_EXIT_WINDOW_S force-exits.
-_interrupt_event: threading.Event = threading.Event()
-_last_interrupt_at: float | None = None
-_INTERRUPT_FORCE_EXIT_WINDOW_S = 2.0
-
-
-def _raise_if_interrupted() -> None:
-    """Raise KeyboardInterrupt if a SIGINT has been received."""
-    if _interrupt_event.is_set():
-        raise KeyboardInterrupt
-
-
 import thoth.config as _thoth_config  # noqa: E402
-from thoth.config import (  # noqa: E402
+
+# Signal-handling state and handler live in thoth.signals (single source of truth).
+# Re-exported here by reference so tests that READ these names via thoth.__main__
+# (e.g. `thoth_main._interrupt_event.set()`) observe the live values. Tests that
+# REBIND these names (e.g. `thoth_main._current_operation = op`) must target
+# `thoth.signals` directly — rebinding the shim does not affect the signals module.
+import thoth.signals as _thoth_signals  # noqa: E402
+from thoth.config import (  # noqa: E402  # noqa: E402
     BUILTIN_MODES,
+    CONFIG_VERSION,
+    THOTH_VERSION,
     ConfigManager,
     get_config,
 )
@@ -122,6 +106,10 @@ from thoth.models import (  # noqa: E402
     ModelCache,
     OperationStatus,
 )
+from thoth.signals import (  # noqa: E402
+    _raise_if_interrupted,
+    handle_sigint,
+)
 
 # BUILTIN_MODES, ConfigSchema, ConfigManager live in thoth.config
 # (re-exported near the top of this file).
@@ -135,7 +123,6 @@ from thoth.utils import (  # noqa: E402
     check_disk_space,
     generate_operation_id,
     mask_api_key,
-    sanitize_slug,
 )
 
 PROVIDER_ENV_VARS: dict[str, str] = {
@@ -923,225 +910,13 @@ def show_general_help(ctx):
 
 
 # ============================================================================
-# SECTION 9: CHECKPOINT MANAGEMENT
+# SECTIONS 9 & 10: CHECKPOINT + OUTPUT MANAGEMENT
 # ============================================================================
-# Handles saving and loading operation state for async operations
+# CheckpointManager lives in thoth.checkpoint; OutputManager lives in thoth.output.
+# Both are re-exported below.
 # ============================================================================
-
-
-class CheckpointManager:
-    """Handles operation persistence with corruption recovery"""
-
-    def __init__(self, config: ConfigManager):
-        self.checkpoint_dir = Path(config.data["paths"]["checkpoint_dir"])
-        self.checkpoint_dir.mkdir(parents=True, exist_ok=True)
-
-    async def save(self, operation: OperationStatus) -> None:
-        """Save operation state atomically"""
-        checkpoint_file = self.checkpoint_dir / f"{operation.id}.json"
-        temp_file = checkpoint_file.with_suffix(".tmp")
-
-        data = asdict(operation)
-        # Convert datetime and Path objects to strings
-        data["created_at"] = operation.created_at.isoformat()
-        data["updated_at"] = operation.updated_at.isoformat()
-        data["output_paths"] = {k: str(v) for k, v in operation.output_paths.items()}
-        data["input_files"] = [str(p) for p in operation.input_files]
-
-        async with aiofiles.open(temp_file, "w") as f:
-            await f.write(json.dumps(data, indent=2))
-
-        temp_file.replace(checkpoint_file)
-
-    async def load(self, operation_id: str) -> OperationStatus | None:
-        """Load operation from checkpoint with corruption handling"""
-        checkpoint_file = self.checkpoint_dir / f"{operation_id}.json"
-
-        if not checkpoint_file.exists():
-            return None
-
-        try:
-            async with aiofiles.open(checkpoint_file) as f:
-                data = json.loads(await f.read())
-
-            # Convert back to proper types
-            data["created_at"] = datetime.fromisoformat(data["created_at"])
-            data["updated_at"] = datetime.fromisoformat(data["updated_at"])
-            data["output_paths"] = {k: Path(v) for k, v in data["output_paths"].items()}
-            data["input_files"] = [Path(p) for p in data.get("input_files", [])]
-            # failure_type is new; default to None for checkpoints written before this field
-            data.setdefault("failure_type", None)
-
-            return OperationStatus(**data)
-        except (json.JSONDecodeError, KeyError, ValueError):
-            console.print(f"[yellow]Warning:[/yellow] Checkpoint file corrupted: {checkpoint_file}")
-            console.print("[yellow]Creating new checkpoint. Previous state lost.[/yellow]")
-            # Remove corrupted file
-            checkpoint_file.unlink()
-            return None
-
-    def trigger_checkpoint(self, event: str) -> bool:
-        """Determine if checkpoint should be saved based on event"""
-        checkpoint_events = [
-            "operation_start",
-            "provider_start",
-            "provider_complete",
-            "provider_fail",
-            "operation_complete",
-            "operation_fail",
-        ]
-        return event in checkpoint_events
-
-
-# ============================================================================
-# SECTION 10: OUTPUT MANAGEMENT
-# ============================================================================
-# Handles file output, report generation, and output organization
-# ============================================================================
-
-
-class OutputManager:
-    """Manages research output files"""
-
-    def __init__(self, config: ConfigManager, no_metadata: bool = False):
-        self.config = config
-        self.base_output_dir = Path(config.data["paths"]["base_output_dir"])
-        self.format = config.data["output"]["format"]
-        self.no_metadata = no_metadata
-
-    def get_output_path(
-        self,
-        operation: OperationStatus,
-        provider: str,
-        output_dir: str | None = None,
-    ) -> Path:
-        """Generate output path based on mode"""
-        timestamp = operation.created_at.strftime(self.config.data["output"]["timestamp_format"])
-        slug = sanitize_slug(operation.prompt)
-
-        # Determine output directory
-        if output_dir:
-            # Explicit override - takes precedence over everything
-            base_dir = Path(output_dir)
-        elif operation.project:
-            # Project mode
-            base_dir = self.base_output_dir / operation.project
-        else:
-            # Ad-hoc mode - current directory
-            base_dir = Path.cwd()
-
-        # Ensure directory exists
-        base_dir.mkdir(parents=True, exist_ok=True)
-
-        # Generate filename with provider
-        ext = "md" if self.format == "markdown" else "json"
-        if provider == "combined":
-            # Special case for combined reports: <timestamp>_<mode>_combined_<slug>.md
-            base_name = f"{timestamp}_{operation.mode}_combined_{slug}"
-        else:
-            base_name = f"{timestamp}_{operation.mode}_{provider}_{slug}"
-        filename = f"{base_name}.{ext}"
-
-        # Handle deduplication
-        output_path = base_dir / filename
-        counter = 1
-        while output_path.exists():
-            filename = f"{base_name}-{counter}.{ext}"
-            output_path = base_dir / filename
-            counter += 1
-
-        return output_path
-
-    async def save_result(
-        self,
-        operation: OperationStatus,
-        provider: str,
-        content: str,
-        output_dir: str | None = None,
-        model: str | None = None,
-        system_prompt: str | None = None,
-    ) -> Path:
-        """Save research result to file"""
-        output_path = self.get_output_path(operation, provider, output_dir)
-
-        # Check disk space before writing
-        if not check_disk_space(output_path.parent, 10):  # 10MB minimum
-            raise DiskSpaceError("Insufficient disk space to save results")
-
-        if (
-            self.format == "markdown"
-            and self.config.data["output"]["include_metadata"]
-            and not self.no_metadata
-        ):
-            # Add metadata header
-            metadata = f"""---
-prompt: {operation.prompt}
-mode: {operation.mode}
-provider: {provider}
-model: {model if model else "Unknown"}
-operation_id: {operation.id}
-created_at: {operation.created_at.isoformat()}
-"""
-            if operation.input_files:
-                metadata += "input_files:\n"
-                for f in operation.input_files:
-                    metadata += f"  - {f}\n"
-            metadata += "---\n\n"
-
-            # Add prompt section
-            metadata += "### Prompt\n\n```\n"
-            if system_prompt:
-                metadata += f"System: {system_prompt}\n\nUser: {operation.prompt}\n"
-            else:
-                metadata += operation.prompt + "\n"
-            metadata += "```\n\n"
-
-            content = metadata + content
-
-        # Atomic write: stage to sibling .tmp file, then rename.
-        # Ctrl-C mid-write leaves only the tmp file; the final path is never truncated.
-        tmp_path = output_path.with_name(output_path.name + ".tmp")
-        try:
-            async with aiofiles.open(tmp_path, "w", encoding="utf-8") as f:
-                await f.write(content)
-            os.replace(tmp_path, output_path)
-        except BaseException:
-            if tmp_path.exists():
-                try:
-                    tmp_path.unlink()
-                except OSError:
-                    pass
-            raise
-
-        return output_path
-
-    async def generate_combined_report(
-        self,
-        operation: OperationStatus,
-        contents: dict[str, str],
-        output_dir: str | None = None,
-        system_prompt: str | None = None,
-    ) -> Path:
-        """Generate a combined report from multiple provider results"""
-        # Create synthesized content
-        combined_content = f"# Combined Research Report: {operation.prompt}\n\n"
-        combined_content += f"Generated: {datetime.now().isoformat()}\n\n"
-
-        for provider, content in contents.items():
-            combined_content += f"\n## {provider.title()} Results\n\n"
-            combined_content += content
-            combined_content += "\n\n---\n\n"
-
-        # Save combined report
-        return await self.save_result(
-            operation,
-            "combined",
-            combined_content,
-            output_dir,
-            model="Multiple",
-            system_prompt=system_prompt,
-        )
-
+from thoth.checkpoint import CheckpointManager  # noqa: E402
+from thoth.output import OutputManager  # noqa: E402
 
 # ============================================================================
 # SECTION 11: MODEL CACHE MANAGEMENT
@@ -2123,7 +1898,6 @@ async def run_research(
     timeout_override: float | None = None,
 ):
     """Execute research operation"""
-    global _current_checkpoint_manager, _current_operation
 
     config = get_config()
 
@@ -2183,9 +1957,9 @@ async def run_research(
     checkpoint_manager = CheckpointManager(config)
     output_manager = OutputManager(config, no_metadata=no_metadata)
 
-    # Set globals for signal handling
-    _current_checkpoint_manager = checkpoint_manager
-    _current_operation = operation
+    # Set signal-handling globals so handle_sigint can checkpoint the active op.
+    _thoth_signals._current_checkpoint_manager = checkpoint_manager
+    _thoth_signals._current_operation = operation
 
     # Save initial checkpoint
     await checkpoint_manager.save(operation)
@@ -2338,7 +2112,6 @@ async def _run_polling_loop(
     provider-level status change. Returns
     ``(completed_providers, failed_providers)``.
     """
-    global _current_checkpoint_manager, _current_operation
 
     poll_refresh_interval = 1.0
     poll_jitter_ratio = 0.10
@@ -2478,8 +2251,8 @@ async def _run_polling_loop(
             operation.transition_to("failed", error=f"Timeout exceeded ({max_wait / 60} minutes)")
             operation.failure_type = "recoverable"
             await checkpoint_manager.save(operation)
-            _current_checkpoint_manager = None
-            _current_operation = None
+            _thoth_signals._current_checkpoint_manager = None
+            _thoth_signals._current_operation = None
             return completed_providers, failed_providers
 
         await asyncio.sleep(_next_poll_sleep(asyncio.get_running_loop().time(), next_poll_at))
@@ -2503,7 +2276,6 @@ async def _execute_research(
     prompt: str,
 ):
     """Execute research with providers and track progress."""
-    global _current_checkpoint_manager, _current_operation
 
     with Progress(
         SpinnerColumn(),
@@ -2590,8 +2362,8 @@ async def _execute_research(
             operation.transition_to("failed", error=f"All providers failed: {all_errors}")
             operation.failure_type = op_failure_type
             await checkpoint_manager.save(operation)
-            _current_checkpoint_manager = None
-            _current_operation = None
+            _thoth_signals._current_checkpoint_manager = None
+            _thoth_signals._current_operation = None
             if op_failure_type == "recoverable":
                 console.print(
                     f"\n[cyan]This failure is recoverable.[/cyan] "
@@ -2636,15 +2408,14 @@ async def _execute_research(
         console.print("\nTo generate a combined report, run with --combined flag")
 
     # Clear globals after successful completion
-    _current_checkpoint_manager = None
-    _current_operation = None
+    _thoth_signals._current_checkpoint_manager = None
+    _thoth_signals._current_operation = None
 
     return operation.id
 
 
 async def resume_operation(operation_id: str, verbose: bool):
     """Resume an existing operation by reconnecting to its providers."""
-    global _current_checkpoint_manager, _current_operation
 
     config = get_config()
     checkpoint_manager = CheckpointManager(config)
@@ -2718,8 +2489,8 @@ async def resume_operation(operation_id: str, verbose: bool):
                 pdata.pop("error", None)
         await checkpoint_manager.save(operation)
 
-    _current_checkpoint_manager = checkpoint_manager
-    _current_operation = operation
+    _thoth_signals._current_checkpoint_manager = checkpoint_manager
+    _thoth_signals._current_operation = operation
 
     with Progress(
         SpinnerColumn(),
@@ -2779,8 +2550,8 @@ async def resume_operation(operation_id: str, verbose: bool):
             operation.transition_to("failed", error=f"All providers failed: {all_errors}")
             operation.failure_type = op_failure_type
             await checkpoint_manager.save(operation)
-            _current_checkpoint_manager = None
-            _current_operation = None
+            _thoth_signals._current_checkpoint_manager = None
+            _thoth_signals._current_operation = None
             if op_failure_type == "recoverable":
                 console.print(
                     f"\n[cyan]This failure is recoverable.[/cyan] "
@@ -2795,8 +2566,8 @@ async def resume_operation(operation_id: str, verbose: bool):
     for provider_name, path in operation.output_paths.items():
         console.print(f"  • {path.name}")
 
-    _current_checkpoint_manager = None
-    _current_operation = None
+    _thoth_signals._current_checkpoint_manager = None
+    _thoth_signals._current_operation = None
 
 
 async def show_status(operation_id: str):
@@ -4312,61 +4083,8 @@ async def enter_interactive_mode(
 # ============================================================================
 # SECTION 17: SIGNAL HANDLING
 # ============================================================================
-# System signal handlers for graceful shutdown
+# handle_sigint lives in thoth.signals (re-exported near the top of this file).
 # ============================================================================
-
-
-def handle_sigint(signum, frame):
-    """Handle Ctrl-C cooperatively.
-
-    First press: set the cancellation flag, write a synchronous checkpoint, and
-    return. The async poll loop picks up the flag at its next await boundary
-    and raises KeyboardInterrupt so in-flight aiofiles writes unwind cleanly.
-
-    Second press within _INTERRUPT_FORCE_EXIT_WINDOW_S: force-exit immediately.
-    """
-    global _last_interrupt_at
-
-    now = time.monotonic()
-    if (
-        _interrupt_event.is_set()
-        and _last_interrupt_at is not None
-        and now - _last_interrupt_at < _INTERRUPT_FORCE_EXIT_WINDOW_S
-    ):
-        console.print("\n[red]Force exit.[/red]")
-        sys.exit(1)
-
-    _last_interrupt_at = now
-    _interrupt_event.set()
-
-    console.print("\n[yellow]Interrupt received. Saving checkpoint...[/yellow]")
-
-    if _current_checkpoint_manager and _current_operation:
-        if _current_operation.status not in ("cancelled", "failed", "completed"):
-            _current_operation.transition_to("cancelled")
-
-        try:
-            checkpoint_dir = _current_checkpoint_manager.checkpoint_dir
-            checkpoint_file = checkpoint_dir / f"{_current_operation.id}.json"
-            temp_file = checkpoint_file.with_suffix(".tmp")
-
-            data = asdict(_current_operation)
-            data["created_at"] = _current_operation.created_at.isoformat()
-            data["updated_at"] = _current_operation.updated_at.isoformat()
-            data["output_paths"] = {k: str(v) for k, v in _current_operation.output_paths.items()}
-            data["input_files"] = [str(p) for p in _current_operation.input_files]
-
-            with open(temp_file, "w") as f:
-                f.write(json.dumps(data, indent=2))
-            temp_file.replace(checkpoint_file)
-
-            console.print(
-                f"[green]✓[/green] Checkpoint saved. Resume with: thoth --resume {_current_operation.id}"
-            )
-        except Exception as e:
-            console.print(f"[red]Error saving checkpoint:[/red] {e}")
-
-    console.print("[dim]Finishing current write; press Ctrl-C again to force exit.[/dim]")
 
 
 # ============================================================================
