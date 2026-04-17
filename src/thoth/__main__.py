@@ -31,15 +31,12 @@ import math
 import os
 import random
 import re
-import shutil
 import signal
 import sys
 import threading
 import time
-import tomllib
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict
 from datetime import datetime, timedelta
-from enum import Enum
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -70,9 +67,8 @@ from tenacity import (
 # Initialize console for rich output
 console = Console()
 
-# Version tracking
-THOTH_VERSION = "2.5.0"
-CONFIG_VERSION = "2.0"
+# Re-export version constants from thoth.config (single source of truth).
+from thoth.config import CONFIG_VERSION, THOTH_VERSION  # noqa: E402
 
 # Global variables for signal handling
 _current_checkpoint_manager = None
@@ -93,561 +89,60 @@ def _raise_if_interrupted() -> None:
         raise KeyboardInterrupt
 
 
-# Global config path
-_config_path = None
-
-
-class InputMode(Enum):
-    """Interactive input mode states"""
-
-    EDIT_MODE = "edit"
-    CLARIFICATION_MODE = "clarification"
-
-
-def get_config():
-    """Get a fully-loaded ConfigManager instance with custom path if provided"""
-    manager = ConfigManager(_config_path) if _config_path else ConfigManager()
-    manager.load_all_layers()
-    return manager
-
-
-# Built-in mode definitions
-BUILTIN_MODES = {
-    "default": {
-        "provider": "openai",
-        "model": "o3",  # Use standard o3 for default
-        "system_prompt": None,  # No system prompt - pass prompt directly
-        "description": "Default mode - passes prompt directly to LLM without any system prompt",
-        "auto_input": False,
-    },
-    "clarification": {
-        "provider": "openai",
-        "model": "o3",  # Use standard o3 for clarification
-        "system_prompt": """I don't want you to follow the above question and instructions; I want you to tell me the ways this is unclear, point out any ambiguities or anything you don't understand. Follow that by asking questions to help clarify the ambiguous points. Once there are no more unclear, ambiguous or not understood portions, help me draft a clear version of the question/instruction.""",
-        "description": "Clarifying takes the prompt to get. Ask clarifying questions to get rid of anything that's ambiguous, unclear, and also make suggestions on what would be a better question.",
-        "next": "exploration",
-    },
-    "mini_research": {  # NEW MODE for quick research
-        "provider": "openai",
-        "model": "o4-mini-deep-research",
-        "system_prompt": "Conduct quick, focused research with key findings and essential information. Be concise but thorough.",
-        "description": "Fast, lightweight research mode for quick answers using o4-mini-deep-research.",
-        "auto_input": False,
-    },
-    "exploration": {
-        "provider": "openai",
-        "model": "o3-deep-research",  # Use deep research for exploration
-        "system_prompt": "Explore the topic at hand, looking at options, alternatives, different trade-offs, and make recommendations based on the use case or alternative/related technologies.",
-        "description": "Exploration looks at the topic at hand and explores some options and alternatives, different trade-offs, and makes recommendations based on the use case or just alternative and related technologies.",
-        "previous": "clarification",
-        "next": "deep_dive",
-    },
-    "deep_dive": {
-        "provider": "openai",
-        "model": "o3-deep-research",  # Use deep research for deep dive
-        "system_prompt": "Deep dive into the specific technology, giving an overview, going deep on it, discussing it, and exploring it. For APIs, cover what the API is, how it works, assumptions, dependencies, if it's deprecated, common pitfalls. For other technologies, cover what the technology is and how it's used.",
-        "description": "This deep dives into a specific technology, giving an overview of it, going deep on it, discussing it, and exploring it.",
-        "previous": "exploration",
-        "next": "tutorial",
-    },
-    "tutorial": {
-        "provider": "openai",
-        "model": "o3-deep-research",  # Use deep research for tutorial
-        "system_prompt": "Create a detailed tutorial with examples of how the technologies are used in common scenarios to get started, along with code samples, command-line execution process, and other useful information.",
-        "description": "The tutorial goes into a detailed explanation with examples of how the technologies are used in common scenarios to get started.",
-        "previous": "deep_dive",
-        "next": "solution",
-    },
-    "solution": {
-        "provider": "openai",
-        "model": "o3-deep-research",  # Use deep research for solution
-        "system_prompt": "Design a specific solution to solve the given problem using appropriate technology. Focus on practical implementation.",
-        "description": "A solution generally goes into a specific solution to solve a specific problem using technology.",
-        "previous": "tutorial",
-        "next": "prd",
-    },
-    "prd": {
-        "provider": "openai",
-        "model": "o3-deep-research",  # Use deep research for PRD
-        "system_prompt": "Create a Product Requirements Document based on prior research. Use previous research on solutions and technologies to create a comprehensive requirements document.",
-        "description": "Product Requirements Document based on prior research, we'll create the PRD looking at previous research on solutions to technologies.",
-        "previous": "solution",
-        "next": "tdd",
-    },
-    "tdd": {
-        "provider": "openai",
-        "model": "o3-deep-research",  # Use deep research for TDD
-        "system_prompt": "Create a Technical Design Document based on the PRD and prior research. Consider best practices on architecture and good abstractions to make things maintainable and well-structured in code.",
-        "description": "The Technical Design Document based on the PRD and prior research puts together a technical design document.",
-        "previous": "prd",
-    },
-    "thinking": {
-        "provider": "openai",
-        "model": "o3-deep-research",  # Use deep research for thinking
-        "temperature": 0.4,
-        "system_prompt": "You are a helpful assistant for quick analysis.",
-        "description": "Quick thinking and analysis mode for simple questions.",
-    },
-    "deep_research": {
-        "provider": "openai",
-        "model": "o3-deep-research",  # Explicit deep research model
-        "providers": ["openai"],
-        "parallel": True,
-        "system_prompt": "Conduct comprehensive research with citations and multiple perspectives.\nOrganize findings clearly and highlight key insights.",
-        "description": "Deep research mode using OpenAI for comprehensive analysis.",
-        "previous": "exploration",
-        "auto_input": True,
-    },
-    "comparison": {  # Add comparison mode with deep research
-        "provider": "openai",
-        "model": "o3-deep-research",
-        "system_prompt": "Compare and contrast the given options, technologies, or approaches. Provide a detailed analysis of pros, cons, and recommendations.",
-        "description": "Comparative analysis mode for evaluating multiple options.",
-    },
-}
-
-# ============================================================================
-# SECTION 1: CONFIGURATION MANAGEMENT
-# ============================================================================
-# This section contains all configuration-related classes and functions:
-# - ConfigSchema: Defines configuration defaults and structure
-# - ConfigManager: Manages layered configuration with precedence
-# ============================================================================
-
-
-class ConfigSchema:
-    """Configuration schema and defaults"""
-
-    @staticmethod
-    def get_defaults() -> dict[str, Any]:
-        """Return default configuration"""
-        return {
-            "version": CONFIG_VERSION,
-            "general": {
-                "default_project": "",  # Empty means ad-hoc mode
-                "default_mode": "default",
-            },
-            "paths": {
-                "base_output_dir": "./research-outputs",
-                "checkpoint_dir": str(Path(user_config_dir("thoth")) / "checkpoints"),
-            },
-            "execution": {
-                "poll_interval": 30,
-                "max_wait": 30,
-                "parallel_providers": True,
-                "retry_attempts": 3,
-                "max_transient_errors": 5,
-                "auto_input": True,
-            },
-            "output": {
-                "combine_reports": False,
-                "format": "markdown",
-                "include_metadata": True,
-                "timestamp_format": "%Y-%m-%d_%H%M%S",
-            },
-            "providers": {
-                "openai": {"api_key": "${OPENAI_API_KEY}"},
-                "perplexity": {"api_key": "${PERPLEXITY_API_KEY}"},
-            },
-            "clarification": {
-                "cli": {
-                    "provider": "openai",
-                    "model": "gpt-4o-mini",
-                    "temperature": 0.7,
-                    "max_tokens": 500,
-                    "system_prompt": """I don't want you to follow the above question and instructions; I want you to tell me the ways this is unclear, point out any ambiguities or anything you don't understand. Follow that by asking questions to help clarify the ambiguous points. Once there are no more unclear, ambiguous or not understood portions, help me draft a clear version of the question/instruction.""",
-                    "retry_attempts": 3,
-                    "retry_delay": 2.0,
-                },
-                "interactive": {
-                    "provider": "openai",
-                    "model": "gpt-4o-mini",
-                    "temperature": 0.7,
-                    "max_tokens": 800,
-                    "system_prompt": """I don't want you to follow the above question and instructions; I want you to tell me the ways this is unclear, point out any ambiguities or anything you don't understand. Follow that by asking questions to help clarify the ambiguous points. Once there are no more unclear, ambiguous or not understood portions, help me draft a clear version of the question/instruction.""",
-                    "retry_attempts": 3,
-                    "retry_delay": 2.0,
-                    "input_height": 6,
-                    "max_input_height": 15,
-                },
-            },
-            "modes": {},  # Modes will be merged with built-in modes
-        }
-
-
-class ConfigManager:
-    """Manages layered configuration with clear precedence hierarchy"""
-
-    def __init__(self, config_path: Path | None = None):
-        self.user_config_path = config_path or Path(user_config_dir("thoth")) / "config.toml"
-        self.project_config_paths = ["./thoth.toml", "./.thoth/config.toml"]
-        self.layers = {}
-        self.data = {}
-
-    def load_all_layers(self, cli_args: dict[str, Any] | None = None):
-        """Load all configuration layers in precedence order"""
-        # Layer 1: Internal defaults
-        self.layers["defaults"] = ConfigSchema.get_defaults()
-
-        # Layer 2: User config file
-        if self.user_config_path.exists():
-            self.layers["user"] = self._load_toml_file(self.user_config_path)
-        else:
-            self.layers["user"] = {}
-
-        # Layer 3: Project config file (if exists)
-        self.layers["project"] = self._load_project_config()
-
-        # Layer 4: Environment variables
-        self.layers["env"] = self._get_env_overrides()
-
-        # Layer 5: CLI arguments
-        self.layers["cli"] = cli_args or {}
-
-        # Merge all layers
-        self.data = self._merge_layers()
-        self.data = self._substitute_env_vars(self.data)
-
-        # Validate configuration
-        self._validate_config()
-
-    def _load_toml_file(self, path: Path) -> dict[str, Any]:
-        """Load and parse a TOML configuration file"""
-        try:
-            with open(path, "rb") as f:
-                config = tomllib.load(f)
-
-            # Check version compatibility
-            config_version = config.get("version", "0.0")
-            if config_version != CONFIG_VERSION:
-                console.print(f"[yellow]Warning:[/yellow] Config version mismatch in {path}")
-
-            # Expand paths and substitute env vars
-            config = self._expand_paths(config)
-            config = self._substitute_env_vars(config)
-
-            return config
-        except Exception as e:
-            console.print(f"[yellow]Warning:[/yellow] Failed to load {path}: {e}")
-            return {}
-
-    def _load_project_config(self) -> dict[str, Any]:
-        """Load project-level configuration if it exists"""
-        for config_path in self.project_config_paths:
-            path = Path(config_path)
-            if path.exists():
-                return self._load_toml_file(path)
-        return {}
-
-    def _get_env_overrides(self) -> dict[str, Any]:
-        """Get configuration overrides from environment variables"""
-        overrides = {}
-
-        # Map of env vars to config paths
-        env_mappings = {
-            "THOTH_DEFAULT_MODE": "general.default_mode",
-            "THOTH_DEFAULT_PROJECT": "general.default_project",
-            "THOTH_OUTPUT_DIR": "paths.base_output_dir",
-            "THOTH_POLL_INTERVAL": "execution.poll_interval",
-            "THOTH_MAX_WAIT": "execution.max_wait",
-        }
-
-        for env_var, config_path in env_mappings.items():
-            value = os.getenv(env_var)
-            if value is not None:
-                # Convert config path to nested dict
-                keys = config_path.split(".")
-                current = overrides
-                for key in keys[:-1]:
-                    if key not in current:
-                        current[key] = {}
-                    current = current[key]
-
-                # Try to convert to appropriate type
-                try:
-                    if value.lower() in ("true", "false"):
-                        current[keys[-1]] = value.lower() == "true"
-                    elif value.isdigit():
-                        current[keys[-1]] = int(value)
-                    else:
-                        current[keys[-1]] = value
-                except Exception:
-                    current[keys[-1]] = value
-
-        return overrides
-
-    def _merge_layers(self) -> dict[str, Any]:
-        """Merge all configuration layers with proper precedence"""
-        result = {}
-
-        # Merge in order of precedence
-        for layer_name in ["defaults", "user", "project", "env", "cli"]:
-            if layer_name in self.layers and self.layers[layer_name]:
-                result = self._deep_merge(result, self.layers[layer_name])
-
-        return result
-
-    def _deep_merge(self, base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
-        """Deep merge two dictionaries"""
-        result = base.copy()
-
-        for key, value in override.items():
-            if key in result and isinstance(result[key], dict) and isinstance(value, dict):
-                result[key] = self._deep_merge(result[key], value)
-            else:
-                result[key] = value
-
-        return result
-
-    def _expand_paths(self, config: dict[str, Any]) -> dict[str, Any]:
-        """Expand paths in configuration"""
-        if "paths" in config:
-            for key, value in config["paths"].items():
-                path = Path(value).expanduser()
-                if path.exists() and path.is_symlink():
-                    path = path.resolve()
-                config["paths"][key] = str(path)
-        return config
-
-    def _substitute_env_vars(self, config: dict[str, Any]) -> dict[str, Any]:
-        """Replace ${VAR} with environment variable values"""
-
-        def substitute(value):
-            if isinstance(value, str) and value.startswith("${") and value.endswith("}"):
-                var_name = value[2:-1]
-                return os.getenv(var_name, value)
-            elif isinstance(value, dict):
-                return {k: substitute(v) for k, v in value.items()}
-            elif isinstance(value, list):
-                return [substitute(v) for v in value]
-            return value
-
-        return substitute(config)
-
-    def _validate_config(self):
-        """Validate the merged configuration"""
-        # Basic validation - can be extended
-        required_keys = [
-            "version",
-            "general",
-            "paths",
-            "execution",
-            "output",
-            "providers",
-        ]
-        for key in required_keys:
-            if key not in self.data:
-                raise ThothError(
-                    f"Missing required configuration key: {key}",
-                    "Check your configuration file",
-                )
-
-    def get(self, key: str, default: Any = None) -> Any:
-        """Get configuration value using dot notation"""
-        keys = key.split(".")
-        current = self.data
-
-        for k in keys:
-            if isinstance(current, dict) and k in current:
-                current = current[k]
-            else:
-                return default
-
-        return current
-
-    def get_mode_config(self, mode: str) -> dict[str, Any]:
-        """Get mode configuration, merging built-in with user config"""
-        # Start with built-in mode if it exists
-        mode_config = BUILTIN_MODES.get(mode, {}).copy()
-
-        # Override with user config if present
-        user_mode = self.data.get("modes", {}).get(mode, {})
-        mode_config.update(user_mode)
-
-        return mode_config
-
-    def get_effective_config(self) -> dict[str, Any]:
-        """Return the merged effective configuration"""
-        return self.data
-
-
-# ============================================================================
-# SECTION 2: UTILITY FUNCTIONS
-# ============================================================================
-# General-purpose utility functions used throughout the application
-# ============================================================================
-
-
-def generate_operation_id() -> str:
-    """Generate unique operation ID with 16-char UUID suffix"""
-    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-    unique_suffix = str(uuid4()).replace("-", "")[:16]  # 16 chars for better uniqueness
-    return f"research-{timestamp}-{unique_suffix}"
-
-
-def sanitize_slug(text: str, max_length: int = 50) -> str:
-    """Convert text to filename-safe slug"""
-    # Keep alphanumeric and spaces, replace spaces with hyphens
-    slug = re.sub(r"[^a-zA-Z0-9\s-]", "", text)
-    slug = re.sub(r"\s+", "-", slug.strip())
-    return slug[:max_length].lower()
-
-
-def mask_api_key(key: str) -> str:
-    """Mask API key for display"""
-    if not key or len(key) < 8:
-        return "***"
-    return f"{key[:3]}...{key[-3:]}"
-
-
-def check_disk_space(path: Path, required_mb: int = 100) -> bool:
-    """Check if sufficient disk space is available"""
-    stat = shutil.disk_usage(path)
-    available_mb = stat.free / (1024 * 1024)
-    return available_mb >= required_mb
-
+import thoth.config as _thoth_config  # noqa: E402
+from thoth.config import (  # noqa: E402
+    BUILTIN_MODES,
+    ConfigManager,
+    get_config,
+)
 
 # ============================================================================
 # SECTION 3: DATA MODELS
 # ============================================================================
 # Core data structures and models used by the application
 # ============================================================================
-
-
-# Valid operation states
-VALID_OPERATION_STATES = {"queued", "running", "completed", "failed", "cancelled"}
-
-# Valid state transitions: source → allowed targets
-VALID_STATE_TRANSITIONS = {
-    "queued": {"running", "cancelled", "failed"},
-    "running": {"completed", "failed", "cancelled"},
-    "completed": set(),  # terminal state
-    "failed": {"running"},  # resumable when failure_type is "recoverable"
-    "cancelled": {"running"},  # resumable after Ctrl-C
-}
-
-
-@dataclass
-class OperationStatus:
-    """Status of a research operation"""
-
-    id: str
-    prompt: str
-    mode: str
-    status: str  # "queued", "running", "completed", "failed", "cancelled"
-    created_at: datetime
-    updated_at: datetime
-    providers: dict[str, dict[str, Any]] = field(default_factory=dict)
-    output_paths: dict[str, Path] = field(default_factory=dict)
-    error: str | None = None
-    progress: float = 0.0  # 0.0 to 1.0
-    project: str | None = None
-    input_files: list[Path] = field(default_factory=list)
-    failure_type: str | None = None  # "recoverable" | "permanent" | None
-
-    def transition_to(self, new_status: str, error: str | None = None) -> None:
-        """Transition to a new status with validation.
-
-        Validates that the transition is allowed per the state machine.
-        Updates updated_at timestamp automatically.
-        """
-        if new_status not in VALID_OPERATION_STATES:
-            raise ValueError(
-                f"Invalid operation status: '{new_status}'. Valid states: {VALID_OPERATION_STATES}"
-            )
-        allowed = VALID_STATE_TRANSITIONS.get(self.status, set())
-        if new_status not in allowed:
-            raise ValueError(
-                f"Invalid state transition: '{self.status}' → '{new_status}'. "
-                f"Allowed transitions from '{self.status}': {allowed}"
-            )
-        self.status = new_status
-        self.updated_at = datetime.now()
-        if error is not None:
-            self.error = error
-
-
-@dataclass
-class InteractiveInitialSettings:
-    """Initial settings for interactive mode from command-line arguments"""
-
-    mode: str | None = None
-    provider: str | None = None
-    prompt: str | None = None
-    async_mode: bool = False
-    cli_api_keys: dict[str, str | None] | None = None
-    clarify_mode: bool = False  # Start in clarification mode if True
-
-
+# OperationStatus / InteractiveInitialSettings live in thoth.models
+# (re-exported above near the top of this file).
 # ============================================================================
 # SECTION 4: ERROR HANDLING
 # ============================================================================
-# Custom exception classes and error handling utilities
+# Custom exception classes live in thoth.errors; re-exported for back-compat.
+# handle_error() stays here because it prints via the module-level `console`.
 # ============================================================================
+from thoth.errors import (  # noqa: E402
+    APIKeyError,
+    APIQuotaError,
+    DiskSpaceError,
+    ProviderError,
+    ThothError,
+)
+from thoth.models import (  # noqa: E402
+    InputMode,
+    InteractiveInitialSettings,
+    ModelCache,
+    OperationStatus,
+)
 
-
-class ThothError(Exception):
-    """Base exception for Thoth errors"""
-
-    def __init__(self, message: str, suggestion: str | None = None, exit_code: int = 1):
-        self.message = message
-        self.suggestion = suggestion
-        self.exit_code = exit_code
-        super().__init__(message)
-
-
-class APIKeyError(ThothError):
-    """Missing or invalid API key"""
-
-    def __init__(self, provider: str):
-        super().__init__(
-            f"{provider} API key not found",
-            f"Set {provider.upper()}_API_KEY or run 'thoth init'",
-            exit_code=2,
-        )
-
-
-class ProviderError(ThothError):
-    """Provider-specific error with raw error support"""
-
-    def __init__(self, provider: str, message: str, raw_error: str | None = None):
-        self.provider = provider
-        self.raw_error = raw_error
-        super().__init__(
-            f"{provider} error: {message}",
-            "Check API status or try again later",
-            exit_code=3,
-        )
-
-
-class DiskSpaceError(ThothError):
-    """Insufficient disk space"""
-
-    def __init__(self, message: str):
-        super().__init__(message, "Free up disk space and try again", exit_code=8)
-
-
-class APIQuotaError(ThothError):
-    """API quota exceeded"""
-
-    def __init__(self, provider: str):
-        super().__init__(
-            f"{provider} API quota exceeded",
-            "Wait for quota reset or upgrade your plan",
-            exit_code=9,
-        )
-
+# BUILTIN_MODES, ConfigSchema, ConfigManager live in thoth.config
+# (re-exported near the top of this file).
+# ============================================================================
+# SECTION 2: UTILITY FUNCTIONS
+# ============================================================================
+# General-purpose utility functions used throughout the application
+# ============================================================================
+from thoth.utils import (  # noqa: E402
+    _is_placeholder,
+    check_disk_space,
+    generate_operation_id,
+    mask_api_key,
+    sanitize_slug,
+)
 
 PROVIDER_ENV_VARS: dict[str, str] = {
     "openai": "OPENAI_API_KEY",
     "perplexity": "PERPLEXITY_API_KEY",
     "mock": "MOCK_API_KEY",
 }
-
-
-def _is_placeholder(value: str) -> bool:
-    """Unresolved ${VAR} substitution from ConfigManager should count as missing."""
-    return value.startswith("${") and value.endswith("}")
 
 
 def resolve_api_key(
@@ -869,9 +364,8 @@ def cli(
       thoth help status
     """
     # Set global config path if provided
-    global _config_path
     if config_path:
-        _config_path = Path(config_path).expanduser().resolve()
+        _thoth_config._config_path = Path(config_path).expanduser().resolve()
 
     # Show version if requested
     if version:
@@ -1656,111 +1150,7 @@ created_at: {operation.created_at.isoformat()}
 # ============================================================================
 
 
-class ModelCache:
-    """Manages cached model lists for providers"""
-
-    def __init__(self, provider_name: str, cache_dir: Path | None = None):
-        """Initialize model cache for a specific provider
-
-        Args:
-            provider_name: Name of the provider (openai, perplexity, etc.)
-            cache_dir: Optional cache directory, defaults to ~/.thoth/model_cache/
-        """
-        self.provider_name = provider_name
-        if cache_dir:
-            self.cache_dir = cache_dir
-        else:
-            self.cache_dir = Path(user_config_dir("thoth")) / "model_cache"
-        self.cache_dir.mkdir(parents=True, exist_ok=True)
-        self.cache_file = self.cache_dir / f"{provider_name}_models.json"
-        self.cache_max_age_days = 7  # Cache expires after 1 week
-
-    def get_cache_path(self) -> Path:
-        """Get the cache file path for this provider"""
-        return self.cache_file
-
-    def is_cache_valid(self, force_refresh: bool = False) -> bool:
-        """Check if cache exists and is still valid
-
-        Args:
-            force_refresh: If True, cache is always considered invalid
-
-        Returns:
-            True if cache is valid and can be used, False otherwise
-        """
-        if force_refresh:
-            return False
-
-        if not self.cache_file.exists():
-            return False
-
-        try:
-            with open(self.cache_file) as f:
-                cache_data = json.load(f)
-
-            cached_at = datetime.fromisoformat(cache_data.get("cached_at", ""))
-            age = datetime.now() - cached_at
-
-            return age.days < self.cache_max_age_days
-        except (json.JSONDecodeError, ValueError, KeyError):
-            # Cache file is corrupted or invalid
-            return False
-
-    def load_cache(self) -> list[dict[str, Any]] | None:
-        """Load models from cache if valid
-
-        Returns:
-            List of model dictionaries if cache is valid, None otherwise
-        """
-        if not self.cache_file.exists():
-            return None
-
-        try:
-            with open(self.cache_file) as f:
-                cache_data = json.load(f)
-            return cache_data.get("models", [])
-        except (json.JSONDecodeError, FileNotFoundError):
-            return None
-
-    def save_cache(self, models: list[dict[str, Any]]) -> None:
-        """Save models to cache with timestamp
-
-        Args:
-            models: List of model dictionaries to cache
-        """
-        cache_data = {
-            "provider": self.provider_name,
-            "cached_at": datetime.now().isoformat(),
-            "models": models,
-        }
-
-        # Save atomically with temp file
-        temp_file = self.cache_file.with_suffix(".tmp")
-        with open(temp_file, "w") as f:
-            json.dump(cache_data, f, indent=2)
-        temp_file.replace(self.cache_file)
-
-    def clear_cache(self) -> None:
-        """Remove the cache file for this provider"""
-        if self.cache_file.exists():
-            self.cache_file.unlink()
-
-    def get_cache_age(self) -> timedelta | None:
-        """Get the age of the cache
-
-        Returns:
-            timedelta object representing cache age, or None if cache doesn't exist
-        """
-        if not self.cache_file.exists():
-            return None
-
-        try:
-            with open(self.cache_file) as f:
-                cache_data = json.load(f)
-            cached_at = datetime.fromisoformat(cache_data.get("cached_at", ""))
-            return datetime.now() - cached_at
-        except (json.JSONDecodeError, ValueError, KeyError):
-            return None
+# ModelCache lives in thoth.models (re-exported near the top of this file).
 
 
 # ============================================================================
