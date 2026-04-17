@@ -1196,7 +1196,7 @@ api_key = "{api_key}"
             status = "[green]PASS[/green]" if result.passed else "[red]FAIL[/red]"
 
             # Handle error message and API key indication
-            if result.is_api_key_failure:
+            if not result.passed and result.is_api_key_failure:
                 error_msg = "🔑 API Key Required"
             else:
                 error_msg = result.error_message or ""
@@ -2315,9 +2315,7 @@ def _run_thoth_subprocess(
 
 def _extract_resume_id(output: str) -> str:
     """Pull an operation ID out of a 'Resume with: thoth --resume <id>' hint."""
-    match = re.search(
-        r"thoth --resume\s+(research-\d{8}-\d{6}-[a-f0-9]{16})", output
-    )
+    match = re.search(r"thoth --resume\s+(research-\d{8}-\d{6}-[a-f0-9]{16})", output)
     if not match:
         raise AssertionError(f"resume hint not found in output: {output!r}")
     return match.group(1)
@@ -2332,9 +2330,7 @@ def _res_01() -> None:
     )
     combined = stdout + stderr
     assert exit_code != 0, f"expected non-zero on flake exhaustion, got {exit_code}"
-    assert "This failure is recoverable" in combined, (
-        f"recoverable hint missing: {combined!r}"
-    )
+    assert "This failure is recoverable" in combined, f"recoverable hint missing: {combined!r}"
     op_id = _extract_resume_id(combined)
 
     checkpoint = load_checkpoint_data(op_id)
@@ -2355,9 +2351,7 @@ def _res_01() -> None:
             f"expected successful resume, got exit={exit_code2}\n"
             f"stdout={stdout2!r}\nstderr={stderr2!r}"
         )
-        assert "Research completed" in combined2, (
-            f"expected completion on resume: {combined2!r}"
-        )
+        assert "Research completed" in combined2, f"expected completion on resume: {combined2!r}"
     finally:
         remove_test_checkpoint(op_id)
         cleanup_test_files(["*_mock_*.md"])
@@ -2417,9 +2411,7 @@ def _res_03() -> None:
         {"THOTH_MOCK_BEHAVIOR": "default", "THOTH_POLL_INTERVAL": "0.1"},
     )
     combined = stdout + stderr
-    assert exit_code == 0, (
-        f"expected successful first run, got exit={exit_code}\n{combined!r}"
-    )
+    assert exit_code == 0, f"expected successful first run, got exit={exit_code}\n{combined!r}"
     after = {p.stem for p in checkpoint_dir.glob("research-*.json")}
     new_ops = after - before
     assert len(new_ops) == 1, (
