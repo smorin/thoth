@@ -1,4 +1,4 @@
-## [ ] Project P08: Typed Exceptions, Unified API Key Resolution, Drop Legacy Config Shim (v2.8.0)
+## [-] Project P08: Typed Exceptions, Unified API Key Resolution, Drop Legacy Config Shim (v2.8.0)
 **Goal**: Replace string-based error discrimination in OpenAIProvider.submit with typed openai SDK exceptions, unify API key resolution precedence (CLI > env > config) via a single resolver, and delete the legacy `Config` shim now that `ConfigManager` is used everywhere.
 
 **Out of Scope**
@@ -27,18 +27,18 @@
 - [x] [P08-T05] Rewrite OpenAIProvider.submit exception handling with typed openai.* catches
 - [x] [P08-T06] Update tenacity `retry_if_exception_type` to (openai.APITimeoutError, openai.APIConnectionError)
 - [x] [P08-T07] Delete the 16-elif string-matching block in submit
-- [ ] [P08-TS13] tests/test_api_key_resolver.py: CLI arg beats env var
-- [ ] [P08-TS14] env var beats config dict
-- [ ] [P08-TS15] Missing key everywhere raises APIKeyError with provider name in message
-- [ ] [P08-TS16] Unresolved `${VAR}` placeholder treated as missing key, raises APIKeyError
-- [ ] [P08-TS17] Empty-string CLI flag falls through to env (not treated as "explicit empty")
-- [ ] [P08-TS18] thoth_test: perplexity with empty PERPLEXITY_API_KEY fails with APIKeyError matching `r"perplexity API key not found"`
-- [ ] [P08-T08] Add PROVIDER_ENV_VARS constant + resolve_api_key function at module scope
-- [ ] [P08-T09] Replace mock-branch API-key resolution in create_provider with resolve_api_key call
-- [ ] [P08-T10] Replace real-provider-branch API-key resolution in create_provider with resolve_api_key call
-- [ ] [P08-T11] Mirror the update in ProviderRegistry.create for consistency
+- [x] [P08-TS13] tests/test_api_key_resolver.py: CLI arg beats env var
+- [x] [P08-TS14] env var beats config dict
+- [x] [P08-TS15] Missing key everywhere raises APIKeyError with provider name in message
+- [x] [P08-TS16] Unresolved `${VAR}` placeholder treated as missing key, raises APIKeyError
+- [x] [P08-TS17] Empty-string CLI flag falls through to env (not treated as "explicit empty")
+- [x] [P08-TS18] thoth_test: perplexity with empty PERPLEXITY_API_KEY fails with APIKeyError matching `r"perplexity API key not found"`
+- [x] [P08-T08] Add PROVIDER_ENV_VARS constant + resolve_api_key function at module scope
+- [x] [P08-T09] Replace mock-branch API-key resolution in create_provider with resolve_api_key call
+- [x] [P08-T10] Replace real-provider-branch API-key resolution in create_provider with resolve_api_key call
+- [x] [P08-T11] Mirror the update in ProviderRegistry.create for consistency
 - [ ] [P08-T12] Update CHANGELOG.md under v2.8.0
-- [ ] [P08-T13] Update PROJECTS.md (mark tasks complete as each ships)
+- [x] [P08-T13] Update PROJECTS.md (mark tasks complete as each ships)
 
 ### Automated Verification
 - `make env-check` passes

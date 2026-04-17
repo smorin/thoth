@@ -2633,6 +2633,15 @@ all_tests = [
         expected_stdout_patterns=[r"openai API key not found"],
         expected_exit_code=1,
     ),
+    # P08-TS18: empty perplexity key is routed through resolve_api_key (mirror of M2T-01)
+    TestCase(
+        test_id="P08-TS18",
+        description="Empty PERPLEXITY_API_KEY triggers APIKeyError via resolve_api_key",
+        command=[THOTH_EXECUTABLE, "--provider", "perplexity", "test perplexity missing key"],
+        env={"PERPLEXITY_API_KEY": ""},
+        expected_stdout_patterns=[r"perplexity API key not found"],
+        expected_exit_code=1,
+    ),
     # API Key Masking Test (F-19/M2-08)
     TestCase(
         test_id="M2T-08",

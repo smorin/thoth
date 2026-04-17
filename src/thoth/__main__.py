@@ -638,6 +638,47 @@ class APIQuotaError(ThothError):
         )
 
 
+PROVIDER_ENV_VARS: dict[str, str] = {
+    "openai": "OPENAI_API_KEY",
+    "perplexity": "PERPLEXITY_API_KEY",
+    "mock": "MOCK_API_KEY",
+}
+
+
+def _is_placeholder(value: str) -> bool:
+    """Unresolved ${VAR} substitution from ConfigManager should count as missing."""
+    return value.startswith("${") and value.endswith("}")
+
+
+def resolve_api_key(
+    provider_name: str,
+    cli_api_key: str | None,
+    provider_config: dict[str, Any],
+    env_var_name: str | None = None,
+) -> str:
+    """Resolve a provider API key with precedence: CLI > env > config.
+
+    Empty strings and unresolved `${VAR}` placeholders are treated as missing
+    at every tier, so an empty --api-key flag falls through to the env var.
+    Raises APIKeyError if nothing resolves.
+    """
+    env_name = env_var_name or PROVIDER_ENV_VARS.get(provider_name)
+
+    if cli_api_key and not _is_placeholder(cli_api_key):
+        return cli_api_key
+
+    if env_name:
+        env_val = os.getenv(env_name, "")
+        if env_val and not _is_placeholder(env_val):
+            return env_val
+
+    cfg_val = provider_config.get("api_key", "") or ""
+    if cfg_val and not _is_placeholder(cfg_val):
+        return cfg_val
+
+    raise APIKeyError(provider_name)
+
+
 def handle_error(error: Exception):
     """Display error with appropriate formatting"""
     if isinstance(error, ThothError):
@@ -2517,11 +2558,7 @@ class ProviderRegistry:
 
         # Handle mock provider specially
         if provider_name == "mock":
-            mock_api_key = (
-                cli_api_key or os.getenv("MOCK_API_KEY", "") or provider_config.get("api_key", "")
-            )
-            if not mock_api_key or (mock_api_key.startswith("${") and mock_api_key.endswith("}")):
-                raise APIKeyError("mock")
+            mock_api_key = resolve_api_key("mock", cli_api_key, provider_config)
             if mock_api_key == "invalid":
                 raise ThothError(
                     "Invalid mock API key format",
@@ -2530,9 +2567,7 @@ class ProviderRegistry:
             return MockProvider(name=provider_name, delay=0.1, api_key=mock_api_key)
 
         # Handle real providers
-        api_key = cli_api_key or provider_config.get("api_key", "")
-        if not api_key or (api_key.startswith("${") and api_key.endswith("}")):
-            raise APIKeyError(provider_name)
+        api_key = resolve_api_key(provider_name, cli_api_key, provider_config)
 
         # Apply timeout override if provided
         if timeout_override is not None:
@@ -2563,21 +2598,7 @@ def create_provider(
     provider_config = config.data["providers"].get(provider_name, {}).copy()
 
     if provider_name == "mock":
-        # Mock provider accepts any API key (for testing)
-        # Check environment variable first
-        mock_api_key = os.getenv("MOCK_API_KEY", "")
-
-        # Override with CLI key if provided
-        if cli_api_key:
-            mock_api_key = cli_api_key
-
-        # Override with config key if no env/cli key
-        if not mock_api_key:
-            mock_api_key = provider_config.get("api_key", "")
-
-        # Mock provider requires some API key (can be dummy)
-        if not mock_api_key or (mock_api_key.startswith("${") and mock_api_key.endswith("}")):
-            raise APIKeyError("mock")
+        mock_api_key = resolve_api_key("mock", cli_api_key, provider_config)
 
         # Special validation for testing: reject "invalid" as API key
         if mock_api_key == "invalid":
@@ -2585,16 +2606,7 @@ def create_provider(
 
         return MockProvider(name=provider_name, delay=0.1, api_key=mock_api_key)
 
-    # Get API key from provider config
-    api_key = provider_config.get("api_key", "")
-
-    # Override with CLI key if provided
-    if cli_api_key:
-        api_key = cli_api_key
-
-    # Check if API key exists or is still a placeholder
-    if not api_key or (api_key.startswith("${") and api_key.endswith("}")):
-        raise APIKeyError(provider_name)
+    api_key = resolve_api_key(provider_name, cli_api_key, provider_config)
 
     # Apply timeout override if provided
     if timeout_override is not None and provider_name in ["openai", "perplexity"]:
