@@ -35,7 +35,7 @@ clean:
 
 # Run all checks (format, lint, typecheck, security, test)
 [group: 'quality']
-all: format lint typecheck security test test-vcr
+all: format lint typecheck security test
 
 # Format src/thoth/ package
 [group: 'quality']

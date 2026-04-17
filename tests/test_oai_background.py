@@ -11,7 +11,10 @@ from __future__ import annotations
 import asyncio
 import types
 from datetime import datetime
+from pathlib import Path
 from typing import Any, cast
+
+import pytest
 
 from tests._fixture_helpers import (
     make_mock_openai_client,
@@ -19,6 +22,12 @@ from tests._fixture_helpers import (
 )
 from thoth.__main__ import OperationStatus, _execute_research
 from thoth.providers.openai import OpenAIProvider
+
+
+@pytest.fixture(autouse=True)
+def _isolate_config(isolated_thoth_home: Path) -> Path:
+    return isolated_thoth_home
+
 
 # ----- check_status() variants (OAI-BG-01…08) -----------------------------
 
@@ -288,6 +297,9 @@ def test_error_provider_fails_operation() -> None:
     assert op.status == "failed", f"error provider should set operation to failed, got: {op.status}"
     assert op.providers["mock"]["status"] == "failed", (
         f"error provider should be normalized to failed, got: {op.providers}"
+    )
+    assert op.providers["mock"].get("failure_type") == "recoverable", (
+        f"'error' provider status should route to recoverable, got: {op.providers}"
     )
 
 

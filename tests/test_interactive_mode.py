@@ -37,7 +37,10 @@ def test_basic_interactive_mode_stores_last_operation_id(
     prompts = iter(["interactive stored op id"])
 
     def fake_input(prompt: object = "") -> str:
-        return next(prompts)
+        try:
+            return next(prompts)
+        except StopIteration as exc:
+            raise EOFError("no more inputs") from exc
 
     monkeypatch.setattr(thoth_main, "PROMPT_TOOLKIT_AVAILABLE", False)
     monkeypatch.setattr(thoth_main, "run_research", cast(Any, fake_run_research))

@@ -7,9 +7,17 @@ from __future__ import annotations
 
 import asyncio
 import types
+from pathlib import Path
 from typing import Any, cast
 
+import pytest
+
 from thoth.providers.openai import OpenAIProvider
+
+
+@pytest.fixture(autouse=True)
+def _isolate_config(isolated_thoth_home: Path) -> Path:
+    return isolated_thoth_home
 
 
 def test_max_tool_calls_reaches_request_payload() -> None:

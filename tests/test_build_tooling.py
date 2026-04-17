@@ -7,10 +7,13 @@ actually executing the underlying commands.
 from __future__ import annotations
 
 import subprocess
+from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 
 def _run(cmd: list[str], timeout: int = 5) -> tuple[int, str, str]:
-    result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, cwd=PROJECT_ROOT)
     return result.returncode, result.stdout, result.stderr
 
 

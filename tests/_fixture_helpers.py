@@ -141,7 +141,7 @@ def make_mock_openai_result_response(
     reasoning_summary: list[str] | None = None,
 ) -> types.SimpleNamespace:
     """Build a fake completed OpenAI Responses API result object for parser tests."""
-    ann_objs = [types.SimpleNamespace(**a) for a in (annotations or [])]
+    ann_objs = [types.SimpleNamespace(**{"type": "url_citation", **a}) for a in (annotations or [])]
     content_item = types.SimpleNamespace(type="output_text", text=text, annotations=ann_objs)
     message_item = types.SimpleNamespace(type="message", content=[content_item])
     items: list[object] = []
@@ -174,6 +174,7 @@ def write_test_checkpoint(
         "progress": 1.0 if status == "completed" else 0.0,
         "project": None,
         "input_files": [],
+        "failure_type": None,
     }
     data.update(overrides)
     checkpoint_file = checkpoint_dir / f"{operation_id}.json"

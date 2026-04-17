@@ -4,9 +4,17 @@ from __future__ import annotations
 
 import asyncio
 import types
+from pathlib import Path
+
+import pytest
 
 from tests._fixture_helpers import make_mock_openai_result_response
 from thoth.providers.openai import OpenAIProvider
+
+
+@pytest.fixture(autouse=True)
+def _isolate_config(isolated_thoth_home: Path) -> Path:
+    return isolated_thoth_home
 
 
 def test_sources_section_present_when_annotations_exist() -> None:
