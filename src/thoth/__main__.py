@@ -1911,6 +1911,100 @@ This mock provider successfully completed the research task.
         ]
 
 
+def _map_openai_error(
+    exc: BaseException, model: str | None = None, verbose: bool = False
+) -> ThothError:
+    """Map an openai SDK exception to a Thoth error type.
+
+    Ordering note: APITimeoutError is a subclass of APIConnectionError, so it is
+    checked first. RateLimitError inspects body/code to route insufficient_quota
+    specifically to APIQuotaError.
+    """
+    raw = str(exc) if verbose else None
+
+    if isinstance(exc, openai.AuthenticationError):
+        msg = str(exc).lower()
+        if "incorrect api key" in msg:
+            return ThothError(
+                "Invalid OpenAI API key",
+                "Please check your API key at https://platform.openai.com/account/api-keys",
+            )
+        return APIKeyError("openai")
+
+    if isinstance(exc, openai.RateLimitError):
+        body = getattr(exc, "body", None) or {}
+        body_str = str(body)
+        code = None
+        if isinstance(body, dict):
+            err = body.get("error") if isinstance(body.get("error"), dict) else None
+            if isinstance(err, dict):
+                code = err.get("code")
+        if code == "insufficient_quota" or "insufficient_quota" in body_str:
+            return APIQuotaError("openai")
+        return ProviderError(
+            "openai",
+            "Rate limit exceeded. Please wait a moment and try again.",
+            raw_error=raw,
+        )
+
+    if isinstance(exc, openai.NotFoundError):
+        return ProviderError(
+            "openai",
+            f"Model '{model}' not found. Please check available models with "
+            f"'thoth providers -- --models --provider openai'",
+            raw_error=raw,
+        )
+
+    if isinstance(exc, openai.BadRequestError):
+        msg = str(exc)
+        msg_lower = msg.lower()
+        if "unsupported parameter" in msg_lower and "temperature" in msg_lower:
+            return ProviderError(
+                "openai",
+                f"Model '{model}' does not support temperature parameter. "
+                "This is likely a response model (o3, o3-deep-research, etc.)",
+                raw_error=raw,
+            )
+        if "unsupported parameter" in msg_lower:
+            param_match = re.search(r"'(\w+)'", msg)
+            param_name = param_match.group(1) if param_match else "unknown"
+            return ProviderError(
+                "openai",
+                f"Model '{model}' does not support parameter '{param_name}'",
+                raw_error=raw,
+            )
+        return ProviderError("openai", f"Invalid request: {msg}", raw_error=raw)
+
+    if isinstance(exc, openai.PermissionDeniedError):
+        return ProviderError("openai", "Permission denied by OpenAI API.", raw_error=raw)
+
+    if isinstance(exc, openai.InternalServerError):
+        return ProviderError(
+            "openai",
+            "OpenAI server error. Try again in a moment.",
+            raw_error=raw,
+        )
+
+    if isinstance(exc, openai.APITimeoutError):
+        return ProviderError(
+            "openai",
+            "Request timed out. Try increasing timeout in config.",
+            raw_error=raw,
+        )
+
+    if isinstance(exc, openai.APIConnectionError):
+        return ProviderError(
+            "openai",
+            "Failed to connect to OpenAI API. Check your internet connection.",
+            raw_error=raw,
+        )
+
+    if isinstance(exc, openai.APIError):
+        return ProviderError("openai", str(exc), raw_error=raw)
+
+    return ProviderError("openai", str(exc), raw_error=raw)
+
+
 # Placeholder for real providers
 class OpenAIProvider(ResearchProvider):
     """OpenAI Responses API implementation for Deep Research"""
@@ -1927,168 +2021,91 @@ class OpenAIProvider(ResearchProvider):
         timeout = self.config.get("timeout", 30.0)
         self.client = AsyncOpenAI(api_key=api_key, timeout=httpx.Timeout(timeout, connect=5.0))
 
-    @retry(
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=4, max=10),
-        retry=retry_if_exception_type((httpx.TimeoutException, httpx.ConnectError)),
-    )
     async def submit(
         self, prompt: str, mode: str, system_prompt: str | None = None, verbose: bool = False
     ) -> str:
-        """Submit research using OpenAI Responses API"""
+        """Submit research using OpenAI Responses API.
+
+        Raw openai.* exceptions from the retryable inner call are mapped here to
+        ThothError subclasses so callers always see a single error taxonomy.
+        """
         try:
-            # Build structured input format for Responses API
-            input_messages = []
+            return await self._submit_with_retry(prompt, mode, system_prompt, verbose)
+        except (openai.APIError, Exception) as e:
+            raise _map_openai_error(e, model=self.model, verbose=verbose) from e
 
-            if system_prompt:
-                input_messages.append(
-                    {
-                        "role": "developer",
-                        "content": [{"type": "input_text", "text": system_prompt}],
-                    }
-                )
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=4, max=10),
+        retry=retry_if_exception_type((openai.APITimeoutError, openai.APIConnectionError)),
+        reraise=True,
+    )
+    async def _submit_with_retry(
+        self, prompt: str, mode: str, system_prompt: str | None, verbose: bool
+    ) -> str:
+        """Inner retryable submit. Raises raw openai.* exceptions."""
+        # Build structured input format for Responses API
+        input_messages: list[dict[str, Any]] = []
 
+        if system_prompt:
             input_messages.append(
-                {"role": "user", "content": [{"type": "input_text", "text": prompt}]}
+                {
+                    "role": "developer",
+                    "content": [{"type": "input_text", "text": system_prompt}],
+                }
             )
 
-            # Configure tools based on model type
-            tools: list[dict[str, Any]] = []
-            if "deep-research" in self.model:
-                tools = [{"type": "web_search_preview"}]
-                if self.config.get("code_interpreter", True):
-                    tools.append({"type": "code_interpreter"})
+        input_messages.append({"role": "user", "content": [{"type": "input_text", "text": prompt}]})
 
-            # Determine if background mode should be used
-            # Use background for deep-research models or if explicitly configured
-            use_background = "deep-research" in self.model or self.config.get("background", False)
+        # Configure tools based on model type
+        tools: list[dict[str, Any]] = []
+        if "deep-research" in self.model:
+            tools = [{"type": "web_search_preview"}]
+            if self.config.get("code_interpreter", True):
+                tools.append({"type": "code_interpreter"})
 
-            # Get configuration parameters
-            temperature = self.config.get("temperature", 0.7)
+        # Determine if background mode should be used
+        # Use background for deep-research models or if explicitly configured
+        use_background = "deep-research" in self.model or self.config.get("background", False)
 
-            # Build request parameters
-            request_params: dict[str, Any] = {
-                "model": self.model,
-                "input": input_messages,
-                "reasoning": {"summary": "auto"},  # Enable reasoning summaries
-                "tools": tools,
-                "background": use_background,
-            }
+        # Get configuration parameters
+        temperature = self.config.get("temperature", 0.7)
 
-            # Only add temperature for models that support it
-            # Response models (o3, o3-deep-research, o4-mini-deep-research) don't support temperature
-            if not self.model.startswith("o"):
-                request_params["temperature"] = temperature
+        # Build request parameters
+        request_params: dict[str, Any] = {
+            "model": self.model,
+            "input": input_messages,
+            "reasoning": {"summary": "auto"},  # Enable reasoning summaries
+            "tools": tools,
+            "background": use_background,
+        }
 
-            # Apply max_tool_calls if configured — primary lever for cost and latency control
-            max_tool_calls = self.config.get("max_tool_calls")
-            if max_tool_calls is not None:
-                request_params["max_tool_calls"] = max_tool_calls
+        # Only add temperature for models that support it
+        # Response models (o3, o3-deep-research, o4-mini-deep-research) don't support temperature
+        if not self.model.startswith("o"):
+            request_params["temperature"] = temperature
 
-            # Use Responses API
-            response = await self.client.responses.create(**request_params)
+        # Apply max_tool_calls if configured — primary lever for cost and latency control
+        max_tool_calls = self.config.get("max_tool_calls")
+        if max_tool_calls is not None:
+            request_params["max_tool_calls"] = max_tool_calls
 
-            # Store job information
-            job_id = (
-                response.id
-                if hasattr(response, "id")
-                else f"openai-{datetime.now().strftime('%Y%m%d%H%M%S')}-{uuid4().hex[:8]}"
-            )
-            self.jobs[job_id] = {
-                "response": response,
-                "background": use_background,
-                "created_at": datetime.now(),
-            }
+        # Use Responses API
+        response = await self.client.responses.create(**request_params)
 
-            return job_id
+        # Store job information
+        job_id = (
+            response.id
+            if hasattr(response, "id")
+            else f"openai-{datetime.now().strftime('%Y%m%d%H%M%S')}-{uuid4().hex[:8]}"
+        )
+        self.jobs[job_id] = {
+            "response": response,
+            "background": use_background,
+            "created_at": datetime.now(),
+        }
 
-        except httpx.TimeoutException as e:
-            raise ProviderError(
-                "openai",
-                "Request timed out. Try increasing timeout in config.",
-                raw_error=str(e) if verbose else None,
-            )
-        except httpx.ConnectError as e:
-            raise ProviderError(
-                "openai",
-                "Failed to connect to OpenAI API. Check your internet connection.",
-                raw_error=str(e) if verbose else None,
-            )
-        except Exception as e:
-            error_msg = str(e)
-            error_msg_lower = error_msg.lower()
-
-            # Check for authentication errors (401)
-            if (
-                "authentication" in error_msg_lower
-                or "api key" in error_msg_lower
-                or "401" in error_msg
-            ):
-                if "incorrect api key" in error_msg_lower:
-                    raise ThothError(
-                        "Invalid OpenAI API key",
-                        "Please check your API key at https://platform.openai.com/account/api-keys",
-                    )
-                else:
-                    raise APIKeyError("openai")
-
-            # Check for unsupported parameter errors
-            elif "unsupported parameter" in error_msg_lower:
-                if "'temperature'" in error_msg:
-                    raise ProviderError(
-                        "openai",
-                        f"Model '{self.model}' does not support temperature parameter. This is likely a response model (o3, o3-deep-research, etc.)",
-                        raw_error=str(e) if verbose else None,
-                    )
-                else:
-                    # Extract parameter name from error message
-                    import re
-
-                    param_match = re.search(r"'(\w+)'", error_msg)
-                    param_name = param_match.group(1) if param_match else "unknown"
-                    raise ProviderError(
-                        "openai",
-                        f"Model '{self.model}' does not support parameter '{param_name}'",
-                        raw_error=str(e) if verbose else None,
-                    )
-
-            # Check for rate limit errors (429)
-            elif "rate limit" in error_msg_lower or "429" in error_msg:
-                raise ProviderError(
-                    "openai",
-                    "Rate limit exceeded. Please wait a moment and try again.",
-                    raw_error=str(e) if verbose else None,
-                )
-
-            # Check for model not found errors (404)
-            elif "model" in error_msg_lower and (
-                "not found" in error_msg_lower or "404" in error_msg
-            ):
-                raise ProviderError(
-                    "openai",
-                    f"Model '{self.model}' not found. Please check available models with 'thoth providers -- --models --provider openai'",
-                    raw_error=str(e) if verbose else None,
-                )
-
-            # Check for quota exceeded errors
-            elif "quota" in error_msg_lower or "insufficient_quota" in error_msg_lower:
-                raise ProviderError(
-                    "openai",
-                    "API quota exceeded. Please check your OpenAI account billing.",
-                    raw_error=str(e) if verbose else None,
-                )
-
-            # Check for invalid request errors (400)
-            elif "invalid" in error_msg_lower or "400" in error_msg:
-                raise ProviderError(
-                    "openai",
-                    f"Invalid request: {error_msg}",
-                    raw_error=str(e) if verbose else None,
-                )
-
-            # Generic error
-            else:
-                raise ProviderError("openai", str(e), raw_error=str(e) if verbose else None)
+        return job_id
 
     async def check_status(self, job_id: str) -> dict[str, Any]:
         """Check actual status of research task"""

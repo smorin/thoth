@@ -12,21 +12,21 @@
 - [x] [P08-T01] Inline ConfigManager construction in get_config; call .load_all_layers()
 - [x] [P08-T02] Replace `Config` type annotations with `ConfigManager` at all call sites
 - [x] [P08-T03] Delete legacy `Config` class and simplify "handle both" shim in ProviderRegistry.create
-- [ ] [P08-TS02] tests/test_openai_errors.py: AuthenticationError → APIKeyError("openai")
-- [ ] [P08-TS03] RateLimitError (no quota body) → ProviderError with rate-limit message
-- [ ] [P08-TS04] RateLimitError with `insufficient_quota` body → APIQuotaError("openai")
-- [ ] [P08-TS05] NotFoundError → ProviderError referencing self.model
-- [ ] [P08-TS06] BadRequestError → ProviderError (including temperature-parameter guidance sub-case)
-- [ ] [P08-TS07] PermissionDeniedError → ProviderError
-- [ ] [P08-TS08] InternalServerError → ProviderError
-- [ ] [P08-TS09] APIConnectionError → ProviderError (non-retryable path)
-- [ ] [P08-TS10] Unknown Exception subclass → ProviderError fallback (defensive)
-- [ ] [P08-TS11] openai.APITimeoutError triggers 3 tenacity retries, then maps to ProviderError
-- [ ] [P08-TS12] VCR happy-path unchanged: _map_openai_error is not invoked during successful submit replay
-- [ ] [P08-T04] Add module-level `_map_openai_error(exc, model=None, verbose=False) -> ThothError`
-- [ ] [P08-T05] Rewrite OpenAIProvider.submit exception handling with typed openai.* catches
-- [ ] [P08-T06] Update tenacity `retry_if_exception_type` to (openai.APITimeoutError, openai.APIConnectionError)
-- [ ] [P08-T07] Delete the 16-elif string-matching block in submit
+- [x] [P08-TS02] tests/test_openai_errors.py: AuthenticationError → APIKeyError("openai")
+- [x] [P08-TS03] RateLimitError (no quota body) → ProviderError with rate-limit message
+- [x] [P08-TS04] RateLimitError with `insufficient_quota` body → APIQuotaError("openai")
+- [x] [P08-TS05] NotFoundError → ProviderError referencing self.model
+- [x] [P08-TS06] BadRequestError → ProviderError (including temperature-parameter guidance sub-case)
+- [x] [P08-TS07] PermissionDeniedError → ProviderError
+- [x] [P08-TS08] InternalServerError → ProviderError
+- [x] [P08-TS09] APIConnectionError → ProviderError (non-retryable path)
+- [x] [P08-TS10] Unknown Exception subclass → ProviderError fallback (defensive)
+- [x] [P08-TS11] openai.APITimeoutError triggers 3 tenacity retries, then maps to ProviderError
+- [x] [P08-TS12] VCR happy-path unchanged: _map_openai_error is not invoked during successful submit replay
+- [x] [P08-T04] Add module-level `_map_openai_error(exc, model=None, verbose=False) -> ThothError`
+- [x] [P08-T05] Rewrite OpenAIProvider.submit exception handling with typed openai.* catches
+- [x] [P08-T06] Update tenacity `retry_if_exception_type` to (openai.APITimeoutError, openai.APIConnectionError)
+- [x] [P08-T07] Delete the 16-elif string-matching block in submit
 - [ ] [P08-TS13] tests/test_api_key_resolver.py: CLI arg beats env var
 - [ ] [P08-TS14] env var beats config dict
 - [ ] [P08-TS15] Missing key everywhere raises APIKeyError with provider name in message
