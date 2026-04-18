@@ -260,12 +260,88 @@ def _op_unset(args: list[str]) -> int:
     return 0
 
 
+def _flatten_keys(data: dict[str, Any], prefix: str = "") -> list[str]:
+    out: list[str] = []
+    for k, v in data.items():
+        full = k if not prefix else f"{prefix}.{k}"
+        if isinstance(v, dict):
+            out.extend(_flatten_keys(v, full))
+        else:
+            out.append(full)
+    return out
+
+
+def _to_plain(data: Any) -> Any:
+    if isinstance(data, dict):
+        return {k: _to_plain(v) for k, v in data.items()}
+    if isinstance(data, list):
+        return [_to_plain(v) for v in data]
+    if isinstance(data, Path):
+        return str(data)
+    return data
+
+
+def _op_list(args: list[str]) -> int:
+    layer: str | None = None
+    keys_only = False
+    as_json = False
+    i = 0
+    while i < len(args):
+        a = args[i]
+        if a == "--layer":
+            if i + 1 >= len(args):
+                console.print("[red]Error:[/red] --layer requires a value")
+                return 2
+            layer = args[i + 1]
+            i += 2
+        elif a == "--keys":
+            keys_only = True
+            i += 1
+        elif a == "--json":
+            as_json = True
+            i += 1
+        else:
+            console.print(f"[red]Error:[/red] unknown arg: {a}")
+            return 2
+
+    cm = _load_manager()
+
+    if layer is not None:
+        if layer not in _VALID_LAYERS:
+            console.print(f"[red]Error:[/red] --layer must be one of {', '.join(_VALID_LAYERS)}")
+            return 2
+        data: dict[str, Any] = cm.layers.get(layer) or {}
+    else:
+        data = cm.data
+
+    if keys_only:
+        for key in sorted(_flatten_keys(data)):
+            print(key)
+        return 0
+
+    if as_json:
+        print(json.dumps(_to_plain(data), indent=2, sort_keys=True))
+        return 0
+
+    print(tomlkit.dumps(_to_plain(data)))
+    return 0
+
+
+def _op_path(args: list[str]) -> int:
+    project = "--project" in args
+    path = _target_path(project)
+    print(str(path))
+    return 0
+
+
 def config_command(op: str, args: list[str]) -> int:
     """Dispatch `thoth config <op>`. Returns a process exit code."""
     ops = {
         "get": _op_get,
         "set": _op_set,
         "unset": _op_unset,
+        "list": _op_list,
+        "path": _op_path,
     }
     if op not in ops:
         console.print(f"[red]Error:[/red] unknown config op: {op}")

@@ -147,6 +147,71 @@ def test_unset_project_target(
     assert "general" not in data
 
 
+def test_list_prints_toml(isolated_thoth_home: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    rc = config_command("list", [])
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert 'version = "2.0"' in out
+    assert "[general]" in out
+
+
+def test_list_keys_emits_sorted_dotted(
+    isolated_thoth_home: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    rc = config_command("list", ["--keys"])
+    out = capsys.readouterr().out.strip().splitlines()
+    assert rc == 0
+    assert "general.default_mode" in out
+    assert out == sorted(out)
+
+
+def test_list_json_is_valid_json(
+    isolated_thoth_home: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    import json
+
+    rc = config_command("list", ["--json"])
+    assert rc == 0
+    out = capsys.readouterr().out
+    data = json.loads(out)
+    assert "version" in data
+
+
+def test_list_layer_shows_one_layer(
+    isolated_thoth_home: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    config_command("set", ["general.default_mode", "exploration"])
+    capsys.readouterr()
+    rc = config_command("list", ["--layer", "defaults"])
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert 'default_mode = "default"' in out
+
+
+def test_path_prints_user_config_path(
+    isolated_thoth_home: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from thoth.paths import user_config_file
+
+    rc = config_command("path", [])
+    out = capsys.readouterr().out.strip()
+    assert rc == 0
+    assert out == str(user_config_file())
+
+
+def test_path_project_prints_project_path(
+    isolated_thoth_home: Path,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    rc = config_command("path", ["--project"])
+    out = capsys.readouterr().out.strip()
+    assert rc == 0
+    assert out == str(tmp_path / "thoth.toml")
+
+
 def test_set_preserves_existing_comments(isolated_thoth_home: Path) -> None:
     from thoth.paths import user_config_file
 
