@@ -114,6 +114,39 @@ def test_set_string_flag_forces_string(isolated_thoth_home: Path) -> None:
     assert data["execution"]["poll_interval"] == "15"
 
 
+def test_unset_removes_key(isolated_thoth_home: Path) -> None:
+    import tomllib
+
+    from thoth.paths import user_config_file
+
+    config_command("set", ["general.default_mode", "exploration"])
+    rc = config_command("unset", ["general.default_mode"])
+    assert rc == 0
+
+    data = tomllib.loads(user_config_file().read_text())
+    assert "general" not in data
+
+
+def test_unset_missing_key_is_noop(
+    isolated_thoth_home: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    rc = config_command("unset", ["general.default_mode"])
+    assert rc == 0
+
+
+def test_unset_project_target(
+    isolated_thoth_home: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import tomllib
+
+    monkeypatch.chdir(tmp_path)
+    config_command("set", ["--project", "general.default_mode", "deep_dive"])
+    rc = config_command("unset", ["--project", "general.default_mode"])
+    assert rc == 0
+    data = tomllib.loads((tmp_path / "thoth.toml").read_text())
+    assert "general" not in data
+
+
 def test_set_preserves_existing_comments(isolated_thoth_home: Path) -> None:
     from thoth.paths import user_config_file
 
