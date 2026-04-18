@@ -38,6 +38,9 @@ class ThothCommand(click.Command):
                 elif subcommand == "providers":
                     show_providers_help()
                     ctx.exit(0)
+                elif subcommand == "config":
+                    show_config_help()
+                    ctx.exit(0)
 
         return super().parse_args(ctx, args)
 
@@ -60,6 +63,7 @@ def build_epilog():
     lines.append("  init            Initialize configuration")
     lines.append("  status <ID>     Check operation status")
     lines.append("  list            List research operations")
+    lines.append("  config <OP>     Inspect and edit configuration")
     lines.append("  help [COMMAND]  Show help (general or command-specific)")
     lines.append("")
 
@@ -261,6 +265,7 @@ def show_general_help(ctx):
     console.print("  init            Initialize configuration")
     console.print("  status <ID>     Check operation status")
     console.print("  list            List research operations")
+    console.print("  config <OP>     Inspect and edit configuration")
     console.print("  help [COMMAND]  Show help (general or command-specific)")
     console.print("\n[bold]Research Modes:[/bold]")
     for mode_name, mode_config in BUILTIN_MODES.items():

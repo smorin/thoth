@@ -48,6 +48,7 @@ class CommandHandler:
             "providers": self.providers_command,
             "research": self.research_command,
             "help": self.help_command,
+            "config": self.config_command,
         }
 
     def execute(self, command: str, **params) -> Any:
@@ -157,11 +158,26 @@ class CommandHandler:
             show_list_help()
         elif command == "providers":
             show_providers_help()
+        elif command == "config":
+            from thoth.help import show_config_help
+
+            show_config_help()
         else:
             console.print("Thoth - AI-Powered Research Assistant")
             console.print("\nAvailable commands:")
             for cmd_name in self.commands.keys():
                 console.print(f"  {cmd_name}")
+
+    def config_command(self, op: str | None = None, rest: list[str] | None = None, **params) -> int:
+        """Dispatch to the thoth.config_cmd.config_command op handler."""
+        from thoth.config_cmd import config_command as _cfg
+
+        if op is None:
+            raise ThothError(
+                "config requires an op",
+                "Run `thoth config help` for usage",
+            )
+        return _cfg(op, rest or [])
 
 
 def status_command(operation_id):

@@ -249,6 +249,27 @@ def test_list_masks_api_keys_by_default(
     assert "****wxyz" in out
 
 
+def test_cli_config_get_via_click(isolated_thoth_home: Path) -> None:
+    from click.testing import CliRunner
+
+    from thoth.cli import cli
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["config", "get", "general.default_mode"])
+    assert result.exit_code == 0
+    assert result.stdout.strip().splitlines()[-1] == "default"
+
+
+def test_cli_config_help_listed_in_epilog() -> None:
+    from click.testing import CliRunner
+
+    from thoth.cli import cli
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["--help"])
+    assert "config" in result.stdout
+
+
 def test_edit_invokes_editor_and_creates_file(
     isolated_thoth_home: Path,
     tmp_path: Path,

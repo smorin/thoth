@@ -24,6 +24,7 @@ from thoth.errors import ThothError
 from thoth.help import (
     ThothCommand,
     build_epilog,
+    show_config_help,
     show_init_help,
     show_list_help,
     show_providers_help,
@@ -154,7 +155,7 @@ def cli(
     final_mode = None
     final_prompt = None
 
-    if not (args and args[0] in ["init", "status", "list", "help", "providers"]):
+    if not (args and args[0] in ["init", "status", "list", "help", "providers", "config"]):
         if len(args) >= 2:
             if args[0] in BUILTIN_MODES:
                 final_mode = args[0]
@@ -219,7 +220,7 @@ def cli(
         )
         return
 
-    if args and args[0] in ["init", "status", "list", "help", "providers"]:
+    if args and args[0] in ["init", "status", "list", "help", "providers", "config"]:
         config_manager = ConfigManager()
         config_manager.load_all_layers({"config_path": config_path})
         handler = CommandHandler(config_manager)
@@ -277,6 +278,19 @@ def cli(
                 )
             )
             return
+        elif command == "config":
+            from thoth.config_cmd import config_command
+
+            if len(args) < 2:
+                console.print(
+                    "[red]Error:[/red] config command requires an op "
+                    "(get|set|unset|list|path|edit|help)"
+                )
+                sys.exit(2)
+            op = args[1]
+            rest = list(args[2:]) + list(ctx.args)
+            rc = config_command(op, rest)
+            sys.exit(rc)
         elif command == "help":
             if len(args) > 1:
                 help_command = args[1]
@@ -288,10 +302,12 @@ def cli(
                     show_list_help()
                 elif help_command == "providers":
                     show_providers_help()
+                elif help_command == "config":
+                    show_config_help()
                 else:
                     console.print(f"[red]Error:[/red] Unknown command: {help_command}")
                     console.print(
-                        "[yellow]Available commands:[/yellow] init, status, list, providers"
+                        "[yellow]Available commands:[/yellow] init, status, list, providers, config"
                     )
                     console.print("\nUse 'thoth help' for general help")
             else:
