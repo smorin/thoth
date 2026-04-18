@@ -8,10 +8,10 @@ from typing import Any
 
 import pytest
 import vcr
-from platformdirs import user_config_dir
 
 from thoth.config import ConfigManager
 from thoth.models import OperationStatus
+from thoth.paths import user_checkpoints_dir
 
 CASSETTE_DIR = Path(__file__).resolve().parent.parent / "thoth_test_cassettes"
 
@@ -27,19 +27,17 @@ thoth_vcr = vcr.VCR(
 
 @pytest.fixture
 def isolated_thoth_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    """Per-test XDG_CONFIG_HOME so checkpoints/config never hit the real user dir.
-
-    platformdirs honors XDG_CONFIG_HOME on every platform, so setting it per
-    test gives each pytest-xdist worker its own isolated config tree.
-    """
-    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    """Per-test XDG_* roots so config/state/cache never hit the real user dir."""
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
     return tmp_path
 
 
 @pytest.fixture
 def checkpoint_dir(isolated_thoth_home: Path) -> Path:
-    """Thoth's checkpoint directory under the isolated test home."""
-    path = Path(user_config_dir("thoth")) / "checkpoints"
+    """Thoth's checkpoint directory under the isolated test state dir."""
+    path = user_checkpoints_dir()
     path.mkdir(parents=True, exist_ok=True)
     return path
 

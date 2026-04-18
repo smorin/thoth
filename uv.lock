@@ -283,15 +283,6 @@ wheels = [
 ]
 
 [[package]]
-name = "platformdirs"
-version = "4.9.4"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/19/56/8d4c30c8a1d07013911a8fdbd8f89440ef9f08d07a1b50ab8ca8be5a20f9/platformdirs-4.9.4.tar.gz", hash = "sha256:1ec356301b7dc906d83f371c8f487070e99d3ccf9e501686456394622a01a934", size = 28737, upload-time = "2026-03-05T18:34:13.271Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/63/d7/97f7e3a6abb67d8080dd406fd4df842c2be0efaf712d1c899c32a075027c/platformdirs-4.9.4-py3-none-any.whl", hash = "sha256:68a9a4619a666ea6439f2ff250c12a853cd1cbd5158d258bd824a7df6be2f868", size = 21216, upload-time = "2026-03-05T18:34:12.172Z" },
-]
-
-[[package]]
 name = "pluggy"
 version = "1.6.0"
 source = { registry = "https://pypi.org/simple" }
@@ -612,7 +603,6 @@ dependencies = [
     { name = "click" },
     { name = "httpx" },
     { name = "openai" },
-    { name = "platformdirs" },
     { name = "prompt-toolkit" },
     { name = "python-dateutil" },
     { name = "rich" },
@@ -636,7 +626,6 @@ requires-dist = [
     { name = "click", specifier = ">=8.0" },
     { name = "httpx", specifier = ">=0.27.0" },
     { name = "openai", specifier = ">=2.0.0" },
-    { name = "platformdirs", specifier = ">=3.0" },
     { name = "prompt-toolkit", specifier = ">=3.0" },
     { name = "python-dateutil", specifier = ">=2.8" },
     { name = "rich", specifier = ">=13.7" },

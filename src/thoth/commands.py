@@ -15,7 +15,6 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-from platformdirs import user_config_dir
 from rich import box
 from rich.console import Console
 from rich.table import Table
@@ -30,6 +29,7 @@ from thoth.help import (
     show_status_help,
 )
 from thoth.models import ModelCache
+from thoth.paths import user_config_file
 from thoth.providers import create_provider
 from thoth.run import run_research
 
@@ -69,7 +69,7 @@ class CommandHandler:
         console.print(f"✓ Operating System: {sys.platform} (supported)\n")
 
         if config_path is None:
-            config_path = Path(user_config_dir("thoth")) / "config.toml"
+            config_path = user_config_file()
         console.print(f"Configuration file will be created at: {config_path}\n")
 
         config_path.parent.mkdir(parents=True, exist_ok=True)

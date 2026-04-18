@@ -16,7 +16,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any
 
-from platformdirs import user_config_dir
+from thoth.paths import user_model_cache_dir
 
 
 class InputMode(Enum):
@@ -105,7 +105,7 @@ class ModelCache:
         if cache_dir:
             self.cache_dir = cache_dir
         else:
-            self.cache_dir = Path(user_config_dir("thoth")) / "model_cache"
+            self.cache_dir = user_model_cache_dir()
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self.cache_file = self.cache_dir / f"{provider_name}_models.json"
         self.cache_max_age_days = 7  # Cache expires after 1 week

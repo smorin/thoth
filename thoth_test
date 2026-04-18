@@ -38,7 +38,7 @@ import tempfile
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -136,8 +136,8 @@ class TestCase:
     interactive_scenario: list[tuple] | None = None  # For pexpect tests: [(expect, send), ...]
     terminal_env: dict[str, str] | None = None  # Terminal-specific env vars
     is_interactive: bool = False  # Whether this is an interactive mode test
-    setup_func: Callable[[], object] | None = None  # Callable to run before test execution
-    teardown_func: Callable[[], object] | None = None  # Callable to run after test execution
+    setup_func: Callable[[Path], object] | None = None  # receives per-test config_home
+    teardown_func: Callable[[Path], object] | None = None  # receives per-test config_home
 
 
 # ============================================================================
@@ -254,19 +254,25 @@ def cleanup_test_files(patterns: list[str]):
 
 
 def validate_file_creation(
-    expected_files: list[str], since: float = 0.0
+    expected_files: list[str],
+    since: float = 0.0,
+    base: Path = Path("."),
 ) -> tuple[bool, list[Path], str]:
     """Check if expected files were created after ``since`` (epoch seconds).
 
     ``since`` filters out stale files left over from earlier runs so a broken
     test can't pass just because a previous test already dropped a matching
     file in the cwd.
+
+    ``base`` is the directory to resolve glob patterns against. Defaults to
+    CWD for tests that write to the current directory; callers that inject
+    ``--output-dir`` pass the tmpdir instead.
     """
     created_files = []
     missing_files = []
 
     for file_pattern in expected_files:
-        matching_files = [p for p in Path(".").glob(file_pattern) if p.stat().st_mtime >= since]
+        matching_files = [p for p in base.glob(file_pattern) if p.stat().st_mtime >= since]
         if matching_files:
             created_files.extend(matching_files)
         else:
@@ -330,31 +336,66 @@ _TEST_CONFIG_HOME: Path | None = None
 
 
 def _ensure_test_config_home() -> Path:
-    """Create a per-run temp XDG_CONFIG_HOME and propagate it to subprocesses.
+    """Create a per-run temp XDG root and propagate it to subprocesses.
 
-    This isolates test checkpoints from the user's real thoth config directory
-    (e.g. ~/Library/Application Support/thoth on macOS), since platformdirs
-    honors XDG_CONFIG_HOME on all platforms.
+    Thoth now follows XDG split: config under XDG_CONFIG_HOME, checkpoints
+    under XDG_STATE_HOME, model cache under XDG_CACHE_HOME. Point all three
+    at the same tmpdir so tests get an isolated unified tree.
     """
     global _TEST_CONFIG_HOME
     if _TEST_CONFIG_HOME is None:
         _TEST_CONFIG_HOME = Path(tempfile.mkdtemp(prefix="thoth-test-"))
         os.environ["XDG_CONFIG_HOME"] = str(_TEST_CONFIG_HOME)
+        os.environ["XDG_STATE_HOME"] = str(_TEST_CONFIG_HOME)
+        os.environ["XDG_CACHE_HOME"] = str(_TEST_CONFIG_HOME)
         atexit.register(shutil.rmtree, str(_TEST_CONFIG_HOME), True)
     return _TEST_CONFIG_HOME
 
 
-def get_checkpoint_dir() -> Path:
-    """Get the checkpoint directory path (matches thoth's config default)"""
-    _ensure_test_config_home()
-    from platformdirs import user_config_dir
+def _prepare_test_isolation(
+    test_case: TestCase,
+) -> tuple[Path, list[str], dict[str, str], Path | None]:
+    """Create per-test tmpdir and return (tmpdir, command, env, output_base).
 
-    return Path(user_config_dir("thoth")) / "checkpoints"
+    ``output_base`` is the tmpdir when we injected ``--output-dir``, else None
+    (callers should resolve expected_files against CWD in that case).
+    """
+    tmpdir = Path(tempfile.mkdtemp(prefix=f"thoth-test-{test_case.test_id}-"))
+    cmd = list(test_case.command)
+    output_base: Path | None = None
+    # Only inject --output-dir for tests that actually run a provider and produce
+    # output files. Tests without a provider (CLI errors, --help, etc.) can parse
+    # the injected args incorrectly (e.g. `thoth --mode --output-dir X` would
+    # consume --output-dir as the --mode value). Also skip if the test already
+    # passes -o/--output-dir or uses --project (which routes output under
+    # base_output_dir/<project>/ and is overridden by --output-dir).
+    if test_case.provider and not any(a in cmd for a in ("-o", "--output-dir", "--project")):
+        cmd += ["--output-dir", str(tmpdir)]
+        output_base = tmpdir
+    env = dict(test_case.env)
+    env.setdefault("XDG_CONFIG_HOME", str(tmpdir))
+    env.setdefault("XDG_STATE_HOME", str(tmpdir))
+    env.setdefault("XDG_CACHE_HOME", str(tmpdir))
+    # uv falls back to XDG_CACHE_HOME when UV_CACHE_DIR is unset; pointing it at
+    # the per-test tmpdir would force a fresh package re-download on every test
+    # (and break T-SIG-01's 1.5s SIGINT timing). Keep uv on the shared cache.
+    env.setdefault("UV_CACHE_DIR", str(Path.home() / ".cache" / "uv"))
+    return tmpdir, cmd, env, output_base
 
 
-def create_test_checkpoint(operation_id: str, status: str = "completed", **overrides) -> Path:
+def get_checkpoint_dir(config_home: Path) -> Path:
+    """Return <config_home>/thoth/checkpoints for the given per-test config home."""
+    return config_home / "thoth" / "checkpoints"
+
+
+def create_test_checkpoint(
+    operation_id: str,
+    config_home: Path,
+    status: str = "completed",
+    **overrides,
+) -> Path:
     """Create a valid checkpoint file for testing"""
-    checkpoint_dir = get_checkpoint_dir()
+    checkpoint_dir = get_checkpoint_dir(config_home)
     checkpoint_dir.mkdir(parents=True, exist_ok=True)
 
     now = datetime.now()
@@ -363,7 +404,7 @@ def create_test_checkpoint(operation_id: str, status: str = "completed", **overr
         "prompt": "test checkpoint prompt",
         "mode": "default",
         "status": status,
-        "created_at": (now - __import__("datetime").timedelta(minutes=5)).isoformat(),
+        "created_at": (now - timedelta(minutes=5)).isoformat(),
         "updated_at": now.isoformat(),
         "providers": {"mock": {"status": "completed"}},
         "output_paths": {},
@@ -371,6 +412,7 @@ def create_test_checkpoint(operation_id: str, status: str = "completed", **overr
         "progress": 1.0 if status == "completed" else 0.0,
         "project": None,
         "input_files": [],
+        "failure_type": None,
     }
     data.update(overrides)
 
@@ -380,9 +422,9 @@ def create_test_checkpoint(operation_id: str, status: str = "completed", **overr
     return checkpoint_file
 
 
-def create_corrupted_checkpoint(operation_id: str) -> Path:
+def create_corrupted_checkpoint(operation_id: str, config_home: Path) -> Path:
     """Create a corrupted checkpoint file for testing"""
-    checkpoint_dir = get_checkpoint_dir()
+    checkpoint_dir = get_checkpoint_dir(config_home)
     checkpoint_dir.mkdir(parents=True, exist_ok=True)
 
     checkpoint_file = checkpoint_dir / f"{operation_id}.json"
@@ -391,9 +433,9 @@ def create_corrupted_checkpoint(operation_id: str) -> Path:
     return checkpoint_file
 
 
-def remove_test_checkpoint(operation_id: str):
+def remove_test_checkpoint(operation_id: str, config_home: Path) -> None:
     """Remove a test checkpoint file"""
-    checkpoint_file = get_checkpoint_dir() / f"{operation_id}.json"
+    checkpoint_file = get_checkpoint_dir(config_home) / f"{operation_id}.json"
     if checkpoint_file.exists():
         checkpoint_file.unlink()
 
@@ -406,9 +448,9 @@ def extract_operation_id(output: str) -> str:
     return match.group(1)
 
 
-def load_checkpoint_data(operation_id: str) -> dict[str, Any]:
+def load_checkpoint_data(operation_id: str, config_home: Path) -> dict[str, Any]:
     """Load a checkpoint file as JSON for assertions."""
-    checkpoint_file = get_checkpoint_dir() / f"{operation_id}.json"
+    checkpoint_file = get_checkpoint_dir(config_home) / f"{operation_id}.json"
     if not checkpoint_file.exists():
         raise AssertionError(f"checkpoint not found: {checkpoint_file}")
     with open(checkpoint_file) as f:
@@ -623,6 +665,7 @@ class InteractiveTestRunner:
                 result.error_message = (
                     f"Expected exit code {test_case.expected_exit_code}, got {exit_code}"
                 )
+                return result
 
             # Validate expected patterns in output if specified
             if test_case.expected_stdout_patterns:
@@ -743,9 +786,10 @@ class TestRunner:
                     stderr="fixture test has no setup_func",
                     exit_code=1,
                 )
+            fixture_tmpdir = Path(tempfile.mkdtemp(prefix=f"thoth-test-{test_case.test_id}-"))
             start = time.time()
             try:
-                test_case.setup_func()
+                test_case.setup_func(fixture_tmpdir)
                 return TestResult(
                     test_id=test_case.test_id,
                     passed=True,
@@ -767,9 +811,10 @@ class TestRunner:
             finally:
                 if test_case.teardown_func:
                     try:
-                        test_case.teardown_func()
+                        test_case.teardown_func(fixture_tmpdir)
                     except Exception:
                         pass
+                shutil.rmtree(fixture_tmpdir, ignore_errors=True)
 
         # Handle interactive tests
         if test_case.test_type == "interactive":
@@ -786,12 +831,29 @@ class TestRunner:
             interactive_runner = InteractiveTestRunner(self.verbose)
             return interactive_runner.run_interactive_test(test_case)
 
+        tmpdir, prepared_cmd, prepared_env, output_base = _prepare_test_isolation(test_case)
+        try:
+            return self._run_subprocess_case(
+                test_case, tmpdir, prepared_cmd, prepared_env, output_base
+            )
+        finally:
+            shutil.rmtree(tmpdir, ignore_errors=True)
+
+    def _run_subprocess_case(
+        self,
+        test_case: TestCase,
+        tmpdir: Path,
+        prepared_cmd: list[str],
+        prepared_env: dict[str, str],
+        output_base: Path | None,
+    ) -> TestResult:
+        """Execute a subprocess-mode test with its per-test tmpdir already allocated."""
         start_time = time.time()
 
         # Run setup function if provided
         if test_case.setup_func:
             try:
-                test_case.setup_func()
+                test_case.setup_func(tmpdir)
             except Exception as e:
                 return TestResult(
                     test_id=test_case.test_id,
@@ -807,8 +869,8 @@ class TestRunner:
         cleanup_test_files(test_case.cleanup_files)
 
         # Set up environment with appropriate API key
-        test_env = test_case.env.copy()
-        test_command = test_case.command.copy()
+        test_env = prepared_env.copy()
+        test_command = list(prepared_cmd)
 
         if test_case.provider:
             api_key = self.test_api_keys.get(test_case.provider, "")
@@ -996,7 +1058,9 @@ api_key = "{api_key}"
             # Validate file creation
             if test_case.expected_files:
                 passed, created_files, error = validate_file_creation(
-                    test_case.expected_files, since=start_time
+                    test_case.expected_files,
+                    since=start_time,
+                    base=output_base if output_base is not None else Path("."),
                 )
                 result.created_files = created_files
                 if not passed:
@@ -1007,7 +1071,7 @@ api_key = "{api_key}"
             # Always run teardown function if provided
             if test_case.teardown_func:
                 try:
-                    test_case.teardown_func()
+                    test_case.teardown_func(tmpdir)
                 except Exception:
                     pass
 
@@ -1347,10 +1411,8 @@ all_tests = [
         test_id="M2T-02",
         description="Init command creates config directory",
         command=[THOTH_EXECUTABLE, "init"],
-        env={"XDG_CONFIG_HOME": "./test_temp_config"},
         expected_stdout_patterns=[r"Configuration saved to"],
         expected_exit_code=0,
-        cleanup_files=["./test_temp_config/*", "./test_temp_config"],
     ),
     # Config flag test (F-40/T-CFG-06)
     TestCase(
@@ -1518,8 +1580,12 @@ all_tests = [
             r"completed",
         ],
         expected_exit_code=0,
-        setup_func=lambda: create_test_checkpoint("test-persist-checkpoint-m5t04"),
-        teardown_func=lambda: remove_test_checkpoint("test-persist-checkpoint-m5t04"),
+        setup_func=lambda home: create_test_checkpoint(
+            "test-persist-checkpoint-m5t04", config_home=home
+        ),
+        teardown_func=lambda home: remove_test_checkpoint(
+            "test-persist-checkpoint-m5t04", config_home=home
+        ),
     ),
     TestCase(
         test_id="M5T-05",
@@ -1527,8 +1593,8 @@ all_tests = [
         command=[THOTH_EXECUTABLE, "status", "test-corrupt-m5t05"],
         expected_stdout_patterns=[r"Warning.*[Cc]orrupt|not found"],
         expected_exit_code=6,
-        setup_func=lambda: create_corrupted_checkpoint("test-corrupt-m5t05"),
-        teardown_func=lambda: remove_test_checkpoint("test-corrupt-m5t05"),
+        setup_func=lambda home: create_corrupted_checkpoint("test-corrupt-m5t05", config_home=home),
+        teardown_func=lambda home: remove_test_checkpoint("test-corrupt-m5t05", config_home=home),
     ),
     # Lifecycle Management Tests (M5-10)
     TestCase(
@@ -1559,10 +1625,12 @@ all_tests = [
             r"Status:\s+(queued|running|completed|failed|cancelled)",
         ],
         expected_exit_code=0,
-        setup_func=lambda: create_test_checkpoint(
-            "test-lifecycle-valid-m5t10c", status="completed"
+        setup_func=lambda home: create_test_checkpoint(
+            "test-lifecycle-valid-m5t10c", config_home=home, status="completed"
         ),
-        teardown_func=lambda: remove_test_checkpoint("test-lifecycle-valid-m5t10c"),
+        teardown_func=lambda home: remove_test_checkpoint(
+            "test-lifecycle-valid-m5t10c", config_home=home
+        ),
     ),
     TestCase(
         test_id="M5T-10d",
@@ -1572,12 +1640,15 @@ all_tests = [
             r"Status:\s+failed",
         ],
         expected_exit_code=0,
-        setup_func=lambda: create_test_checkpoint(
+        setup_func=lambda home: create_test_checkpoint(
             "test-lifecycle-failed-m5t10d",
+            config_home=home,
             status="failed",
             error="Test error message",
         ),
-        teardown_func=lambda: remove_test_checkpoint("test-lifecycle-failed-m5t10d"),
+        teardown_func=lambda home: remove_test_checkpoint(
+            "test-lifecycle-failed-m5t10d", config_home=home
+        ),
     ),
     # Milestone 6: Output Management
     TestCase(

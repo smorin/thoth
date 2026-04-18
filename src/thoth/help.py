@@ -6,13 +6,11 @@ so the click CLI layer can stay focused on option plumbing.
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import click
-from platformdirs import user_config_dir
 from rich.console import Console
 
 from thoth.config import BUILTIN_MODES, THOTH_VERSION
+from thoth.paths import user_config_file
 
 console = Console()
 
@@ -103,7 +101,7 @@ def show_init_help():
     console.print("  • Generates default config.toml file")
     console.print("  • Sets up provider API key placeholders")
     console.print("\n[bold]Configuration file location:[/bold]")
-    console.print(f"  {Path(user_config_dir('thoth')) / 'config.toml'}")
+    console.print(f"  {user_config_file()}")
     console.print("\n[bold]After initialization:[/bold]")
     console.print("  1. Set your API keys as environment variables:")
     console.print("     export OPENAI_API_KEY='your-api-key'")

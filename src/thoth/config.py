@@ -17,10 +17,10 @@ import tomllib
 from pathlib import Path
 from typing import Any
 
-from platformdirs import user_config_dir
 from rich.console import Console
 
 from thoth.errors import ThothError
+from thoth.paths import user_checkpoints_dir, user_config_file
 
 # Console used for config-warning output only.
 # Distinct from the CLI's main console instance; both write to the same stdout.
@@ -144,7 +144,7 @@ class ConfigSchema:
             },
             "paths": {
                 "base_output_dir": "./research-outputs",
-                "checkpoint_dir": str(Path(user_config_dir("thoth")) / "checkpoints"),
+                "checkpoint_dir": str(user_checkpoints_dir()),
             },
             "execution": {
                 "poll_interval": 30,
@@ -194,7 +194,7 @@ class ConfigManager:
     """Manages layered configuration with clear precedence hierarchy"""
 
     def __init__(self, config_path: Path | None = None):
-        self.user_config_path = config_path or Path(user_config_dir("thoth")) / "config.toml"
+        self.user_config_path = config_path or user_config_file()
         self.project_config_paths = ["./thoth.toml", "./.thoth/config.toml"]
         self.layers = {}
         self.data = {}
