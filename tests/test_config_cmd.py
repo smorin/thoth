@@ -212,6 +212,43 @@ def test_path_project_prints_project_path(
     assert out == str(tmp_path / "thoth.toml")
 
 
+def test_get_masks_api_key_by_default(
+    isolated_thoth_home: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-abcdef123456wxyz")
+    rc = config_command("get", ["providers.openai.api_key"])
+    out = capsys.readouterr().out.strip()
+    assert rc == 0
+    assert out == "****wxyz"
+
+
+def test_get_show_secrets_reveals(
+    isolated_thoth_home: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-abcdef123456wxyz")
+    rc = config_command("get", ["--show-secrets", "providers.openai.api_key"])
+    out = capsys.readouterr().out.strip()
+    assert rc == 0
+    assert out == "sk-abcdef123456wxyz"
+
+
+def test_list_masks_api_keys_by_default(
+    isolated_thoth_home: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-abcdef123456wxyz")
+    rc = config_command("list", [])
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "sk-abcdef123456wxyz" not in out
+    assert "****wxyz" in out
+
+
 def test_set_preserves_existing_comments(isolated_thoth_home: Path) -> None:
     from thoth.paths import user_config_file
 

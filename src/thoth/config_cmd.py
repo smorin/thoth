@@ -17,6 +17,28 @@ console = Console()
 
 _VALID_LAYERS = ("defaults", "user", "project", "env", "cli")
 _ROOT_KEYS_ALLOW_UNKNOWN = ("modes",)
+_SECRET_KEY_SUFFIX = "api_key"
+
+
+def _mask_secret(value: Any) -> Any:
+    if not isinstance(value, str) or not value:
+        return value
+    if value.startswith("${") and value.endswith("}"):
+        return value
+    tail = value[-4:] if len(value) >= 4 else value
+    return f"****{tail}"
+
+
+def _is_secret_key(key: str) -> bool:
+    return key.split(".")[-1] == _SECRET_KEY_SUFFIX
+
+
+def _mask_in_tree(data: Any, prefix: str = "") -> Any:
+    if isinstance(data, dict):
+        return {k: _mask_in_tree(v, f"{prefix}.{k}" if prefix else k) for k, v in data.items()}
+    if prefix and _is_secret_key(prefix):
+        return _mask_secret(data)
+    return data
 
 
 def _load_manager() -> ConfigManager:
@@ -49,6 +71,7 @@ def _op_get(args: list[str]) -> int:
     layer: str | None = None
     raw = False
     as_json = False
+    show_secrets = False
     positional: list[str] = []
     i = 0
     while i < len(args):
@@ -64,6 +87,9 @@ def _op_get(args: list[str]) -> int:
             i += 1
         elif a == "--json":
             as_json = True
+            i += 1
+        elif a == "--show-secrets":
+            show_secrets = True
             i += 1
         else:
             positional.append(a)
@@ -94,6 +120,9 @@ def _op_get(args: list[str]) -> int:
     if not found:
         console.print(f"[red]Error:[/red] key not found: {key}")
         return 1
+
+    if _is_secret_key(key) and not show_secrets and not raw:
+        value = _mask_secret(value)
 
     print(_render_scalar(value, as_json))
     return 0
@@ -285,6 +314,7 @@ def _op_list(args: list[str]) -> int:
     layer: str | None = None
     keys_only = False
     as_json = False
+    show_secrets = False
     i = 0
     while i < len(args):
         a = args[i]
@@ -299,6 +329,9 @@ def _op_list(args: list[str]) -> int:
             i += 1
         elif a == "--json":
             as_json = True
+            i += 1
+        elif a == "--show-secrets":
+            show_secrets = True
             i += 1
         else:
             console.print(f"[red]Error:[/red] unknown arg: {a}")
@@ -319,11 +352,15 @@ def _op_list(args: list[str]) -> int:
             print(key)
         return 0
 
+    rendered = _to_plain(data)
+    if not show_secrets:
+        rendered = _mask_in_tree(rendered)
+
     if as_json:
-        print(json.dumps(_to_plain(data), indent=2, sort_keys=True))
+        print(json.dumps(rendered, indent=2, sort_keys=True))
         return 0
 
-    print(tomlkit.dumps(_to_plain(data)))
+    print(tomlkit.dumps(rendered))
     return 0
 
 
