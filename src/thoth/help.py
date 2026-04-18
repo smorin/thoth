@@ -213,6 +213,37 @@ def show_providers_help():
     console.print("  thoth help       - Show general help")
 
 
+def show_config_help():
+    """Show detailed help for the config command."""
+    console.print("\n[bold]thoth config[/bold] - Inspect and edit configuration")
+    console.print("\n[bold]Usage:[/bold]")
+    console.print("  thoth config <OP> [ARGS...]")
+    console.print("\n[bold]Ops:[/bold]")
+    console.print("  get <KEY> [--layer L] [--raw] [--json] [--show-secrets]")
+    console.print("     Print a single value from the merged config.")
+    console.print("  set <KEY> <VALUE> [--project] [--string]")
+    console.print("     Write a value to the user config (or project with --project).")
+    console.print("  unset <KEY> [--project]")
+    console.print("     Remove a key from the target file (empty tables are pruned).")
+    console.print("  list [--layer L] [--keys] [--json] [--show-secrets]")
+    console.print("     Print the merged config (or a single layer).")
+    console.print("  path [--project]")
+    console.print("     Print the target config file path.")
+    console.print("  edit [--project]")
+    console.print("     Open the target config file in $EDITOR (fallback: vi).")
+    console.print("  help")
+    console.print("     Show this help.")
+    console.print("\n[bold]Examples:[/bold]")
+    console.print("  $ thoth config get general.default_mode")
+    console.print("  $ thoth config set general.default_mode exploration")
+    console.print("  $ thoth config set --project execution.poll_interval 15")
+    console.print("  $ thoth config list --keys")
+    console.print("  $ thoth config path")
+    console.print("\n[bold]Notes:[/bold]")
+    console.print("  API key values are masked by default; use --show-secrets to reveal.")
+    console.print("  Writes preserve comments and formatting of the target TOML file.")
+
+
 def show_general_help(ctx):
     """Show enhanced general help with command overview"""
     console.print("\n[bold]Thoth - AI-Powered Research Assistant[/bold]")
@@ -255,6 +286,7 @@ def show_general_help(ctx):
 __all__ = [
     "ThothCommand",
     "build_epilog",
+    "show_config_help",
     "show_general_help",
     "show_init_help",
     "show_list_help",

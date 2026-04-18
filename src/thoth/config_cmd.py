@@ -371,6 +371,30 @@ def _op_path(args: list[str]) -> int:
     return 0
 
 
+def _op_help(args: list[str]) -> int:
+    from thoth.help import show_config_help
+
+    show_config_help()
+    return 0
+
+
+def _op_edit(args: list[str]) -> int:
+    import os
+    import shutil
+    import subprocess  # noqa: S404
+
+    project = "--project" in args
+    path = _target_path(project)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if not path.exists():
+        doc = tomlkit.document()
+        doc["version"] = "2.0"
+        path.write_text(tomlkit.dumps(doc))
+
+    editor = os.environ.get("EDITOR") or shutil.which("vi") or "vi"
+    return subprocess.call([editor, str(path)])  # noqa: S603
+
+
 def config_command(op: str, args: list[str]) -> int:
     """Dispatch `thoth config <op>`. Returns a process exit code."""
     ops = {
@@ -379,6 +403,8 @@ def config_command(op: str, args: list[str]) -> int:
         "unset": _op_unset,
         "list": _op_list,
         "path": _op_path,
+        "edit": _op_edit,
+        "help": _op_help,
     }
     if op not in ops:
         console.print(f"[red]Error:[/red] unknown config op: {op}")

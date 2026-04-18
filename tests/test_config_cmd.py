@@ -249,6 +249,37 @@ def test_list_masks_api_keys_by_default(
     assert "****wxyz" in out
 
 
+def test_edit_invokes_editor_and_creates_file(
+    isolated_thoth_home: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    stub = tmp_path / "editor.sh"
+    stub.write_text('#!/bin/sh\necho "EDITED" >> "$1"\n')
+    stub.chmod(0o755)
+    monkeypatch.setenv("EDITOR", str(stub))
+
+    from thoth.paths import user_config_file
+
+    assert not user_config_file().exists()
+
+    rc = config_command("edit", [])
+    assert rc == 0
+    content = user_config_file().read_text()
+    assert "version" in content
+    assert "EDITED" in content
+
+
+def test_help_renders_text(capsys: pytest.CaptureFixture[str]) -> None:
+    rc = config_command("help", [])
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "thoth config" in out
+    assert "get" in out
+    assert "set" in out
+    assert "unset" in out
+
+
 def test_set_preserves_existing_comments(isolated_thoth_home: Path) -> None:
     from thoth.paths import user_config_file
 
