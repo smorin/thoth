@@ -9,10 +9,10 @@ default:
 install:
     uv sync
 
-# Install full local dev toolchain: uv deps + commitlint (npm) + git hooks
+# Install full local dev toolchain: uv deps + commitlint (bun) + git hooks
 [group: 'setup']
 install-dev: install
-    npm install
+    bun install
     just install-lefthook
 
 # Install thoth to /usr/local/bin

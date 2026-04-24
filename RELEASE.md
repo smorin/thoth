@@ -66,7 +66,7 @@ Thoth releases are automated by **release-please** (version bumps + changelog + 
 | `.release-please-manifest.json` | release-please's authoritative version per package |
 | `release-please-config.json` | release-please behavior + changelog sections |
 | `commitlint.config.js` | Allowed commit types / header length |
-| `package.json` | Node dev dependency on `@commitlint/*` |
+| `package.json` + `bun.lock` | Bun dev dependency on `@commitlint/*` |
 | `uv.lock` | Locked dependency graph (committed to repo) |
 | `.github/workflows/ci.yml` | Tests, lint, typecheck on push/PR |
 | `.github/workflows/commitlint.yml` | Validates commit messages on PR |
@@ -83,17 +83,17 @@ Thoth releases are automated by **release-please** (version bumps + changelog + 
 **Required for contributing:**
 - [uv](https://docs.astral.sh/uv/) — `curl -LsSf https://astral.sh/uv/install.sh | sh`
 - [just](https://github.com/casey/just) — `brew install just`
-- Node ≥ 18 — required for commitlint (`brew install node` or https://nodejs.org/)
+- [bun](https://bun.sh/) — required for commitlint (`brew install bun`)
 - Git
 
 **Bootstrap the full toolchain in one shot:**
 ```bash
-just install-dev   # uv sync + npm install + lefthook install + gitleaks
+just install-dev   # uv sync + bun install + lefthook install + gitleaks
 ```
 
 **Verify your environment:**
 ```bash
-make env-check   # checks uv, python3, just, node, npm
+make env-check   # checks uv, python3, just, bun
 ```
 
 **Commit message format:** all commits must follow [Conventional Commits](https://www.conventionalcommits.org/). The local `commit-msg` hook (lefthook) and the `commitlint` CI job both enforce this. Allowed types: `feat`, `fix`, `perf`, `refactor`, `docs`, `test`, `ci`, `chore`, `build`, `style`, `revert`.
