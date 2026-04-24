@@ -21,6 +21,12 @@ case "$os" in
         ;;
 esac
 
+if command -v brew >/dev/null 2>&1; then
+    brew install gitleaks
+    exit 0
+fi
+
+# arch is only needed for the GitHub release tarball URL below.
 arch="$(uname -m)"
 case "$arch" in
     x86_64|amd64) arch=x64 ;;
@@ -31,11 +37,6 @@ case "$arch" in
         exit 1
         ;;
 esac
-
-if command -v brew >/dev/null 2>&1; then
-    brew install gitleaks
-    exit 0
-fi
 
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT

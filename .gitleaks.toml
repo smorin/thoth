@@ -4,7 +4,7 @@ title = "thoth gitleaks config"
 [extend]
 useDefault = true
 
-[allowlist]
+[[allowlists]]
 description = "Global allowlist for documentation, archives, and known placeholders"
 
 paths = [
@@ -25,14 +25,20 @@ regexes = [
   '''ci-test-key''',
 ]
 
-# Substring matches inside any candidate secret — used to exempt obvious
-# placeholders in tests, docs, and mock fixtures. Case-insensitive.
+# Fixture-unique substrings only. Generic tokens like "mock" / "example" /
+# "placeholder" were too broad globally — they now live in the tests/-scoped
+# allowlist below, anchored to realistic shapes.
 stopwords = [
   "abcdef",
   "invalid-key",
   "secret-key-12345",
-  "test-key",
-  "mock",
-  "example",
-  "placeholder",
+]
+
+[[allowlists]]
+description = "Test-file placeholder/mock/example tokens (narrowed from global stopwords)"
+
+paths = ['''(^|/)tests/''']
+
+regexes = [
+  '''(?i)(mock|example|placeholder|test)[-_]?(api[-_]?)?(key|token|secret)''',
 ]
