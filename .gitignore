@@ -76,3 +76,7 @@ thoth.log
 
 # Ruff cache
 .ruff_cache/
+
+# Claude Code local state (runtime locks + user-specific settings)
+.claude/settings.local.json
+.claude/*.lock
