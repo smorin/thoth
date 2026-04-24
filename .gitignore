@@ -59,6 +59,8 @@ openai.env
 !references.md
 !manual_testing_instructions.md
 !planning/*.md
+!docs/superpowers/specs/*.md
+!docs/superpowers/plans/*.md
 !research/*.md
 !MILESTONES.md
 !thoth_vcr.md
