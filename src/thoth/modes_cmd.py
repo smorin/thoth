@@ -8,7 +8,8 @@ override a builtin (present in both).
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import json
+from dataclasses import asdict, dataclass
 from typing import Any, Literal, cast
 
 from rich.console import Console
@@ -148,10 +149,60 @@ def _render_table(infos: list[ModeInfo]) -> None:
     _get_console().print(table)
 
 
+_SECRET_KEY_SUFFIX = "api_key"
+
+
+def _is_secret_key(key: str) -> bool:
+    return key.split(".")[-1] == _SECRET_KEY_SUFFIX
+
+
+def _mask_secret(value: Any) -> Any:
+    if not isinstance(value, str) or not value:
+        return value
+    if value.startswith("${") and value.endswith("}"):
+        return value
+    tail = value[-4:] if len(value) >= 4 else value
+    return f"****{tail}"
+
+
+def _mask_tree(data: Any, prefix: str = "") -> Any:
+    if isinstance(data, dict):
+        return {k: _mask_tree(v, f"{prefix}.{k}" if prefix else k) for k, v in data.items()}
+    if isinstance(data, list):
+        return [_mask_tree(v, prefix) for v in data]
+    if prefix and _is_secret_key(prefix):
+        return _mask_secret(data)
+    return data
+
+
+def _info_to_dict(m: ModeInfo, show_secrets: bool) -> dict[str, Any]:
+    d = asdict(m)
+    if not show_secrets:
+        d["raw"] = _mask_tree(d["raw"])
+        d["overrides"] = _mask_tree(d["overrides"])
+    return d
+
+
+def _parse_list_flags(args: list[str]) -> tuple[bool, bool]:
+    as_json = "--json" in args
+    show_secrets = "--show-secrets" in args
+    return as_json, show_secrets
+
+
 def _op_list(args: list[str]) -> int:
+    as_json, show_secrets = _parse_list_flags(args)
     cm = ConfigManager()
     cm.load_all_layers({})
-    infos = list_all_modes(cm)
+    infos = sorted(list_all_modes(cm), key=_sort_key)
+
+    if as_json:
+        payload = {
+            "schema_version": "1",
+            "modes": [_info_to_dict(m, show_secrets) for m in infos],
+        }
+        print(json.dumps(payload, indent=2, sort_keys=True))
+        return 0
+
     _render_table(infos)
     return 0
 

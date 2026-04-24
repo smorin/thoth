@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -157,3 +158,60 @@ def test_modes_command_list_sort_order(
     default_idx = next(i for i, ln in enumerate(lines) if " default " in ln)
     deep_idx = next(i for i, ln in enumerate(lines) if " deep_research " in ln)
     assert default_idx < deep_idx
+
+
+def test_modes_list_json_shape(
+    isolated_thoth_home: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    rc = modes_command("list", ["--json"])
+    out = capsys.readouterr().out
+    assert rc == 0
+    data = json.loads(out)
+    assert isinstance(data, dict)
+    assert data["schema_version"] == "1"
+    assert isinstance(data["modes"], list)
+    default = next(m for m in data["modes"] if m["name"] == "default")
+    assert default["kind"] == "immediate"
+    assert default["providers"] == ["openai"]
+    assert "description" in default
+
+
+def test_modes_list_masks_api_key_inside_mode(
+    isolated_thoth_home: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    cfg = Path(isolated_thoth_home) / "config" / "thoth" / "config.toml"
+    cfg.parent.mkdir(parents=True, exist_ok=True)
+    cfg.write_text(
+        'version = "2.0"\n'
+        "[modes.secret_mode]\n"
+        'provider = "openai"\n'
+        'model = "o3"\n'
+        'api_key = "sk-verysecretverysecret1234"\n'
+    )
+    rc = modes_command("list", ["--json"])
+    out = capsys.readouterr().out
+    assert rc == 0
+    data = json.loads(out)
+    secret = next(m for m in data["modes"] if m["name"] == "secret_mode")
+    # Secret value masked: only last 4 chars retained.
+    assert "sk-verysecretverysecret1234" not in out
+    assert secret["raw"]["api_key"].startswith("****")
+    assert secret["raw"]["api_key"].endswith("1234")
+
+
+def test_modes_list_show_secrets_unmasks(
+    isolated_thoth_home: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    cfg = Path(isolated_thoth_home) / "config" / "thoth" / "config.toml"
+    cfg.parent.mkdir(parents=True, exist_ok=True)
+    cfg.write_text(
+        'version = "2.0"\n'
+        "[modes.secret_mode]\n"
+        'provider = "openai"\n'
+        'model = "o3"\n'
+        'api_key = "sk-verysecretverysecret1234"\n'
+    )
+    rc = modes_command("list", ["--json", "--show-secrets"])
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "sk-verysecretverysecret1234" in out
