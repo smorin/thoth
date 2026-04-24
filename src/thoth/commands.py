@@ -236,6 +236,37 @@ async def show_status(operation_id: str):
         for provider_name, path in operation.output_paths.items():
             console.print(f"  ├── {Path(path).name}")
 
+    _print_status_hints(operation)
+
+
+def _print_status_hints(operation: Any) -> None:
+    """Print state-aware next-step hints after `thoth status <ID>`."""
+    console.print("\nNext steps:")
+    status = operation.status
+    op_id = operation.id
+    if status == "queued":
+        console.print(
+            f"  [bold]thoth status {op_id}[/bold]    "
+            "Re-check (should transition to running shortly)"
+        )
+    elif status == "running":
+        console.print(f"  [bold]thoth status {op_id}[/bold]    Re-check progress")
+    elif status == "completed":
+        console.print("  [bold]thoth list[/bold]    See recent runs")
+    elif status == "cancelled":
+        console.print(f"  [bold]thoth --resume {op_id}[/bold]    Pick up where Ctrl-C left off")
+    elif status == "failed":
+        if operation.failure_type == "permanent":
+            console.print("  This failure is permanent and cannot be resumed.")
+            for provider_name in operation.providers:
+                console.print(
+                    f"  [bold]thoth config get providers.{provider_name}.api_key "
+                    "--show-secrets[/bold]    Check credentials"
+                )
+                break
+        else:
+            console.print(f"  [bold]thoth --resume {op_id}[/bold]    Retry from checkpoint")
+
 
 async def list_operations(show_all: bool):
     """List all operations"""

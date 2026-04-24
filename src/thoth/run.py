@@ -267,6 +267,8 @@ async def run_research(
             console.print(f"[yellow]Suggestion:[/yellow] {e.suggestion}")
             if verbose and hasattr(e, "raw_error") and getattr(e, "raw_error", None):
                 console.print(f"[dim]Raw error: {e.raw_error}[/dim]")
+            console.print(f"\nOperation ID: [bold]{operation_id}[/bold] (saved; not submitted)")
+            console.print(f"  [bold]thoth status {operation_id}[/bold]    See saved state")
             raise click.Abort()
         except Exception as e:
             operation.transition_to("failed", error=str(e))
@@ -274,6 +276,8 @@ async def run_research(
             console.print(f"\n[red]Unexpected error during submission:[/red] {str(e)}")
             if verbose:
                 console.print(f"[dim]Full error: {repr(e)}[/dim]")
+            console.print(f"\nOperation ID: [bold]{operation_id}[/bold] (saved; not submitted)")
+            console.print(f"  [bold]thoth status {operation_id}[/bold]    See saved state")
             raise click.Abort()
 
     try:
@@ -635,6 +639,11 @@ async def _execute_research(
 
     if not quiet and len(operation.output_paths) > 1 and "combined" not in operation.output_paths:
         console.print("\nTo generate a combined report, run with --combined flag")
+
+    if not quiet:
+        console.print(f"\nOperation ID: [bold]{operation.id}[/bold]")
+        console.print(f"  [bold]thoth status {operation.id}[/bold]    Re-check later")
+        console.print("  [bold]thoth list[/bold]           See recent runs")
 
     ctx.checkpoint_manager = None
     ctx.current_operation = None
