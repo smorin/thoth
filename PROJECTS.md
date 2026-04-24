@@ -1,3 +1,110 @@
+## [ ] Project P13: P11 Follow-up — is_background_model overload + shared secrets + regression tests (v2.11.1)
+**Goal**: Close the six non-blocking items carried over from P11 review before new feature work (P12) builds on them. Purely follow-up: one clarifying helper, two test-coverage gaps, one prose fix, one shared-module extraction, one regression test that would have caught a silent pre-P11 bug.
+
+**Out of Scope**
+- New user-facing features (that's P12)
+- Refactoring `is_background_mode` itself — we add an adjunct, not a replacement
+- Extending masking rules (same `api_key` suffix contract)
+
+### Design Notes
+- **Helper shape**: keep `is_background_mode(mode_config)` as the dict-shaped contract. Add `is_background_model(model: str | None) -> bool` as the string-shaped primitive. `is_background_mode` delegates to `is_background_model` after the `async` short-circuit — one derivation rule, two ergonomic entry points.
+- **Call-site updates**: the two `openai.py` callsites (which synthesize `{"model": self.model}` today) switch to `is_background_model(self.model)`. The `providers/__init__.py` callsite keeps `is_background_mode(provider_config)` because it passes a real config dict that could carry `async`.
+- **Shared secrets module**: extract `_mask_secret`, `_is_secret_key`, `_mask_tree` to `src/thoth/_secrets.py` (leading underscore — internal). Both `config_cmd.py` and `modes_cmd.py` import from there. If P12 ships first and does the extraction, this task becomes a no-op; if P13 ships first, P12-T05 drops.
+- **Regression test**: `thoth config list --json` was broken before P11 (click ate `--json`). P11's `ignore_unknown_options=True` fix repaired it incidentally but there's no subprocess test guarding it. Add one.
+- **Docstring prose**: `src/thoth/providers/__init__.py` lines 6 and 79 still say "deep-research background mode" as if it were a code mechanism — update to name `is_background_mode` so a reader scanning the header finds the actual implementation.
+
+### Tests & Tasks
+- [ ] [P13-TS01] Tests for `is_background_model(model)`: `None`, empty string, `"o3"`, `"o3-deep-research"`, `"o4-mini-deep-research"`, case-sensitivity (`"o3-Deep-Research"` → False), non-bool `async` values via `is_background_mode` (`{"async": 1}` → True, `{"async": "yes"}` → True) — closes P11 review Minor gaps M2/M3
+- [ ] [P13-T01] Add `is_background_model(model: str | None) -> bool` in `src/thoth/config.py`; refactor `is_background_mode` to delegate (preserves existing 9 tests + behavior)
+- [ ] [P13-T02] Switch `providers/openai.py:175,182` from `is_background_mode({"model": self.model})` to `is_background_model(self.model)` — removes the synthetic-dict abstraction leak flagged in P11 review (Task 2, Important)
+- [ ] [P13-TS02] Unit test for `create_provider("openai", ...)` with an `o3-deep-research` model setting `provider_config["background"] = True` — direct assertion, not just end-to-end via `test_oai_background.py`; closes P11 review Minor gap
+- [ ] [P13-T03] Update docstrings in `src/thoth/providers/__init__.py` (lines 6, 79) to reference `is_background_mode` by name instead of prose "deep-research background mode"
+- [ ] [P13-TS03] Tests for shared-secrets module: `test_secrets.py` verifies `_mask_secret`, `_is_secret_key`, `_mask_tree` preserve the exact masking semantics (last-4 retention, `${VAR}` passthrough, dotted-path suffix check, list + dict recursion)
+- [ ] [P13-T04] Create `src/thoth/_secrets.py` with the three helpers; update `config_cmd.py` and `modes_cmd.py` to import from there; delete the duplicates. Existing `test_config_cmd.py` + `test_modes_cmd.py` masking tests must stay green unchanged
+- [ ] [P13-TS04] Subprocess test: `run_thoth(["config", "list", "--json"])` returns valid JSON with a `general` key — prevents the "click eats --json" regression from recurring. Place in `tests/test_config_cmd.py`
+- [ ] [P13-TS05] Full suite regression: 169 existing pytest + new tests all green; `./thoth_test -r` baseline preserved
+- [ ] [P13-T05] Update PROJECTS.md P12-T05 note if P13 ships first (or delete P12-T05 entirely since the extraction is done)
+- [ ] Regression Test Status
+
+### Automated Verification
+- `just check` passes (ruff + ty)
+- `uv run pytest tests/` passes (169 → ~175 with new tests)
+- `./thoth_test -r` passes
+- `grep -rn '"deep-research"' src/thoth/providers/` returns zero code-logic matches (same as post-P11 baseline)
+- `grep -n "_mask_secret\|_is_secret_key\|_mask_tree" src/thoth/config_cmd.py src/thoth/modes_cmd.py` shows only imports from `_secrets`, no duplicate definitions
+
+### Manual Verification
+- `./thoth config list --json | jq keys` produces valid JSON (was broken before P11, not currently test-guarded)
+- `./thoth modes --json` still masks `api_key` in any `[modes.*]` table after the secrets extraction
+
+---
+
+## [ ] Project P12: CLI Mode Editing — `thoth modes set` / `thoth modes add` (v2.12.0)
+**Goal**: Let users create, edit, and delete mode definitions from the CLI instead of hand-editing TOML. Parallel to `thoth config set/unset` but scoped to `[modes.*]` tables. Uses the tomlkit round-trip already in `config_cmd.py` so comments and formatting survive.
+
+**Out of Scope**
+- GUI/TUI editor (keep it CLI-only)
+- Validating `system_prompt` content (any string accepted)
+- Adding new mode-level fields beyond what `ModeInfo` already surfaces (provider, providers, model, async, system_prompt, description, temperature, parallel, auto_input, previous, next)
+- Schema migration for `[modes.*]` (same version as P11)
+
+### Design Notes
+- Subcommand shape mirrors `config`: `thoth modes set <name> <key> <value>`, `thoth modes unset <name> [<key>]`, `thoth modes add <name> --model M [--provider P] [--description D]`, `thoth modes rename <old> <new>`, `thoth modes copy <src> <dst>`.
+- `--project` flag writes to `./thoth.toml` instead of user config, matching `config set --project`.
+- Type coercion reuses `_parse_value` pattern from `config_cmd.py` (bool/int/float/string).
+- Protected keys: cannot `unset` a builtin mode's own entry (but CAN override its keys via a user-side `[modes.<builtin>]` table — that's already how overrides work).
+- Secrets: same masking rules; `--string` flag forces string parsing so `sk-...` keys aren't coerced to numbers.
+- After each write, print the effective `ModeInfo` so the user sees what changed end-to-end (reuses `list_all_modes` + `_render_detail`).
+- Extract the shared secret-masking helpers (`_mask_secret`, `_is_secret_key`, `_mask_tree`) from `config_cmd.py` + `modes_cmd.py` into `thoth/_secrets.py` as part of this work — third caller incoming makes the duplication no longer tolerable.
+
+### Tests & Tasks
+- [ ] [P12-TS01] Tests for `thoth modes add <name> --model M`: creates `[modes.<name>]` in user TOML with model + provider=openai default; appears in `thoth modes --source user` afterward
+- [ ] [P12-T01] Implement `_op_add` in `modes_cmd.py` with tomlkit round-trip
+- [ ] [P12-TS02] Tests for `thoth modes set <name> <key> <value>`: updates existing user mode; creating a key on a builtin-only name implicitly creates an overriding `[modes.<name>]` table (source becomes "overridden"); --project writes to project TOML
+- [ ] [P12-T02] Implement `_op_set` with type coercion + `--string` + `--project`
+- [ ] [P12-TS03] Tests for `thoth modes unset <name> <key>`: removes a single key (prunes empty table); `thoth modes unset <name>` (no key) removes entire user table; refuses to touch `BUILTIN_MODES` (but allows dropping a user override)
+- [ ] [P12-T03] Implement `_op_unset` with empty-table pruning (mirrors `config_cmd._unset_in_doc`)
+- [ ] [P12-TS04] Tests for `thoth modes rename <old> <new>` (user modes only) and `thoth modes copy <src> <dst>` (copies from any mode — builtin or user — into a new user mode)
+- [ ] [P12-T04] Implement `_op_rename` and `_op_copy`
+- [ ] [P12-TS05] Tests for secret-helpers extraction: identical behavior before/after; no test regressions in `test_config_cmd.py` or `test_modes_cmd.py`
+- [ ] [P12-T05] Extract `_mask_secret` / `_is_secret_key` / `_mask_tree` to `src/thoth/_secrets.py`; update imports in `config_cmd.py` and `modes_cmd.py`
+- [ ] [P12-TS06] Subprocess tests: `thoth modes add / set / unset / rename / copy` through the click CLI (now that `ignore_unknown_options=True` from P11 makes flags work)
+- [ ] [P12-T06] Wire new ops into `modes_command` dispatch (`list | add | set | unset | rename | copy`)
+- [ ] [P12-T07] Update `show_modes_help()` in `help.py` with the new ops + examples; update `thoth help modes` epilog
+- [ ] [P12-TS07] Regression: full `uv run pytest tests/` + `./thoth_test -r` still green; existing `thoth modes list/--json/--name/--source` unchanged
+- [ ] Regression Test Status
+
+### Deliverable
+```bash
+$ thoth modes add my_brief --model gpt-4o-mini --description "terse daily brief"
+Added mode 'my_brief' (source=user, kind=immediate, model=gpt-4o-mini)
+
+$ thoth modes set my_brief temperature 0.2
+Updated my_brief.temperature = 0.2
+
+$ thoth modes copy deep_research custom_research
+Copied builtin 'deep_research' to user mode 'custom_research'
+
+$ thoth modes unset my_brief temperature
+Removed my_brief.temperature
+
+$ thoth modes unset my_brief
+Removed user mode 'my_brief'
+```
+
+### Automated Verification
+- `just check` passes
+- `uv run pytest tests/` passes
+- `./thoth_test -r` passes
+- `thoth modes add` / `set` / `unset` round-trip through user TOML without losing comments (tomlkit fidelity)
+
+### Manual Verification
+- Adding a mode then running `thoth modes` shows it with `source=user`
+- Overriding a builtin then running `thoth modes --name <mode>` shows `source=overridden` with the diff
+- `--project` flag writes to `./thoth.toml` not `~/.thoth/config.toml`
+
+---
+
 ## [x] Project P11: `thoth modes` Discovery Command (v2.11.0)
 **Goal**: Give users one authoritative place to see all research modes — built-in and user-defined — with provider, model, kind (immediate vs background), and origin source, so they don't need to read `config.py` or guess from descriptions. Also consolidates mode enumeration through a single helper, removing drift across `cli.py`, `help.py`, and `interactive.py`.
 
