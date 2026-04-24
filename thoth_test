@@ -701,6 +701,26 @@ class InteractiveTestRunner:
             )
 
 
+def print_list_tsv(tests: list[TestCase]) -> None:
+    for t in tests:
+        provider = t.provider or "none"
+        sys.stdout.write(f"{t.test_id}\t{provider}\t{t.test_type}\t{t.description}\n")
+
+
+def print_list_json(tests: list[TestCase]) -> None:
+    payload = [
+        {
+            "test_id": t.test_id,
+            "provider": t.provider,
+            "test_type": t.test_type,
+            "description": t.description,
+            "is_interactive": bool(getattr(t, "is_interactive", False)),
+        }
+        for t in tests
+    ]
+    sys.stdout.write(json.dumps(payload) + "\n")
+
+
 # ============================================================================
 # Selection Resolver
 # ============================================================================
@@ -2703,6 +2723,9 @@ all_tests = [
 )
 @click.option("--no-cleanup", is_flag=True, help="Do not clean up test files")
 @click.option("--save-output", is_flag=True, help="Save test output to files for debugging")
+@click.option("--list", "list_flag", is_flag=True, help="Print tests without running them (TSV).")
+@click.option("--list-json", "list_json_flag", is_flag=True, help="Print tests without running them (JSON).")
+@click.option("--id", "ids", multiple=True, help="Exact-match test IDs to run (repeatable). Overrides other filters.")
 def main(
     run,
     all,
@@ -2714,6 +2737,9 @@ def main(
     skip_interactive,
     no_cleanup,
     save_output,
+    list_flag,
+    list_json_flag,
+    ids,
 ):
     """Thoth Test Suite - Comprehensive regression tests for Thoth CLI
 
@@ -2774,6 +2800,34 @@ def main(
     # Isolate test checkpoints and config from the user's real thoth config dir.
     # Done before any subprocess is spawned so children inherit XDG_CONFIG_HOME.
     _ensure_test_config_home()
+
+    if list_flag and list_json_flag:
+        click.echo("--list and --list-json are mutually exclusive", err=True)
+        sys.exit(2)
+    if list_flag or list_json_flag:
+        preview_providers: list[str] | None = None
+        if provider and all_providers:
+            click.echo("Error: Cannot specify both --provider and --all-providers", err=True)
+            sys.exit(2)
+        if provider:
+            preview_providers = [p.strip() for p in provider.split(",")]
+        elif all_providers:
+            preview_providers = ["mock", "openai", "perplexity"]
+
+        preview_tests, _ = resolve_selection(
+            all_tests,
+            test=test,
+            provider_filter=preview_providers,
+            interactive=interactive,
+            skip_interactive=skip_interactive,
+            ids=list(ids),
+            last_failed=False,
+        )
+        if list_flag:
+            print_list_tsv(preview_tests)
+        else:
+            print_list_json(preview_tests)
+        sys.exit(0)
 
     # Handle -a shorthand
     if all:
