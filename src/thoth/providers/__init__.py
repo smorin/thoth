@@ -3,7 +3,7 @@
 PROVIDERS is the single source of truth for name → class dispatch.
 create_provider() handles API-key resolution plus provider-specific
 config tweaks (mock validation, timeout override, mode-driven model,
-deep-research background mode).
+is_background_mode derivation).
 """
 
 from __future__ import annotations
@@ -76,7 +76,7 @@ def create_provider(
 
     Replaces the old ProviderRegistry.create + create_provider duplication.
     Dispatch happens through the PROVIDERS registry dict; per-provider config
-    shaping (timeout override, mode-driven model, deep-research background)
+    shaping (timeout override, mode-driven model, is_background_mode-derived background)
     is applied before instantiation.
     """
     if provider_name not in PROVIDERS:
