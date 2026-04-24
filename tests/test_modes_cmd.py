@@ -215,3 +215,39 @@ def test_modes_list_show_secrets_unmasks(
     out = capsys.readouterr().out
     assert rc == 0
     assert "sk-verysecretverysecret1234" in out
+
+
+def test_modes_list_source_filter_user(
+    isolated_thoth_home: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    cfg = Path(isolated_thoth_home) / "config" / "thoth" / "config.toml"
+    cfg.parent.mkdir(parents=True, exist_ok=True)
+    cfg.write_text(
+        'version = "2.0"\n[modes.my_brief]\nprovider = "openai"\nmodel = "gpt-4o-mini"\n'
+    )
+    rc = modes_command("list", ["--json", "--source", "user"])
+    out = capsys.readouterr().out
+    assert rc == 0
+    data = json.loads(out)
+    names = {m["name"] for m in data["modes"]}
+    assert names == {"my_brief"}
+
+
+def test_modes_list_source_filter_overridden(
+    isolated_thoth_home: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    cfg = Path(isolated_thoth_home) / "config" / "thoth" / "config.toml"
+    cfg.parent.mkdir(parents=True, exist_ok=True)
+    cfg.write_text('version = "2.0"\n[modes.deep_research]\nparallel = false\n')
+    rc = modes_command("list", ["--json", "--source", "overridden"])
+    out = capsys.readouterr().out
+    assert rc == 0
+    data = json.loads(out)
+    assert [m["name"] for m in data["modes"]] == ["deep_research"]
+
+
+def test_modes_list_invalid_source_returns_2(
+    isolated_thoth_home: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    rc = modes_command("list", ["--source", "bogus"])
+    assert rc == 2

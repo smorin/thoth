@@ -104,6 +104,7 @@ def list_all_modes(cm: ConfigManager) -> list[ModeInfo]:
 
 
 _SOURCE_ORDER = {"builtin": 0, "overridden": 1, "user": 2}
+_VALID_SOURCES = ("builtin", "user", "overridden", "all")
 _KIND_ORDER = {"immediate": 0, "background": 1, "unknown": 2}
 
 
@@ -183,17 +184,48 @@ def _info_to_dict(m: ModeInfo, show_secrets: bool) -> dict[str, Any]:
     return d
 
 
-def _parse_list_flags(args: list[str]) -> tuple[bool, bool]:
-    as_json = "--json" in args
-    show_secrets = "--show-secrets" in args
-    return as_json, show_secrets
+def _parse_list_flags(args: list[str]) -> tuple[bool, bool, str, int]:
+    """Return (as_json, show_secrets, source_filter, error_rc). rc=0 means ok."""
+    as_json = False
+    show_secrets = False
+    source = "all"
+    i = 0
+    while i < len(args):
+        a = args[i]
+        if a == "--json":
+            as_json = True
+            i += 1
+        elif a == "--show-secrets":
+            show_secrets = True
+            i += 1
+        elif a == "--source":
+            if i + 1 >= len(args):
+                _get_console().print("[red]Error:[/red] --source requires a value")
+                return as_json, show_secrets, source, 2
+            source = args[i + 1]
+            if source not in _VALID_SOURCES:
+                _get_console().print(
+                    f"[red]Error:[/red] --source must be one of {', '.join(_VALID_SOURCES)}"
+                )
+                return as_json, show_secrets, source, 2
+            i += 2
+        else:
+            _get_console().print(f"[red]Error:[/red] unknown arg: {a}")
+            return as_json, show_secrets, source, 2
+    return as_json, show_secrets, source, 0
 
 
 def _op_list(args: list[str]) -> int:
-    as_json, show_secrets = _parse_list_flags(args)
+    as_json, show_secrets, source, rc = _parse_list_flags(args)
+    if rc != 0:
+        return rc
+
     cm = ConfigManager()
     cm.load_all_layers({})
-    infos = sorted(list_all_modes(cm), key=_sort_key)
+    infos = list_all_modes(cm)
+    if source != "all":
+        infos = [m for m in infos if m.source == source]
+    infos = sorted(infos, key=_sort_key)
 
     if as_json:
         payload = {
