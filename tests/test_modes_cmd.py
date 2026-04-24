@@ -251,3 +251,55 @@ def test_modes_list_invalid_source_returns_2(
 ) -> None:
     rc = modes_command("list", ["--source", "bogus"])
     assert rc == 2
+
+
+def test_modes_detail_unknown_name_returns_1(
+    isolated_thoth_home: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    rc = modes_command("list", ["--name", "no_such_mode"])
+    # Drain output (combine stdout + stderr) — exit code is what we test.
+    capsys.readouterr()
+    assert rc == 1
+
+
+def test_modes_detail_builtin(
+    isolated_thoth_home: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    rc = modes_command("list", ["--name", "default"])
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "Mode: default" in out
+    assert "Source: builtin" in out
+    assert "Model: o3" in out
+    assert "Kind: immediate" in out
+
+
+def test_modes_detail_overridden_shows_diff(
+    isolated_thoth_home: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    cfg = Path(isolated_thoth_home) / "config" / "thoth" / "config.toml"
+    cfg.parent.mkdir(parents=True, exist_ok=True)
+    cfg.write_text('version = "2.0"\n[modes.deep_research]\nparallel = false\n')
+    rc = modes_command("list", ["--name", "deep_research"])
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "parallel" in out
+    assert "True" in out and "False" in out
+
+
+def test_modes_detail_truncates_system_prompt_without_full(
+    isolated_thoth_home: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    rc = modes_command("list", ["--name", "deep_research"])
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "use --full" in out
+
+
+def test_modes_detail_full_dumps_system_prompt(
+    isolated_thoth_home: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    rc = modes_command("list", ["--name", "deep_research", "--full"])
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "comprehensive research with citations" in out

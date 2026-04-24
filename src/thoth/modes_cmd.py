@@ -184,11 +184,15 @@ def _info_to_dict(m: ModeInfo, show_secrets: bool) -> dict[str, Any]:
     return d
 
 
-def _parse_list_flags(args: list[str]) -> tuple[bool, bool, str, int]:
-    """Return (as_json, show_secrets, source_filter, error_rc). rc=0 means ok."""
+def _parse_list_flags(
+    args: list[str],
+) -> tuple[bool, bool, str, str | None, bool, int]:
+    """Return (as_json, show_secrets, source, name, full, error_rc). rc=0 means ok."""
     as_json = False
     show_secrets = False
     source = "all"
+    name: str | None = None
+    full = False
     i = 0
     while i < len(args):
         a = args[i]
@@ -198,31 +202,89 @@ def _parse_list_flags(args: list[str]) -> tuple[bool, bool, str, int]:
         elif a == "--show-secrets":
             show_secrets = True
             i += 1
+        elif a == "--full":
+            full = True
+            i += 1
         elif a == "--source":
             if i + 1 >= len(args):
                 _get_console().print("[red]Error:[/red] --source requires a value")
-                return as_json, show_secrets, source, 2
+                return as_json, show_secrets, source, name, full, 2
             source = args[i + 1]
             if source not in _VALID_SOURCES:
                 _get_console().print(
                     f"[red]Error:[/red] --source must be one of {', '.join(_VALID_SOURCES)}"
                 )
-                return as_json, show_secrets, source, 2
+                return as_json, show_secrets, source, name, full, 2
+            i += 2
+        elif a == "--name":
+            if i + 1 >= len(args):
+                _get_console().print("[red]Error:[/red] --name requires a value")
+                return as_json, show_secrets, source, name, full, 2
+            name = args[i + 1]
             i += 2
         else:
             _get_console().print(f"[red]Error:[/red] unknown arg: {a}")
-            return as_json, show_secrets, source, 2
-    return as_json, show_secrets, source, 0
+            return as_json, show_secrets, source, name, full, 2
+    return as_json, show_secrets, source, name, full, 0
+
+
+def _render_detail(m: ModeInfo, full: bool, show_secrets: bool) -> None:
+    console = _get_console()
+    providers = ",".join(m.providers) if m.providers else "-"
+    console.print(f"Mode: {m.name}")
+    console.print(f"Source: {m.source}")
+    console.print(f"Providers: {providers}")
+    console.print(f"Model: {m.model or '-'}")
+    console.print(f"Kind: {m.kind}")
+    if m.description:
+        console.print(f"Description: {m.description}")
+    if m.warnings:
+        for w in m.warnings:
+            console.print(f"[yellow]Warning:[/yellow] {w}")
+    if m.overrides:
+        console.print("Overrides (builtin → effective):")
+        rendered = _mask_tree(m.overrides) if not show_secrets else m.overrides
+        for key, diff in rendered.items():
+            console.print(f"  {key}: {diff['builtin']!r} → {diff['effective']!r}")
+    system_prompt = m.raw.get("system_prompt")
+    if system_prompt:
+        if full:
+            console.print("System prompt:")
+            console.print(system_prompt)
+        else:
+            preview = _truncate(str(system_prompt), 200)
+            console.print(f"System prompt: {preview} [dim](use --full to see)[/dim]")
 
 
 def _op_list(args: list[str]) -> int:
-    as_json, show_secrets, source, rc = _parse_list_flags(args)
+    as_json, show_secrets, source, name, full, rc = _parse_list_flags(args)
     if rc != 0:
         return rc
 
     cm = ConfigManager()
     cm.load_all_layers({})
     infos = list_all_modes(cm)
+
+    if name is not None:
+        match = next((m for m in infos if m.name == name), None)
+        if match is None:
+            _get_console().print(f"[red]Error:[/red] unknown mode: {name}")
+            return 1
+        if as_json:
+            print(
+                json.dumps(
+                    {
+                        "schema_version": "1",
+                        "mode": _info_to_dict(match, show_secrets),
+                    },
+                    indent=2,
+                    sort_keys=True,
+                )
+            )
+        else:
+            _render_detail(match, full, show_secrets)
+        return 0
+
     if source != "all":
         infos = [m for m in infos if m.source == source]
     infos = sorted(infos, key=_sort_key)
