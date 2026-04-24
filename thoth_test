@@ -702,6 +702,60 @@ class InteractiveTestRunner:
 
 
 # ============================================================================
+# Selection Resolver
+# ============================================================================
+
+
+def resolve_selection(
+    all_tests: list[TestCase],
+    *,
+    test: str | None,
+    provider_filter: list[str] | None,
+    interactive: bool,
+    skip_interactive: bool,
+    ids: list[str],
+    last_failed: bool,
+) -> tuple[list[TestCase], list[str]]:
+    """Pure filter-composition for main().
+
+    Returns (selected_tests, warnings). ``ids`` and ``last_failed`` overrides
+    are handled in later tasks; this task only covers the pre-existing
+    filters so the refactor is behaviour-preserving.
+    """
+    warnings: list[str] = []
+    selected = list(all_tests)
+
+    if interactive:
+        selected = [t for t in selected if getattr(t, "is_interactive", False)]
+    if skip_interactive:
+        before = len(selected)
+        selected = [t for t in selected if not getattr(t, "is_interactive", False)]
+        skipped = before - len(selected)
+        if skipped:
+            warnings.append(
+                f"Skipping {skipped} interactive mode tests (--skip-interactive)"
+            )
+
+    if test:
+        needle = test
+        selected = [
+            t for t in selected
+            if needle in t.test_id or needle.lower() in t.description.lower()
+        ]
+
+    if provider_filter:
+        kept = []
+        for t in selected:
+            if not t.provider:
+                kept.append(t)
+            elif t.provider in provider_filter:
+                kept.append(t)
+        selected = kept
+
+    return selected, warnings
+
+
+# ============================================================================
 # Test Runner
 # ============================================================================
 
@@ -2756,60 +2810,37 @@ def main(
     elif all_providers:
         requested_providers = ["mock", "openai", "perplexity"]
 
-    # Filter tests if pattern provided or interactive mode requested
-    tests_to_run = all_tests
+    tests_to_run, selection_warnings = resolve_selection(
+        all_tests,
+        test=test,
+        provider_filter=requested_providers,
+        interactive=interactive,
+        skip_interactive=skip_interactive,
+        ids=[],
+        last_failed=False,
+    )
+    for w in selection_warnings:
+        console.print(f"[yellow]{w}[/yellow]")
 
-    # Filter by interactive mode if requested
     if interactive:
-        tests_to_run = [t for t in tests_to_run if getattr(t, "is_interactive", False)]
         console.print(f"Running {len(tests_to_run)} interactive mode tests")
-
-    # Skip interactive tests if requested
-    if skip_interactive:
-        before = len(tests_to_run)
-        tests_to_run = [t for t in tests_to_run if not getattr(t, "is_interactive", False)]
-        skipped = before - len(tests_to_run)
-        if skipped:
-            console.print(
-                f"[yellow]Skipping {skipped} interactive mode tests (--skip-interactive)[/yellow]"
-            )
-
-    # Further filter by test pattern if provided
-    if test:
-        tests_to_run = [
-            t for t in tests_to_run if test in t.test_id or test.lower() in t.description.lower()
-        ]
+    elif test:
         console.print(f"Running {len(tests_to_run)} tests matching '{test}'")
-    elif not interactive:
+    else:
         console.print(f"Total tests: {len(tests_to_run)}")
 
-    # Filter by provider if requested
     if requested_providers:
-        provider_filtered = []
-        provider_counts = {p: 0 for p in requested_providers}
+        provider_counts: dict[str, int] = {p: 0 for p in requested_providers}
         provider_counts["none"] = 0
-
         for t in tests_to_run:
-            # Include tests with no provider (provider-agnostic tests)
-            if not t.provider:
-                provider_filtered.append(t)
-                provider_counts["none"] += 1
-            # Include tests for requested providers
-            elif t.provider in requested_providers:
-                provider_filtered.append(t)
-                provider_counts[t.provider] += 1
-
-        tests_to_run = provider_filtered
+            key = t.provider if t.provider in requested_providers else ("none" if not t.provider else t.provider)
+            if key in provider_counts:
+                provider_counts[key] += 1
         console.print(
             f"Filtered to {len(tests_to_run)} tests for provider(s): {', '.join(requested_providers)}"
         )
-
-        # Show breakdown
-        breakdown = []
-        for p in requested_providers:
-            if provider_counts[p] > 0:
-                breakdown.append(f"{p}: {provider_counts[p]}")
-        if provider_counts["none"] > 0:
+        breakdown = [f"{p}: {provider_counts[p]}" for p in requested_providers if provider_counts[p]]
+        if provider_counts["none"]:
             breakdown.append(f"provider-agnostic: {provider_counts['none']}")
         if breakdown:
             console.print(f"Test breakdown: {', '.join(breakdown)}")
