@@ -328,3 +328,31 @@ def test_help_epilog_lists_mode_names(
     assert "thoth modes" in out
     # Teaser still shows at least one mode name.
     assert "default" in out
+
+
+def test_interactive_and_help_use_list_all_modes(
+    isolated_thoth_home: Path,
+) -> None:
+    """Regression: direct `BUILTIN_MODES` iteration for LISTING (not validation)
+    should no longer exist in interactive.py or help.py. Both must go through
+    `list_all_modes()`.
+
+    Note: validation in interactive.py (`if mode in BUILTIN_MODES`) and the
+    teaser in help.py (`', '.join(BUILTIN_MODES.keys())`) remain intentionally.
+    What we forbid is PER-MODE ITERATION — `for ... in BUILTIN_MODES.items()`
+    or an equivalent listing loop — anywhere in those files.
+    """
+    from pathlib import Path as _Path
+
+    interactive_src = _Path("src/thoth/interactive.py").read_text()
+    help_src = _Path("src/thoth/help.py").read_text()
+
+    # Forbidden: iterating BUILTIN_MODES.items() for listing
+    assert "BUILTIN_MODES.items()" not in interactive_src, (
+        "interactive.py should route listings through list_all_modes()"
+    )
+    assert "BUILTIN_MODES.items()" not in help_src, (
+        "help.py should not iterate BUILTIN_MODES.items() — removed in Task 9"
+    )
+    # interactive.py should reference list_all_modes now
+    assert "list_all_modes" in interactive_src

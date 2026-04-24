@@ -112,14 +112,16 @@ class SlashCommandRegistry:
 
     def set_mode(self, args: str) -> str:
         """Set research mode"""
+        from thoth.modes_cmd import list_all_modes
+
         if not args:
             self.console.print("[cyan]Available modes:[/cyan]")
-            modes = list(BUILTIN_MODES.keys())
-            for i, mode_name in enumerate(modes, 1):
-                mode_config = BUILTIN_MODES[mode_name]
-                desc = str(mode_config.get("description", "No description"))[:60]
-                current = " [green]← current[/green]" if mode_name == self.current_mode else ""
-                self.console.print(f"  {i}. {mode_name:<15} - {desc}{current}")
+            cm = get_config()
+            infos = list_all_modes(cm)
+            for i, info in enumerate(infos, 1):
+                desc = (info.description or "")[:60]
+                current = " [green]← current[/green]" if info.name == self.current_mode else ""
+                self.console.print(f"  {i}. {info.name:<15} [{info.kind:<10}] {desc}{current}")
             self.console.print("\n[dim]Usage: /mode <name> or /mode <number>[/dim]")
             self.console.print(f"[dim]Current mode: {self.current_mode}[/dim]")
         else:
@@ -776,13 +778,16 @@ class InteractiveSession:
 
     def _show_mode_selection(self):
         """Show available modes for selection"""
+        from thoth.modes_cmd import list_all_modes
 
         def print_modes():
+            cm = get_config()
+            infos = list_all_modes(cm)
             print("\nAvailable modes:")
-            for i, (name, config) in enumerate(BUILTIN_MODES.items(), 1):
-                desc = str(config.get("description", "No description"))[:60]
-                current = " ← current" if name == self.slash_registry.current_mode else ""
-                print(f"  {i}. {name:15} - {desc}{current}")
+            for i, info in enumerate(infos, 1):
+                desc = (info.description or "")[:60]
+                current = " ← current" if info.name == self.slash_registry.current_mode else ""
+                print(f"  {i}. {info.name:15} [{info.kind:<10}] {desc}{current}")
             print("\nType: /mode <name> to select a mode")
             print()
 
