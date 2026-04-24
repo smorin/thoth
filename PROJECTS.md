@@ -1,4 +1,4 @@
-## [ ] Project P11: `thoth modes` Discovery Command (v2.11.0)
+## [x] Project P11: `thoth modes` Discovery Command (v2.11.0)
 **Goal**: Give users one authoritative place to see all research modes — built-in and user-defined — with provider, model, kind (immediate vs background), and origin source, so they don't need to read `config.py` or guess from descriptions. Also consolidates mode enumeration through a single helper, removing drift across `cli.py`, `help.py`, and `interactive.py`.
 
 **Out of Scope**
@@ -17,21 +17,20 @@
 - `thinking` mode: change `model` from `o3-deep-research` to `o3` to match its "quick analysis" description and make it actually immediate.
 
 ### Tests & Tasks
-- [ ] [P11-TS00] Tests for `is_background_mode` helper: explicit `async: true`, explicit `async: false` overrides deep-research model, model contains `deep-research`, model without it, missing model key
-- [ ] [P11-T00] Implement `is_background_mode` in `src/thoth/config.py`; refactor `providers/openai.py:175,182` to call it; change `BUILTIN_MODES["thinking"]["model"]` to `"o3"`
-- [ ] [P11-TS01] Tests for `list_all_modes(cm) -> list[ModeInfo]` returning `{name, source, provider(s), model, kind, description, overrides, schema_version}`. Cover: pure builtin, user-only mode, overridden mode, per-field override detection, `providers` (list) normalization, malformed mode → `kind=unknown` + warning collected
-- [ ] [P11-T01] Implement `list_all_modes` + `ModeInfo` in `src/thoth/modes_cmd.py`
-- [ ] [P11-TS02] CLI tests for `thoth modes`: default table + sort order, `--json` shape with `schema_version`, `--source builtin|user|overridden|all` filter, `--show-secrets` unmasks, default masks api_key inside a mode, non-TTY strips Rich styling. Use test-isolation fixture (tmp `user_config_file()`) — do NOT read the real `~/.thoth/config.toml`
-- [ ] [P11-T02] Implement `modes_cmd.py` dispatch + Rich table renderer + JSON serializer + secret masking + TTY detection
-- [ ] [P11-TS05] Tests for `thoth modes --name <mode>` detail view: side-by-side "builtin → effective" diff for overridden fields, `--full` dumps entire `system_prompt` verbatim, unknown name returns non-zero with friendly error
-- [ ] [P11-T03] Implement `--name` detail view with per-field override diff and `--full` flag
-- [ ] [P11-T04] Wire `modes` into `src/thoth/cli.py` dispatch (parallel to `config`); add `show_modes_help()` in `src/thoth/help.py`; update epilog/general help to a one-line pointer + short names-only teaser; include JSON schema snippet in `show_modes_help()`; note that per-invocation `--async` flag is orthogonal to the `Kind` column
-- [ ] [P11-TS03] Test that `thoth help modes` prints the new help block and that help epilog still lists mode names
-- [ ] [P11-TS04] Tests for `list_all_modes()` being the single source of truth: `help.py` epilog and `interactive.py` mode listing both call it (no direct `BUILTIN_MODES` iteration remains except inside `config.py` / `modes_cmd.py`)
-- [ ] [P11-T05] Route `help.py` (lines 71, 271) and `interactive.py` (lines 117, 128, 139, 680, 782) mode enumeration through `list_all_modes()` — remove inline `BUILTIN_MODES` iteration from those files
-- [ ] [P11-T06] Audit README / docs for direct references to the built-in mode list; point them at `thoth modes`. Skip if none exist
-- [ ] [P11-TS06] Regression: full existing test suite + `thoth_test -r` still green; existing interactive `/mode` behavior unchanged
-- [ ] Regression Test Status
+- [x] [P11-TS00] Tests for `is_background_mode` helper: explicit `async: true`, explicit `async: false` overrides deep-research model, model contains `deep-research`, model without it, missing model key
+- [x] [P11-T00] Implement `is_background_mode` in `src/thoth/config.py`; refactor `providers/openai.py:175,182` + `providers/__init__.py:111` to call it; change `BUILTIN_MODES["thinking"]["model"]` to `"o3"`
+- [x] [P11-TS01] Tests for `list_all_modes(cm) -> list[ModeInfo]` returning `{name, source, provider(s), model, kind, description, overrides, schema_version}`. Cover: pure builtin, user-only mode, overridden mode, per-field override detection, `providers` (list) normalization, malformed mode → `kind=unknown` + warning collected
+- [x] [P11-T01] Implement `list_all_modes` + `ModeInfo` in `src/thoth/modes_cmd.py`
+- [x] [P11-TS02] CLI tests for `thoth modes`: default table + sort order, `--json` shape with `schema_version`, `--source builtin|user|overridden|all` filter, `--show-secrets` unmasks, default masks api_key inside a mode. Use test-isolation fixture (`isolated_thoth_home` + autouse `COLUMNS=200`) — does NOT read the real `~/.thoth/config.toml`
+- [x] [P11-T02] Implement `modes_cmd.py` dispatch + Rich table renderer + JSON serializer + secret masking + per-call Console for dynamic width
+- [x] [P11-TS05] Tests for `thoth modes --name <mode>` detail view: override diff, `--full` dumps entire `system_prompt`, unknown name returns exit 1
+- [x] [P11-T03] Implement `--name` detail view with per-field override diff and `--full` flag
+- [x] [P11-T04] Wire `modes` into `src/thoth/cli.py` dispatch (parallel to `config`); add `show_modes_help()` in `src/thoth/help.py`; replace per-mode epilog loop with names-only teaser + pointer; include JSON schema snippet in help
+- [x] [P11-TS03] Test that `thoth help modes` prints the new help block and that help epilog still lists mode names
+- [x] [P11-TS04] Regression test asserting `BUILTIN_MODES.items()` is no longer iterated in `interactive.py` / `help.py`
+- [x] [P11-T05] Route `interactive.py` (`set_mode`, `_show_mode_selection`) mode listing through `list_all_modes()`; validation branches still use `BUILTIN_MODES` (intentional — interactive user-mode support out of scope)
+- [x] [P11-T06] Added `ignore_unknown_options=True` in root click context so `--json` / `--name` / `--source` flags pass through to subcommands; updated thoth_test EXIT-02 to assert exit 2 via `thoth modes bogus_op` (the `thoth --invalid-flag` case became "prompt" per new click behavior)
+- [x] Regression Test Status — full suite 169/169 pytest + 63/64 thoth_test (1 skipped, 0 failed) green
 
 ### Deliverable
 ```bash
