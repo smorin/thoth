@@ -105,7 +105,12 @@ def list_all_modes(cm: ConfigManager) -> list[ModeInfo]:
 _SOURCE_ORDER = {"builtin": 0, "overridden": 1, "user": 2}
 _KIND_ORDER = {"immediate": 0, "background": 1, "unknown": 2}
 
-_console = Console(width=200)
+
+def _get_console() -> Console:
+    """Construct a Rich Console at each render call so width is resolved
+    dynamically (respects terminal width in production and the COLUMNS env
+    var in tests)."""
+    return Console()
 
 
 def _sort_key(m: ModeInfo) -> tuple[int, int, str, str, str]:
@@ -140,7 +145,7 @@ def _render_table(infos: list[ModeInfo]) -> None:
             m.kind,
             _truncate(m.description),
         )
-    _console.print(table)
+    _get_console().print(table)
 
 
 def _op_list(args: list[str]) -> int:
@@ -157,7 +162,7 @@ def modes_command(op: str | None, args: list[str]) -> int:
         return _op_list(args)
     ops = {"list": _op_list}
     if op not in ops:
-        _console.print(f"[red]Error:[/red] unknown modes op: {op}")
+        _get_console().print(f"[red]Error:[/red] unknown modes op: {op}")
         return 2
     return ops[op](args)
 

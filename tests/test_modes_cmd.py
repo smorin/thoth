@@ -10,6 +10,15 @@ from thoth.config import ConfigManager
 from thoth.modes_cmd import ModeInfo, list_all_modes, modes_command
 
 
+@pytest.fixture(autouse=True)
+def _wide_columns_for_table_tests(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Rich auto-detects terminal width. Under `capsys` there's no tty, so
+    Rich falls back to a narrow default and truncates headers. Force a wide
+    virtual terminal so table-rendering assertions ("default", "deep_research",
+    full column headers) see the complete text."""
+    monkeypatch.setenv("COLUMNS", "200")
+
+
 def _cm(isolated_thoth_home: Path, toml: str | None = None) -> ConfigManager:
     if toml is not None:
         cfg = Path(isolated_thoth_home) / "config" / "thoth" / "config.toml"
