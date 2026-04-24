@@ -439,6 +439,18 @@ async def _run_polling_loop(
                     completed_providers.add(provider_name)
                     failed_providers.add(provider_name)
                     await checkpoint_manager.save(operation)
+                elif provider_status == "cancelled":
+                    # Cancelled jobs cannot be resumed via the original provider
+                    # job id, so route to permanent to suppress the misleading
+                    # `thoth --resume` hint.
+                    error_msg = status.get("error", "job was cancelled")
+                    console.print(f"\n[red]✗[/red] {provider_name.title()} cancelled: {error_msg}")
+                    operation.providers[provider_name]["status"] = "failed"
+                    operation.providers[provider_name]["failure_type"] = "permanent"
+                    operation.providers[provider_name]["error"] = error_msg
+                    completed_providers.add(provider_name)
+                    failed_providers.add(provider_name)
+                    await checkpoint_manager.save(operation)
                 else:
                     error_msg = status.get("error", f"unknown status {provider_status!r}")
                     console.print(f"\n[yellow]⚠[/yellow] {provider_name.title()}: {error_msg}")

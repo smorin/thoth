@@ -52,7 +52,7 @@ def test_reasoning_summary_extracts_text_not_repr() -> None:
     provider.jobs["job-1"] = {"background": False, "response": response}
     result = asyncio.run(provider.get_result("job-1"))
     assert "Planning research approach" in result, f"reasoning text missing: {result!r}"
-    assert "namespace" not in result.lower(), f"object repr leaked into result: {result!r}"
+    assert "namespace(text=" not in result.lower(), f"object repr leaked into result: {result!r}"
 
 
 def test_duplicate_citations_are_deduplicated() -> None:

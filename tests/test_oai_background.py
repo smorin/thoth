@@ -246,6 +246,12 @@ def test_failed_provider_fails_operation() -> None:
     assert op.status == "failed", (
         f"failed provider should set operation to failed, got: {op.status}"
     )
+    assert "quota" in (op.providers["mock"].get("error") or "").lower(), (
+        f"provider error message should be propagated, got: {op.providers}"
+    )
+    assert "quota" in (op.error or "").lower(), (
+        f"operation error should include provider error detail, got: {op.error}"
+    )
 
 
 def test_cancelled_provider_fails_operation() -> None:
@@ -272,6 +278,13 @@ def test_cancelled_provider_fails_operation() -> None:
     )
     assert op.providers["mock"]["status"] == "failed", (
         f"provider status should be normalized to failed, got: {op.providers}"
+    )
+    assert op.providers["mock"].get("failure_type") == "permanent", (
+        f"cancelled jobs cannot be resumed via the original job id, "
+        f"so failure_type must be permanent: {op.providers}"
+    )
+    assert "cancel" in (op.providers["mock"].get("error") or "").lower(), (
+        f"cancelled error detail should be propagated, got: {op.providers}"
     )
 
 
