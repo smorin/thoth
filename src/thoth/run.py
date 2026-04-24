@@ -33,6 +33,7 @@ from thoth.checkpoint import CheckpointManager
 from thoth.config import ConfigManager, get_config
 from thoth.context import AppContext
 from thoth.errors import APIKeyError, DiskSpaceError, ProviderError, ThothError
+from thoth.hints import print_hint, print_saved_not_submitted
 from thoth.models import OperationStatus
 from thoth.output import OutputManager
 from thoth.providers import ResearchProvider, create_provider
@@ -267,8 +268,7 @@ async def run_research(
             console.print(f"[yellow]Suggestion:[/yellow] {e.suggestion}")
             if verbose and hasattr(e, "raw_error") and getattr(e, "raw_error", None):
                 console.print(f"[dim]Raw error: {e.raw_error}[/dim]")
-            console.print(f"\nOperation ID: [bold]{operation_id}[/bold] (saved; not submitted)")
-            console.print(f"  [bold]thoth status {operation_id}[/bold]    See saved state")
+            print_saved_not_submitted(operation_id)
             raise click.Abort()
         except Exception as e:
             operation.transition_to("failed", error=str(e))
@@ -276,8 +276,7 @@ async def run_research(
             console.print(f"\n[red]Unexpected error during submission:[/red] {str(e)}")
             if verbose:
                 console.print(f"[dim]Full error: {repr(e)}[/dim]")
-            console.print(f"\nOperation ID: [bold]{operation_id}[/bold] (saved; not submitted)")
-            console.print(f"  [bold]thoth status {operation_id}[/bold]    See saved state")
+            print_saved_not_submitted(operation_id)
             raise click.Abort()
 
     try:
@@ -642,8 +641,8 @@ async def _execute_research(
 
     if not quiet:
         console.print(f"\nOperation ID: [bold]{operation.id}[/bold]")
-        console.print(f"  [bold]thoth status {operation.id}[/bold]    Re-check later")
-        console.print("  [bold]thoth list[/bold]           See recent runs")
+        print_hint(f"thoth status {operation.id}", "Re-check later")
+        print_hint("thoth list", "See recent runs")
 
     ctx.checkpoint_manager = None
     ctx.current_operation = None

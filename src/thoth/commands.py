@@ -28,7 +28,8 @@ from thoth.help import (
     show_providers_help,
     show_status_help,
 )
-from thoth.models import ModelCache
+from thoth.hints import print_hint
+from thoth.models import ModelCache, OperationStatus
 from thoth.paths import user_config_file
 from thoth.providers import create_provider
 from thoth.run import run_research
@@ -239,33 +240,29 @@ async def show_status(operation_id: str):
     _print_status_hints(operation)
 
 
-def _print_status_hints(operation: Any) -> None:
-    """Print state-aware next-step hints after `thoth status <ID>`."""
+def _print_status_hints(operation: OperationStatus) -> None:
     console.print("\nNext steps:")
     status = operation.status
     op_id = operation.id
     if status == "queued":
-        console.print(
-            f"  [bold]thoth status {op_id}[/bold]    "
-            "Re-check (should transition to running shortly)"
-        )
+        print_hint(f"thoth status {op_id}", "Re-check (should transition to running shortly)")
     elif status == "running":
-        console.print(f"  [bold]thoth status {op_id}[/bold]    Re-check progress")
+        print_hint(f"thoth status {op_id}", "Re-check progress")
     elif status == "completed":
-        console.print("  [bold]thoth list[/bold]    See recent runs")
+        print_hint("thoth list", "See recent runs")
     elif status == "cancelled":
-        console.print(f"  [bold]thoth --resume {op_id}[/bold]    Pick up where Ctrl-C left off")
+        print_hint(f"thoth --resume {op_id}", "Pick up where Ctrl-C left off")
     elif status == "failed":
         if operation.failure_type == "permanent":
             console.print("  This failure is permanent and cannot be resumed.")
-            for provider_name in operation.providers:
-                console.print(
-                    f"  [bold]thoth config get providers.{provider_name}.api_key "
-                    "--show-secrets[/bold]    Check credentials"
+            first = next(iter(operation.providers), None)
+            if first is not None:
+                print_hint(
+                    f"thoth config get providers.{first}.api_key --show-secrets",
+                    "Check credentials",
                 )
-                break
         else:
-            console.print(f"  [bold]thoth --resume {op_id}[/bold]    Retry from checkpoint")
+            print_hint(f"thoth --resume {op_id}", "Retry from checkpoint")
 
 
 async def list_operations(show_all: bool):
