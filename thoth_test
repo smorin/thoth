@@ -1455,6 +1455,8 @@ api_key = "{api_key}"
 
         report = serialize_run_report(self, invocation=sys.argv)
         write_cache_atomic(report)
+        if getattr(self, "_report_json_path", None):
+            write_cache_atomic(report, Path(self._report_json_path))
 
         # Exit with appropriate code
         sys.exit(0 if failed_tests == 0 else 1)
@@ -2837,6 +2839,13 @@ all_tests = [
     is_flag=True,
     help="Rerun tests that failed in the most recent run.",
 )
+@click.option(
+    "--report-json",
+    "report_json",
+    type=click.Path(dir_okay=False),
+    default=None,
+    help="Also write the JSON report to PATH.",
+)
 def main(
     run,
     all,
@@ -2852,6 +2861,7 @@ def main(
     list_json_flag,
     ids,
     last_failed,
+    report_json,
 ):
     """Thoth Test Suite - Comprehensive regression tests for Thoth CLI
 
@@ -3054,6 +3064,7 @@ def main(
         save_output=save_output,
         requested_providers=requested_providers,
     )
+    runner._report_json_path = report_json
     runner.run_all_tests(tests_to_run)
 
     if save_output and runner.output_dir:

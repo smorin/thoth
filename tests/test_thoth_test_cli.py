@@ -254,3 +254,26 @@ def test_read_last_failed_returns_ids(thoth_test_mod, tmp_path):
 def test_read_last_failed_raises_on_missing(thoth_test_mod, tmp_path):
     with pytest.raises(FileNotFoundError):
         thoth_test_mod.read_last_failed(tmp_path / "nope.json")
+
+
+def test_report_json_writes_to_given_path(tmp_path):
+    target = tmp_path / "run.json"
+    proc = _run_thoth_test("-r", "--id", "M1T-01", "--report-json", str(target))
+    assert proc.returncode == 0
+    assert target.exists()
+    payload = json.loads(target.read_text())
+    assert payload["schema_version"] == 1
+    assert payload["counts"]["total"] == 1
+
+
+def test_report_json_matches_cache_content(tmp_path):
+    target = tmp_path / "run.json"
+    proc = _run_thoth_test("-r", "--id", "M1T-01", "--report-json", str(target))
+    assert proc.returncode == 0
+    cache_file = REPO_ROOT / ".thoth_test_cache" / "last_run.json"
+    assert cache_file.exists()
+    cache_payload = json.loads(cache_file.read_text())
+    target_payload = json.loads(target.read_text())
+    # finished_at may differ by one clock tick between writes; compare everything else.
+    for key in ("schema_version", "invocation", "requested_providers", "counts", "tests"):
+        assert cache_payload[key] == target_payload[key], f"mismatch on {key}"
