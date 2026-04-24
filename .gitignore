@@ -29,6 +29,9 @@ env/
 
 # Testing
 .pytest_cache/
+# thoth_test runner state
+.thoth_test_cache/
+test_outputs/
 .coverage
 htmlcov/
 snapshot_report.html
