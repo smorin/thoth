@@ -36,6 +36,10 @@ def run_thoth(
         cmd_env.update(env_overrides)
     cmd_env.setdefault("MOCK_API_KEY", f"mock-key-{uuid4().hex[:16]}")
     cmd_env["COLUMNS"] = "200"
+    # Pin UV cache to the real user cache dir — without this, uv treats the
+    # per-test XDG_CACHE_HOME (from isolated_thoth_home) as its own cache and
+    # re-downloads all packages per subprocess, blowing past test timeouts.
+    cmd_env.setdefault("UV_CACHE_DIR", str(Path.home() / ".cache" / "uv"))
 
     result = subprocess.run(
         [THOTH_BIN, *args],
