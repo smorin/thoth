@@ -1,6 +1,6 @@
 [project]
 name = "thoth"
-version = "2.5.0"
+version = "2.6.0"
 description = "AI-Powered Research Assistant — orchestrates parallel LLM providers for comprehensive research reports"
 readme = "README.md"
 license = "MIT"
