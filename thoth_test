@@ -142,6 +142,7 @@ class TestCase:
     is_interactive: bool = False  # Whether this is an interactive mode test
     setup_func: Callable[[Path], object] | None = None  # receives per-test config_home
     teardown_func: Callable[[Path], object] | None = None  # receives per-test config_home
+    _requested_but_filtered: bool = False
 
 
 # ============================================================================
@@ -899,6 +900,7 @@ class TestRunner:
         save_output: bool = False,
         requested_providers: list[str] | None = None,
         quiet: bool = False,
+        report_json_path: str | None = None,
     ):
         self.results: list[TestResult] = []
         self.start_time = time.time()
@@ -910,6 +912,7 @@ class TestRunner:
         self.verbose = verbose
         self.save_output = save_output
         self.quiet = quiet
+        self._report_json_path = report_json_path
         if save_output:
             self.output_dir = Path("test_outputs") / datetime.now().strftime("%Y%m%d_%H%M%S")
             self.output_dir.mkdir(parents=True, exist_ok=True)
@@ -1332,7 +1335,7 @@ api_key = "{api_key}"
 
         report = serialize_run_report(self, invocation=sys.argv)
         write_cache_atomic(report)
-        if getattr(self, "_report_json_path", None):
+        if self._report_json_path:
             write_cache_atomic(report, Path(self._report_json_path))
 
         sys.exit(0 if failed == 0 else 1)
@@ -1504,7 +1507,7 @@ api_key = "{api_key}"
 
         report = serialize_run_report(self, invocation=sys.argv)
         write_cache_atomic(report)
-        if getattr(self, "_report_json_path", None):
+        if self._report_json_path:
             write_cache_atomic(report, Path(self._report_json_path))
 
         # Exit with appropriate code
@@ -3130,8 +3133,8 @@ def main(
         save_output=save_output,
         requested_providers=requested_providers,
         quiet=quiet,
+        report_json_path=report_json,
     )
-    runner._report_json_path = report_json
     runner.run_all_tests(tests_to_run)
 
     if save_output and runner.output_dir:
