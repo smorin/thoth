@@ -1,4 +1,4 @@
-## [ ] Project P13: P11 Follow-up — is_background_model overload + shared secrets + regression tests (v2.11.1)
+## [x] Project P13: P11 Follow-up — is_background_model overload + shared secrets + regression tests (v2.11.1)
 **Goal**: Close the six non-blocking items carried over from P11 review before new feature work (P12) builds on them. Purely follow-up: one clarifying helper, two test-coverage gaps, one prose fix, one shared-module extraction, one regression test that would have caught a silent pre-P11 bug.
 
 **Out of Scope**
@@ -14,17 +14,17 @@
 - **Docstring prose**: `src/thoth/providers/__init__.py` lines 6 and 79 still say "deep-research background mode" as if it were a code mechanism — update to name `is_background_mode` so a reader scanning the header finds the actual implementation.
 
 ### Tests & Tasks
-- [ ] [P13-TS01] Tests for `is_background_model(model)`: `None`, empty string, `"o3"`, `"o3-deep-research"`, `"o4-mini-deep-research"`, case-sensitivity (`"o3-Deep-Research"` → False), non-bool `async` values via `is_background_mode` (`{"async": 1}` → True, `{"async": "yes"}` → True) — closes P11 review Minor gaps M2/M3
-- [ ] [P13-T01] Add `is_background_model(model: str | None) -> bool` in `src/thoth/config.py`; refactor `is_background_mode` to delegate (preserves existing 9 tests + behavior)
-- [ ] [P13-T02] Switch `providers/openai.py:175,182` from `is_background_mode({"model": self.model})` to `is_background_model(self.model)` — removes the synthetic-dict abstraction leak flagged in P11 review (Task 2, Important)
-- [ ] [P13-TS02] Unit test for `create_provider("openai", ...)` with an `o3-deep-research` model setting `provider_config["background"] = True` — direct assertion, not just end-to-end via `test_oai_background.py`; closes P11 review Minor gap
-- [ ] [P13-T03] Update docstrings in `src/thoth/providers/__init__.py` (lines 6, 79) to reference `is_background_mode` by name instead of prose "deep-research background mode"
-- [ ] [P13-TS03] Tests for shared-secrets module: `test_secrets.py` verifies `_mask_secret`, `_is_secret_key`, `_mask_tree` preserve the exact masking semantics (last-4 retention, `${VAR}` passthrough, dotted-path suffix check, list + dict recursion)
-- [ ] [P13-T04] Create `src/thoth/_secrets.py` with the three helpers; update `config_cmd.py` and `modes_cmd.py` to import from there; delete the duplicates. Existing `test_config_cmd.py` + `test_modes_cmd.py` masking tests must stay green unchanged
-- [ ] [P13-TS04] Subprocess test: `run_thoth(["config", "list", "--json"])` returns valid JSON with a `general` key — prevents the "click eats --json" regression from recurring. Place in `tests/test_config_cmd.py`
-- [ ] [P13-TS05] Full suite regression: 169 existing pytest + new tests all green; `./thoth_test -r` baseline preserved
-- [ ] [P13-T05] Update PROJECTS.md P12-T05 note if P13 ships first (or delete P12-T05 entirely since the extraction is done)
-- [ ] Regression Test Status
+- [x] [P13-TS01] Tests for `is_background_model(model)`: `None`, empty string, `"o3"`, `"o3-deep-research"`, `"o4-mini-deep-research"`, case-sensitivity (`"o3-Deep-Research"` → False), non-bool `async` values via `is_background_mode` (`{"async": 1}` → True, `{"async": "yes"}` → True) — closes P11 review Minor gaps M2/M3
+- [x] [P13-T01] Added `is_background_model(model: str | None) -> bool` in `src/thoth/config.py`; `is_background_mode` now delegates (commit `89498ef`)
+- [x] [P13-T02] Switched `providers/openai.py:175,182` from `is_background_mode({"model": self.model})` to `is_background_model(self.model)` — synthetic-dict abstraction leak gone (commit `dfb86b9`)
+- [x] [P13-TS02] Unit tests for `create_provider("openai", ...)` asserting `provider_config["background"]=True` on deep-research and `False` on plain `o3` (commit `12a43e9`)
+- [x] [P13-T03] Docstrings in `src/thoth/providers/__init__.py` (lines 6, 79) now reference `is_background_mode` by name (commit `01b9d11`)
+- [x] [P13-TS03] 13 tests in `tests/test_secrets.py` verify `_mask_secret`, `_is_secret_key`, `_mask_tree` semantics (last-4 retention, `${VAR}` passthrough, dotted-path suffix, list + dict recursion)
+- [x] [P13-T04] Created `src/thoth/_secrets.py`; `config_cmd.py` and `modes_cmd.py` now import shared helpers. Duplicates deleted. `config_cmd.py` uses `from thoth._secrets import _mask_tree as _mask_in_tree` alias to preserve call-site names (commit `5d2cee2`)
+- [x] [P13-TS04] Subprocess regression test `test_thoth_config_list_json_subprocess` in `tests/test_config_cmd.py` (commit `9813a59`); also repaired the `thoth` uv-script metadata (`tomlkit>=0.13`) that was blocking the test
+- [x] [P13-TS05] Regression: `just check` clean, 200 pytest passed / 1 skipped, `./thoth_test -r --skip-interactive` 63 passed / 1 skipped / 0 failed
+- [x] [P13-T05] See note in P12 below — P12-T05 is obsoleted by P13-T04
+- [x] Regression Test Status — all green
 
 ### Automated Verification
 - `just check` passes (ruff + ty)
@@ -66,8 +66,8 @@
 - [ ] [P12-T03] Implement `_op_unset` with empty-table pruning (mirrors `config_cmd._unset_in_doc`)
 - [ ] [P12-TS04] Tests for `thoth modes rename <old> <new>` (user modes only) and `thoth modes copy <src> <dst>` (copies from any mode — builtin or user — into a new user mode)
 - [ ] [P12-T04] Implement `_op_rename` and `_op_copy`
-- [ ] [P12-TS05] Tests for secret-helpers extraction: identical behavior before/after; no test regressions in `test_config_cmd.py` or `test_modes_cmd.py`
-- [ ] [P12-T05] Extract `_mask_secret` / `_is_secret_key` / `_mask_tree` to `src/thoth/_secrets.py`; update imports in `config_cmd.py` and `modes_cmd.py`
+- [~] [P12-TS05] Obsoleted by P13-TS03 — shared-secrets tests already exist in `tests/test_secrets.py`
+- [~] [P12-T05] Obsoleted by P13-T04 — `src/thoth/_secrets.py` already extracted; `config_cmd.py` and `modes_cmd.py` already route through it
 - [ ] [P12-TS06] Subprocess tests: `thoth modes add / set / unset / rename / copy` through the click CLI (now that `ignore_unknown_options=True` from P11 makes flags work)
 - [ ] [P12-T06] Wire new ops into `modes_command` dispatch (`list | add | set | unset | rename | copy`)
 - [ ] [P12-T07] Update `show_modes_help()` in `help.py` with the new ops + examples; update `thoth help modes` epilog
