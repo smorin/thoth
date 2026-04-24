@@ -6,6 +6,8 @@ Precedence (lowest → highest): defaults → user TOML → project TOML → env
 - ConfigManager: loads + merges layers and exposes dot-notation `.get()`
 - get_config(): returns a fully-loaded ConfigManager (respecting _config_path override)
 - BUILTIN_MODES: baked-in mode presets merged with `[modes.*]` TOML tables
+- Mode dicts may optionally carry `async: bool` to override the default
+  background/immediate derivation from the model name (see is_background_mode)
 - THOTH_VERSION / CONFIG_VERSION: version constants
 - _config_path: process-wide override path, set by the CLI `--config` option
 """

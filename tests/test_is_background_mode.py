@@ -31,3 +31,13 @@ def test_missing_model_key_is_immediate() -> None:
 
 def test_model_none_is_immediate() -> None:
     assert is_background_mode({"model": None}) is False
+
+
+def test_empty_model_string_is_immediate() -> None:
+    assert is_background_mode({"model": ""}) is False
+
+
+def test_substring_check_is_case_sensitive() -> None:
+    # "deep-research" is lowercase by convention for OpenAI models; the check
+    # is intentionally case-sensitive so "Deep-Research" does NOT match.
+    assert is_background_mode({"model": "o3-Deep-Research"}) is False
