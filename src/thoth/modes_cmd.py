@@ -11,6 +11,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Literal, cast
 
+from rich.console import Console
+from rich.table import Table
+
 from thoth.config import BUILTIN_MODES, ConfigManager, is_background_mode
 
 Source = Literal["builtin", "user", "overridden"]
@@ -99,4 +102,64 @@ def list_all_modes(cm: ConfigManager) -> list[ModeInfo]:
     return infos
 
 
-__all__ = ["ModeInfo", "list_all_modes"]
+_SOURCE_ORDER = {"builtin": 0, "overridden": 1, "user": 2}
+_KIND_ORDER = {"immediate": 0, "background": 1, "unknown": 2}
+
+_console = Console(width=200)
+
+
+def _sort_key(m: ModeInfo) -> tuple[int, int, str, str, str]:
+    return (
+        _SOURCE_ORDER.get(m.source, 99),
+        _KIND_ORDER.get(m.kind, 99),
+        ",".join(m.providers),
+        m.model or "",
+        m.name,
+    )
+
+
+def _truncate(text: str, limit: int = 60) -> str:
+    return text if len(text) <= limit else text[: limit - 1] + "…"
+
+
+def _render_table(infos: list[ModeInfo]) -> None:
+    table = Table(show_header=True, header_style="bold")
+    table.add_column("Mode", no_wrap=True)
+    table.add_column("Source")
+    table.add_column("Provider")
+    table.add_column("Model")
+    table.add_column("Kind")
+    table.add_column("Description")
+
+    for m in sorted(infos, key=_sort_key):
+        table.add_row(
+            f" {m.name} ",
+            m.source,
+            ",".join(m.providers) if m.providers else "-",
+            m.model or "-",
+            m.kind,
+            _truncate(m.description),
+        )
+    _console.print(table)
+
+
+def _op_list(args: list[str]) -> int:
+    cm = ConfigManager()
+    cm.load_all_layers({})
+    infos = list_all_modes(cm)
+    _render_table(infos)
+    return 0
+
+
+def modes_command(op: str | None, args: list[str]) -> int:
+    """Dispatch `thoth modes <op>`. Returns a process exit code."""
+    if op is None:
+        return _op_list(args)
+    ops = {"list": _op_list}
+    if op not in ops:
+        _console.print(f"[red]Error:[/red] unknown modes op: {op}")
+        return 2
+    return ops[op](args)
+
+
+__all__ = ["ModeInfo", "list_all_modes", "modes_command"]

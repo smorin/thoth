@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from thoth.config import ConfigManager
-from thoth.modes_cmd import ModeInfo, list_all_modes
+from thoth.modes_cmd import ModeInfo, list_all_modes, modes_command
 
 
 def _cm(isolated_thoth_home: Path, toml: str | None = None) -> ConfigManager:
@@ -101,3 +101,50 @@ def test_modeinfo_is_frozen_dataclass() -> None:
 
     with pytest.raises(dataclasses.FrozenInstanceError):
         m.name = "y"  # type: ignore[misc]  # ty: ignore[invalid-assignment]
+
+
+def test_modes_command_list_default_prints_table(
+    isolated_thoth_home: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    rc = modes_command("list", [])
+    out = capsys.readouterr().out
+    assert rc == 0
+    # Column headers present
+    for header in ("Mode", "Source", "Provider", "Model", "Kind", "Description"):
+        assert header in out
+    # Known mode rows present
+    assert "default" in out
+    assert "deep_research" in out
+
+
+def test_modes_command_default_op_is_list(
+    isolated_thoth_home: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # `thoth modes` with no op should behave like `thoth modes list`.
+    rc = modes_command(None, [])
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "default" in out
+
+
+def test_modes_command_unknown_op_returns_2(
+    isolated_thoth_home: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    rc = modes_command("bogus", [])
+    assert rc == 2
+
+
+def test_modes_command_list_sort_order(
+    isolated_thoth_home: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # Sort: source -> kind -> provider -> model -> name.
+    # builtin + immediate modes (default, clarification, thinking) must appear
+    # before builtin + background modes (deep_research, exploration, etc.).
+    rc = modes_command("list", [])
+    out = capsys.readouterr().out
+    assert rc == 0
+    # default (immediate) line number < deep_research (background) line number
+    lines = out.splitlines()
+    default_idx = next(i for i, ln in enumerate(lines) if " default " in ln)
+    deep_idx = next(i for i, ln in enumerate(lines) if " deep_research " in ln)
+    assert default_idx < deep_idx
