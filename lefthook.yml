@@ -68,6 +68,18 @@ pre-commit:
       glob: "*.py"
       run: uvx bandit -r src/thoth/ -ll -q
 
+    gitleaks:
+      run: |
+        if ! command -v gitleaks >/dev/null 2>&1; then
+          echo "❌ gitleaks not installed — required for the pre-commit secret scan."
+          echo "   Install it with one of:"
+          echo "     just install-gitleaks           # cross-platform (brew or GitHub release)"
+          echo "     brew install gitleaks           # macOS / Linuxbrew"
+          echo "     https://github.com/gitleaks/gitleaks/releases"
+          exit 1
+        fi
+        gitleaks git --staged --redact --verbose --config .gitleaks.toml
+
     codespell:
       glob: "*.{py,md}"
       run: |

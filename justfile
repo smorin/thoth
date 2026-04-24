@@ -259,12 +259,17 @@ venv-clean:
 
 # ─── Git Hooks (lefthook) ────────────────────────────────────────────
 
-# Install lefthook and git hooks
+# Install lefthook, gitleaks, and git hooks
 [group: 'git-hooks']
-install-lefthook:
+install-lefthook: install-gitleaks
     @if command -v lefthook > /dev/null 2>&1; then \
         echo "lefthook is already installed"; \
     else \
         brew install lefthook; \
     fi
     lefthook install
+
+# Install gitleaks (used by the pre-commit secret scan)
+[group: 'git-hooks']
+install-gitleaks:
+    ./scripts/install-gitleaks.sh

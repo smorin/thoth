@@ -1,0 +1,38 @@
+title = "thoth gitleaks config"
+
+# Extend the upstream default rules; add allowlists below for documented false positives.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Global allowlist for documentation, archives, and known placeholders"
+
+paths = [
+  '''(^|/)archive/''',
+  '''(^|/)planning/''',
+  '''(^|/)research/''',
+  '''(^|/)tests/fixtures/''',
+  '''\.gitleaks\.toml$''',
+]
+
+regexes = [
+  '''YOUR_[A-Z0-9_]+_KEY''',
+  '''YOUR_API_KEY''',
+  '''xxxxxxxx+''',
+  '''sk-[xX]{8,}''',
+  '''AIza[xX]{8,}''',
+  '''pplx-[xX]{8,}''',
+  '''ci-test-key''',
+]
+
+# Substring matches inside any candidate secret — used to exempt obvious
+# placeholders in tests, docs, and mock fixtures. Case-insensitive.
+stopwords = [
+  "abcdef",
+  "invalid-key",
+  "secret-key-12345",
+  "test-key",
+  "mock",
+  "example",
+  "placeholder",
+]
