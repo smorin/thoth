@@ -109,7 +109,7 @@ BUILTIN_MODES = {
     },
     "thinking": {
         "provider": "openai",
-        "model": "o3-deep-research",  # Use deep research for thinking
+        "model": "o3",
         "temperature": 0.4,
         "system_prompt": "You are a helpful assistant for quick analysis.",
         "description": "Quick thinking and analysis mode for simple questions.",
