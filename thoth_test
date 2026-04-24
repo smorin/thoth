@@ -38,7 +38,7 @@ import tempfile
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -67,6 +67,10 @@ CLEANUP_ENABLED = True
 VERBOSE_OUTPUT = False  # Global verbose flag
 INTERACTIVE_COMPLETION_TIMEOUT = 5
 INTERACTIVE_STEP_TIMEOUT = int(os.getenv("THOTH_TEST_STEP_TIMEOUT", "3"))
+
+CACHE_DIR = Path(".thoth_test_cache")
+CACHE_FILE = CACHE_DIR / "last_run.json"
+REPORT_SCHEMA_VERSION = 1
 
 # Make thoth package importable from fixture tests without per-call boilerplate.
 _THOTH_SRC = str(Path(__file__).resolve().parent / "src")
@@ -721,6 +725,66 @@ def print_list_json(tests: list[TestCase]) -> None:
     sys.stdout.write(json.dumps(payload) + "\n")
 
 
+def serialize_run_report(runner: "TestRunner", invocation: list[str]) -> dict[str, Any]:
+    started = getattr(runner, "_started_at_iso", None)
+    finished = datetime.now(tz=UTC).isoformat().replace("+00:00", "Z")
+    duration_total = time.time() - runner.start_time
+
+    counts = {
+        "total": len(runner.results),
+        "passed": sum(1 for r in runner.results if r.passed and not r.skipped),
+        "failed": sum(1 for r in runner.results if not r.passed),
+        "skipped": sum(1 for r in runner.results if r.skipped),
+        "api_key_failures": sum(1 for r in runner.results if not r.passed and r.is_api_key_failure),
+    }
+
+    test_case_by_id = {tc.test_id: tc for tc in runner.filtered_tests}
+    tests_payload = []
+    for r in runner.results:
+        tc = test_case_by_id.get(r.test_id)
+        include_output = not r.passed and not r.skipped
+        tests_payload.append(
+            {
+                "test_id": r.test_id,
+                "description": tc.description if tc else "",
+                "provider": tc.provider if tc else None,
+                "test_type": tc.test_type if tc else "subprocess",
+                "passed": r.passed,
+                "skipped": r.skipped,
+                "duration_seconds": round(r.duration, 3),
+                "exit_code": r.exit_code,
+                "error_message": r.error_message,
+                "is_api_key_failure": r.is_api_key_failure,
+                "requested_but_filtered": bool(getattr(tc, "_requested_but_filtered", False))
+                if tc
+                else False,
+                "stdout": r.stdout if include_output else None,
+                "stderr": r.stderr if include_output else None,
+            }
+        )
+
+    return {
+        "schema_version": REPORT_SCHEMA_VERSION,
+        "started_at": started,
+        "finished_at": finished,
+        "duration_total_seconds": round(duration_total, 3),
+        "invocation": invocation,
+        "requested_providers": runner.requested_providers,
+        "counts": counts,
+        "tests": tests_payload,
+    }
+
+
+def write_cache_atomic(payload: dict[str, Any], path: Path = CACHE_FILE) -> None:
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_suffix(path.suffix + ".tmp")
+        tmp.write_text(json.dumps(payload, indent=2))
+        os.replace(tmp, path)
+    except OSError as exc:
+        console.print(f"[yellow]Warning: could not write {path}: {exc}[/yellow]")
+
+
 # ============================================================================
 # Selection Resolver
 # ============================================================================
@@ -780,8 +844,7 @@ def resolve_selection(
     if test:
         needle = test
         selected = [
-            t for t in selected
-            if needle in t.test_id or needle.lower() in t.description.lower()
+            t for t in selected if needle in t.test_id or needle.lower() in t.description.lower()
         ]
     if provider_filter:
         kept = []
@@ -812,6 +875,7 @@ class TestRunner:
     ):
         self.results: list[TestResult] = []
         self.start_time = time.time()
+        self._started_at_iso = datetime.now(tz=UTC).isoformat().replace("+00:00", "Z")
         self.test_api_keys = get_test_api_keys()
         self.available_providers = get_available_providers(self.test_api_keys)
         self.requested_providers = requested_providers
@@ -1378,6 +1442,9 @@ api_key = "{api_key}"
             console.print("\n[bold]To rerun failed tests:[/bold]")
             for result in [r for r in self.results if not r.passed]:
                 console.print(f"  ./thoth_test -r -t {result.test_id} -v")
+
+        report = serialize_run_report(self, invocation=sys.argv)
+        write_cache_atomic(report)
 
         # Exit with appropriate code
         sys.exit(0 if failed_tests == 0 else 1)
@@ -2745,8 +2812,15 @@ all_tests = [
 @click.option("--no-cleanup", is_flag=True, help="Do not clean up test files")
 @click.option("--save-output", is_flag=True, help="Save test output to files for debugging")
 @click.option("--list", "list_flag", is_flag=True, help="Print tests without running them (TSV).")
-@click.option("--list-json", "list_json_flag", is_flag=True, help="Print tests without running them (JSON).")
-@click.option("--id", "ids", multiple=True, help="Exact-match test IDs to run (repeatable). Overrides other filters.")
+@click.option(
+    "--list-json", "list_json_flag", is_flag=True, help="Print tests without running them (JSON)."
+)
+@click.option(
+    "--id",
+    "ids",
+    multiple=True,
+    help="Exact-match test IDs to run (repeatable). Overrides other filters.",
+)
 def main(
     run,
     all,
@@ -2908,13 +2982,19 @@ def main(
         provider_counts: dict[str, int] = {p: 0 for p in requested_providers}
         provider_counts["none"] = 0
         for t in tests_to_run:
-            key = t.provider if t.provider in requested_providers else ("none" if not t.provider else t.provider)
+            key = (
+                t.provider
+                if t.provider in requested_providers
+                else ("none" if not t.provider else t.provider)
+            )
             if key in provider_counts:
                 provider_counts[key] += 1
         console.print(
             f"Filtered to {len(tests_to_run)} tests for provider(s): {', '.join(requested_providers)}"
         )
-        breakdown = [f"{p}: {provider_counts[p]}" for p in requested_providers if provider_counts[p]]
+        breakdown = [
+            f"{p}: {provider_counts[p]}" for p in requested_providers if provider_counts[p]
+        ]
         if provider_counts["none"]:
             breakdown.append(f"provider-agnostic: {provider_counts['none']}")
         if breakdown:

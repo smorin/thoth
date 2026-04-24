@@ -170,3 +170,48 @@ def test_id_integration_runs_exactly_one_test():
     proc = _run_thoth_test("-r", "--id", "M1T-01", "-q")
     assert proc.returncode == 0, proc.stdout + proc.stderr
     assert "1 passed" in proc.stdout
+
+
+def test_cache_written_on_every_run(tmp_path, monkeypatch):
+    cache_file = REPO_ROOT / ".thoth_test_cache" / "last_run.json"
+    if cache_file.exists():
+        cache_file.unlink()
+    proc = _run_thoth_test("-r", "--id", "M1T-01")
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert cache_file.exists(), "cache file should be written after every run"
+    payload = json.loads(cache_file.read_text())
+    assert payload["schema_version"] == 1
+    assert payload["counts"]["total"] == 1
+    assert payload["counts"]["passed"] == 1
+    entry = payload["tests"][0]
+    assert entry["test_id"] == "M1T-01"
+    assert entry["passed"] is True
+    assert entry["stdout"] is None
+    assert entry["stderr"] is None
+
+
+def test_cache_failure_includes_full_output(thoth_test_mod, tmp_path):
+    runner = thoth_test_mod.TestRunner()
+    runner.start_time = 0.0
+    runner.filtered_tests = [
+        thoth_test_mod.TestCase(test_id="F1", description="fail", command=["x"], provider="mock"),
+    ]
+    runner.results = [
+        thoth_test_mod.TestResult(
+            test_id="F1",
+            passed=False,
+            duration=0.1,
+            stdout="big stdout payload",
+            stderr="big stderr payload",
+            exit_code=1,
+            error_message="boom",
+        )
+    ]
+    report = thoth_test_mod.serialize_run_report(runner, invocation=["./thoth_test", "-r"])
+    assert len(report["tests"]) == 1
+    entry = report["tests"][0]
+    assert entry["passed"] is False
+    assert entry["stdout"] == "big stdout payload"
+    assert entry["stderr"] == "big stderr payload"
+    assert report["schema_version"] == 1
+    assert report["counts"]["failed"] == 1
