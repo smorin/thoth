@@ -785,6 +785,16 @@ def write_cache_atomic(payload: dict[str, Any], path: Path = CACHE_FILE) -> None
         console.print(f"[yellow]Warning: could not write {path}: {exc}[/yellow]")
 
 
+def read_last_failed(path: Path = CACHE_FILE) -> list[str]:
+    """Return test_ids of failing tests from the last run cache.
+
+    Raises FileNotFoundError if the cache doesn't exist; returns [] if the
+    cache exists but has no failures.
+    """
+    payload = json.loads(path.read_text())
+    return [t["test_id"] for t in payload.get("tests", []) if not t.get("passed", True)]
+
+
 # ============================================================================
 # Selection Resolver
 # ============================================================================
@@ -2821,6 +2831,12 @@ all_tests = [
     multiple=True,
     help="Exact-match test IDs to run (repeatable). Overrides other filters.",
 )
+@click.option(
+    "--last-failed",
+    "last_failed",
+    is_flag=True,
+    help="Rerun tests that failed in the most recent run.",
+)
 def main(
     run,
     all,
@@ -2835,6 +2851,7 @@ def main(
     list_flag,
     list_json_flag,
     ids,
+    last_failed,
 ):
     """Thoth Test Suite - Comprehensive regression tests for Thoth CLI
 
@@ -2928,6 +2945,25 @@ def main(
     if all:
         run = True
         all_providers = True
+
+    if last_failed:
+        try:
+            failed_ids = read_last_failed()
+        except FileNotFoundError:
+            click.echo(
+                "No prior failures to rerun (.thoth_test_cache/last_run.json missing or empty)",
+                err=True,
+            )
+            sys.exit(2)
+        if not failed_ids:
+            click.echo(
+                "No prior failures to rerun (.thoth_test_cache/last_run.json missing or empty)",
+                err=True,
+            )
+            sys.exit(2)
+        # Merge with any explicit --id (union, preserving --id order first).
+        ids = tuple(list(ids) + [i for i in failed_ids if i not in ids])
+        run = True  # --last-failed implies -r
 
     # If no run flag, show help and exit
     if not run:

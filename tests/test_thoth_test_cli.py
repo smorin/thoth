@@ -215,3 +215,42 @@ def test_cache_failure_includes_full_output(thoth_test_mod, tmp_path):
     assert entry["stderr"] == "big stderr payload"
     assert report["schema_version"] == 1
     assert report["counts"]["failed"] == 1
+
+
+def test_last_failed_exits_2_when_no_cache(tmp_path):
+    cache_file = REPO_ROOT / ".thoth_test_cache" / "last_run.json"
+    if cache_file.exists():
+        cache_file.unlink()
+    proc = _run_thoth_test("-r", "--last-failed")
+    assert proc.returncode == 2
+    assert "no prior failures" in proc.stderr.lower()
+
+
+def test_last_failed_zero_failures_also_exits_2(tmp_path):
+    # First populate cache with only passes.
+    proc = _run_thoth_test("-r", "--id", "M1T-01")
+    assert proc.returncode == 0
+    proc2 = _run_thoth_test("-r", "--last-failed")
+    assert proc2.returncode == 2
+    assert "no prior failures" in proc2.stderr.lower()
+
+
+def test_read_last_failed_returns_ids(thoth_test_mod, tmp_path):
+    cache = tmp_path / "last_run.json"
+    cache.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "tests": [
+                    {"test_id": "OK", "passed": True, "skipped": False},
+                    {"test_id": "BAD", "passed": False, "skipped": False},
+                ],
+            }
+        )
+    )
+    assert thoth_test_mod.read_last_failed(cache) == ["BAD"]
+
+
+def test_read_last_failed_raises_on_missing(thoth_test_mod, tmp_path):
+    with pytest.raises(FileNotFoundError):
+        thoth_test_mod.read_last_failed(tmp_path / "nope.json")
