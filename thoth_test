@@ -1277,6 +1277,13 @@ api_key = "{api_key}"
                     if result.stderr:
                         console.print(f"Stderr:\n{result.stderr[:2000]}")
 
+            # Rerun hint — `-t` is a substring match on test_id, so one ID
+            # per line keeps it unambiguous (multiple IDs would need a shared
+            # substring or repeated invocations).
+            console.print("\n[bold]To rerun failed tests:[/bold]")
+            for result in [r for r in self.results if not r.passed]:
+                console.print(f"  ./thoth_test -r -t {result.test_id} -v")
+
         # Exit with appropriate code
         sys.exit(0 if failed_tests == 0 else 1)
 
