@@ -131,6 +131,18 @@ BUILTIN_MODES = {
 }
 
 
+def is_background_mode(mode_config: dict[str, Any]) -> bool:
+    """Return True if a mode submits as a long-running background job.
+
+    Precedence: explicit `async` key wins; otherwise derive from model name
+    (any model containing "deep-research" is a background/long-running model).
+    """
+    if "async" in mode_config:
+        return bool(mode_config["async"])
+    model = mode_config.get("model") or ""
+    return "deep-research" in model
+
+
 class ConfigSchema:
     """Configuration schema and defaults"""
 
