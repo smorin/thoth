@@ -175,7 +175,7 @@ class OpenAIProvider(ResearchProvider):
         if "deep-research" in self.model:
             tools = [{"type": "web_search_preview"}]
             if self.config.get("code_interpreter", True):
-                tools.append({"type": "code_interpreter"})
+                tools.append({"type": "code_interpreter", "container": {"type": "auto"}})
 
         # Determine if background mode should be used
         # Use background for deep-research models or if explicitly configured

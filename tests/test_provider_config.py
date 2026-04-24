@@ -83,7 +83,13 @@ def test_default_config_includes_code_interpreter_and_omits_max_tool_calls() -> 
     assert "max_tool_calls" not in captured, (
         f"max_tool_calls should be absent when not configured, got: {captured.get('max_tool_calls')}"
     )
-    tool_types = [t.get("type") for t in captured.get("tools", [])]
+    tools = captured.get("tools", [])
+    tool_types = [t.get("type") for t in tools]
     assert "code_interpreter" in tool_types, (
         f"code_interpreter must be included by default, got tools: {tool_types}"
+    )
+    code_interp_tool = next(t for t in tools if t.get("type") == "code_interpreter")
+    assert code_interp_tool.get("container") == {"type": "auto"}, (
+        f"code_interpreter tool must carry container={{type: auto}} "
+        f"(OpenAI API requirement), got: {code_interp_tool}"
     )
