@@ -319,3 +319,21 @@ def test_set_preserves_existing_comments(isolated_thoth_home: Path) -> None:
     assert "# my header comment" in content
     assert "# default mode picks the LLM prompt shape" in content
     assert "exploration" in content
+
+
+def test_thoth_config_list_json_subprocess(isolated_thoth_home: Path) -> None:
+    """Regression: `thoth config list --json` must pass through click to the
+    config dispatcher. Pre-P11 this was broken — click's root command rejected
+    `--json` as an unknown option. P11's `ignore_unknown_options=True` fix
+    repaired it but there was no end-to-end test. Guard it here.
+    """
+    import json
+
+    from tests._fixture_helpers import run_thoth
+
+    rc, out, err = run_thoth(["config", "list", "--json"])
+    assert rc == 0, f"stderr: {err}"
+    data = json.loads(out)
+    assert isinstance(data, dict)
+    assert "general" in data
+    assert data["general"]["default_mode"] == "default"
