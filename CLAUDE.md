@@ -30,12 +30,32 @@ Both runners print IDs on failure:
 - **thoth_test** prints a "Failed Test Details" block with `Test M8T-03:` headers
   and a "To rerun failed tests:" hint at the end of the run.
 
-When a pre-commit hook fails on `./thoth_test`, grep to skip the 64-row
-noise table:
+When a pre-commit hook fails on `./thoth_test`, use quiet mode to get just
+the fenced failure blocks (no 64-row noise table):
 
 ```bash
-./thoth_test -r --provider mock --skip-interactive 2>&1 | grep -A 30 "Failed Test Details"
+./thoth_test -r --provider mock --skip-interactive -q
 ```
+
+To rerun only what just failed:
+
+```bash
+./thoth_test -r --last-failed -q
+```
+
+To pick a specific test by exact ID:
+
+```bash
+./thoth_test -r --id M8T-03 -v
+```
+
+### Discovering tests without running them
+
+- TSV list: `./thoth_test --list`
+- JSON list: `./thoth_test --list-json`
+- Preview a filter: `./thoth_test --list --provider mock`
+- Machine-readable run report is always at `.thoth_test_cache/last_run.json`
+  (schema_version 1). Use `--report-json PATH` to also write a copy elsewhere.
 
 ### Flaky-test retry policy
 
@@ -46,6 +66,9 @@ such test fails on first run, rerun JUST that one:
 ```bash
 ./thoth_test -r -t M8T-03
 ```
+
+For flaky network tests, prefer `./thoth_test -r --last-failed -q` over
+re-running the full suite.
 
 Two consecutive failures of the same test = real bug. One failure = noise.
 
