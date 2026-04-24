@@ -287,7 +287,10 @@ def test_quiet_suppresses_table_on_pass():
     assert ".thoth_test_cache/last_run.json" in proc.stdout
 
 
-def test_quiet_emits_fenced_failure_for_failing_test(thoth_test_mod, capsys):
+def test_quiet_emits_fenced_failure_for_failing_test(thoth_test_mod, capsys, monkeypatch, tmp_path):
+    fake_cache = tmp_path / "cache.json"
+    monkeypatch.setattr(thoth_test_mod, "CACHE_FILE", fake_cache)
+    monkeypatch.setattr(thoth_test_mod.write_cache_atomic, "__defaults__", (fake_cache,))
     runner = thoth_test_mod.TestRunner(quiet=True)
     runner.start_time = 0.0
     runner.filtered_tests = [
@@ -317,3 +320,5 @@ def test_quiet_emits_fenced_failure_for_failing_test(thoth_test_mod, capsys):
     assert "STDOUT-MARKER" in out
     assert "STDERR-MARKER" in out
     assert "Test Results" not in out
+    # Cache was redirected; real one untouched.
+    assert (tmp_path / "cache.json").exists()
