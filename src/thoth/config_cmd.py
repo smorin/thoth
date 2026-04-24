@@ -10,6 +10,8 @@ from typing import Any, cast
 import tomlkit
 from rich.console import Console
 
+from thoth._secrets import _is_secret_key, _mask_secret
+from thoth._secrets import _mask_tree as _mask_in_tree
 from thoth.config import ConfigManager
 from thoth.paths import user_config_file
 
@@ -17,28 +19,6 @@ console = Console()
 
 _VALID_LAYERS = ("defaults", "user", "project", "env", "cli")
 _ROOT_KEYS_ALLOW_UNKNOWN = ("modes",)
-_SECRET_KEY_SUFFIX = "api_key"
-
-
-def _mask_secret(value: Any) -> Any:
-    if not isinstance(value, str) or not value:
-        return value
-    if value.startswith("${") and value.endswith("}"):
-        return value
-    tail = value[-4:] if len(value) >= 4 else value
-    return f"****{tail}"
-
-
-def _is_secret_key(key: str) -> bool:
-    return key.split(".")[-1] == _SECRET_KEY_SUFFIX
-
-
-def _mask_in_tree(data: Any, prefix: str = "") -> Any:
-    if isinstance(data, dict):
-        return {k: _mask_in_tree(v, f"{prefix}.{k}" if prefix else k) for k, v in data.items()}
-    if prefix and _is_secret_key(prefix):
-        return _mask_secret(data)
-    return data
 
 
 def _load_manager() -> ConfigManager:
