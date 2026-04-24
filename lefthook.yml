@@ -67,14 +67,10 @@ pre-commit:
 
     ty-typecheck:
       glob: "*.py"
-      run: uv run ty check src/
-
-    bandit-security:
-      glob: "*.py"
-      run: uvx bandit -r src/thoth/ -ll -q
+      run: uv run ty check {staged_files}
 
     gitleaks:
-      run: ./scripts/check-gitleaks.sh
+      run: ./scripts/check-gitleaks.sh staged
 
     codespell:
       glob: "*.{py,md}"
@@ -85,3 +81,15 @@ pre-commit:
     test:
       glob: "*.py"
       run: ./thoth_test -r --provider mock --skip-interactive
+
+pre-push:
+  parallel: true
+  commands:
+    ty-typecheck:
+      run: uv run ty check src/
+
+    bandit-security:
+      run: uvx bandit -r src/thoth/ -ll -q
+
+    gitleaks:
+      run: ./scripts/check-gitleaks.sh full
