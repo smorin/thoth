@@ -41,6 +41,9 @@ class ThothCommand(click.Command):
                 elif subcommand == "config":
                     show_config_help()
                     ctx.exit(0)
+                elif subcommand == "modes":
+                    show_modes_help()
+                    ctx.exit(0)
 
         return super().parse_args(ctx, args)
 
@@ -68,11 +71,8 @@ def build_epilog():
     lines.append("")
 
     lines.append("Research Modes:")
-    for mode_name, mode_config in BUILTIN_MODES.items():
-        desc = str(mode_config.get("description", "No description"))
-        if len(desc) > 60:
-            desc = desc[:57] + "..."
-        lines.append(f"  {mode_name:<15} {desc}")
+    lines.append(f"  {', '.join(BUILTIN_MODES.keys())}")
+    lines.append("  Run `thoth modes` for provider, model, and kind per mode.")
     lines.append("")
 
     lines.append("Examples:")
@@ -248,6 +248,40 @@ def show_config_help():
     console.print("  Writes preserve comments and formatting of the target TOML file.")
 
 
+def show_modes_help():
+    """Show detailed help for the modes command."""
+    console.print("\n[bold]thoth modes[/bold] - List research modes with provider, model, and kind")
+    console.print("\n[bold]Description:[/bold]")
+    console.print("  Shows every research mode Thoth knows about: built-in modes,")
+    console.print("  user-defined modes from `[modes.*]` in your config TOML, and")
+    console.print("  modes that override a built-in.")
+    console.print("\n[bold]Usage:[/bold]")
+    console.print("  thoth modes [list] [OPTIONS]")
+    console.print("\n[bold]Options:[/bold]")
+    console.print("  --json                    Emit machine-readable JSON")
+    console.print("  --source builtin|user|overridden|all   Filter by origin")
+    console.print("  --name <mode>             Show detail view for one mode")
+    console.print("  --full                    With --name, dump full system_prompt")
+    console.print("  --show-secrets            Do not mask api_key values")
+    console.print("\n[bold]Sort order:[/bold]")
+    console.print("  source -> kind -> provider -> model -> name")
+    console.print('\n[bold]JSON schema (schema_version: "1"):[/bold]')
+    console.print("  { schema_version, modes: [")
+    console.print("    { name, source, providers, model, kind, description,")
+    console.print("      overrides, warnings, raw } ] }")
+    console.print("\n[bold]Kind vs. --async flag:[/bold]")
+    console.print("  The Kind column describes the mode's default submit style.")
+    console.print("  The per-invocation `thoth --async` flag is orthogonal - it")
+    console.print("  controls whether the CLI waits for results, not how the job")
+    console.print("  is submitted.")
+    console.print("\n[bold]Examples:[/bold]")
+    console.print("  $ thoth modes")
+    console.print(
+        "  $ thoth modes --json | jq '.modes[] | select(.kind == \"background\") | .name'"
+    )
+    console.print("  $ thoth modes --name deep_research --full")
+
+
 def show_general_help(ctx):
     """Show enhanced general help with command overview"""
     console.print("\n[bold]Thoth - AI-Powered Research Assistant[/bold]")
@@ -268,11 +302,8 @@ def show_general_help(ctx):
     console.print("  config <OP>     Inspect and edit configuration")
     console.print("  help [COMMAND]  Show help (general or command-specific)")
     console.print("\n[bold]Research Modes:[/bold]")
-    for mode_name, mode_config in BUILTIN_MODES.items():
-        desc = str(mode_config.get("description", "No description"))
-        if len(desc) > 60:
-            desc = desc[:57] + "..."
-        console.print(f"  {mode_name:<15} {desc}")
+    console.print(f"  {', '.join(BUILTIN_MODES.keys())}")
+    console.print("  Run [bold]thoth modes[/bold] for provider, model, and kind per mode.")
     console.print("\n[bold]Common Options:[/bold]")
     console.print("  --mode, -m      Research mode to use")
     console.print("  --prompt, -q     Research prompt")
@@ -295,6 +326,7 @@ __all__ = [
     "show_general_help",
     "show_init_help",
     "show_list_help",
+    "show_modes_help",
     "show_providers_help",
     "show_status_help",
 ]

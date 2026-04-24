@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+from tests._fixture_helpers import run_thoth
 from thoth.config import ConfigManager
 from thoth.modes_cmd import ModeInfo, list_all_modes, modes_command
 
@@ -303,3 +304,27 @@ def test_modes_detail_full_dumps_system_prompt(
     out = capsys.readouterr().out
     assert rc == 0
     assert "comprehensive research with citations" in out
+
+
+def test_thoth_modes_subprocess_lists_modes(isolated_thoth_home: Path) -> None:
+    rc, out, err = run_thoth(["modes"])
+    assert rc == 0, f"stderr: {err}"
+    assert "default" in out
+    assert "deep_research" in out
+
+
+def test_thoth_help_modes_subprocess(isolated_thoth_home: Path) -> None:
+    rc, out, err = run_thoth(["help", "modes"])
+    assert rc == 0, f"stderr: {err}"
+    assert "thoth modes" in out
+    assert "schema_version" in out  # JSON schema snippet in help
+
+
+def test_help_epilog_lists_mode_names(
+    isolated_thoth_home: Path,
+) -> None:
+    rc, out, err = run_thoth(["--help"])
+    assert rc == 0, f"stderr: {err}"
+    assert "thoth modes" in out
+    # Teaser still shows at least one mode name.
+    assert "default" in out
