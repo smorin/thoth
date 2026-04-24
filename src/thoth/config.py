@@ -133,16 +133,26 @@ BUILTIN_MODES = {
 }
 
 
+def is_background_model(model: str | None) -> bool:
+    """Return True if a model name implies background/long-running submission.
+
+    Rule: any model name containing the substring "deep-research" is treated
+    as background. Case-sensitive by design (OpenAI model IDs are lowercase).
+    `None` and empty string return False.
+    """
+    return "deep-research" in (model or "")
+
+
 def is_background_mode(mode_config: dict[str, Any]) -> bool:
     """Return True if a mode submits as a long-running background job.
 
-    Precedence: explicit `async` key wins; otherwise derive from model name
-    (any model containing "deep-research" is a background/long-running model).
+    Precedence: explicit `async` key wins (truthy → background, falsy →
+    immediate); otherwise delegate to `is_background_model` using the model
+    name.
     """
     if "async" in mode_config:
         return bool(mode_config["async"])
-    model = mode_config.get("model") or ""
-    return "deep-research" in model
+    return is_background_model(mode_config.get("model"))
 
 
 class ConfigSchema:
