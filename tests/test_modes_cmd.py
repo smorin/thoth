@@ -356,3 +356,38 @@ def test_interactive_and_help_use_list_all_modes(
     )
     # interactive.py should reference list_all_modes now
     assert "list_all_modes" in interactive_src
+
+
+def test_thoth_modes_subprocess_json_flag_reaches_subcommand(
+    isolated_thoth_home: Path,
+) -> None:
+    """Regression: `--json` must pass through click to the modes dispatcher.
+
+    Requires `ignore_unknown_options=True` on the root click command so that
+    flags after a subcommand are forwarded via ctx.args instead of being
+    rejected by click's own option parser.
+    """
+    rc, out, err = run_thoth(["modes", "--json"])
+    assert rc == 0, f"stderr: {err}"
+    data = json.loads(out)
+    assert data["schema_version"] == "1"
+    assert len(data["modes"]) >= 10
+    thinking = next(m for m in data["modes"] if m["name"] == "thinking")
+    assert thinking["kind"] == "immediate"
+    assert thinking["model"] == "o3"
+
+
+def test_thoth_modes_subprocess_name_flag(isolated_thoth_home: Path) -> None:
+    rc, out, err = run_thoth(["modes", "--name", "thinking"])
+    assert rc == 0, f"stderr: {err}"
+    assert "Mode: thinking" in out
+    assert "Model: o3" in out
+    assert "Kind: immediate" in out
+
+
+def test_thoth_modes_subprocess_source_filter(isolated_thoth_home: Path) -> None:
+    rc, out, err = run_thoth(["modes", "--source", "builtin", "--json"])
+    assert rc == 0, f"stderr: {err}"
+    data = json.loads(out)
+    sources = {m["source"] for m in data["modes"]}
+    assert sources == {"builtin"}

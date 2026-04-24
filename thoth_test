@@ -1877,9 +1877,9 @@ all_tests = [
     ),
     TestCase(
         test_id="EXIT-02",
-        description="Invalid command returns exit code 2",
-        command=[THOTH_EXECUTABLE, "--invalid-flag"],
-        expected_stderr_patterns=[r"Error: No such option"],
+        description="Invalid subcommand op returns exit code 2",
+        command=[THOTH_EXECUTABLE, "modes", "bogus_op"],
+        expected_stdout_patterns=[r"unknown modes op"],
         expected_exit_code=2,
     ),
     TestCase(

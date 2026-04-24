@@ -71,7 +71,11 @@ def handle_error(error: Exception):
 
 @click.command(
     cls=ThothCommand,
-    context_settings=dict(allow_extra_args=True, allow_interspersed_args=True),
+    context_settings=dict(
+        allow_extra_args=True,
+        allow_interspersed_args=True,
+        ignore_unknown_options=True,
+    ),
     epilog=build_epilog(),
 )
 @click.pass_context
@@ -295,8 +299,12 @@ def cli(
         elif command == "modes":
             from thoth.modes_cmd import modes_command
 
-            op = args[1] if len(args) >= 2 else None
-            rest = list(args[2:]) + list(ctx.args)
+            if len(args) >= 2 and not args[1].startswith("-"):
+                op = args[1]
+                rest = list(args[2:]) + list(ctx.args)
+            else:
+                op = None
+                rest = list(args[1:]) + list(ctx.args)
             rc = modes_command(op, rest)
             sys.exit(rc)
         elif command == "help":
