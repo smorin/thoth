@@ -738,31 +738,51 @@ def resolve_selection(
 ) -> tuple[list[TestCase], list[str]]:
     """Pure filter-composition for main().
 
-    Returns (selected_tests, warnings). ``ids`` and ``last_failed`` overrides
-    are handled in later tasks; this task only covers the pre-existing
-    filters so the refactor is behaviour-preserving.
+    Returns (selected_tests, warnings). When ``ids`` is non-empty it short-
+    circuits the other filters: each named test runs even if it would have
+    been excluded by --provider/--interactive/--skip-interactive, and a
+    warning is emitted plus the TestCase is annotated with
+    ``_requested_but_filtered = True`` so downstream consumers (JSON report)
+    can surface the mismatch. ``last_failed`` is reserved for Task 6.
     """
     warnings: list[str] = []
-    selected = list(all_tests)
 
+    if ids:
+        by_id = {t.test_id: t for t in all_tests}
+        selected: list[TestCase] = []
+        for wanted in ids:
+            t = by_id.get(wanted)
+            if t is None:
+                warnings.append(f"--id {wanted} not found, ignoring")
+                continue
+            mismatch_reasons: list[str] = []
+            if provider_filter and t.provider and t.provider not in provider_filter:
+                mismatch_reasons.append(
+                    f"provider={t.provider} not in --provider {provider_filter}"
+                )
+            if interactive and not getattr(t, "is_interactive", False):
+                mismatch_reasons.append("not an interactive test but --interactive set")
+            if skip_interactive and getattr(t, "is_interactive", False):
+                mismatch_reasons.append("interactive test but --skip-interactive set")
+            t._requested_but_filtered = bool(mismatch_reasons)
+            if mismatch_reasons:
+                warnings.append(
+                    f"--id {wanted} runs despite filter mismatch: {'; '.join(mismatch_reasons)}"
+                )
+            selected.append(t)
+        return selected, warnings
+
+    selected = list(all_tests)
     if interactive:
         selected = [t for t in selected if getattr(t, "is_interactive", False)]
     if skip_interactive:
-        before = len(selected)
         selected = [t for t in selected if not getattr(t, "is_interactive", False)]
-        skipped = before - len(selected)
-        if skipped:
-            warnings.append(
-                f"Skipping {skipped} interactive mode tests (--skip-interactive)"
-            )
-
     if test:
         needle = test
         selected = [
             t for t in selected
             if needle in t.test_id or needle.lower() in t.description.lower()
         ]
-
     if provider_filter:
         kept = []
         for t in selected:
@@ -771,7 +791,8 @@ def resolve_selection(
             elif t.provider in provider_filter:
                 kept.append(t)
         selected = kept
-
+    for t in selected:
+        t._requested_but_filtered = False
     return selected, warnings
 
 
@@ -2870,11 +2891,11 @@ def main(
         provider_filter=requested_providers,
         interactive=interactive,
         skip_interactive=skip_interactive,
-        ids=[],
+        ids=list(ids),
         last_failed=False,
     )
     for w in selection_warnings:
-        console.print(f"[yellow]{w}[/yellow]")
+        click.echo(f"Warning: {w}", err=True)
 
     if interactive:
         console.print(f"Running {len(tests_to_run)} interactive mode tests")

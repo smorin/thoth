@@ -107,3 +107,66 @@ def test_list_respects_provider_filter():
     filtered_ids = {line.split("\t")[0] for line in filtered_proc.stdout.splitlines() if line}
     assert filtered_ids <= all_ids
     assert filtered_ids, "mock filter should keep at least mock-provider tests"
+
+
+def test_id_exact_match_runs_only_that_test(thoth_test_mod):
+    TC = thoth_test_mod.TestCase
+    all_tests = [
+        TC(test_id="A", description="a", command=["x"]),
+        TC(test_id="AB", description="ab", command=["x"]),
+        TC(test_id="B", description="b", command=["x"]),
+    ]
+    selected, warnings = thoth_test_mod.resolve_selection(
+        all_tests,
+        test=None,
+        provider_filter=None,
+        interactive=False,
+        skip_interactive=False,
+        ids=["A"],
+        last_failed=False,
+    )
+    assert [t.test_id for t in selected] == ["A"]
+    assert warnings == []
+
+
+def test_id_unknown_warns_but_does_not_error(thoth_test_mod):
+    TC = thoth_test_mod.TestCase
+    all_tests = [TC(test_id="A", description="a", command=["x"])]
+    selected, warnings = thoth_test_mod.resolve_selection(
+        all_tests,
+        test=None,
+        provider_filter=None,
+        interactive=False,
+        skip_interactive=False,
+        ids=["DOES-NOT-EXIST"],
+        last_failed=False,
+    )
+    assert selected == []
+    assert any("DOES-NOT-EXIST" in w for w in warnings)
+
+
+def test_id_overrides_provider_filter_and_marks_requested_but_filtered(thoth_test_mod):
+    TC = thoth_test_mod.TestCase
+    all_tests = [
+        TC(test_id="OA", description="openai test", command=["x"], provider="openai"),
+        TC(test_id="MK", description="mock test", command=["x"], provider="mock"),
+    ]
+    selected, warnings = thoth_test_mod.resolve_selection(
+        all_tests,
+        test=None,
+        provider_filter=["mock"],
+        interactive=False,
+        skip_interactive=False,
+        ids=["OA"],
+        last_failed=False,
+    )
+    assert [t.test_id for t in selected] == ["OA"]
+    assert getattr(selected[0], "_requested_but_filtered", False) is True
+    assert any("OA" in w and "provider" in w.lower() for w in warnings)
+
+
+@pytest.mark.skip(reason="requires -q, lands in Task 8")
+def test_id_integration_runs_exactly_one_test():
+    proc = _run_thoth_test("-r", "--id", "M1T-01", "-q")
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert "1 passed" in proc.stdout
