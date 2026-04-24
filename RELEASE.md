@@ -299,6 +299,54 @@ Optionally add required reviewers to the `pypi` environment for an approval gate
 
 ---
 
+## GitHub App Setup for release-please
+
+`release-please.yml` uses a GitHub App to authenticate tag pushes. This is necessary because tags pushed with the default `GITHUB_TOKEN` do **not** retrigger `push`-triggered workflows — so `publish.yml` would never fire on release. A GitHub App installation token does retrigger them.
+
+This is one-time setup, per repo.
+
+### Step 1: Create the GitHub App
+
+Go to [GitHub → Settings → Developer settings → GitHub Apps → New GitHub App](https://github.com/settings/apps/new) (or create it under the org that owns this repo):
+
+| Field | Value |
+|-------|-------|
+| App name | `thoth-release-please` (any unique name is fine) |
+| Homepage URL | `https://github.com/smorin/thoth` |
+| Webhook | Deselect **Active** (no webhook needed) |
+| Repository permissions → Contents | **Read and write** |
+| Repository permissions → Pull requests | **Read and write** |
+| Where can this GitHub App be installed? | **Only on this account** |
+
+Click **Create GitHub App**.
+
+### Step 2: Generate a private key
+
+On the App's settings page, scroll to **Private keys** and click **Generate a private key**. A `.pem` file downloads. Keep it safe — you'll paste its contents into a repo secret.
+
+### Step 3: Install the App on the repo
+
+On the App's settings page, click **Install App** → pick the account/org → **Only select repositories** → choose `thoth` → **Install**.
+
+### Step 4: Add the App ID and private key to the repo
+
+Go to [Settings → Secrets and variables → Actions](https://github.com/smorin/thoth/settings/secrets/actions):
+
+- **Variable** `RELEASE_PLEASE_APP_ID` — the numeric App ID shown on the App's settings page (not the Client ID).
+- **Secret** `RELEASE_PLEASE_APP_PRIVATE_KEY` — the full contents of the `.pem` file, including the `-----BEGIN ... PRIVATE KEY-----` / `-----END ... PRIVATE KEY-----` lines.
+
+The workflow reads `vars.RELEASE_PLEASE_APP_ID` and `secrets.RELEASE_PLEASE_APP_PRIVATE_KEY`.
+
+### Step 5: Verify
+
+The next push to `main` runs `release-please.yml`. In the workflow run, the **Create App Token** step must succeed; the **release-please** step then uses that token. On Release-PR merge, the tag push triggers `publish.yml` as expected.
+
+### Why not use `GITHUB_TOKEN`?
+
+GitHub deliberately blocks the default `GITHUB_TOKEN` from triggering subsequent workflows on the events `push`, `pull_request`, etc., to prevent infinite-loop scenarios. A GitHub App installation token is treated as a separate actor, so writes made with it **do** trigger downstream workflows. A classic/fine-grained PAT also works but requires managing a long-lived personal token; the App route has no long-lived token (the installation token is short-lived and minted per run) and the App identity is auditable as a separate actor.
+
+---
+
 ## Local Build & Publish
 
 These commands are available for testing builds or publishing manually (e.g., from a maintainer's machine with a token).
@@ -368,10 +416,11 @@ Check the `release-please` workflow run in the Actions tab. Common causes:
 
 ### Release PR merged but `publish.yml` did not fire
 
-release-please's tag push uses the default `GITHUB_TOKEN`, which by default does **not** retrigger other workflows listening on `push`. Remedies:
+`release-please.yml` is configured to mint a GitHub App installation token (see [GitHub App Setup for release-please](#github-app-setup-for-release-please)) because the default `GITHUB_TOKEN` does **not** retrigger `push`-triggered workflows. If `publish.yml` doesn't fire:
 
-1. Switch `release-please-action` to use a fine-grained PAT with `contents: write` + `actions: write` stored as a repo secret, and pass it via `token:` in `release-please.yml`.
-2. OR change `publish.yml` to trigger on `release: types: [published]` instead of `push.tags`, since release-please also creates the GitHub Release.
+1. Check that the **Create App Token** step in the `release-please` workflow run succeeded. Failures there mean `vars.RELEASE_PLEASE_APP_ID` or `secrets.RELEASE_PLEASE_APP_PRIVATE_KEY` is missing/wrong, or the App isn't installed on this repo — redo the relevant setup step.
+2. Confirm the App has **Contents: Read and write** permission (needed to push tags).
+3. As a last-resort fallback, change `publish.yml` to trigger on `release: types: [published]` instead of `push.tags`, since release-please also creates the GitHub Release.
 
 ### Commit rejected locally with `subject may not be empty` / `type may not be empty`
 
