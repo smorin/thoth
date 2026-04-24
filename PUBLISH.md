@@ -61,47 +61,38 @@ Homepage = "https://github.com/smorin/thoth"
 
 ## Release Process
 
-### Step 1: Update the version
+Releases are automated by **release-please**. You write conventional-commit messages; release-please opens a Release PR with the version bump and `CHANGELOG.md` update. Merging the Release PR creates the `vX.Y.Z` tag, which triggers `publish.yml`.
 
-Edit `pyproject.toml`:
-```toml
-[project]
-version = "2.6.0"
-```
-
-Edit `src/thoth/__init__.py`:
-```python
-__version__ = "2.6.0"
-```
-
-### Step 2: Update CHANGELOG.md
-
-Move items from `[Unreleased]` to a new versioned section:
-```markdown
-## [2.6.0] — 2026-04-15
-
-### Added
-- ...
-```
-
-### Step 3: Commit and tag
+### Step 1: Land conventional commits on main
 
 ```bash
-git add pyproject.toml src/thoth/__init__.py CHANGELOG.md
-git commit -m "chore: release v2.6.0"
-git tag v2.6.0
+git commit -m "feat: add new provider"
+git commit -m "fix: handle timeout on stream close"
 git push origin main
-git push origin v2.6.0
 ```
 
-Pushing the `v*` tag triggers `publish.yml` automatically.
+The local `commit-msg` lefthook and the `commitlint` CI job enforce the format.
 
-### Step 4: Monitor the workflow
+### Step 2: Wait for / review the Release PR
 
-Go to **Actions → Publish** in GitHub:
-1. **build** job creates wheel + sdist in `dist/`
-2. **publish-testpypi** job publishes to https://test.pypi.org/project/thoth/
-3. **publish-pypi** job publishes to https://pypi.org/project/thoth/
+After each push to `main`, `release-please.yml` opens (or updates) a single PR titled `chore(main): release X.Y.Z`. Its diff bumps `pyproject.toml`, `src/thoth/__init__.py`, `.release-please-manifest.json`, and appends to `CHANGELOG.md`.
+
+Verify:
+- The proposed version matches the semantic weight of the commits since the last tag.
+- The changelog section lists the expected features/fixes.
+
+### Step 3: Merge the Release PR
+
+Merge via the GitHub UI. release-please then:
+1. Creates the tag `vX.Y.Z` on the merge commit.
+2. Creates a GitHub Release with the changelog section as the body.
+
+### Step 4: Monitor the publish workflow
+
+The tag push triggers **Actions → Publish**:
+1. **build** — wheel + sdist in `dist/`
+2. **publish-testpypi** — https://test.pypi.org/project/thoth/
+3. **publish-pypi** — https://pypi.org/project/thoth/
 
 ### Step 5: Verify the release
 

@@ -80,3 +80,6 @@ thoth.log
 # Claude Code local state (runtime locks + user-specific settings)
 .claude/settings.local.json
 .claude/*.lock
+
+# Node (dev tooling for commitlint)
+node_modules/

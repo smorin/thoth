@@ -1,0 +1,9 @@
+{
+  "name": "thoth-dev-tooling",
+  "private": true,
+  "description": "Node-based dev tooling for thoth (commitlint only).",
+  "devDependencies": {
+    "@commitlint/cli": "^19.5.0",
+    "@commitlint/config-conventional": "^19.5.0"
+  }
+}

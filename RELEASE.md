@@ -1,6 +1,6 @@
 # Release Guide
 
-This document covers the full release process for Thoth — from toolchain architecture through the step-by-step workflow, CI/CD pipeline internals, OIDC trusted publishing setup, and troubleshooting.
+Thoth releases are automated by **release-please** (version bumps + changelog + tag + GitHub Release) and **publish.yml** (TestPyPI → PyPI via OIDC trusted publishing). Humans author conventional commits; everything downstream is automatic.
 
 ## Table of Contents
 
@@ -18,69 +18,85 @@ This document covers the full release process for Thoth — from toolchain archi
 
 ## Architecture
 
-The release stack is built entirely on [uv](https://docs.astral.sh/uv/) — no hatch, no twine, no separate publish action.
-
 ```
-┌─────────────────────────────────────────────────────────┐
-│                    Release Pipeline                      │
-│                                                          │
-│  git tag v*                                              │
-│      │                                                   │
-│      ▼                                                   │
-│  GitHub Actions: publish.yml                            │
-│      │                                                   │
-│      ├── [build job]                                     │
-│      │       uv build  ──►  dist/*.whl + dist/*.tar.gz  │
-│      │                                                   │
-│      ├── [publish-testpypi job]                          │
-│      │       uv publish --trusted-publishing always      │
-│      │       --publish-url https://test.pypi.org/legacy/ │
-│      │                                                   │
-│      └── [publish-pypi job]                              │
-│              uv publish --trusted-publishing always      │
-└─────────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────────┐
+│                        Release Pipeline                         │
+│                                                                 │
+│  conventional commit on main                                    │
+│       │                                                         │
+│       ▼                                                         │
+│  release-please.yml                                             │
+│       │   opens/updates "Release PR" (bump + CHANGELOG.md)      │
+│       │                                                         │
+│  merge Release PR                                               │
+│       │                                                         │
+│       ├── release-please creates tag  v X.Y.Z                   │
+│       └── release-please creates GitHub Release                 │
+│                │                                                │
+│                ▼                                                │
+│  publish.yml (triggered by tag push)                            │
+│       ├── build:  uv build  →  dist/*.whl + dist/*.tar.gz       │
+│       ├── publish-testpypi: uv publish --trusted-publishing ... │
+│       └── publish-pypi:     uv publish --trusted-publishing ... │
+└────────────────────────────────────────────────────────────────┘
 ```
 
 ### Toolchain
 
 | Concern | Tool | Details |
 |---------|------|---------|
+| Commit-msg lint | `commitlint` (local hook + CI) | Enforces Conventional Commits |
+| Version bumping | `release-please` | Inferred from commit types (`feat!` → major, `feat` → minor, `fix` → patch) |
+| Changelog | `release-please` | Generates `CHANGELOG.md` from conventional commits |
+| Tag + GitHub Release | `release-please` | Created automatically on Release PR merge |
 | Build backend | `uv_build` | PEP 517 backend, bundled with uv |
 | Package manager | `uv` | Dependency resolution, venv, lock file |
 | Build | `uv build` | Produces wheel (`.whl`) and source dist (`.tar.gz`) |
-| Publish | `uv publish` | Uploads to PyPI/TestPyPI via OIDC or token |
+| Publish | `uv publish` | Uploads to PyPI/TestPyPI via OIDC |
 | Task runner | `just` | Wraps uv commands for local convenience |
-| CI/CD | GitHub Actions | Automated test, lint, typecheck, publish |
+| CI/CD | GitHub Actions | Test, lint, typecheck, commitlint, release-please, publish |
 | Auth | OIDC trusted publishing | No stored API tokens — GitHub mints short-lived tokens |
 
 ### Key Files
 
 | File | Purpose |
 |------|---------|
-| `pyproject.toml` | Project metadata, version, build-system config |
-| `src/thoth/__init__.py` | Package version (`__version__`) |
+| `pyproject.toml` | Project metadata + version (bumped by release-please) |
+| `src/thoth/__init__.py` | Package `__version__` (bumped by release-please via `x-release-please-version`) |
+| `.release-please-manifest.json` | release-please's authoritative version per package |
+| `release-please-config.json` | release-please behavior + changelog sections |
+| `commitlint.config.js` | Allowed commit types / header length |
+| `package.json` | Node dev dependency on `@commitlint/*` |
 | `uv.lock` | Locked dependency graph (committed to repo) |
-| `.github/workflows/ci.yml` | Runs tests, lint, typecheck on push/PR |
-| `.github/workflows/publish.yml` | Builds and publishes on `v*` tag push |
+| `.github/workflows/ci.yml` | Tests, lint, typecheck on push/PR |
+| `.github/workflows/commitlint.yml` | Validates commit messages on PR |
+| `.github/workflows/release-please.yml` | Opens/merges Release PRs |
+| `.github/workflows/publish.yml` | Builds + publishes on `v*` tag push |
 | `justfile` | Local task automation (`just build`, `just publish`) |
 | `Makefile` | Environment dependency checks (`make env-check`) |
-| `CHANGELOG.md` | Release notes, one section per version |
+| `CHANGELOG.md` | Release notes (maintained by release-please) |
 
 ---
 
 ## Prerequisites
 
-**Required:**
-- [uv](https://docs.astral.sh/uv/) — install with `curl -LsSf https://astral.sh/uv/install.sh | sh`
-- Git with push access to `main` and tag push rights on the repo
+**Required for contributing:**
+- [uv](https://docs.astral.sh/uv/) — `curl -LsSf https://astral.sh/uv/install.sh | sh`
+- [just](https://github.com/casey/just) — `brew install just`
+- Node ≥ 18 — required for commitlint (`brew install node` or https://nodejs.org/)
+- Git
 
-**For manual publishing (bypassing CI):**
-- A PyPI API token, or OIDC trusted publishing configured for your local environment
+**Bootstrap the full toolchain in one shot:**
+```bash
+just install-dev   # uv sync + npm install + lefthook install + gitleaks
+```
 
 **Verify your environment:**
 ```bash
-make env-check   # checks for uv, python3, and just
+make env-check   # checks uv, python3, just, node, npm
 ```
+
+**Commit message format:** all commits must follow [Conventional Commits](https://www.conventionalcommits.org/). The local `commit-msg` hook (lefthook) and the `commitlint` CI job both enforce this. Allowed types: `feat`, `fix`, `perf`, `refactor`, `docs`, `test`, `ci`, `chore`, `build`, `style`, `revert`.
 
 ---
 
@@ -88,122 +104,94 @@ make env-check   # checks for uv, python3, and just
 
 Thoth uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 
-| Increment | When |
-|-----------|------|
-| `PATCH` | Bug fixes, dependency bumps, documentation changes |
-| `MINOR` | New backward-compatible features, new commands or providers |
-| `MAJOR` | Breaking CLI changes or incompatible config format changes |
+Versions are bumped **automatically** by release-please from conventional-commit types since the last release:
 
-The version is declared in two places — keep them in sync:
+| Commit pattern | Bump |
+|----------------|------|
+| `feat!:` or `BREAKING CHANGE:` footer | `MAJOR` |
+| `feat:` | `MINOR` |
+| `fix:`, `perf:`, `refactor:`, `chore:`, `docs:`, `ci:`, `test:`, etc. | `PATCH` |
+
+You do **not** edit `pyproject.toml` or `src/thoth/__init__.py` version fields directly. release-please updates them in the Release PR.
+
+**Version surfaces (maintained by release-please):**
 
 ```toml
-# pyproject.toml
+# pyproject.toml — package version
 [project]
 version = "2.5.0"
 ```
 
 ```python
-# src/thoth/__init__.py
-__version__ = "2.5.0"
+# src/thoth/__init__.py — Python __version__
+__version__ = "2.5.0"  # x-release-please-version
 ```
 
-Git tags follow the `v{version}` format (e.g., `v2.5.0`). The tag is the release trigger — pushing a `v*` tag kicks off the full publish workflow.
+The CLI reads `THOTH_VERSION` from `src/thoth/config.py`, which re-exports `__version__` — so there is one source of truth.
+
+Git tags follow `v{version}` (e.g., `v2.5.0`). release-please creates the tag on Release PR merge; the tag push triggers `publish.yml`.
 
 ---
 
 ## Release Checklist
 
-Before creating a release, verify all of the following:
+A maintainer approves/merges a Release PR. Before merging, verify:
 
-- [ ] All CI checks pass on `main` (`push` triggers `ci.yml`)
-- [ ] `./thoth_test -r --provider mock` passes with no new failures
-- [ ] `pyproject.toml` version is updated to the new version
-- [ ] `src/thoth/__init__.py` `__version__` matches `pyproject.toml`
-- [ ] `CHANGELOG.md` has an entry for the new version with release date
-- [ ] No uncommitted changes (`git status` is clean)
-- [ ] You are on the `main` branch
+- [ ] All CI checks pass on `main` (green CI, green commitlint)
+- [ ] The Release PR's diff shows the expected next version
+- [ ] The generated `CHANGELOG.md` entry reads correctly (all `feat:`/`fix:`/... commits since the last tag appear in their groups; nothing surprising is missing)
+
+Merging the Release PR triggers the tag + GitHub Release + publish. Nothing else to do locally.
 
 ---
 
 ## Step-by-Step Release Process
 
-### 1. Update the version
+### 1. Land work as conventional commits on main
 
-Edit both version declarations to match:
-
-```toml
-# pyproject.toml
-[project]
-version = "2.6.0"   # new version
-```
-
-```python
-# src/thoth/__init__.py
-__version__ = "2.6.0"
-```
-
-### 2. Update CHANGELOG.md
-
-Add a section at the top (below the `# Changelog` header):
-
-```markdown
-## [2.6.0] — 2026-04-15
-
-### Added
-- ...
-
-### Fixed
-- ...
-
-### Changed
-- ...
-```
-
-### 3. Run all checks locally
+Normal development, just with disciplined commit messages:
 
 ```bash
-just check-all          # lint both src/thoth/ and thoth_test
-./thoth_test -r --provider mock   # run full test suite
-```
-
-All must pass before proceeding.
-
-### 4. Commit the release
-
-```bash
-git add pyproject.toml src/thoth/__init__.py CHANGELOG.md
-git commit -m "chore: release v2.6.0"
+git commit -m "feat: add perplexity citation parser"
+git commit -m "fix: handle empty response from deep-research API"
 git push origin main
 ```
 
-Wait for the CI pipeline (`ci.yml`) to go green on `main`.
+The local `commit-msg` hook rejects malformed messages before they land. CI's `commitlint` job double-checks on every PR.
 
-### 5. Tag and push
+### 2. Wait for the Release PR to appear / update
+
+`release-please.yml` runs on every push to `main`. It opens (or updates) a single PR titled something like **`chore(main): release 2.6.0`**. Its diff shows:
+
+- `pyproject.toml` version bumped
+- `src/thoth/__init__.py` `__version__` bumped
+- `.release-please-manifest.json` version bumped
+- `CHANGELOG.md` — new section for the incoming version, grouped by commit type
+
+### 3. Review and merge the Release PR
+
+Confirm the diff looks right (especially the changelog entry and the bump level). Merge the PR via the GitHub UI using a standard merge or squash — release-please handles the tag either way.
+
+### 4. Automatic tag, GitHub Release, and publish
+
+On merge, release-please:
+
+1. Creates the `vX.Y.Z` tag on the merge commit
+2. Creates a GitHub Release with the changelog section as the body
+
+The tag push triggers `publish.yml`:
+
+1. **Build** — `dist/*.whl` and `dist/*.tar.gz`
+2. **Publish to TestPyPI** — [test.pypi.org](https://test.pypi.org/project/thoth/)
+3. **Publish to PyPI** — [pypi.org/project/thoth/](https://pypi.org/project/thoth/)
+
+Each publish job requires approval if the environment has reviewers configured.
+
+### 5. Verify the release
 
 ```bash
-git tag v2.6.0
-git push origin v2.6.0
-```
-
-Pushing the `v*` tag triggers `publish.yml` automatically.
-
-### 6. Monitor the publish workflow
-
-Go to the **Actions** tab on GitHub and watch the `Publish` workflow:
-
-1. **Build** — builds `dist/*.whl` and `dist/*.tar.gz`
-2. **Publish to TestPyPI** — validates the package on [test.pypi.org](https://test.pypi.org/project/thoth/)
-3. **Publish to PyPI** — publishes to [pypi.org/project/thoth/](https://pypi.org/project/thoth/)
-
-Each publish job requires manual approval via its GitHub environment (`testpypi` → `pypi`) if environment protection rules are configured.
-
-### 7. Verify the release
-
-```bash
-# Install and run from PyPI
 uvx thoth==2.6.0 --version
-
-# Or with pip
+# or
 pip install thoth==2.6.0
 thoth --version
 ```
@@ -369,4 +357,22 @@ If the `pypi` GitHub environment has required reviewers configured, you must app
 
 ### Version on PyPI doesn't match `pyproject.toml`
 
-The build is stamped with whatever version is in `pyproject.toml` at the time `uv build` runs. Ensure both `pyproject.toml` and `src/thoth/__init__.py` were committed before the tag was pushed.
+The build is stamped with whatever version is in `pyproject.toml` at the time `uv build` runs. release-please keeps `pyproject.toml` and `src/thoth/__init__.py` in sync — if they're out of sync, suspect a hand-edit that bypassed the Release PR.
+
+### Release PR does not appear after landing a `feat:`/`fix:` commit
+
+Check the `release-please` workflow run in the Actions tab. Common causes:
+- The commit was authored directly against `main` with a message release-please does not parse (e.g., missing type prefix).
+- The `release-please-config.json` or `.release-please-manifest.json` file is malformed — validate JSON.
+- The workflow's `contents: write` / `pull-requests: write` permissions were removed.
+
+### Release PR merged but `publish.yml` did not fire
+
+release-please's tag push uses the default `GITHUB_TOKEN`, which by default does **not** retrigger other workflows listening on `push`. Remedies:
+
+1. Switch `release-please-action` to use a fine-grained PAT with `contents: write` + `actions: write` stored as a repo secret, and pass it via `token:` in `release-please.yml`.
+2. OR change `publish.yml` to trigger on `release: types: [published]` instead of `push.tags`, since release-please also creates the GitHub Release.
+
+### Commit rejected locally with `subject may not be empty` / `type may not be empty`
+
+Your commit message does not match Conventional Commits. Prefix with one of the allowed types (`feat:`, `fix:`, `chore:`, etc.) followed by a space and a short subject. Example: `fix: correct perplexity citation offset`.

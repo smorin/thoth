@@ -3,6 +3,11 @@
 # Docs: https://github.com/evilmartians/lefthook
 # Install: brew install lefthook && lefthook install
 
+commit-msg:
+  commands:
+    commitlint:
+      run: npx --no -- commitlint --edit {1}
+
 pre-commit:
   parallel: true
   commands:

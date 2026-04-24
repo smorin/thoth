@@ -156,6 +156,19 @@ When creating a new version:
 
 ## Git Best Practices
 
+**Conventional Commits are enforced.** Every commit message must match
+`<type>[optional scope]: <subject>`. The local `commit-msg` lefthook and the
+`commitlint` CI workflow both reject malformed messages. Allowed types:
+`feat`, `fix`, `perf`, `refactor`, `docs`, `test`, `ci`, `chore`, `build`,
+`style`, `revert`. Use `feat!:` or a `BREAKING CHANGE:` footer for breaking
+changes — release-please treats those as `MAJOR` bumps.
+
+**Releases are automated by release-please.** Do not hand-edit
+`pyproject.toml`, `src/thoth/__init__.py`, `CHANGELOG.md`, or
+`.release-please-manifest.json` versions. Land conventional commits on
+`main`; `release-please.yml` opens a Release PR; merging it tags `vX.Y.Z`
+and triggers `publish.yml` (TestPyPI → PyPI). See `RELEASE.md`.
+
 Never say in commits:
 
  🤖 Generated with [Claude Code](https://claude.ai/code)

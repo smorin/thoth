@@ -9,6 +9,12 @@ default:
 install:
     uv sync
 
+# Install full local dev toolchain: uv deps + commitlint (npm) + git hooks
+[group: 'setup']
+install-dev: install
+    npm install
+    just install-lefthook
+
 # Install thoth to /usr/local/bin
 [group: 'setup']
 install-bin:
@@ -135,56 +141,11 @@ update-snapshots:
 current-version:
     @grep '^version = ' pyproject.toml | sed 's/version = "\(.*\)"/\1/'
 
-# Bump patch version (2.5.0 → 2.5.1)
-[group: 'versioning']
-bump-patch:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    uvx bump-my-version bump patch
-    uv lock
-    NEW_V=$(grep '^version = ' pyproject.toml | sed 's/version = "\(.*\)"/\1/')
-    git add pyproject.toml src/thoth/__init__.py uv.lock
-    git commit -m "chore: bump version to $NEW_V"
-    echo "Bumped to $NEW_V"
-    echo "  Next: git push origin main"
-
-# Bump minor version (2.5.0 → 2.6.0)
-[group: 'versioning']
-bump-minor:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    uvx bump-my-version bump minor
-    uv lock
-    NEW_V=$(grep '^version = ' pyproject.toml | sed 's/version = "\(.*\)"/\1/')
-    git add pyproject.toml src/thoth/__init__.py uv.lock
-    git commit -m "chore: bump version to $NEW_V"
-    echo "Bumped to $NEW_V"
-    echo "  Next: git push origin main"
-
-# Bump major version (2.5.0 → 3.0.0)
-[group: 'versioning']
-bump-major:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    uvx bump-my-version bump major
-    uv lock
-    NEW_V=$(grep '^version = ' pyproject.toml | sed 's/version = "\(.*\)"/\1/')
-    git add pyproject.toml src/thoth/__init__.py uv.lock
-    git commit -m "chore: bump version to $NEW_V"
-    echo "Bumped to $NEW_V"
-    echo "  Next: git push origin main"
-
 # ─── Release ──────────────────────────────────────────────────────────
-
-# Generate CHANGELOG.md from git history (requires git-cliff)
-[group: 'release']
-changelog version="":
-    #!/usr/bin/env bash
-    if [ -n "{{version}}" ]; then
-        uvx git-cliff --tag "v{{version}}" -o CHANGELOG.md
-    else
-        uvx git-cliff -o CHANGELOG.md
-    fi
+# Releases are automated via release-please. Land conventional commits on
+# main; release-please opens a Release PR with the bumped version +
+# CHANGELOG.md. Merging that PR tags `vX.Y.Z`, which triggers publish.yml
+# to push to TestPyPI and PyPI via OIDC trusted publishing.
 
 # Build distribution (wheel + sdist)
 [group: 'release']
@@ -200,11 +161,6 @@ publish-test:
 [group: 'release']
 publish:
     uv publish
-
-# Tag and push a release (triggers CI publish workflow)
-[group: 'release']
-release version="":
-    ./scripts/release.sh {{version}}
 
 # ─── Dev ──────────────────────────────────────────────────────────────
 

@@ -13,10 +13,14 @@ env-check: check-uv
 	@command -v uv >/dev/null 2>&1 || { echo "❌ uv not found. Install from: https://docs.astral.sh/uv/"; exit 1; }
 	@command -v python3 >/dev/null 2>&1 || { echo "❌ Python 3 not found"; exit 1; }
 	@command -v just >/dev/null 2>&1 || { echo "❌ just not found. Install from: https://github.com/casey/just"; exit 1; }
+	@command -v node >/dev/null 2>&1 || { echo "❌ node not found (required for commitlint). Install Node >= 18 via 'brew install node' or https://nodejs.org/"; exit 1; }
+	@command -v npm  >/dev/null 2>&1 || { echo "❌ npm not found (required for commitlint). Install Node >= 18 via 'brew install node' or https://nodejs.org/"; exit 1; }
 	@echo "✅ All dependencies found"
 	@python3 --version
 	@uv --version
 	@just --version
+	@node --version
+	@npm --version
 
 check-uv:
 	@command -v uv >/dev/null 2>&1 || { echo "UV not found. Install from: https://github.com/astral-sh/uv"; exit 1; }

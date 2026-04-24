@@ -19,6 +19,7 @@ from typing import Any
 
 from rich.console import Console
 
+from thoth import __version__
 from thoth.errors import ThothError
 from thoth.paths import user_checkpoints_dir, user_config_file
 
@@ -27,7 +28,7 @@ from thoth.paths import user_checkpoints_dir, user_config_file
 _console = Console()
 
 # Version tracking
-THOTH_VERSION = "2.5.0"
+THOTH_VERSION = __version__
 CONFIG_VERSION = "2.0"
 
 # Process-wide config path override. Set by the CLI `--config` option.
