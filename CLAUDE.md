@@ -1,9 +1,68 @@
 ## Development Principles
 - When planning features, look at using design patterns that make it easy to keep code consistent. And then put in place best practices.
 
-## Code Quality Assurance Workflow
+## Fast Iteration Loop
 
-After making any code changes, follow this verification workflow:
+The pre-commit hook runs ruff + ty + bandit + gitleaks + codespell + the full
+`./thoth_test` integration suite (~60s) on every staged `.py` change. During
+rapid iteration, **do not commit between edits just to trigger checks** —
+run targeted tools directly and commit once when it's actually done.
+
+### Shortest loop first
+
+Pick the narrowest feedback that can detect your change's problem, then widen:
+
+1. **Inner (1-5s)** — rerun the ONE test you're iterating on:
+   - Pytest single test: `uv run pytest tests/test_foo.py::test_bar -x -v`
+   - Pytest keyword: `uv run pytest tests/ -k "cancelled" -x`
+   - thoth_test by ID: `./thoth_test -r -t M8T-03 -v`
+     (`-t` does substring match on test_id and description)
+2. **Module (5-20s)** — rerun the file: `uv run pytest tests/test_foo.py -v`
+3. **Lint/type only (~5s)** — `just check` (skips tests entirely)
+4. **Full gate (~60s)** — run once, right before commit: the pre-commit hook
+   runs it anyway.
+
+### Finding test IDs to rerun
+
+Both runners print IDs on failure:
+
+- **pytest** prints `tests/test_foo.py::test_bar FAILED` — copy the `::`-path.
+- **thoth_test** prints a "Failed Test Details" block with `Test M8T-03:` headers
+  and a "To rerun failed tests:" hint at the end of the run.
+
+When a pre-commit hook fails on `./thoth_test`, grep to skip the 64-row
+noise table:
+
+```bash
+./thoth_test -r --provider mock --skip-interactive 2>&1 | grep -A 30 "Failed Test Details"
+```
+
+### Flaky-test retry policy
+
+Network-dependent thoth_test cases (invalid/missing API-key variants) can
+time out at 10s on slow connections and report `exit code -1`. If a single
+such test fails on first run, rerun JUST that one:
+
+```bash
+./thoth_test -r -t M8T-03
+```
+
+Two consecutive failures of the same test = real bug. One failure = noise.
+
+### Hook discipline (do not skip routinely)
+
+- **Do NOT** `git commit --no-verify` or `LEFTHOOK=0 git commit` to bypass
+  hooks during normal iteration. The pain is a signal you're committing too
+  often; keep changes uncommitted and run targeted tools until green.
+- **Exception**: for a short-lived intermediate WIP commit you plan to
+  squash, `LEFTHOOK=0` is acceptable IF you have already run the equivalent
+  checks manually (`just check` + the targeted tests you care about). The
+  **last commit before `git push`** MUST go through the full hook set.
+
+## Code Quality Assurance Workflow (final pre-commit gate)
+
+This is the one-shot gate to run right before committing — NOT between edits.
+For iteration, see "Fast Iteration Loop" above.
 
 1. **Main Executable Verification** (thoth):
    ```bash
@@ -32,22 +91,23 @@ After making any code changes, follow this verification workflow:
      - `just test-lint` passes without errors
      - `just test-typecheck` passes without errors
 
-This ensures both the main executable and test suite maintain code quality standards.
-
 ### Test Debugging Workflow
-- When a test fails, start by running the test suite with only the failing tests
-- Fix the specific tests while running the subset of tests
-- Once fixed, run the full test suite to ensure no regressions
-- Systematically run `./thoth_test` with targeted test subsets
-- Always follow the verification steps:
-  1. `make env-check`
-  2. `just fix`
-  3. `just check`
-  4. `./thoth_test`
-  5. `just test-fix`
-  6. `just test-lint`
-  7. `just test-typecheck`
-  8. Verify all tests pass in the full test suite
+
+When a test fails:
+
+1. **Copy the test ID** from the failure output (both pytest and thoth_test
+   print them).
+2. **Rerun ONLY that test** via the inner-loop command above. Do NOT rerun
+   the full suite.
+3. Add `-v` / `--verbose` if the error message is truncated.
+4. Fix and rerun the single test until green.
+5. **Widen one step** — rerun the file or the pytest module it lives in.
+6. **Only then** run the full gate once before committing.
+
+Do not re-run the 8-step verification (`make env-check` → `just fix` →
+`just check` → `./thoth_test` → `just test-fix` → `just test-lint` →
+`just test-typecheck`) between edits. That's ~90s per cycle. Run it once
+at the end.
 
 ## Planning Documents Management
 
