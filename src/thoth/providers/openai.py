@@ -18,6 +18,7 @@ from tenacity import (
     wait_exponential,
 )
 
+from thoth.config import is_background_mode
 from thoth.errors import APIKeyError, APIQuotaError, ProviderError, ThothError
 from thoth.models import ModelCache
 from thoth.providers.base import ResearchProvider
@@ -172,14 +173,16 @@ class OpenAIProvider(ResearchProvider):
 
         # Configure tools based on model type
         tools: list[dict[str, Any]] = []
-        if "deep-research" in self.model:
+        if is_background_mode({"model": self.model}):
             tools = [{"type": "web_search_preview"}]
             if self.config.get("code_interpreter", True):
                 tools.append({"type": "code_interpreter", "container": {"type": "auto"}})
 
         # Determine if background mode should be used
-        # Use background for deep-research models or if explicitly configured
-        use_background = "deep-research" in self.model or self.config.get("background", False)
+        # Background for deep-research models (via is_background_mode) or explicit config
+        use_background = is_background_mode({"model": self.model}) or self.config.get(
+            "background", False
+        )
 
         # Get configuration parameters
         temperature = self.config.get("temperature", 0.7)

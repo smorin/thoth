@@ -11,6 +11,7 @@ from __future__ import annotations
 import os
 from typing import TYPE_CHECKING, Any
 
+from thoth.config import is_background_mode
 from thoth.errors import APIKeyError, ThothError
 from thoth.providers.base import ResearchProvider
 from thoth.providers.mock import MockProvider
@@ -107,9 +108,8 @@ def create_provider(
         provider_config["model"] = mode_config["model"]
 
     # Apply background mode for deep research models
-    if provider_name == "openai" and provider_config.get("model", ""):
-        if "deep-research" in provider_config["model"]:
-            provider_config["background"] = True
+    if provider_name == "openai" and is_background_mode(provider_config):
+        provider_config["background"] = True
 
     cls = PROVIDERS[provider_name]
     return cls(api_key=api_key, config=provider_config)
