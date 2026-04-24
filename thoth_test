@@ -795,6 +795,22 @@ def read_last_failed(path: Path = CACHE_FILE) -> list[str]:
     return [t["test_id"] for t in payload.get("tests", []) if not t.get("passed", True)]
 
 
+def print_fenced_failure(result: TestResult, test_case: TestCase | None) -> None:
+    desc = test_case.description if test_case else ""
+    sys.stdout.write(f"===BEGIN FAILURE {result.test_id}===\n")
+    sys.stdout.write(f"Test: {result.test_id} — {desc}\n")
+    sys.stdout.write(f"Duration: {result.duration:.2f}s\n")
+    sys.stdout.write(f"Exit code: {result.exit_code}\n")
+    sys.stdout.write(f"Error: {result.error_message or ''}\n")
+    sys.stdout.write("--- STDOUT ---\n")
+    stdout = result.stdout or ""
+    sys.stdout.write(stdout + ("\n" if not stdout.endswith("\n") else ""))
+    sys.stdout.write("--- STDERR ---\n")
+    stderr = result.stderr or ""
+    sys.stdout.write(stderr + ("\n" if not stderr.endswith("\n") else ""))
+    sys.stdout.write(f"===END FAILURE {result.test_id}===\n")
+
+
 # ============================================================================
 # Selection Resolver
 # ============================================================================
@@ -882,6 +898,7 @@ class TestRunner:
         verbose: bool = False,
         save_output: bool = False,
         requested_providers: list[str] | None = None,
+        quiet: bool = False,
     ):
         self.results: list[TestResult] = []
         self.start_time = time.time()
@@ -892,6 +909,7 @@ class TestRunner:
         self.skipped_by_provider = {"openai": 0, "perplexity": 0}
         self.verbose = verbose
         self.save_output = save_output
+        self.quiet = quiet
         if save_output:
             self.output_dir = Path("test_outputs") / datetime.now().strftime("%Y%m%d_%H%M%S")
             self.output_dir.mkdir(parents=True, exist_ok=True)
@@ -1265,34 +1283,65 @@ api_key = "{api_key}"
         self.filtered_tests = test_cases
         total_tests = len(test_cases)
 
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            BarColumn(),
-            TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
-            console=console,
-        ) as progress:
-            task = progress.add_task("Running tests...", total=total_tests)
-
-            for current_num, test_case in enumerate(test_cases, 1):
-                # Update progress with test number
-                progress.update(
-                    task,
-                    description=f"Running test {current_num}/{total_tests}: {test_case.test_id}: {test_case.description}",
-                )
-
-                # Run test
+        if self.quiet:
+            for test_case in test_cases:
                 result = self.run_test(test_case)
                 self.results.append(result)
+        else:
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                BarColumn(),
+                TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+                console=console,
+            ) as progress:
+                task = progress.add_task("Running tests...", total=total_tests)
 
-                # Update progress
-                progress.advance(task)
+                for current_num, test_case in enumerate(test_cases, 1):
+                    # Update progress with test number
+                    progress.update(
+                        task,
+                        description=f"Running test {current_num}/{total_tests}: {test_case.test_id}: {test_case.description}",
+                    )
+
+                    # Run test
+                    result = self.run_test(test_case)
+                    self.results.append(result)
+
+                    # Update progress
+                    progress.advance(task)
 
         # Generate report
         self.generate_report()
 
+    def _generate_quiet_report(self):
+        total_time = time.time() - self.start_time
+        passed = sum(1 for r in self.results if r.passed and not r.skipped)
+        failed = sum(1 for r in self.results if not r.passed)
+        skipped = sum(1 for r in self.results if r.skipped)
+
+        tc_by_id = {tc.test_id: tc for tc in self.filtered_tests}
+        for r in self.results:
+            if not r.passed:
+                print_fenced_failure(r, tc_by_id.get(r.test_id))
+
+        sys.stdout.write(
+            f"thoth_test: {passed} passed, {failed} failed, {skipped} skipped "
+            f"in {total_time:.1f}s (cache: {CACHE_FILE})\n"
+        )
+
+        report = serialize_run_report(self, invocation=sys.argv)
+        write_cache_atomic(report)
+        if getattr(self, "_report_json_path", None):
+            write_cache_atomic(report, Path(self._report_json_path))
+
+        sys.exit(0 if failed == 0 else 1)
+
     def generate_report(self):
         """Generate and display test report"""
+        if self.quiet:
+            self._generate_quiet_report()
+            return
         total_time = time.time() - self.start_time
         passed_tests = sum(1 for r in self.results if r.passed and not r.skipped)
         skipped_tests = sum(1 for r in self.results if r.skipped)
@@ -2846,6 +2895,13 @@ all_tests = [
     default=None,
     help="Also write the JSON report to PATH.",
 )
+@click.option(
+    "-q",
+    "--quiet",
+    "quiet",
+    is_flag=True,
+    help="Silent on pass; fenced failure blocks on fail.",
+)
 def main(
     run,
     all,
@@ -2862,6 +2918,7 @@ def main(
     ids,
     last_failed,
     report_json,
+    quiet,
 ):
     """Thoth Test Suite - Comprehensive regression tests for Thoth CLI
 
@@ -3063,6 +3120,7 @@ def main(
         verbose=verbose,
         save_output=save_output,
         requested_providers=requested_providers,
+        quiet=quiet,
     )
     runner._report_json_path = report_json
     runner.run_all_tests(tests_to_run)

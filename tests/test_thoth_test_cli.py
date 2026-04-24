@@ -165,7 +165,6 @@ def test_id_overrides_provider_filter_and_marks_requested_but_filtered(thoth_tes
     assert any("OA" in w and "provider" in w.lower() for w in warnings)
 
 
-@pytest.mark.skip(reason="requires -q, lands in Task 8")
 def test_id_integration_runs_exactly_one_test():
     proc = _run_thoth_test("-r", "--id", "M1T-01", "-q")
     assert proc.returncode == 0, proc.stdout + proc.stderr
@@ -277,3 +276,44 @@ def test_report_json_matches_cache_content(tmp_path):
     # finished_at may differ by one clock tick between writes; compare everything else.
     for key in ("schema_version", "invocation", "requested_providers", "counts", "tests"):
         assert cache_payload[key] == target_payload[key], f"mismatch on {key}"
+
+
+def test_quiet_suppresses_table_on_pass():
+    proc = _run_thoth_test("-r", "--id", "M1T-01", "-q")
+    assert proc.returncode == 0
+    assert "Test Results" not in proc.stdout
+    assert "1 passed" in proc.stdout
+    assert "0 failed" in proc.stdout
+    assert ".thoth_test_cache/last_run.json" in proc.stdout
+
+
+def test_quiet_emits_fenced_failure_for_failing_test(thoth_test_mod, capsys):
+    runner = thoth_test_mod.TestRunner(quiet=True)
+    runner.start_time = 0.0
+    runner.filtered_tests = [
+        thoth_test_mod.TestCase(
+            test_id="FAIL-1",
+            description="deliberate failure",
+            command=["x"],
+            provider="mock",
+        )
+    ]
+    runner.results = [
+        thoth_test_mod.TestResult(
+            test_id="FAIL-1",
+            passed=False,
+            duration=0.5,
+            stdout="STDOUT-MARKER",
+            stderr="STDERR-MARKER",
+            exit_code=1,
+            error_message="boom",
+        )
+    ]
+    with pytest.raises(SystemExit):
+        runner.generate_report()
+    out = capsys.readouterr().out
+    assert "===BEGIN FAILURE FAIL-1===" in out
+    assert "===END FAILURE FAIL-1===" in out
+    assert "STDOUT-MARKER" in out
+    assert "STDERR-MARKER" in out
+    assert "Test Results" not in out
