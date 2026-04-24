@@ -75,6 +75,18 @@ jobs:
       - name: Run bandit
         run: uvx bandit -r src/ -ll
 
+  trufflehog:
+    name: TruffleHog Secret Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6.0.2
+        with:
+          fetch-depth: 0
+      - name: Scan for verified secrets
+        uses: trufflesecurity/trufflehog@main
+        with:
+          extra_args: --results=verified,unknown
+
   file-hygiene:
     name: File Hygiene
     runs-on: ubuntu-latest
