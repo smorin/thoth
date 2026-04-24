@@ -3028,6 +3028,15 @@ def main(
                 err=True,
             )
             sys.exit(2)
+        known_ids = {t.test_id for t in all_tests}
+        unknown = [fid for fid in failed_ids if fid not in known_ids]
+        if unknown and not any(fid in known_ids for fid in failed_ids):
+            click.echo(
+                f"All cached failures refer to removed tests ({', '.join(unknown)}); "
+                "nothing to rerun.",
+                err=True,
+            )
+            sys.exit(2)
         # Merge with any explicit --id (union, preserving --id order first).
         ids = tuple(list(ids) + [i for i in failed_ids if i not in ids])
         run = True  # --last-failed implies -r

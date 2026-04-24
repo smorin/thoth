@@ -322,3 +322,26 @@ def test_quiet_emits_fenced_failure_for_failing_test(thoth_test_mod, capsys, mon
     assert "Test Results" not in out
     # Cache was redirected; real one untouched.
     assert (tmp_path / "cache.json").exists()
+
+
+def test_last_failed_exits_2_when_all_cached_ids_unknown(tmp_path):
+    # Seed the real cache with a stale failing ID.
+    cache_file = REPO_ROOT / ".thoth_test_cache" / "last_run.json"
+    cache_file.parent.mkdir(parents=True, exist_ok=True)
+    cache_file.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "tests": [
+                    {"test_id": "NO-SUCH-TEST", "passed": False, "skipped": False},
+                ],
+            }
+        )
+    )
+    try:
+        proc = _run_thoth_test("-r", "--last-failed")
+        assert proc.returncode == 2
+        assert "removed tests" in proc.stderr.lower() or "nothing to rerun" in proc.stderr.lower()
+    finally:
+        if cache_file.exists():
+            cache_file.unlink()
