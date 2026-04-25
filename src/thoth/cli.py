@@ -17,7 +17,13 @@ import click
 
 import thoth.config as _thoth_config
 import thoth.signals as _thoth_signals
-from thoth.commands import CommandHandler, providers_command
+from thoth.commands import (
+    CommandHandler,
+    providers_check,
+    providers_command,
+    providers_list,
+    providers_models,
+)
 from thoth.config import BUILTIN_MODES, THOTH_VERSION, ConfigManager
 from thoth.context import AppContext
 from thoth.errors import ThothError
@@ -265,44 +271,68 @@ def cli(
             handler.list_command(show_all=show_all)
             return
         elif command == "providers":
-            all_args = list(args) + list(ctx.args)
-            show_models = "--models" in all_args or "--models" in sys.argv
-            show_list = "--list" in all_args or "--list" in sys.argv
-            show_keys = "--keys" in all_args or "--keys" in sys.argv
-            refresh_cache = "--refresh-cache" in all_args or "--refresh-cache" in sys.argv
-            no_cache = "--no-cache" in all_args or "--no-cache" in sys.argv
-            filter_provider = None
-
-            if refresh_cache and no_cache:
-                console.print(
-                    "[red]Error:[/red] Cannot use --refresh-cache and --no-cache together"
+            sub = args[1] if len(args) >= 2 else None
+            config_manager = ConfigManager()
+            config_manager.load_all_layers({"config_path": config_path})
+            cfg = config_manager
+            # New subcommand forms
+            if sub == "list":
+                sys.exit(providers_list(cfg))
+            elif sub == "models":
+                sys.exit(providers_models(cfg))
+            elif sub == "check":
+                sys.exit(providers_check(cfg))
+            elif sub in (None, "--help", "help"):
+                show_providers_help()
+                sys.exit(0)
+            else:
+                # Legacy forms: thoth providers -- --list / --models / etc.
+                # Click strips the '--' separator so sub is the flag itself.
+                all_args = list(args[1:]) + list(ctx.args)
+                is_legacy = any(
+                    a in ("--list", "--models", "--keys", "--refresh-cache", "--no-cache")
+                    for a in all_args
                 )
-                console.print("  --refresh-cache: Updates the cache with fresh data")
-                console.print("  --no-cache: Bypasses cache without updating it")
-                sys.exit(1)
+                if is_legacy:
+                    click.echo(
+                        "warning: 'thoth providers -- ...' is deprecated; "
+                        "use 'thoth providers list|models|check'",
+                    )
+                    show_models = "--models" in all_args
+                    show_list = "--list" in all_args
+                    show_keys = "--keys" in all_args
+                    refresh_cache = "--refresh-cache" in all_args
+                    no_cache = "--no-cache" in all_args
+                    filter_provider = None
 
-            for arg_list in [args, ctx.args, sys.argv]:
-                for i, arg in enumerate(arg_list):
-                    if arg in ["--provider", "-P"] and i + 1 < len(arg_list):
-                        filter_provider = arg_list[i + 1]
-                        break
-                if filter_provider:
-                    break
+                    if refresh_cache and no_cache:
+                        console.print(
+                            "[red]Error:[/red] Cannot use --refresh-cache and --no-cache together"
+                        )
+                        sys.exit(1)
 
-            if not filter_provider and provider:
-                filter_provider = provider
+                    for i, arg in enumerate(all_args):
+                        if arg in ["--provider", "-P"] and i + 1 < len(all_args):
+                            filter_provider = all_args[i + 1]
+                            break
 
-            asyncio.run(
-                providers_command(
-                    show_models=show_models,
-                    show_list=show_list,
-                    show_keys=show_keys,
-                    filter_provider=filter_provider,
-                    refresh_cache=refresh_cache,
-                    no_cache=no_cache,
-                )
-            )
-            return
+                    if not filter_provider and provider:
+                        filter_provider = provider
+
+                    asyncio.run(
+                        providers_command(
+                            show_models=show_models,
+                            show_list=show_list,
+                            show_keys=show_keys,
+                            filter_provider=filter_provider,
+                            refresh_cache=refresh_cache,
+                            no_cache=no_cache,
+                        )
+                    )
+                    return
+                else:
+                    click.echo(f"Unknown providers subcommand: {sub}", err=True)
+                    sys.exit(2)
         elif command == "config":
             from thoth.config_cmd import config_command
 

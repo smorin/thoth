@@ -2246,11 +2246,11 @@ all_tests = [
     # Provider discovery tests
     TestCase(
         test_id="T-PROV-06",
-        description="Providers command shows usage without --models flag",
+        description="Providers command shows help with subcommands",
         command=[THOTH_EXECUTABLE, "providers"],
         expected_stdout_patterns=[
-            r"Usage:.*thoth providers -- \[OPTIONS\]",
-            r"Show provider information and available models",
+            r"thoth providers",
+            r"--list|--models|list|models",
         ],
         expected_exit_code=0,
     ),

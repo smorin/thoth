@@ -522,11 +522,73 @@ async def providers_command(
             console.print()
 
 
+def providers_list(config: ConfigManager) -> int:
+    """List configured providers and whether each has a usable key."""
+    import os
+    import re
+
+    from rich.console import Console as _Console
+
+    _console = _Console()
+    _console.print("Configured providers:")
+    for name in sorted(config.data["providers"].keys()):
+        raw = config.data["providers"][name].get("api_key", "")
+        m = re.match(r"\$\{(\w+)\}", raw or "")
+        resolved = os.environ.get(m.group(1)) if m else (raw or None)
+        _console.print(f"  {name:<12} {'key set' if resolved else 'no key'}")
+    return 0
+
+
+def providers_models(config: ConfigManager) -> int:
+    """List models known per provider, derived from BUILTIN_MODES."""
+    from rich.console import Console as _Console
+
+    from thoth.config import BUILTIN_MODES
+
+    seen: dict[str, set[str]] = {}
+    for cfg in BUILTIN_MODES.values():
+        p = str(cfg["provider"])
+        if p not in seen:
+            seen[p] = set()
+        seen[p].add(str(cfg["model"]))
+    _console = _Console()
+    for provider, models in sorted(seen.items()):
+        _console.print(f"{provider}:")
+        for m in sorted(models):
+            _console.print(f"  {m}")
+    return 0
+
+
+def providers_check(config: ConfigManager) -> int:
+    """Exit 0 if every configured provider has a usable key; else 2."""
+    import os
+    import re
+
+    from rich.console import Console as _Console
+
+    missing = []
+    for name, p in config.data["providers"].items():
+        raw = p.get("api_key", "")
+        m = re.match(r"\$\{(\w+)\}", raw or "")
+        resolved = os.environ.get(m.group(1)) if m else (raw or None)
+        if not resolved:
+            missing.append(name)
+    _console = _Console()
+    if missing:
+        _console.print(f"[red]Missing keys for:[/] {', '.join(missing)}")
+        return 2
+    _console.print("[green]All providers have keys set[/]")
+    return 0
+
+
 __all__ = [
     "CommandHandler",
     "list_command",
     "list_operations",
+    "providers_check",
     "providers_command",
+    "providers_list",
+    "providers_models",
     "show_status",
     "status_command",
 ]
