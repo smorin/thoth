@@ -138,6 +138,13 @@ def handle_error(error: Exception):
 @click.option("--timeout", "-T", type=float, help="Override request timeout in seconds")
 @click.option("--interactive", "-i", is_flag=True, help="Enter interactive prompt mode")
 @click.option("--clarify", is_flag=True, help="Start interactive mode in Clarification Mode")
+@click.option(
+    "--pick-model",
+    "-M",
+    "pick_model",
+    is_flag=True,
+    help="Interactively pick a model (immediate modes only)",
+)
 def cli(
     ctx,
     args,
@@ -163,6 +170,7 @@ def cli(
     timeout,
     interactive,
     clarify,
+    pick_model,
 ):
     """Thoth - AI-Powered Research Assistant
 
@@ -220,6 +228,23 @@ def cli(
         else:
             with open(prompt_file) as f:
                 final_prompt = f.read().strip()
+
+    if pick_model:
+        from thoth.config import is_background_model
+
+        mode_cfg = BUILTIN_MODES.get(final_mode or "", {})
+        raw_model = mode_cfg.get("model")
+        model_name = raw_model if isinstance(raw_model, str) else None
+        if is_background_model(model_name):
+            click.echo(
+                "Error: --pick-model is only supported for quick (non-deep-research) modes.\n"
+                f"       Mode '{final_mode}' uses {model_name}.\n"
+                "       Interactive model selection for deep-research models would change\n"
+                "       the research quality and cost profile; edit ~/.thoth/config.toml\n"
+                "       to override the model for a deep-research mode.",
+                err=True,
+            )
+            ctx.exit(2)
 
     if interactive:
         cli_api_keys = {
