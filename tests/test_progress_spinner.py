@@ -77,3 +77,25 @@ def test_maybe_spinner_is_noop_when_gate_fails(monkeypatch):
     ):
         pass
     assert called["entered"] is False
+
+
+def test_sigint_prints_resume_hint(capsys):
+    import thoth.signals as sig
+
+    class FakeOp:
+        id = "op_abc123"
+        status = "cancelled"
+
+    class FakeManager:
+        def save_sync(self, op):  # noqa: ARG002
+            return None
+
+    sig._current_operation = FakeOp()  # type: ignore[assignment]  # ty: ignore[invalid-assignment]
+    sig._current_checkpoint_manager = FakeManager()  # type: ignore[assignment]  # ty: ignore[invalid-assignment]
+    try:
+        sig.handle_sigint(0, None)
+    except SystemExit:
+        pass
+    captured = capsys.readouterr()
+    output = captured.out + captured.err
+    assert "Resume later: thoth --resume op_abc123" in output

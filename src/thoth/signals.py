@@ -95,4 +95,7 @@ def handle_sigint(signum: int, frame: Any) -> None:
         except Exception as e:
             _console.print(f"[red]Error saving checkpoint:[/red] {e}")
 
+    if _current_operation is not None:
+        print(f"\nResume later: thoth --resume {_current_operation.id}", file=sys.stderr)
+
     _console.print("[dim]Finishing current write; press Ctrl-C again to force exit.[/dim]")
