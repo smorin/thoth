@@ -359,7 +359,7 @@ def render_auth_help() -> str:
 
 
 def show_auth_help() -> None:
-    console.print(render_auth_help())
+    console.print(render_auth_help(), markup=False)
 
 
 __all__ = [
