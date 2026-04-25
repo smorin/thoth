@@ -15,6 +15,19 @@ from thoth.paths import user_config_file
 console = Console()
 
 
+COMMANDS: tuple[tuple[str, str, str], ...] = (
+    ("init", "", "Initialize configuration"),
+    ("status", "<ID>", "Check operation status"),
+    ("list", "", "List research operations"),
+    ("providers", "", "Manage provider models and keys"),
+    ("config", "<OP>", "Inspect and edit configuration"),
+    ("modes", "", "List research modes with provider/model/kind"),
+    ("help", "[COMMAND]", "Show help (general or command-specific)"),
+)
+COMMAND_NAMES: frozenset[str] = frozenset(name for name, _, _ in COMMANDS)
+HELP_TOPICS: tuple[str, ...] = tuple(name for name, _, _ in COMMANDS if name != "help")
+
+
 class ThothCommand(click.Command):
     """Custom command class to enhance help display"""
 
@@ -63,11 +76,10 @@ def build_epilog():
     lines = []
 
     lines.append("Commands:")
-    lines.append("  init            Initialize configuration")
-    lines.append("  status <ID>     Check operation status")
-    lines.append("  list            List research operations")
-    lines.append("  config <OP>     Inspect and edit configuration")
-    lines.append("  help [COMMAND]  Show help (general or command-specific)")
+    label_width = max(len(f"{name} {sig}".rstrip()) for name, sig, _ in COMMANDS)
+    for name, sig, desc in COMMANDS:
+        label = f"{name} {sig}".rstrip()
+        lines.append(f"  {label:<{label_width}}  {desc}")
     lines.append("")
 
     lines.append("Research Modes:")

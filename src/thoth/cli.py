@@ -22,6 +22,8 @@ from thoth.config import BUILTIN_MODES, THOTH_VERSION, ConfigManager
 from thoth.context import AppContext
 from thoth.errors import ThothError
 from thoth.help import (
+    COMMAND_NAMES,
+    HELP_TOPICS,
     ThothCommand,
     build_epilog,
     show_config_help,
@@ -141,7 +143,6 @@ def cli(
 
     Quick usage: thoth "PROMPT"
     Advanced: thoth MODE "PROMPT"
-    Commands: init, status, list, providers, help [COMMAND]
 
     Examples:
       thoth "how does DNS work"
@@ -160,7 +161,7 @@ def cli(
     final_mode = None
     final_prompt = None
 
-    if not (args and args[0] in ["init", "status", "list", "help", "providers", "config", "modes"]):
+    if not (args and args[0] in COMMAND_NAMES):
         if len(args) >= 2:
             if args[0] in BUILTIN_MODES:
                 final_mode = args[0]
@@ -225,7 +226,7 @@ def cli(
         )
         return
 
-    if args and args[0] in ["init", "status", "list", "help", "providers", "config", "modes"]:
+    if args and args[0] in COMMAND_NAMES:
         config_manager = ConfigManager()
         config_manager.load_all_layers({"config_path": config_path})
         handler = CommandHandler(config_manager)
@@ -324,9 +325,7 @@ def cli(
                     show_modes_help()
                 else:
                     console.print(f"[red]Error:[/red] Unknown command: {help_command}")
-                    console.print(
-                        "[yellow]Available commands:[/yellow] init, status, list, providers, config, modes"
-                    )
+                    console.print(f"[yellow]Available commands:[/yellow] {', '.join(HELP_TOPICS)}")
                     console.print("\nUse 'thoth help' for general help")
             else:
                 console.print(ctx.get_help())
