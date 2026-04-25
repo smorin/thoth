@@ -1,4 +1,4 @@
-from thoth.errors import format_config_context
+from thoth.errors import APIKeyError, format_config_context
 
 
 def test_context_path_exists_env_set(tmp_path, monkeypatch):
@@ -32,3 +32,12 @@ def test_context_no_env_vars(tmp_path):
     out = format_config_context(tmp_path / "c.toml", env_vars=[])
     assert "Config file:" in out
     assert "Env checked:" not in out
+
+
+def test_api_key_error_includes_config_path(monkeypatch):
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    err = APIKeyError("openai")
+    assert err.suggestion is not None
+    assert "config.toml" in err.suggestion
+    assert "OPENAI_API_KEY" in err.suggestion
+    assert "(unset)" in err.suggestion

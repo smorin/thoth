@@ -46,9 +46,16 @@ class APIKeyError(ThothError):
     """Missing or invalid API key"""
 
     def __init__(self, provider: str):
+        from thoth.paths import user_config_file  # local import to avoid cycles
+
+        env_var = f"{provider.upper()}_API_KEY"
+        cfg_path = user_config_file()
+        suggestion = f"Set {env_var} (or edit {cfg_path})\n" + format_config_context(
+            cfg_path, env_vars=[env_var]
+        )
         super().__init__(
             f"{provider} API key not found",
-            f"Set {provider.upper()}_API_KEY or run 'thoth init'",
+            suggestion,
             exit_code=2,
         )
 
