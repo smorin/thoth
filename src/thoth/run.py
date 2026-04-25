@@ -131,6 +131,7 @@ async def run_research(
     no_metadata: bool = False,
     timeout_override: float | None = None,
     ctx: AppContext | None = None,
+    model_override: str | None = None,
 ):
     """Execute research operation.
 
@@ -203,6 +204,9 @@ async def run_research(
     await checkpoint_manager.save(operation)
 
     mode_config = config.get_mode_config(mode)
+
+    if model_override is not None:
+        mode_config = {**mode_config, "model": model_override}
 
     if provider:
         providers_to_use = [provider]

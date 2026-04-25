@@ -16,6 +16,7 @@ from pathlib import Path
 import click
 
 import thoth.config as _thoth_config
+import thoth.run as _thoth_run
 import thoth.signals as _thoth_signals
 from thoth.commands import (
     CommandHandler,
@@ -42,7 +43,7 @@ from thoth.help import (
 )
 from thoth.interactive import enter_interactive_mode
 from thoth.models import InteractiveInitialSettings
-from thoth.run import console, resume_operation, run_research
+from thoth.run import console, resume_operation
 from thoth.signals import handle_sigint
 
 
@@ -229,6 +230,7 @@ def cli(
             with open(prompt_file) as f:
                 final_prompt = f.read().strip()
 
+    model_override = None
     if pick_model:
         from thoth.config import is_background_model
 
@@ -245,6 +247,17 @@ def cli(
                 err=True,
             )
             ctx.exit(2)
+        else:
+            from thoth.interactive_picker import (
+                immediate_models_for_provider,
+            )
+            from thoth.interactive_picker import (
+                pick_model as _pick,
+            )
+
+            raw_provider = mode_cfg.get("provider", "openai")
+            provider_name = raw_provider if isinstance(raw_provider, str) else "openai"
+            model_override = _pick(immediate_models_for_provider(provider_name))
 
     if interactive:
         cli_api_keys = {
@@ -429,25 +442,28 @@ def cli(
             "mock": api_key_mock,
         }
         app_ctx = _build_app_context(verbose)
-        asyncio.run(
-            run_research(
-                mode=final_mode,
-                prompt=final_prompt,
-                async_mode=async_mode,
-                project=project,
-                output_dir=output_dir,
-                provider=provider,
-                input_file=input_file,
-                auto=auto,
-                verbose=verbose,
-                cli_api_keys=cli_api_keys,
-                combined=combined,
-                quiet=quiet,
-                no_metadata=no_metadata,
-                timeout_override=timeout,
-                ctx=app_ctx,
-            )
+        _result = _thoth_run.run_research(
+            mode=final_mode,
+            prompt=final_prompt,
+            async_mode=async_mode,
+            project=project,
+            output_dir=output_dir,
+            provider=provider,
+            input_file=input_file,
+            auto=auto,
+            verbose=verbose,
+            cli_api_keys=cli_api_keys,
+            combined=combined,
+            quiet=quiet,
+            no_metadata=no_metadata,
+            timeout_override=timeout,
+            ctx=app_ctx,
+            model_override=model_override,
         )
+        import inspect
+
+        if inspect.iscoroutine(_result):
+            asyncio.run(_result)
     else:
         console.print(ctx.get_help())
 
