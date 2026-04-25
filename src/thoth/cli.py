@@ -95,8 +95,21 @@ def handle_error(error: Exception):
     type=click.Choice(["openai", "perplexity", "mock"]),
     help="Single provider",
 )
-@click.option("--input-file", help="Use output from previous mode as input")
-@click.option("--auto", is_flag=True, help="Automatically use latest relevant output as input")
+@click.option(
+    "--input-file",
+    help=(
+        "Use the file at PATH as input for this mode. Use when feeding a "
+        "non-thoth document, an older run, or a file from a different project."
+    ),
+)
+@click.option(
+    "--auto",
+    is_flag=True,
+    help=(
+        "Pick up the latest output from the previous mode in the same "
+        "--project directory. The happy path for chaining modes."
+    ),
+)
 @click.option("--verbose", "-v", is_flag=True, help="Enable debug output")
 @click.option("--version", "-V", is_flag=True, help="Show version and exit")
 @click.option("--api-key-openai", help="API key for OpenAI provider")
