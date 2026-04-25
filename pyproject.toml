@@ -36,6 +36,7 @@ dependencies = [
     "python-dateutil>=2.8",
     "prompt-toolkit>=3.0",
     "tomlkit>=0.13",
+    "thothspinner>=1.2.6",
 ]
 
 [project.scripts]
