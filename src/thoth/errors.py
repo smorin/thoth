@@ -13,6 +13,24 @@ so `handle_error` can render a consistent CLI error banner. Exit codes:
 
 from __future__ import annotations
 
+import os
+from pathlib import Path
+
+
+def format_config_context(config_path: Path | str, env_vars: list[str] | None = None) -> str:
+    """Return a multi-line "Resolved from:" block for error bodies.
+
+    Shows the config file path + whether it exists, and optional env vars
+    + whether each is set. Used by APIKeyError so users can see what the
+    tool consulted when resolving credentials.
+    """
+    p = Path(config_path)
+    lines = [f"  Config file: {p}  ({'exists' if p.exists() else 'does not exist'})"]
+    if env_vars:
+        parts = [f"{name} ({'set' if os.environ.get(name) else 'unset'})" for name in env_vars]
+        lines.append(f"  Env checked: {', '.join(parts)}")
+    return "\n".join(lines)
+
 
 class ThothError(Exception):
     """Base exception for Thoth errors"""
