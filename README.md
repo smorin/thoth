@@ -57,6 +57,29 @@ uv sync
 ./thoth --help
 ```
 
+## Authentication
+
+Authentication — recommended order:
+
+1. **Environment variables (recommended)**:
+   ```bash
+   export OPENAI_API_KEY=sk-...
+   export PERPLEXITY_API_KEY=pplx-...
+   ```
+
+2. **Config file** (persistent, per-machine): `~/.thoth/config.toml`
+   ```toml
+   [providers.openai]
+   api_key = "sk-..."
+   ```
+
+3. **CLI flags** (last resort — exposes keys in shell history; not recommended):
+   ```bash
+   thoth --api-key-openai sk-... deep_research "..."
+   ```
+
+Run `thoth help auth` for the in-CLI version of this guide.
+
 ## Quick Start
 
 1. **Initialize configuration:**

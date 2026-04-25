@@ -57,6 +57,9 @@ class ThothCommand(click.Command):
                 elif subcommand == "modes":
                     show_modes_help()
                     ctx.exit(0)
+                elif subcommand == "auth":
+                    show_auth_help()
+                    ctx.exit(0)
 
         return super().parse_args(ctx, args)
 
@@ -338,9 +341,32 @@ def show_general_help(ctx):
     console.print("  $ thoth --help")
 
 
+def render_auth_help() -> str:
+    return (
+        "Authentication — recommended order:\n"
+        "\n"
+        "1. Environment variables (recommended):\n"
+        "     export OPENAI_API_KEY=sk-...\n"
+        "     export PERPLEXITY_API_KEY=pplx-...\n"
+        "\n"
+        "2. Config file (persistent, per-machine): ~/.thoth/config.toml\n"
+        "     [providers.openai]\n"
+        '     api_key = "sk-..."\n'
+        "\n"
+        "3. CLI flags (last resort — exposes keys in shell history; not recommended):\n"
+        '     thoth --api-key-openai sk-... deep_research "..."\n'
+    )
+
+
+def show_auth_help() -> None:
+    console.print(render_auth_help())
+
+
 __all__ = [
     "ThothCommand",
     "build_epilog",
+    "render_auth_help",
+    "show_auth_help",
     "show_config_help",
     "show_general_help",
     "show_init_help",

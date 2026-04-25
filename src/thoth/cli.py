@@ -26,6 +26,7 @@ from thoth.help import (
     HELP_TOPICS,
     ThothCommand,
     build_epilog,
+    show_auth_help,
     show_config_help,
     show_init_help,
     show_list_help,
@@ -112,9 +113,14 @@ def handle_error(error: Exception):
 )
 @click.option("--verbose", "-v", is_flag=True, help="Enable debug output")
 @click.option("--version", "-V", is_flag=True, help="Show version and exit")
-@click.option("--api-key-openai", help="API key for OpenAI provider")
-@click.option("--api-key-perplexity", help="API key for Perplexity provider")
-@click.option("--api-key-mock", help="API key for Mock provider")
+@click.option(
+    "--api-key-openai", help="API key for OpenAI provider (not recommended; prefer env vars)"
+)
+@click.option(
+    "--api-key-perplexity",
+    help="API key for Perplexity provider (not recommended; prefer env vars)",
+)
+@click.option("--api-key-mock", help="API key for Mock provider (not recommended; prefer env vars)")
 @click.option("--config", "-c", "config_path", help="Path to custom config file")
 @click.option("--combined", is_flag=True, help="Generate combined report from multiple providers")
 @click.option("--quiet", "-Q", is_flag=True, help="Minimal output during execution")
@@ -336,6 +342,8 @@ def cli(
                     show_config_help()
                 elif help_command == "modes":
                     show_modes_help()
+                elif help_command == "auth":
+                    show_auth_help()
                 else:
                     console.print(f"[red]Error:[/red] Unknown command: {help_command}")
                     console.print(f"[yellow]Available commands:[/yellow] {', '.join(HELP_TOPICS)}")
