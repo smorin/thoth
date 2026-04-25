@@ -9,15 +9,30 @@ import subprocess
 import pytest
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
+THOTH_TEST = REPO_ROOT / "thoth_test"
 
 
-def _run_thoth_test(*args: str) -> subprocess.CompletedProcess:
+def _run_thoth_test(
+    *args: str, cache_dir: pathlib.Path | None = None
+) -> subprocess.CompletedProcess:
+    """Invoke the thoth_test script.
+
+    Pass ``cache_dir=tmp_path / ".thoth_test_cache"`` (or similar) to isolate
+    the run's cache file from the repo's real cache. The child reads
+    ``THOTH_TEST_CACHE_DIR`` to override the default location.
+    """
+    env = None
+    if cache_dir is not None:
+        import os as _os
+
+        env = {**_os.environ, "THOTH_TEST_CACHE_DIR": str(cache_dir)}
     return subprocess.run(
-        ["./thoth_test", *args],
+        [str(THOTH_TEST), *args],
         cwd=REPO_ROOT,
         capture_output=True,
         text=True,
         timeout=30,
+        env=env,
     )
 
 
@@ -165,17 +180,15 @@ def test_id_overrides_provider_filter_and_marks_requested_but_filtered(thoth_tes
     assert any("OA" in w and "provider" in w.lower() for w in warnings)
 
 
-def test_id_integration_runs_exactly_one_test():
-    proc = _run_thoth_test("-r", "--id", "M1T-01", "-q")
+def test_id_integration_runs_exactly_one_test(tmp_path):
+    proc = _run_thoth_test("-r", "--id", "M1T-01", "-q", cache_dir=tmp_path / ".thoth_test_cache")
     assert proc.returncode == 0, proc.stdout + proc.stderr
     assert "1 passed" in proc.stdout
 
 
-def test_cache_written_on_every_run(tmp_path, monkeypatch):
-    cache_file = REPO_ROOT / ".thoth_test_cache" / "last_run.json"
-    if cache_file.exists():
-        cache_file.unlink()
-    proc = _run_thoth_test("-r", "--id", "M1T-01")
+def test_cache_written_on_every_run(tmp_path):
+    cache_file = tmp_path / ".thoth_test_cache" / "last_run.json"
+    proc = _run_thoth_test("-r", "--id", "M1T-01", cache_dir=tmp_path / ".thoth_test_cache")
     assert proc.returncode == 0, proc.stdout + proc.stderr
     assert cache_file.exists(), "cache file should be written after every run"
     payload = json.loads(cache_file.read_text())
@@ -217,21 +230,18 @@ def test_cache_failure_includes_full_output(thoth_test_mod, tmp_path):
 
 
 def test_last_failed_exits_2_when_no_cache(tmp_path):
-    cache_file = REPO_ROOT / ".thoth_test_cache" / "last_run.json"
-    if cache_file.exists():
-        cache_file.unlink()
-    proc = _run_thoth_test("-r", "--last-failed")
+    proc = _run_thoth_test("-r", "--last-failed", cache_dir=tmp_path / ".thoth_test_cache")
     assert proc.returncode == 2
-    assert "no prior failures" in proc.stderr.lower()
+    assert "no cached run found" in proc.stderr.lower()
 
 
 def test_last_failed_zero_failures_also_exits_2(tmp_path):
     # First populate cache with only passes.
-    proc = _run_thoth_test("-r", "--id", "M1T-01")
+    proc = _run_thoth_test("-r", "--id", "M1T-01", cache_dir=tmp_path / ".thoth_test_cache")
     assert proc.returncode == 0
-    proc2 = _run_thoth_test("-r", "--last-failed")
+    proc2 = _run_thoth_test("-r", "--last-failed", cache_dir=tmp_path / ".thoth_test_cache")
     assert proc2.returncode == 2
-    assert "no prior failures" in proc2.stderr.lower()
+    assert "no failures" in proc2.stderr.lower()
 
 
 def test_read_last_failed_returns_ids(thoth_test_mod, tmp_path):
@@ -255,9 +265,60 @@ def test_read_last_failed_raises_on_missing(thoth_test_mod, tmp_path):
         thoth_test_mod.read_last_failed(tmp_path / "nope.json")
 
 
+def test_read_last_failed_raises_on_corrupt_json(thoth_test_mod, tmp_path):
+    cache = tmp_path / "cache.json"
+    cache.write_text("{not valid json")
+    with pytest.raises(FileNotFoundError):
+        thoth_test_mod.read_last_failed(cache)
+
+
+def test_read_last_failed_raises_on_missing_tests_key(thoth_test_mod, tmp_path):
+    cache = tmp_path / "cache.json"
+    cache.write_text(json.dumps({"schema_version": 1}))
+    assert thoth_test_mod.read_last_failed(cache) == []
+
+
+def test_read_last_failed_raises_on_wrong_schema_version(thoth_test_mod, tmp_path):
+    cache = tmp_path / "cache.json"
+    cache.write_text(json.dumps({"schema_version": 999, "tests": []}))
+    with pytest.raises(FileNotFoundError):
+        thoth_test_mod.read_last_failed(cache)
+
+
+def test_read_last_failed_raises_on_non_dict_payload(thoth_test_mod, tmp_path):
+    cache = tmp_path / "cache.json"
+    cache.write_text(json.dumps([{"test_id": "X", "passed": False}]))
+    with pytest.raises(FileNotFoundError):
+        thoth_test_mod.read_last_failed(cache)
+
+
+def test_read_last_failed_skips_malformed_entries(thoth_test_mod, tmp_path):
+    cache = tmp_path / "cache.json"
+    cache.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "tests": [
+                    "not a dict",
+                    {"passed": False},  # missing test_id
+                    {"test_id": "GOOD", "passed": False},
+                ],
+            }
+        )
+    )
+    assert thoth_test_mod.read_last_failed(cache) == ["GOOD"]
+
+
 def test_report_json_writes_to_given_path(tmp_path):
     target = tmp_path / "run.json"
-    proc = _run_thoth_test("-r", "--id", "M1T-01", "--report-json", str(target))
+    proc = _run_thoth_test(
+        "-r",
+        "--id",
+        "M1T-01",
+        "--report-json",
+        str(target),
+        cache_dir=tmp_path / ".thoth_test_cache",
+    )
     assert proc.returncode == 0
     assert target.exists()
     payload = json.loads(target.read_text())
@@ -267,9 +328,16 @@ def test_report_json_writes_to_given_path(tmp_path):
 
 def test_report_json_matches_cache_content(tmp_path):
     target = tmp_path / "run.json"
-    proc = _run_thoth_test("-r", "--id", "M1T-01", "--report-json", str(target))
+    proc = _run_thoth_test(
+        "-r",
+        "--id",
+        "M1T-01",
+        "--report-json",
+        str(target),
+        cache_dir=tmp_path / ".thoth_test_cache",
+    )
     assert proc.returncode == 0
-    cache_file = REPO_ROOT / ".thoth_test_cache" / "last_run.json"
+    cache_file = tmp_path / ".thoth_test_cache" / "last_run.json"
     assert cache_file.exists()
     cache_payload = json.loads(cache_file.read_text())
     target_payload = json.loads(target.read_text())
@@ -278,8 +346,8 @@ def test_report_json_matches_cache_content(tmp_path):
         assert cache_payload[key] == target_payload[key], f"mismatch on {key}"
 
 
-def test_quiet_suppresses_table_on_pass():
-    proc = _run_thoth_test("-r", "--id", "M1T-01", "-q")
+def test_quiet_suppresses_table_on_pass(tmp_path):
+    proc = _run_thoth_test("-r", "--id", "M1T-01", "-q", cache_dir=tmp_path / ".thoth_test_cache")
     assert proc.returncode == 0
     assert "Test Results" not in proc.stdout
     assert "1 passed" in proc.stdout
@@ -325,8 +393,8 @@ def test_quiet_emits_fenced_failure_for_failing_test(thoth_test_mod, capsys, mon
 
 
 def test_last_failed_exits_2_when_all_cached_ids_unknown(tmp_path):
-    # Seed the real cache with a stale failing ID.
-    cache_file = REPO_ROOT / ".thoth_test_cache" / "last_run.json"
+    # Seed an isolated cache with a stale failing ID.
+    cache_file = tmp_path / ".thoth_test_cache" / "last_run.json"
     cache_file.parent.mkdir(parents=True, exist_ok=True)
     cache_file.write_text(
         json.dumps(
@@ -338,10 +406,63 @@ def test_last_failed_exits_2_when_all_cached_ids_unknown(tmp_path):
             }
         )
     )
-    try:
-        proc = _run_thoth_test("-r", "--last-failed")
-        assert proc.returncode == 2
-        assert "removed tests" in proc.stderr.lower() or "nothing to rerun" in proc.stderr.lower()
-    finally:
-        if cache_file.exists():
-            cache_file.unlink()
+    proc = _run_thoth_test("-r", "--last-failed", cache_dir=tmp_path / ".thoth_test_cache")
+    assert proc.returncode == 2
+    assert "removed tests" in proc.stderr.lower() or "nothing to rerun" in proc.stderr.lower()
+
+
+def test_list_with_last_failed_previews_failures(tmp_path):
+    # Seed cache with one real failing ID (M1T-01 exists).
+    cache_file = tmp_path / ".thoth_test_cache" / "last_run.json"
+    cache_file.parent.mkdir(parents=True, exist_ok=True)
+    cache_file.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "tests": [
+                    {"test_id": "M1T-01", "passed": False, "skipped": False},
+                ],
+            }
+        )
+    )
+    proc = _run_thoth_test("--list", "--last-failed", cache_dir=tmp_path / ".thoth_test_cache")
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    # TSV output: only M1T-01 should appear as a data row.
+    lines = [ln for ln in proc.stdout.splitlines() if ln and not ln.startswith("test_id\t")]
+    assert len(lines) == 1
+    assert lines[0].startswith("M1T-01\t")
+
+
+def test_list_with_last_failed_no_cache_exits_2(tmp_path):
+    proc = _run_thoth_test("--list", "--last-failed", cache_dir=tmp_path / ".thoth_test_cache")
+    assert proc.returncode == 2
+    assert "no cached run found" in proc.stderr.lower()
+
+
+def test_rerun_hint_uses_id_not_t(thoth_test_mod, tmp_path, monkeypatch, capsys):
+    # Redirect the cache so the report write doesn't hit the repo.
+    monkeypatch.setattr(thoth_test_mod, "CACHE_FILE", tmp_path / "cache.json")
+    runner = thoth_test_mod.TestRunner()
+    runner.start_time = 0.0
+    runner.filtered_tests = [
+        thoth_test_mod.TestCase(
+            test_id="FAIL-1", description="fail", command=["x"], provider="mock"
+        )
+    ]
+    runner.results = [
+        thoth_test_mod.TestResult(
+            test_id="FAIL-1",
+            passed=False,
+            duration=0.1,
+            stdout="",
+            stderr="",
+            exit_code=1,
+            error_message="boom",
+        )
+    ]
+    with pytest.raises(SystemExit):
+        runner.generate_report()
+    out = capsys.readouterr().out
+    assert "--id FAIL-1" in out
+    assert "--last-failed" in out
+    assert "-t FAIL-1" not in out

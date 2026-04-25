@@ -68,7 +68,13 @@ VERBOSE_OUTPUT = False  # Global verbose flag
 INTERACTIVE_COMPLETION_TIMEOUT = 5
 INTERACTIVE_STEP_TIMEOUT = int(os.getenv("THOTH_TEST_STEP_TIMEOUT", "3"))
 
-CACHE_DIR = Path(".thoth_test_cache")
+# CACHE_DIR is resolved once at import time. The env var override is intended
+# for test hermeticity (subprocess invocations inherit it); mid-process changes
+# via monkeypatch.setenv will NOT move the cache. In-process tests that need
+# to redirect the cache must patch thoth_test_mod.CACHE_FILE directly (and the
+# __defaults__ of read_last_failed / write_cache_atomic if they call the bare
+# form). `or` (not the getenv default) so an empty string falls back safely.
+CACHE_DIR = Path(os.getenv("THOTH_TEST_CACHE_DIR") or ".thoth_test_cache")
 CACHE_FILE = CACHE_DIR / "last_run.json"
 REPORT_SCHEMA_VERSION = 1
 
@@ -789,11 +795,25 @@ def write_cache_atomic(payload: dict[str, Any], path: Path = CACHE_FILE) -> None
 def read_last_failed(path: Path = CACHE_FILE) -> list[str]:
     """Return test_ids of failing tests from the last run cache.
 
-    Raises FileNotFoundError if the cache doesn't exist; returns [] if the
-    cache exists but has no failures.
+    Raises FileNotFoundError if the cache is missing OR unreadable for any
+    reason (corrupt JSON, wrong schema, permission error) — callers only
+    need to handle one case. Returns [] if the cache parses cleanly but
+    contains no failures.
     """
-    payload = json.loads(path.read_text())
-    return [t["test_id"] for t in payload.get("tests", []) if not t.get("passed", True)]
+    try:
+        payload = json.loads(path.read_text())
+    except FileNotFoundError:
+        raise  # keep the pristine "No such file or directory" message
+    except (json.JSONDecodeError, OSError) as exc:
+        raise FileNotFoundError(f"cache at {path} unreadable: {exc}") from exc
+    if not isinstance(payload, dict) or payload.get("schema_version") != REPORT_SCHEMA_VERSION:
+        raise FileNotFoundError(f"cache at {path} has unknown schema")
+    tests = payload.get("tests") or []
+    return [
+        t["test_id"]
+        for t in tests
+        if isinstance(t, dict) and "test_id" in t and not t.get("passed", True)
+    ]
 
 
 def print_fenced_failure(result: TestResult, test_case: TestCase | None) -> None:
@@ -1330,7 +1350,7 @@ api_key = "{api_key}"
 
         sys.stdout.write(
             f"thoth_test: {passed} passed, {failed} failed, {skipped} skipped "
-            f"in {total_time:.1f}s (cache: {CACHE_FILE})\n"
+            f"in {total_time:.1f}s (cache: {CACHE_FILE.as_posix()})\n"
         )
 
         report = serialize_run_report(self, invocation=sys.argv)
@@ -1498,12 +1518,13 @@ api_key = "{api_key}"
                     if result.stderr:
                         console.print(f"Stderr:\n{result.stderr[:2000]}")
 
-            # Rerun hint — `-t` is a substring match on test_id, so one ID
-            # per line keeps it unambiguous (multiple IDs would need a shared
-            # substring or repeated invocations).
+            # Rerun hint — `--id` is exact-match, avoiding the substring
+            # collisions that `-t` would cause. `--last-failed` reuses the
+            # cache written this run.
             console.print("\n[bold]To rerun failed tests:[/bold]")
+            console.print("  ./thoth_test -r --last-failed -q")
             for result in [r for r in self.results if not r.passed]:
-                console.print(f"  ./thoth_test -r -t {result.test_id} -v")
+                console.print(f"  ./thoth_test -r --id {result.test_id} -v")
 
         report = serialize_run_report(self, invocation=sys.argv)
         write_cache_atomic(report)
@@ -2986,6 +3007,38 @@ def main(
     if list_flag and list_json_flag:
         click.echo("--list and --list-json are mutually exclusive", err=True)
         sys.exit(2)
+
+    # Resolve --last-failed BEFORE --list so `--list --last-failed` previews
+    # exactly what the next `-r --last-failed` would rerun.
+    if last_failed:
+        try:
+            failed_ids = read_last_failed()
+        except FileNotFoundError:
+            click.echo(
+                f"No cached run found at {CACHE_FILE}. "
+                "Run the suite first (e.g. ./thoth_test -r --provider mock).",
+                err=True,
+            )
+            sys.exit(2)
+        if not failed_ids:
+            click.echo(
+                "Last run had no failures — nothing to rerun.",
+                err=True,
+            )
+            sys.exit(2)
+        known_ids = {t.test_id for t in all_tests}
+        unknown = [fid for fid in failed_ids if fid not in known_ids]
+        if unknown and not any(fid in known_ids for fid in failed_ids):
+            click.echo(
+                f"All cached failures refer to removed tests ({', '.join(unknown)}); "
+                "nothing to rerun.",
+                err=True,
+            )
+            sys.exit(2)
+        # Merge with any explicit --id (union, preserving --id order first).
+        ids = tuple(list(ids) + [i for i in failed_ids if i not in ids])
+        run = True  # --last-failed implies -r
+
     if list_flag or list_json_flag:
         preview_providers: list[str] | None = None
         if provider and all_providers:
@@ -3015,34 +3068,6 @@ def main(
     if all:
         run = True
         all_providers = True
-
-    if last_failed:
-        try:
-            failed_ids = read_last_failed()
-        except FileNotFoundError:
-            click.echo(
-                "No prior failures to rerun (.thoth_test_cache/last_run.json missing or empty)",
-                err=True,
-            )
-            sys.exit(2)
-        if not failed_ids:
-            click.echo(
-                "No prior failures to rerun (.thoth_test_cache/last_run.json missing or empty)",
-                err=True,
-            )
-            sys.exit(2)
-        known_ids = {t.test_id for t in all_tests}
-        unknown = [fid for fid in failed_ids if fid not in known_ids]
-        if unknown and not any(fid in known_ids for fid in failed_ids):
-            click.echo(
-                f"All cached failures refer to removed tests ({', '.join(unknown)}); "
-                "nothing to rerun.",
-                err=True,
-            )
-            sys.exit(2)
-        # Merge with any explicit --id (union, preserving --id order first).
-        ids = tuple(list(ids) + [i for i in failed_ids if i not in ids])
-        run = True  # --last-failed implies -r
 
     # If no run flag, show help and exit
     if not run:
