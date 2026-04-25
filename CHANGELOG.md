@@ -4,6 +4,23 @@ All notable changes to Thoth are documented here.
 
 ## [Unreleased]
 
+### Added
+- `thoth providers list`, `thoth providers models`, `thoth providers check` — explicit subcommands replace `thoth providers -- --list`.
+- `thoth help auth` — in-CLI authentication guidance.
+- `--pick-model` / `-M` flag for interactively selecting a model on immediate (non-background) modes.
+- Progress spinner during sync background-mode runs (via `thothspinner`).
+- Config file path surfaced in `APIKeyError` messages.
+- "Resume later: thoth --resume OP_ID" hint on Ctrl-C.
+
+### Changed
+- `--help` now shows the workflow chain (clarification → … → tdd) and worked examples for `--auto`, `--async`/`--resume`, and `-v` debugging.
+- `--input-file` / `--auto` help rewritten for clarity.
+- `--api-key-openai` / `--api-key-perplexity` / `--api-key-mock` help now says "(not recommended; prefer env vars)".
+- README Authentication section documents env-vars → config-file → CLI-flags in that order.
+
+### Deprecated
+- `thoth providers -- --list` — still works for one release; use `thoth providers list`.
+
 ## [2.6.0] — In Development
 
 ### Added

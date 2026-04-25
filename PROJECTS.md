@@ -1,3 +1,22 @@
+## [x] Project P14: Thoth CLI Ergonomics v1 (v2.13.0)
+**Goal**: Reduce first-time-user friction in the thoth CLI.
+
+### Tests & Tasks
+- [x] [P14-T01] format_config_context helper + tests
+- [x] [P14-T02] APIKeyError surfaces config file path
+- [x] [P14-T03] --input-file/--auto clearer help
+- [x] [P14-T04] Workflow chain + worked examples in --help epilog
+- [x] [P14-T05] thoth help auth + README authentication ordering pass
+- [x] [P14-T06] providers list/models/check subcommands + deprecation shim
+- [x] [P14-T07] thothspinner dependency
+- [x] [P14-T08] Progress spinner module + gate
+- [x] [P14-T09] Wire spinner into run.py polling
+- [x] [P14-T10] SIGINT Resume-later hint
+- [x] [P14-T11] --pick-model rejection on background modes
+- [x] [P14-T12] --pick-model interactive picker for immediate modes
+
+---
+
 ## [x] Project P13: P11 Follow-up — is_background_model overload + shared secrets + regression tests (v2.11.1)
 **Goal**: Close the six non-blocking items carried over from P11 review before new feature work (P12) builds on them. Purely follow-up: one clarifying helper, two test-coverage gaps, one prose fix, one shared-module extraction, one regression test that would have caught a silent pre-P11 bug.
 
