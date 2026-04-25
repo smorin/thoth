@@ -13,6 +13,7 @@ import asyncio
 import math
 import random
 import sys
+from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -36,11 +37,21 @@ from thoth.errors import APIKeyError, DiskSpaceError, ProviderError, ThothError
 from thoth.hints import print_hint, print_saved_not_submitted
 from thoth.models import OperationStatus
 from thoth.output import OutputManager
+from thoth.progress import run_with_spinner, should_show_spinner
 from thoth.providers import ResearchProvider, create_provider
 from thoth.signals import _raise_if_interrupted
 from thoth.utils import check_disk_space, generate_operation_id, mask_api_key
 
 console = Console()
+
+
+@contextmanager
+def _maybe_spinner(*, model, async_mode, verbose, label, expected_minutes=20):
+    if should_show_spinner(model=model, async_mode=async_mode, verbose=verbose):
+        with run_with_spinner(label, expected_minutes=expected_minutes):
+            yield
+    else:
+        yield
 
 
 async def find_latest_outputs(
@@ -560,18 +571,25 @@ async def _execute_research(
         operation.transition_to("running")
         await checkpoint_manager.save(operation)
 
-        completed_providers, failed_providers = await _run_polling_loop(
-            operation,
-            jobs,
-            progress,
-            checkpoint_manager,
-            output_manager,
-            config,
-            mode_config,
-            output_dir,
-            verbose,
-            ctx=ctx,
-        )
+        mode_model = mode_config.get("model")
+        with _maybe_spinner(
+            model=mode_model,
+            async_mode=False,
+            verbose=verbose,
+            label="Deep research running",
+        ):
+            completed_providers, failed_providers = await _run_polling_loop(
+                operation,
+                jobs,
+                progress,
+                checkpoint_manager,
+                output_manager,
+                config,
+                mode_config,
+                output_dir,
+                verbose,
+                ctx=ctx,
+            )
 
         if operation.status == "failed":
             if operation.failure_type == "recoverable":
@@ -823,6 +841,7 @@ async def resume_operation(
 
 __all__ = [
     "_execute_research",
+    "_maybe_spinner",
     "_run_polling_loop",
     "find_latest_outputs",
     "get_estimated_duration",
