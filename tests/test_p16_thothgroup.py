@@ -100,3 +100,33 @@ def test_init_subcommand_invokes_handler(monkeypatch):
     result = runner.invoke(cli, ["init"])
     assert result.exit_code == 0
     assert "config_path" in called
+
+
+def test_status_subcommand_registered():
+    from thoth.cli import cli
+    assert "status" in cli.commands
+
+
+def test_status_requires_op_id():
+    """P16-TS08: thoth status (no OP_ID) → Click missing-arg error, exit 2."""
+    from thoth.cli import cli
+    runner = CliRunner()
+    result = runner.invoke(cli, ["status"])
+    assert result.exit_code == 2
+    assert "Missing argument" in result.output or "OP_ID" in result.output
+
+
+def test_status_invokes_handler(monkeypatch):
+    from thoth.cli import cli
+    called = {}
+
+    def fake_status(self, operation_id):
+        called["op_id"] = operation_id
+
+    monkeypatch.setattr(
+        "thoth.commands.CommandHandler.status_command", fake_status
+    )
+    runner = CliRunner()
+    result = runner.invoke(cli, ["status", "abc123"])
+    assert result.exit_code == 0
+    assert called["op_id"] == "abc123"

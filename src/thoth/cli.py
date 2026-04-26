@@ -578,6 +578,10 @@ from thoth.cli_subcommands import init as _init_mod  # noqa: E402
 
 cli.add_command(_init_mod.init)
 
+from thoth.cli_subcommands import status as _status_mod  # noqa: E402
+
+cli.add_command(_status_mod.status)
+
 
 def main():
     signal.signal(signal.SIGINT, handle_sigint)
