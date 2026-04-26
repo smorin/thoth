@@ -2,6 +2,11 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from thoth.config import ConfigManager
+
 
 def pick_model(models: list[str]) -> str:
     """Show a numbered picker and return the selected model string.
@@ -20,17 +25,22 @@ def pick_model(models: list[str]) -> str:
     return models[idx - 1]
 
 
-def immediate_models_for_provider(provider: str) -> list[str]:
-    """Return known immediate (non-background) models for the provider."""
-    from thoth.config import BUILTIN_MODES, is_background_model
+def immediate_models_for_provider(provider: str, config: ConfigManager) -> list[str]:
+    """Return immediate (non-background) models for `provider` from merged config.
+
+    Walks `config.data["modes"]` (merged BUILTIN + user overlay), so user-defined
+    modes in `[modes.*]` are surfaced. No provider-specific hardcoded extras —
+    the picker reflects what is actually configured.
+    """
+    from thoth.config import is_background_model
 
     seen: set[str] = set()
-    for cfg in BUILTIN_MODES.values():
-        raw = cfg.get("model")
-        model_str: str | None = raw if isinstance(raw, str) else None
-        if cfg.get("provider") == provider and not is_background_model(model_str):
-            if model_str is not None:
-                seen.add(model_str)
-    if provider == "openai":
-        seen.update({"o3", "gpt-4o-mini", "gpt-4o"})
+    for cfg in config.data.get("modes", {}).values():
+        if not isinstance(cfg, dict):
+            continue
+        if cfg.get("provider") != provider:
+            continue
+        model = cfg.get("model")
+        if isinstance(model, str) and not is_background_model(model):
+            seen.add(model)
     return sorted(seen)

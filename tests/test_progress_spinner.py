@@ -79,6 +79,57 @@ def test_maybe_spinner_is_noop_when_gate_fails(monkeypatch):
     assert called["entered"] is False
 
 
+def test_poll_display_xor_spinner_when_gate_passes(monkeypatch):
+    """BUG-01: When the spinner gate engages, Progress must NOT also enter.
+
+    Asserts mutual exclusion: with should_show_spinner=True, run_with_spinner
+    is entered and Progress is not. With False, the inverse.
+    """
+    progress_entered = {"v": False}
+    spinner_entered = {"v": False}
+
+    class FakeProgress:
+        def __init__(self, *a, **kw):
+            pass
+
+        def __enter__(self):
+            progress_entered["v"] = True
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def add_task(self, *a, **kw):
+            return 0
+
+        def update(self, *a, **kw):
+            pass
+
+    @contextmanager
+    def fake_spinner(label, expected_minutes=20, *, console=None):
+        spinner_entered["v"] = True
+        yield
+
+    monkeypatch.setattr("thoth.run.Progress", FakeProgress)
+    monkeypatch.setattr("thoth.run.run_with_spinner", fake_spinner)
+
+    from thoth.run import _poll_display
+
+    monkeypatch.setattr("thoth.run.should_show_spinner", lambda **kw: True)
+    with _poll_display(quiet=False, mode_model="o3-deep-research", verbose=False):
+        pass
+    assert spinner_entered["v"] is True
+    assert progress_entered["v"] is False
+
+    progress_entered["v"] = False
+    spinner_entered["v"] = False
+    monkeypatch.setattr("thoth.run.should_show_spinner", lambda **kw: False)
+    with _poll_display(quiet=False, mode_model="o3", verbose=False):
+        pass
+    assert spinner_entered["v"] is False
+    assert progress_entered["v"] is True
+
+
 def test_sigint_prints_resume_hint(capsys):
     import thoth.signals as sig
 

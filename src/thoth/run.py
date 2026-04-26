@@ -54,6 +54,42 @@ def _maybe_spinner(*, model, async_mode, verbose, label, expected_minutes=20):
         yield
 
 
+@contextmanager
+def _poll_display(
+    *,
+    quiet: bool,
+    mode_model: str | None,
+    verbose: bool,
+    label: str = "Deep research running",
+    expected_minutes: int = 20,
+    rich_console: Console | None = None,
+):
+    """Yield ONE polling-display context: Progress XOR spinner, never both.
+
+    When ``should_show_spinner`` engages (background model, sync, TTY,
+    non-verbose, non-quiet), the spinner runs alone. Otherwise the existing
+    ``rich.Progress`` runs as before. The caller submits jobs and tracks
+    task ids before entering this context, so the polling loop only deals
+    with whichever display is yielded (or ``None`` for the spinner case).
+    """
+    target_console = rich_console if rich_console is not None else console
+    if not quiet and should_show_spinner(model=mode_model, async_mode=False, verbose=verbose):
+        with run_with_spinner(label, expected_minutes=expected_minutes, console=target_console):
+            yield None
+    else:
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+            TimeElapsedColumn(),
+            TextColumn("| Next poll: {task.fields[next_poll]}s"),
+            console=target_console,
+            disable=quiet,
+        ) as progress:
+            yield progress
+
+
 async def find_latest_outputs(
     current_mode: str, project: str | None, config: ConfigManager
 ) -> list[Path]:
@@ -328,7 +364,7 @@ async def run_research(
 async def _run_polling_loop(
     operation: OperationStatus,
     jobs: dict[str, dict[str, Any]],
-    progress: Progress,
+    progress: Progress | None,
     checkpoint_manager: CheckpointManager,
     output_manager: OutputManager,
     config: ConfigManager,
@@ -399,7 +435,8 @@ async def _run_polling_loop(
                     cached_statuses[provider_name] = status
                 elif provider_status == "completed":
                     transient_error_counts[provider_name] = 0
-                    progress.update(job_info["task_id"], completed=100, next_poll=0)
+                    if progress is not None and job_info.get("task_id") is not None:
+                        progress.update(job_info["task_id"], completed=100, next_poll=0)
                     completed_providers.add(provider_name)
 
                     result_content = await job_info["provider"].get_result(
@@ -486,7 +523,10 @@ async def _run_polling_loop(
             if cached is not None and cached.get("status") in ("running", "queued"):
                 progress_pct = int(cached.get("progress", 0) * 100)
                 next_poll = _next_poll_countdown(now, next_poll_at)
-                progress.update(job_info["task_id"], completed=progress_pct, next_poll=next_poll)
+                if progress is not None and job_info.get("task_id") is not None:
+                    progress.update(
+                        job_info["task_id"], completed=progress_pct, next_poll=next_poll
+                    )
 
         if len(completed_providers) >= len(jobs):
             break
@@ -529,105 +569,91 @@ async def _execute_research(
         ctx = AppContext(config=config, verbose=verbose)
     console = ctx.console  # noqa: F811 — shadow module-level console with ctx's
 
-    with Progress(
-        SpinnerColumn(),
-        TextColumn("[progress.description]{task.description}"),
-        BarColumn(),
-        TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
-        TimeElapsedColumn(),
-        TextColumn("| Next poll: {task.fields[next_poll]}s"),
-        console=console,
-        disable=quiet,
+    jobs: dict[str, dict[str, Any]] = {}
+    for provider_name, provider_instance in providers.items():
+        try:
+            system_prompt = mode_config.get("system_prompt", "")
+            job_id = await provider_instance.submit(prompt, mode, system_prompt, verbose=verbose)
+            jobs[provider_name] = {
+                "provider": provider_instance,
+                "job_id": job_id,
+                "task_id": None,
+            }
+            operation.providers[provider_name] = {
+                "status": "running",
+                "job_id": job_id,
+            }
+        except ProviderError as e:
+            console.print(f"\n[red]Error:[/red] {e.message}")
+            console.print(f"[yellow]Suggestion:[/yellow] {e.suggestion}")
+            if verbose and hasattr(e, "raw_error") and e.raw_error:
+                console.print(f"[dim]Raw error: {e.raw_error}[/dim]")
+            raise click.Abort()
+        except Exception as e:
+            console.print(f"\n[red]Unexpected error during submission:[/red] {str(e)}")
+            if verbose:
+                console.print(f"[dim]Full error: {repr(e)}[/dim]")
+            raise click.Abort()
+
+    operation.transition_to("running")
+    await checkpoint_manager.save(operation)
+
+    mode_model = mode_config.get("model")
+    with _poll_display(
+        quiet=quiet, mode_model=mode_model, verbose=verbose, rich_console=console
     ) as progress:
-        jobs = {}
-        for provider_name, provider_instance in providers.items():
-            try:
-                system_prompt = mode_config.get("system_prompt", "")
-                job_id = await provider_instance.submit(
-                    prompt, mode, system_prompt, verbose=verbose
+        if progress is not None:
+            for provider_name, info in jobs.items():
+                info["task_id"] = progress.add_task(
+                    f"{provider_name.title()} Research",
+                    total=100,
+                    next_poll=0,
                 )
-                initial_next_poll = 0
-                jobs[provider_name] = {
-                    "provider": provider_instance,
-                    "job_id": job_id,
-                    "task_id": progress.add_task(
-                        f"{provider_name.title()} Research",
-                        total=100,
-                        next_poll=initial_next_poll,
-                    ),
-                }
-                operation.providers[provider_name] = {
-                    "status": "running",
-                    "job_id": job_id,
-                }
-            except ProviderError as e:
-                console.print(f"\n[red]Error:[/red] {e.message}")
-                console.print(f"[yellow]Suggestion:[/yellow] {e.suggestion}")
-                if verbose and hasattr(e, "raw_error") and e.raw_error:
-                    console.print(f"[dim]Raw error: {e.raw_error}[/dim]")
-                raise click.Abort()
-            except Exception as e:
-                console.print(f"\n[red]Unexpected error during submission:[/red] {str(e)}")
-                if verbose:
-                    console.print(f"[dim]Full error: {repr(e)}[/dim]")
-                raise click.Abort()
+        completed_providers, failed_providers = await _run_polling_loop(
+            operation,
+            jobs,
+            progress,
+            checkpoint_manager,
+            output_manager,
+            config,
+            mode_config,
+            output_dir,
+            verbose,
+            ctx=ctx,
+        )
 
-        operation.transition_to("running")
+    if operation.status == "failed":
+        if operation.failure_type == "recoverable":
+            console.print(
+                f"\n[cyan]This failure is recoverable.[/cyan] "
+                f"Resume with: [bold]thoth --resume {operation.id}[/bold]"
+            )
+        return
+
+    if len(failed_providers) == len(jobs):
+        all_errors = "; ".join(
+            operation.providers[p].get("error", "unknown") for p in failed_providers
+        )
+        op_failure_type = (
+            "permanent"
+            if all(
+                operation.providers[p].get("failure_type") == "permanent" for p in failed_providers
+            )
+            else "recoverable"
+        )
+        operation.transition_to("failed", error=f"All providers failed: {all_errors}")
+        operation.failure_type = op_failure_type
         await checkpoint_manager.save(operation)
-
-        mode_model = mode_config.get("model")
-        with _maybe_spinner(
-            model=mode_model,
-            async_mode=False,
-            verbose=verbose,
-            label="Deep research running",
-        ):
-            completed_providers, failed_providers = await _run_polling_loop(
-                operation,
-                jobs,
-                progress,
-                checkpoint_manager,
-                output_manager,
-                config,
-                mode_config,
-                output_dir,
-                verbose,
-                ctx=ctx,
+        ctx.checkpoint_manager = None
+        ctx.current_operation = None
+        _thoth_signals._current_checkpoint_manager = None
+        _thoth_signals._current_operation = None
+        if op_failure_type == "recoverable":
+            console.print(
+                f"\n[cyan]This failure is recoverable.[/cyan] "
+                f"Resume with: [bold]thoth --resume {operation.id}[/bold]"
             )
-
-        if operation.status == "failed":
-            if operation.failure_type == "recoverable":
-                console.print(
-                    f"\n[cyan]This failure is recoverable.[/cyan] "
-                    f"Resume with: [bold]thoth --resume {operation.id}[/bold]"
-                )
-            return
-
-        if len(failed_providers) == len(jobs):
-            all_errors = "; ".join(
-                operation.providers[p].get("error", "unknown") for p in failed_providers
-            )
-            op_failure_type = (
-                "permanent"
-                if all(
-                    operation.providers[p].get("failure_type") == "permanent"
-                    for p in failed_providers
-                )
-                else "recoverable"
-            )
-            operation.transition_to("failed", error=f"All providers failed: {all_errors}")
-            operation.failure_type = op_failure_type
-            await checkpoint_manager.save(operation)
-            ctx.checkpoint_manager = None
-            ctx.current_operation = None
-            _thoth_signals._current_checkpoint_manager = None
-            _thoth_signals._current_operation = None
-            if op_failure_type == "recoverable":
-                console.print(
-                    f"\n[cyan]This failure is recoverable.[/cyan] "
-                    f"Resume with: [bold]thoth --resume {operation.id}[/bold]"
-                )
-            return
+        return
 
     if len(operation.output_paths) > 1 and combined:
         contents = {}
@@ -760,14 +786,9 @@ async def resume_operation(
     _thoth_signals._current_checkpoint_manager = checkpoint_manager
     _thoth_signals._current_operation = operation
 
-    with Progress(
-        SpinnerColumn(),
-        TextColumn("[progress.description]{task.description}"),
-        BarColumn(),
-        TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
-        TimeElapsedColumn(),
-        TextColumn("| Next poll: {task.fields[next_poll]}s"),
-        console=console,
+    resume_mode_model = mode_config.get("model")
+    with _poll_display(
+        quiet=False, mode_model=resume_mode_model, verbose=verbose, rich_console=console
     ) as progress:
         jobs: dict[str, dict[str, Any]] = {}
         for provider_name, provider in provider_instances.items():
@@ -775,10 +796,14 @@ async def resume_operation(
             jobs[provider_name] = {
                 "provider": provider,
                 "job_id": job_id,
-                "task_id": progress.add_task(
-                    f"{provider_name.title()} Research (resume)",
-                    total=100,
-                    next_poll=0,
+                "task_id": (
+                    progress.add_task(
+                        f"{provider_name.title()} Research (resume)",
+                        total=100,
+                        next_poll=0,
+                    )
+                    if progress is not None
+                    else None
                 ),
             }
 

@@ -178,6 +178,7 @@ class ConfigSchema:
                 "retry_attempts": 3,
                 "max_transient_errors": 5,
                 "auto_input": True,
+                "prompt_max_bytes": 1024 * 1024,
             },
             "output": {
                 "combine_reports": False,

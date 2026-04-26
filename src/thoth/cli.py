@@ -47,6 +47,27 @@ from thoth.run import console, resume_operation
 from thoth.signals import handle_sigint
 
 
+def _read_prompt_input(path_or_dash: str, max_bytes: int) -> str:
+    """Read prompt text from a file path or '-' for stdin, capped at max_bytes."""
+    if path_or_dash == "-":
+        data = sys.stdin.read(max_bytes + 1)
+    else:
+        try:
+            size = Path(path_or_dash).stat().st_size
+        except FileNotFoundError as e:
+            raise click.BadParameter(f"Prompt file not found: {path_or_dash}") from e
+        if size > max_bytes:
+            raise click.BadParameter(f"Prompt file exceeds {max_bytes} bytes (size: {size})")
+        try:
+            with open(path_or_dash, encoding="utf-8") as f:
+                data = f.read(max_bytes + 1)
+        except UnicodeDecodeError as e:
+            raise click.BadParameter(f"Prompt file must be UTF-8: {path_or_dash}") from e
+    if len(data) > max_bytes:
+        raise click.BadParameter(f"Prompt input exceeds {max_bytes} bytes")
+    return data.strip()
+
+
 def _build_app_context(verbose: bool) -> AppContext:
     """Construct the per-invocation AppContext.
 
@@ -221,43 +242,19 @@ def cli(
             final_prompt = prompt_opt
 
     if prompt_file:
-        if prompt_file == "-":
-            stdin_data = sys.stdin.read(1024 * 1024)
-            if len(stdin_data) >= 1024 * 1024:
-                raise click.BadParameter("Stdin input exceeds 1MB limit")
-            final_prompt = stdin_data.strip()
-        else:
-            with open(prompt_file) as f:
-                final_prompt = f.read().strip()
+        from thoth.config import get_config
 
-    model_override = None
-    if pick_model:
-        from thoth.config import is_background_model
+        prompt_cfg = get_config()
+        max_bytes = int(prompt_cfg.data.get("execution", {}).get("prompt_max_bytes", 1024 * 1024))
+        final_prompt = _read_prompt_input(prompt_file, max_bytes)
 
-        mode_cfg = BUILTIN_MODES.get(final_mode or "", {})
-        raw_model = mode_cfg.get("model")
-        model_name = raw_model if isinstance(raw_model, str) else None
-        if is_background_model(model_name):
-            click.echo(
-                "Error: --pick-model is only supported for quick (non-deep-research) modes.\n"
-                f"       Mode '{final_mode}' uses {model_name}.\n"
-                "       Interactive model selection for deep-research models would change\n"
-                "       the research quality and cost profile; edit ~/.thoth/config.toml\n"
-                "       to override the model for a deep-research mode.",
-                err=True,
-            )
-            ctx.exit(2)
-        else:
-            from thoth.interactive_picker import (
-                immediate_models_for_provider,
-            )
-            from thoth.interactive_picker import (
-                pick_model as _pick,
-            )
-
-            raw_provider = mode_cfg.get("provider", "openai")
-            provider_name = raw_provider if isinstance(raw_provider, str) else "openai"
-            model_override = _pick(immediate_models_for_provider(provider_name))
+    if pick_model and (
+        resume_id or interactive or (args and args[0] in COMMAND_NAMES) or not final_prompt
+    ):
+        raise click.BadParameter(
+            "--pick-model only applies to research runs "
+            "(not with --resume, --interactive, commands, or without a prompt)"
+        )
 
     if interactive:
         cli_api_keys = {
@@ -431,6 +428,35 @@ def cli(
 
     if final_prompt is not None and final_prompt.strip() == "":
         raise click.BadParameter("Prompt cannot be empty")
+
+    model_override = None
+    if pick_model and final_mode and final_prompt:
+        from thoth.config import get_config, is_background_model
+
+        mode_cfg = BUILTIN_MODES.get(final_mode, {})
+        raw_model = mode_cfg.get("model")
+        model_name = raw_model if isinstance(raw_model, str) else None
+        if is_background_model(model_name):
+            click.echo(
+                "Error: --pick-model is only supported for quick (non-deep-research) modes.\n"
+                f"       Mode '{final_mode}' uses {model_name}.\n"
+                "       Interactive model selection for deep-research models would change\n"
+                "       the research quality and cost profile; edit ~/.thoth/config.toml\n"
+                "       to override the model for a deep-research mode.",
+                err=True,
+            )
+            ctx.exit(2)
+        else:
+            from thoth.interactive_picker import (
+                immediate_models_for_provider,
+            )
+            from thoth.interactive_picker import (
+                pick_model as _pick,
+            )
+
+            raw_provider = mode_cfg.get("provider", "openai")
+            provider_name = raw_provider if isinstance(raw_provider, str) else "openai"
+            model_override = _pick(immediate_models_for_provider(provider_name, get_config()))
 
     if resume_id:
         app_ctx = _build_app_context(verbose)

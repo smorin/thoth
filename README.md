@@ -254,6 +254,7 @@ Configuration file is stored at `~/.thoth/config.toml`. Key settings:
 - `max_wait`: Maximum wait time in minutes (default: 30)
 - `parallel_providers`: Enable parallel provider execution
 - `combine_reports`: Generate combined reports from multiple providers
+- `execution.prompt_max_bytes`: Max bytes accepted from `--prompt-file` (file path or stdin). Files exceeding this are rejected before reading. Default: `1048576` (1 MiB).
 
 ## Provider Configuration
 
