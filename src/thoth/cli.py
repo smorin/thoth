@@ -537,9 +537,7 @@ def cli(
 
                 raw_provider = mode_cfg.get("provider", "openai")
                 provider_name = raw_provider if isinstance(raw_provider, str) else "openai"
-                model_override = _pick(
-                    immediate_models_for_provider(provider_name, get_config())
-                )
+                model_override = _pick(immediate_models_for_provider(provider_name, get_config()))
 
         if resume_id:
             app_ctx = _build_app_context(verbose)
@@ -569,6 +567,16 @@ def cli(
             )
         else:
             console.print(ctx.get_help())
+
+
+# === Subcommand registrations ===
+# T5-T10 will append additional `cli.add_command(...)` lines below as each
+# admin subcommand migrates into `cli_subcommands/`. Keep imports here
+# (after the @click.group callback, before main()) so module-level import
+# order stays predictable.
+from thoth.cli_subcommands import init as _init_mod  # noqa: E402
+
+cli.add_command(_init_mod.init)
 
 
 def main():

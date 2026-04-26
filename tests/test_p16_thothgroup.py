@@ -76,3 +76,27 @@ def test_invoke_routes_registered_subcommand(fake_group):
     result = runner.invoke(fake_group, ["known"])
     assert result.exit_code == 0
     assert "known invoked" in result.output
+
+
+def test_init_subcommand_registered():
+    """P16-TS06: init is registered as a Click subcommand on the cli group."""
+    from thoth.cli import cli
+
+    assert "init" in cli.commands
+
+
+def test_init_subcommand_invokes_handler(monkeypatch):
+    """P16-TS07: thoth init dispatches through Click to CommandHandler.init_command."""
+    from thoth.cli import cli
+
+    called = {}
+
+    def fake_init(self, config_path=None):
+        called["config_path"] = config_path
+
+    monkeypatch.setattr("thoth.commands.CommandHandler.init_command", fake_init)
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["init"])
+    assert result.exit_code == 0
+    assert "config_path" in called
