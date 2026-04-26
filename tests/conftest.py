@@ -9,6 +9,7 @@ from typing import Any
 import pytest
 import vcr
 
+from tests.conftest_p16 import baseline, run_thoth  # noqa: F401
 from thoth.config import ConfigManager
 from thoth.models import OperationStatus
 from thoth.paths import user_checkpoints_dir

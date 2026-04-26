@@ -1,0 +1,10 @@
+{
+  "argv": [
+    "help",
+    "nosuchtopic"
+  ],
+  "exit_code": 0,
+  "label": "help_unknown_topic",
+  "stderr": "",
+  "stdout": "Error: Unknown command: nosuchtopic\nAvailable commands: init, status, list, providers, config, modes\n\nUse 'thoth help' for general help\n"
+}

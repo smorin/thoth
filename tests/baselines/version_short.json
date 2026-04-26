@@ -1,0 +1,9 @@
+{
+  "argv": [
+    "-V"
+  ],
+  "exit_code": 0,
+  "label": "version_short",
+  "stderr": "",
+  "stdout": "Thoth v2.5.0\n"
+}

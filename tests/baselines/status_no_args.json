@@ -1,0 +1,9 @@
+{
+  "argv": [
+    "status"
+  ],
+  "exit_code": 1,
+  "label": "status_no_args",
+  "stderr": "",
+  "stdout": "Error: status command requires an operation ID\n"
+}

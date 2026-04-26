@@ -1,0 +1,9 @@
+{
+  "argv": [
+    "config"
+  ],
+  "exit_code": 2,
+  "label": "config_no_args",
+  "stderr": "",
+  "stdout": "Error: config command requires an op (get|set|unset|list|path|edit|help)\n"
+}

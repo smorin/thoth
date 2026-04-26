@@ -1,0 +1,10 @@
+{
+  "argv": [
+    "providers",
+    "list"
+  ],
+  "exit_code": 0,
+  "label": "providers_list",
+  "stderr": "",
+  "stdout": "Configured providers:\n  openai       no key\n  perplexity   no key\n"
+}

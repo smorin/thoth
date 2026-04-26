@@ -1,0 +1,10 @@
+{
+  "argv": [
+    "help",
+    "init"
+  ],
+  "exit_code": 0,
+  "label": "help_init",
+  "stderr": "",
+  "stdout": "\nthoth init - Initialize Thoth configuration\n\nDescription:\n  Sets up Thoth configuration file and verifies environment.\n  Creates default configuration at ~/.thoth/config.toml\n\nUsage:\n  thoth init\n\nWhat it does:\n  \u2022 Checks Python and UV package manager\n  \u2022 Creates configuration directory\n  \u2022 Generates default config.toml file\n  \u2022 Sets up provider API key placeholders\n\nConfiguration file location:\n  /Users/stevemorin/.config/thoth/config.toml\n\nAfter initialization:\n  1. Set your API keys as environment variables:\n     export OPENAI_API_KEY='your-api-key'\n     export PERPLEXITY_API_KEY='your-api-key'\n  2. Or edit the config file directly\n\nExamples:\n  # Initialize configuration\n  $ thoth init\n\nRelated commands:\n  thoth help       - Show general help\n"
+}
