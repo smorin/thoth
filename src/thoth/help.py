@@ -28,6 +28,54 @@ COMMAND_NAMES: frozenset[str] = frozenset(name for name, _, _ in COMMANDS)
 HELP_TOPICS: tuple[str, ...] = tuple(name for name, _, _ in COMMANDS if name != "help")
 
 
+def _run_research_default(mode: str, prompt: str, ctx_obj=None) -> None:
+    """Run a research operation in the given mode with the given prompt.
+
+    Extracted from cli.py's bare-prompt path in Task 3 (this is currently a
+    stub — the real implementation arrives when cli.py is converted).
+    """
+    raise NotImplementedError("Wired up in Task 3 when cli.py converts to group")
+
+
+class ThothGroup(click.Group):
+    """Top-level Click group for `thoth`.
+
+    Adds three behaviors a stock click.Group can't provide:
+      1. resolve_command returns None instead of raising on unknown args
+         (so invoke can dispatch mode-positional or bare-prompt fallback).
+      2. invoke routes positional mode names to the research path.
+      3. invoke routes bare prompts to default-mode research.
+
+    The two-section help renderer is added in Task 11.
+    """
+
+    def resolve_command(self, ctx: click.Context, args: list[str]):
+        try:
+            return super().resolve_command(ctx, args)
+        except click.UsageError:
+            # Caller (invoke) will handle mode-positional and bare-prompt cases.
+            return None, None, args
+
+    def invoke(self, ctx: click.Context):
+        from thoth.config import BUILTIN_MODES
+
+        args = ctx.protected_args + ctx.args
+        if args:
+            first = args[0]
+            # Path 1: registered subcommand → standard dispatch
+            if first in self.commands:
+                return super().invoke(ctx)
+            # Path 2: positional mode dispatch
+            if first in BUILTIN_MODES:
+                prompt = " ".join(args[1:]) if len(args) > 1 else ""
+                return _run_research_default(mode=first, prompt=prompt, ctx_obj=ctx.obj)
+            # Path 3: bare-prompt fallback (whole arg vector is the prompt)
+            prompt = " ".join(args)
+            return _run_research_default(mode="default", prompt=prompt, ctx_obj=ctx.obj)
+        # No args: standard group help (Click default)
+        return super().invoke(ctx)
+
+
 class ThothCommand(click.Command):
     """Custom command class to enhance help display"""
 
