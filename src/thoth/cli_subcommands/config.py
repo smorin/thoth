@@ -7,9 +7,16 @@ import sys
 import click
 
 
-@click.group(name="config")
-def config() -> None:
+@click.group(name="config", invoke_without_command=True)
+@click.pass_context
+def config(ctx: click.Context) -> None:
     """Inspect and edit configuration."""
+    if ctx.invoked_subcommand is None:
+        click.echo(
+            "Error: config command requires an op (get|set|unset|list|path|edit|help)",
+            err=True,
+        )
+        ctx.exit(2)
 
 
 def _dispatch(op: str, args: tuple[str, ...]) -> None:
