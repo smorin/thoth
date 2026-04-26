@@ -590,6 +590,10 @@ from thoth.cli_subcommands import providers as _providers_mod  # noqa: E402
 
 cli.add_command(_providers_mod.providers)
 
+from thoth.cli_subcommands import config as _config_mod  # noqa: E402
+
+cli.add_command(_config_mod.config)
+
 
 def main():
     signal.signal(signal.SIGINT, handle_sigint)

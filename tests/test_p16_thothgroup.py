@@ -170,3 +170,25 @@ def test_providers_list_invokes_correct_function(monkeypatch):
     result = runner.invoke(cli, ["providers", "list"])
     assert result.exit_code == 0
     assert called["invoked"] is True
+
+
+def test_config_subgroup_registered():
+    from thoth.cli import cli
+    assert "config" in cli.commands
+    assert isinstance(cli.commands["config"], click.Group)
+
+
+def test_config_list_invokes_handler(monkeypatch):
+    from thoth.cli import cli
+    called = {}
+
+    def fake_config_command(op, rest):
+        called["op"] = op
+        called["rest"] = rest
+        return 0
+
+    monkeypatch.setattr("thoth.config_cmd.config_command", fake_config_command)
+    runner = CliRunner()
+    result = runner.invoke(cli, ["config", "list"])
+    assert result.exit_code == 0
+    assert called["op"] == "list"
