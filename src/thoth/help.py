@@ -17,17 +17,21 @@ from thoth.paths import user_config_file
 console = Console()
 
 
-COMMANDS: tuple[tuple[str, str, str], ...] = (
-    ("init", "", "Initialize configuration"),
-    ("status", "<ID>", "Check operation status"),
-    ("list", "", "List research operations"),
-    ("providers", "", "Manage provider models and keys"),
-    ("config", "<OP>", "Inspect and edit configuration"),
-    ("modes", "", "List research modes with provider/model/kind"),
-    ("help", "[COMMAND]", "Show help (general or command-specific)"),
+# Two-section split for the Click group help renderer.
+RUN_COMMANDS: tuple[str, ...] = ("ask", "resume", "status", "list")
+ADMIN_COMMANDS: tuple[str, ...] = (
+    "init",
+    "config",
+    "modes",
+    "providers",
+    "completion",
+    "help",
 )
-COMMAND_NAMES: frozenset[str] = frozenset(name for name, _, _ in COMMANDS)
-HELP_TOPICS: tuple[str, ...] = tuple(name for name, _, _ in COMMANDS if name != "help")
+# COMMAND_NAMES is removed in Task 13 once the imperative dispatch is gone.
+COMMAND_NAMES: frozenset[str] = frozenset(RUN_COMMANDS) | frozenset(ADMIN_COMMANDS)
+HELP_TOPICS: tuple[str, ...] = tuple(
+    name for name in (*RUN_COMMANDS, *ADMIN_COMMANDS) if name != "help"
+)
 
 
 def _run_research_default(*args, **kwargs):
@@ -84,6 +88,44 @@ class ThothGroup(click.Group):
             return _run_research_default(mode="default", prompt=prompt, ctx_obj=ctx.obj)
         # No args: standard group help (Click default)
         return super().invoke(ctx)
+
+    def format_commands(self, ctx: click.Context, formatter):
+        """Render commands in two sections: Run research / Manage thoth."""
+        registered = set(self.commands.keys())
+
+        run_rows = [
+            (name, self.commands[name].get_short_help_str(limit=60))
+            for name in RUN_COMMANDS
+            if name in registered
+        ]
+        admin_rows = [
+            (name, self.commands[name].get_short_help_str(limit=60))
+            for name in ADMIN_COMMANDS
+            if name in registered
+        ]
+
+        if run_rows:
+            with formatter.section("Run research"):
+                formatter.write_dl(run_rows)
+        if admin_rows:
+            with formatter.section("Manage thoth"):
+                formatter.write_dl(admin_rows)
+
+    def format_epilog(self, ctx: click.Context, formatter):
+        """Render the modes-positional epilog block + worked examples."""
+        from thoth.config import BUILTIN_MODES
+
+        with formatter.section("Modes (positional)"):
+            modes_str = ", ".join(sorted(BUILTIN_MODES))
+            formatter.write_text(
+                f"Pass as the first positional argument: {modes_str}"
+            )
+            formatter.write_paragraph()
+            formatter.write_text(
+                'Example: thoth deep_research "explain transformers"'
+            )
+
+        super().format_epilog(ctx, formatter)
 
 
 class ThothCommand(click.Command):

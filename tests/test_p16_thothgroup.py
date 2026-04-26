@@ -256,3 +256,54 @@ def test_help_unknown_topic_errors():
     result = runner.invoke(cli, ["help", "nosuchtopic"])
     assert result.exit_code == 2
     assert "nosuchtopic" in result.output.lower() or "unknown" in result.output.lower()
+
+
+def test_help_has_two_sections():
+    """P16-TS09: thoth --help has 'Run research' and 'Manage thoth' sections."""
+    from thoth.cli import cli
+    runner = CliRunner()
+    result = runner.invoke(cli, ["--help"])
+    assert result.exit_code == 0
+    assert "Run research" in result.output
+    assert "Manage thoth" in result.output
+
+
+def test_help_run_section_contains_research_verbs():
+    from thoth.cli import cli
+    runner = CliRunner()
+    result = runner.invoke(cli, ["--help"])
+    # ask and resume don't exist until PR2, but status and list do in PR1.
+    # Use rfind because the cli docstring also contains the labels
+    # "Run research:" / "Manage thoth:" — we want the rendered section.
+    out = result.output
+    run_idx = out.rfind("Run research")
+    manage_idx = out.rfind("Manage thoth")
+    run_section = out[run_idx:manage_idx]
+    assert "status" in run_section
+    assert "list" in run_section
+
+
+def test_help_manage_section_contains_admin_verbs():
+    from thoth.cli import cli
+    runner = CliRunner()
+    result = runner.invoke(cli, ["--help"])
+    out = result.output
+    # rfind: docstring also mentions "Manage thoth:" — want the rendered section.
+    manage_idx = out.rfind("Manage thoth")
+    manage_section = out[manage_idx:]
+    assert "init" in manage_section
+    assert "config" in manage_section
+    assert "providers" in manage_section
+    assert "modes" in manage_section
+    assert "help" in manage_section
+
+
+def test_help_has_modes_epilog():
+    """P16-TS10: --help mentions the positional modes."""
+    from thoth.cli import cli
+    runner = CliRunner()
+    result = runner.invoke(cli, ["--help"])
+    out = result.output
+    assert "Modes" in out  # epilog header
+    # At least one builtin mode listed
+    assert "deep_research" in out or "default" in out
