@@ -13,11 +13,21 @@ After baselines are committed, this script is deleted in Task 15.
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
 
 BASELINES_DIR = Path(__file__).parent
+
+
+def _scrub_home(s: str) -> str:
+    """Replace user's home directory with <HOME> placeholder for portable baselines."""
+    home = os.path.expanduser("~")
+    if home and home != "/":
+        return s.replace(home, "<HOME>")
+    return s
+
 
 # (label, argv) pairs. Label is the baseline filename stem.
 INVOCATIONS: list[tuple[str, list[str]]] = [
@@ -51,8 +61,8 @@ def capture(label: str, argv: list[str]) -> dict:
         "label": label,
         "argv": argv,
         "exit_code": result.returncode,
-        "stdout": result.stdout,
-        "stderr": result.stderr,
+        "stdout": _scrub_home(result.stdout),
+        "stderr": _scrub_home(result.stderr),
     }
 
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from collections.abc import Callable
@@ -12,6 +13,14 @@ from typing import TypedDict
 import pytest
 
 BASELINES_DIR = Path(__file__).parent / "baselines"
+
+
+def _scrub_home(s: str) -> str:
+    """Replace user's home directory with <HOME> placeholder for portable baselines."""
+    home = os.path.expanduser("~")
+    if home and home != "/":
+        return s.replace(home, "<HOME>")
+    return s
 
 
 class BaselineRecord(TypedDict):
@@ -41,6 +50,6 @@ def run_thoth() -> Callable[[list[str]], tuple[int, str, str]]:
             timeout=30,
             env={"THOTH_TEST_MODE": "1", "PATH": "/usr/bin:/bin"},
         )
-        return result.returncode, result.stdout, result.stderr
+        return result.returncode, _scrub_home(result.stdout), _scrub_home(result.stderr)
 
     return _run

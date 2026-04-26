@@ -34,8 +34,7 @@ PARITY_LABELS = [
 
 @pytest.mark.parametrize("label", PARITY_LABELS)
 def test_dispatch_parity(label: str, baseline, run_thoth):
-    """P16-TS01: post-refactor exit_code matches baseline; stdout structurally
-    equivalent (allowing for whitespace/color drift); stderr similar."""
+    """P16-TS01: post-refactor exit_code, stdout, AND stderr match baseline (line-set equality)."""
     if os.getenv("THOTH_PARITY_SKIP") == "1":
         pytest.skip("parity gate temporarily disabled during scaffolding")
 
@@ -45,8 +44,13 @@ def test_dispatch_parity(label: str, baseline, run_thoth):
     assert exit_code == expected["exit_code"], (
         f"exit_code mismatch for {label}: got {exit_code}, baseline {expected['exit_code']}"
     )
-    # stdout: line-set equality (tolerates re-ordering of help sections; we
-    # explicitly assert structure in test_p16_thothgroup.py for help layout)
+    # Both stdout and stderr: line-set equality (sorted set of lines).
+    # Tolerates Click's terminal-width-dependent re-formatting; catches
+    # added/removed lines and exit-code changes. Strict line-order checks
+    # for the --help layout live in tests/test_p16_thothgroup.py (added in T11).
     assert sorted(stdout.splitlines()) == sorted(expected["stdout"].splitlines()), (
         f"stdout drift for {label}"
+    )
+    assert sorted(stderr.splitlines()) == sorted(expected["stderr"].splitlines()), (
+        f"stderr drift for {label}"
     )

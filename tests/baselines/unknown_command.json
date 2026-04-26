@@ -5,5 +5,5 @@
   "exit_code": 1,
   "label": "unknown_command",
   "stderr": "Aborted!\n",
-  "stdout": "Error: openai API key not found\nSuggestion: Set OPENAI_API_KEY (or edit \n/Users/stevemorin/.config/thoth/config.toml)\n  Config file: /Users/stevemorin/.config/thoth/config.toml  (does not exist)\n  Env checked: OPENAI_API_KEY (unset)\n"
+  "stdout": "Error: openai API key not found\nSuggestion: Set OPENAI_API_KEY (or edit \n<HOME>/.config/thoth/config.toml)\n  Config file: <HOME>/.config/thoth/config.toml  (does not exist)\n  Env checked: OPENAI_API_KEY (unset)\n"
 }
