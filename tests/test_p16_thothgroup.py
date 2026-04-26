@@ -149,3 +149,24 @@ def test_list_all_flag(monkeypatch):
     result = runner.invoke(cli, ["list", "--all"])
     assert result.exit_code == 0
     assert called["show_all"] is True
+
+
+def test_providers_subgroup_registered():
+    from thoth.cli import cli
+    assert "providers" in cli.commands
+    assert isinstance(cli.commands["providers"], click.Group)
+
+
+def test_providers_list_invokes_correct_function(monkeypatch):
+    from thoth.cli import cli
+    called = {}
+
+    def fake_list(cfg):
+        called["invoked"] = True
+        return 0
+
+    monkeypatch.setattr("thoth.commands.providers_list", fake_list)
+    runner = CliRunner()
+    result = runner.invoke(cli, ["providers", "list"])
+    assert result.exit_code == 0
+    assert called["invoked"] is True
