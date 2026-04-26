@@ -130,3 +130,22 @@ def test_status_invokes_handler(monkeypatch):
     result = runner.invoke(cli, ["status", "abc123"])
     assert result.exit_code == 0
     assert called["op_id"] == "abc123"
+
+
+def test_list_subcommand_registered():
+    from thoth.cli import cli
+    assert "list" in cli.commands
+
+
+def test_list_all_flag(monkeypatch):
+    from thoth.cli import cli
+    called = {}
+
+    def fake_list(self, show_all=False):
+        called["show_all"] = show_all
+
+    monkeypatch.setattr("thoth.commands.CommandHandler.list_command", fake_list)
+    runner = CliRunner()
+    result = runner.invoke(cli, ["list", "--all"])
+    assert result.exit_code == 0
+    assert called["show_all"] is True
