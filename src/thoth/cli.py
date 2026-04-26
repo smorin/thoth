@@ -277,6 +277,12 @@ def cli(
         console.print(f"Thoth v{THOTH_VERSION}")
         sys.exit(0)
 
+    # Group-level mutex validators. These assume --async / --resume /
+    # --prompt-file / --prompt / --input-file / --auto remain top-level
+    # global options on the @click.group. If a subcommand later takes
+    # ownership of one of these flags (e.g., --resume migrating to a
+    # `thoth resume` subcommand in PR2), move the corresponding check
+    # to that subcommand's callback.
     if async_mode and resume_id:
         raise click.BadParameter("Cannot use --async with --resume")
 

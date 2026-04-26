@@ -6,6 +6,8 @@ so the click CLI layer can stay focused on option plumbing.
 
 from __future__ import annotations
 
+import warnings
+
 import click
 from rich.console import Console
 
@@ -58,10 +60,16 @@ class ThothGroup(click.Group):
         # Imported lazily so tests can monkeypatch thoth.config.BUILTIN_MODES.
         from thoth.config import BUILTIN_MODES
 
-        # Note: ctx.protected_args is deprecated in Click 9.0 but is still
-        # required in Click 8.x — without it ctx.args only holds the first
-        # token under group dispatch. Tracked for cleanup when Click 9 lands.
-        args = ctx.protected_args + ctx.args
+        # ctx.protected_args is required in Click 8.x for group dispatch (ctx.args
+        # only holds the first token). Deprecated in Click 9.0; revisit when we
+        # bump Click. Suppressed narrowly to avoid noise in user output / CI logs.
+        with warnings.catch_warnings():
+            warnings.filterwarnings(
+                "ignore",
+                message=r".*protected_args.*",
+                category=DeprecationWarning,
+            )
+            args = list(ctx.protected_args) + list(ctx.args)
         if args:
             first = args[0]
             # Path 1: registered subcommand → standard dispatch
