@@ -598,6 +598,10 @@ from thoth.cli_subcommands import modes as _modes_mod  # noqa: E402
 
 cli.add_command(_modes_mod.modes)
 
+from thoth.cli_subcommands import help_cmd as _help_mod  # noqa: E402
+
+cli.add_command(_help_mod.help_cmd)
+
 
 def main():
     signal.signal(signal.SIGINT, handle_sigint)

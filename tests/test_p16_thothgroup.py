@@ -213,3 +213,46 @@ def test_modes_list_invokes_handler(monkeypatch):
     assert result.exit_code == 0
     # When no op is given, modes shows the list (current behavior)
     assert called["op"] is None or called["op"] == "list"
+
+
+def test_help_subcommand_registered():
+    from thoth.cli import cli
+    assert "help" in cli.commands
+
+
+def test_help_no_topic_shows_group_help():
+    from thoth.cli import cli
+    runner = CliRunner()
+    result = runner.invoke(cli, ["help"])
+    assert result.exit_code == 0
+    assert "Commands" in result.output or "Usage" in result.output
+
+
+def test_help_with_topic_forwards_to_subcommand_help():
+    from thoth.cli import cli
+    runner = CliRunner()
+    result = runner.invoke(cli, ["help", "init"])
+    assert result.exit_code == 0
+    assert "init" in result.output.lower()
+
+
+def test_help_auth_calls_show_auth_help(monkeypatch):
+    from thoth.cli import cli
+    called = {}
+
+    def fake_show_auth():
+        called["invoked"] = True
+
+    monkeypatch.setattr("thoth.help.show_auth_help", fake_show_auth)
+    runner = CliRunner()
+    result = runner.invoke(cli, ["help", "auth"])
+    assert result.exit_code == 0
+    assert called["invoked"] is True
+
+
+def test_help_unknown_topic_errors():
+    from thoth.cli import cli
+    runner = CliRunner()
+    result = runner.invoke(cli, ["help", "nosuchtopic"])
+    assert result.exit_code == 2
+    assert "nosuchtopic" in result.output.lower() or "unknown" in result.output.lower()
