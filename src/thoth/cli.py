@@ -594,6 +594,10 @@ from thoth.cli_subcommands import config as _config_mod  # noqa: E402
 
 cli.add_command(_config_mod.config)
 
+from thoth.cli_subcommands import modes as _modes_mod  # noqa: E402
+
+cli.add_command(_modes_mod.modes)
+
 
 def main():
     signal.signal(signal.SIGINT, handle_sigint)

@@ -192,3 +192,24 @@ def test_config_list_invokes_handler(monkeypatch):
     result = runner.invoke(cli, ["config", "list"])
     assert result.exit_code == 0
     assert called["op"] == "list"
+
+
+def test_modes_registered():
+    from thoth.cli import cli
+    assert "modes" in cli.commands
+
+
+def test_modes_list_invokes_handler(monkeypatch):
+    from thoth.cli import cli
+    called = {}
+
+    def fake_modes_command(op, rest):
+        called["op"] = op
+        return 0
+
+    monkeypatch.setattr("thoth.modes_cmd.modes_command", fake_modes_command)
+    runner = CliRunner()
+    result = runner.invoke(cli, ["modes"])
+    assert result.exit_code == 0
+    # When no op is given, modes shows the list (current behavior)
+    assert called["op"] is None or called["op"] == "list"
