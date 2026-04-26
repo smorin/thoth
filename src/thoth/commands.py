@@ -22,12 +22,6 @@ from rich.table import Table
 from thoth.checkpoint import CheckpointManager
 from thoth.config import CONFIG_VERSION, ConfigManager, get_config
 from thoth.errors import APIKeyError, ThothError
-from thoth.help import (
-    show_init_help,
-    show_list_help,
-    show_providers_help,
-    show_status_help,
-)
 from thoth.hints import print_hint
 from thoth.models import ModelCache, OperationStatus
 from thoth.paths import user_config_file
@@ -48,7 +42,6 @@ class CommandHandler:
             "list": self.list_command,
             "providers": self.providers_command,
             "research": self.research_command,
-            "help": self.help_command,
             "config": self.config_command,
         }
 
@@ -148,26 +141,6 @@ class CommandHandler:
                 timeout_override=params.get("timeout_override"),
             )
         )
-
-    def help_command(self, command: str | None = None, **params):
-        """Show help for commands"""
-        if command == "init":
-            show_init_help()
-        elif command == "status":
-            show_status_help()
-        elif command == "list":
-            show_list_help()
-        elif command == "providers":
-            show_providers_help()
-        elif command == "config":
-            from thoth.help import show_config_help
-
-            show_config_help()
-        else:
-            console.print("Thoth - AI-Powered Research Assistant")
-            console.print("\nAvailable commands:")
-            for cmd_name in self.commands.keys():
-                console.print(f"  {cmd_name}")
 
     def config_command(self, op: str | None = None, rest: list[str] | None = None, **params) -> int:
         """Dispatch to the thoth.config_cmd.config_command op handler."""

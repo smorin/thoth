@@ -29,16 +29,9 @@ from thoth.config import BUILTIN_MODES, THOTH_VERSION, ConfigManager
 from thoth.context import AppContext
 from thoth.errors import ThothError
 from thoth.help import (
-    COMMAND_NAMES,
-    HELP_TOPICS,
     ThothGroup,
     show_auth_help,
     show_config_help,
-    show_init_help,
-    show_list_help,
-    show_modes_help,
-    show_providers_help,
-    show_status_help,
 )
 from thoth.interactive import enter_interactive_mode
 from thoth.models import InteractiveInitialSettings

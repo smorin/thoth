@@ -58,13 +58,7 @@ from thoth.errors import (  # noqa: F401
     ThothError,
 )
 from thoth.help import (  # noqa: F401
-    ThothCommand,
-    build_epilog,
     show_general_help,
-    show_init_help,
-    show_list_help,
-    show_providers_help,
-    show_status_help,
 )
 from thoth.interactive import (  # noqa: F401
     PROMPT_TOOLKIT_AVAILABLE,
