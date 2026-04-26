@@ -28,13 +28,11 @@ COMMAND_NAMES: frozenset[str] = frozenset(name for name, _, _ in COMMANDS)
 HELP_TOPICS: tuple[str, ...] = tuple(name for name, _, _ in COMMANDS if name != "help")
 
 
-def _run_research_default(mode: str, prompt: str, ctx_obj=None) -> None:
-    """Run a research operation in the given mode with the given prompt.
+def _run_research_default(*args, **kwargs):
+    # Lazy import to avoid circular import (cli.py imports from help.py)
+    from thoth.cli import _run_research_default as _impl
 
-    Extracted from cli.py's bare-prompt path in Task 3 (this is currently a
-    stub — the real implementation arrives when cli.py is converted).
-    """
-    raise NotImplementedError("Wired up in Task 3 when cli.py converts to group")
+    return _impl(*args, **kwargs)
 
 
 class ThothGroup(click.Group):
@@ -57,8 +55,12 @@ class ThothGroup(click.Group):
             return None, None, args
 
     def invoke(self, ctx: click.Context):
+        # Imported lazily so tests can monkeypatch thoth.config.BUILTIN_MODES.
         from thoth.config import BUILTIN_MODES
 
+        # Note: ctx.protected_args is deprecated in Click 9.0 but is still
+        # required in Click 8.x — without it ctx.args only holds the first
+        # token under group dispatch. Tracked for cleanup when Click 9 lands.
         args = ctx.protected_args + ctx.args
         if args:
             first = args[0]

@@ -31,8 +31,7 @@ from thoth.errors import ThothError
 from thoth.help import (
     COMMAND_NAMES,
     HELP_TOPICS,
-    ThothCommand,
-    build_epilog,
+    ThothGroup,
     show_auth_help,
     show_config_help,
     show_init_help,
@@ -100,17 +99,61 @@ def handle_error(error: Exception):
         sys.exit(127)
 
 
-@click.command(
-    cls=ThothCommand,
-    context_settings=dict(
-        allow_extra_args=True,
-        allow_interspersed_args=True,
-        ignore_unknown_options=True,
-    ),
-    epilog=build_epilog(),
+def _run_research_default(
+    mode: str,
+    prompt: str,
+    *,
+    async_mode: bool = False,
+    project: str | None = None,
+    output_dir: str | None = None,
+    provider: str | None = None,
+    input_file: str | None = None,
+    auto: bool = False,
+    verbose: bool = False,
+    cli_api_keys: dict | None = None,
+    combined: bool = False,
+    quiet: bool = False,
+    no_metadata: bool = False,
+    timeout_override: float | None = None,
+    model_override: str | None = None,
+    ctx_obj=None,
+) -> None:
+    """Execute a research run with the given mode and prompt.
+
+    Extracted from the bare-prompt branch of the pre-refactor cli callback.
+    Called by ThothGroup.invoke for both mode-positional and bare-prompt paths.
+    """
+    app_ctx = _build_app_context(verbose) if ctx_obj is None else ctx_obj
+    _result = _thoth_run.run_research(
+        mode=mode,
+        prompt=prompt,
+        async_mode=async_mode,
+        project=project,
+        output_dir=output_dir,
+        provider=provider,
+        input_file=input_file,
+        auto=auto,
+        verbose=verbose,
+        cli_api_keys=cli_api_keys or {},
+        combined=combined,
+        quiet=quiet,
+        no_metadata=no_metadata,
+        timeout_override=timeout_override,
+        ctx=app_ctx,
+        model_override=model_override,
+    )
+    import inspect
+
+    if inspect.iscoroutine(_result):
+        asyncio.run(_result)
+
+
+@click.group(
+    cls=ThothGroup,
+    invoke_without_command=True,
+    context_settings={"help_option_names": ["-h", "--help"]},
 )
 @click.pass_context
-@click.argument("args", nargs=-1)
 @click.option("--mode", "-m", "mode_opt", help="Research mode")
 @click.option("--prompt", "-q", "prompt_opt", help="Research prompt")
 @click.option("--prompt-file", "-F", help="Read prompt from file (use - for stdin)")
@@ -169,7 +212,6 @@ def handle_error(error: Exception):
 )
 def cli(
     ctx,
-    args,
     mode_opt,
     prompt_opt,
     prompt_file,
@@ -194,228 +236,46 @@ def cli(
     clarify,
     pick_model,
 ):
-    """Thoth - AI-Powered Research Assistant
+    """thoth — research orchestration.
 
-    Quick usage: thoth "PROMPT"
-    Advanced: thoth MODE "PROMPT"
+    Run research:    thoth ask "question" | thoth deep_research "topic" | thoth -m MODE -q PROMPT
+    Manage thoth:    thoth init | thoth status OP | thoth list | thoth config ... | thoth providers ...
 
-    Examples:
-      thoth "how does DNS work"
-      thoth "best practices for REST APIs"
-      thoth exploration "web frameworks"
-      thoth help init
-      thoth help status
+    For per-command help: thoth COMMAND --help
     """
+    # Build shared context object that subcommands access via ctx.obj
+    ctx.ensure_object(dict)
+    # Store EVERY global option on ctx.obj so subcommands can read inherited state.
+    ctx.obj["mode_opt"] = mode_opt
+    ctx.obj["prompt_opt"] = prompt_opt
+    ctx.obj["prompt_file"] = prompt_file
+    ctx.obj["async_mode"] = async_mode
+    ctx.obj["resume_id"] = resume_id
+    ctx.obj["project"] = project
+    ctx.obj["output_dir"] = output_dir
+    ctx.obj["provider"] = provider
+    ctx.obj["input_file"] = input_file
+    ctx.obj["auto"] = auto
+    ctx.obj["verbose"] = verbose
+    ctx.obj["version"] = version
+    ctx.obj["api_key_openai"] = api_key_openai
+    ctx.obj["api_key_perplexity"] = api_key_perplexity
+    ctx.obj["api_key_mock"] = api_key_mock
+    ctx.obj["config_path"] = config_path
+    ctx.obj["combined"] = combined
+    ctx.obj["quiet"] = quiet
+    ctx.obj["no_metadata"] = no_metadata
+    ctx.obj["timeout"] = timeout
+    ctx.obj["interactive"] = interactive
+    ctx.obj["clarify"] = clarify
+    ctx.obj["pick_model"] = pick_model
+
     if config_path:
         _thoth_config._config_path = Path(config_path).expanduser().resolve()
 
     if version:
         console.print(f"Thoth v{THOTH_VERSION}")
         sys.exit(0)
-
-    final_mode = None
-    final_prompt = None
-
-    if not (args and args[0] in COMMAND_NAMES):
-        if len(args) >= 2:
-            if args[0] in BUILTIN_MODES:
-                final_mode = args[0]
-                final_prompt = " ".join(args[1:])
-            else:
-                if len(args[0].split()) == 1 and not args[0].startswith("-"):
-                    console.print(f"[red]Error:[/red] Unknown mode: {args[0]}")
-                    console.print(
-                        f"[yellow]Available modes:[/yellow] {', '.join(BUILTIN_MODES.keys())}"
-                    )
-                    sys.exit(1)
-                final_mode = "default"
-                final_prompt = " ".join(args)
-        elif len(args) == 1:
-            if prompt_opt:
-                final_mode = args[0]
-                final_prompt = prompt_opt
-            else:
-                final_mode = "default"
-                final_prompt = args[0]
-        else:
-            final_mode = mode_opt or "default"
-            final_prompt = prompt_opt
-
-    if prompt_file:
-        from thoth.config import get_config
-
-        prompt_cfg = get_config()
-        max_bytes = int(prompt_cfg.data.get("execution", {}).get("prompt_max_bytes", 1024 * 1024))
-        final_prompt = _read_prompt_input(prompt_file, max_bytes)
-
-    if pick_model and (
-        resume_id or interactive or (args and args[0] in COMMAND_NAMES) or not final_prompt
-    ):
-        raise click.BadParameter(
-            "--pick-model only applies to research runs "
-            "(not with --resume, --interactive, commands, or without a prompt)"
-        )
-
-    if interactive:
-        cli_api_keys = {
-            "openai": api_key_openai,
-            "perplexity": api_key_perplexity,
-            "mock": api_key_mock,
-        }
-
-        initial_settings = InteractiveInitialSettings(
-            mode=final_mode,
-            provider=provider,
-            prompt=final_prompt,
-            async_mode=async_mode,
-            cli_api_keys=cli_api_keys,
-            clarify_mode=clarify,
-        )
-
-        asyncio.run(
-            enter_interactive_mode(
-                initial_settings=initial_settings,
-                project=project,
-                output_dir=output_dir,
-                config_path=config_path,
-                verbose=verbose,
-                quiet=quiet,
-                no_metadata=no_metadata,
-                timeout=timeout,
-            )
-        )
-        return
-
-    if args and args[0] in COMMAND_NAMES:
-        config_manager = ConfigManager()
-        config_manager.load_all_layers({"config_path": config_path})
-        handler = CommandHandler(config_manager)
-
-        command = args[0]
-        if command == "init":
-            handler.init_command(config_path=config_path)
-            return
-        elif command == "status":
-            if len(args) < 2:
-                console.print("[red]Error:[/red] status command requires an operation ID")
-                sys.exit(1)
-            handler.status_command(operation_id=args[1])
-            return
-        elif command == "list":
-            show_all = "--all" in args
-            handler.list_command(show_all=show_all)
-            return
-        elif command == "providers":
-            sub = args[1] if len(args) >= 2 else None
-            config_manager = ConfigManager()
-            config_manager.load_all_layers({"config_path": config_path})
-            cfg = config_manager
-            # New subcommand forms
-            if sub == "list":
-                sys.exit(providers_list(cfg))
-            elif sub == "models":
-                sys.exit(providers_models(cfg))
-            elif sub == "check":
-                sys.exit(providers_check(cfg))
-            elif sub in (None, "--help", "help"):
-                show_providers_help()
-                sys.exit(0)
-            else:
-                # Legacy forms: thoth providers -- --list / --models / etc.
-                # Click strips the '--' separator so sub is the flag itself.
-                all_args = list(args[1:]) + list(ctx.args)
-                is_legacy = any(
-                    a in ("--list", "--models", "--keys", "--refresh-cache", "--no-cache")
-                    for a in all_args
-                )
-                if is_legacy:
-                    click.echo(
-                        "warning: 'thoth providers -- ...' is deprecated; "
-                        "use 'thoth providers list|models|check'",
-                    )
-                    show_models = "--models" in all_args
-                    show_list = "--list" in all_args
-                    show_keys = "--keys" in all_args
-                    refresh_cache = "--refresh-cache" in all_args
-                    no_cache = "--no-cache" in all_args
-                    filter_provider = None
-
-                    if refresh_cache and no_cache:
-                        console.print(
-                            "[red]Error:[/red] Cannot use --refresh-cache and --no-cache together"
-                        )
-                        sys.exit(1)
-
-                    for i, arg in enumerate(all_args):
-                        if arg in ["--provider", "-P"] and i + 1 < len(all_args):
-                            filter_provider = all_args[i + 1]
-                            break
-
-                    if not filter_provider and provider:
-                        filter_provider = provider
-
-                    asyncio.run(
-                        providers_command(
-                            show_models=show_models,
-                            show_list=show_list,
-                            show_keys=show_keys,
-                            filter_provider=filter_provider,
-                            refresh_cache=refresh_cache,
-                            no_cache=no_cache,
-                        )
-                    )
-                    return
-                else:
-                    click.echo(f"Unknown providers subcommand: {sub}", err=True)
-                    sys.exit(2)
-        elif command == "config":
-            from thoth.config_cmd import config_command
-
-            if len(args) < 2:
-                console.print(
-                    "[red]Error:[/red] config command requires an op "
-                    "(get|set|unset|list|path|edit|help)"
-                )
-                sys.exit(2)
-            op = args[1]
-            rest = list(args[2:]) + list(ctx.args)
-            rc = config_command(op, rest)
-            sys.exit(rc)
-        elif command == "modes":
-            from thoth.modes_cmd import modes_command
-
-            if len(args) >= 2 and not args[1].startswith("-"):
-                op = args[1]
-                rest = list(args[2:]) + list(ctx.args)
-            else:
-                op = None
-                rest = list(args[1:]) + list(ctx.args)
-            rc = modes_command(op, rest)
-            sys.exit(rc)
-        elif command == "help":
-            if len(args) > 1:
-                help_command = args[1]
-                if help_command == "init":
-                    show_init_help()
-                elif help_command == "status":
-                    show_status_help()
-                elif help_command == "list":
-                    show_list_help()
-                elif help_command == "providers":
-                    show_providers_help()
-                elif help_command == "config":
-                    show_config_help()
-                elif help_command == "modes":
-                    show_modes_help()
-                elif help_command == "auth":
-                    show_auth_help()
-                else:
-                    console.print(f"[red]Error:[/red] Unknown command: {help_command}")
-                    console.print(f"[yellow]Available commands:[/yellow] {', '.join(HELP_TOPICS)}")
-                    console.print("\nUse 'thoth help' for general help")
-            else:
-                console.print(ctx.get_help())
-            return
 
     if async_mode and resume_id:
         raise click.BadParameter("Cannot use --async with --resume")
@@ -426,72 +286,283 @@ def cli(
     if input_file and auto:
         raise click.BadParameter("Cannot use --input-file with --auto")
 
-    if final_prompt is not None and final_prompt.strip() == "":
-        raise click.BadParameter("Prompt cannot be empty")
+    if False:  # P16 PR1: imperative dispatch removed in Task 14
+        # The block below is the pre-refactor body verbatim. `args` was the
+        # `nargs=-1` positional that we removed from the @click.group decorator
+        # — referenced here only to keep the historical logic visible during
+        # PR review. Tasks 4-10 register subcommands; Task 14 deletes this.
+        args: tuple[str, ...] = ()
+        final_mode = None
+        final_prompt = None
 
-    model_override = None
-    if pick_model and final_mode and final_prompt:
-        from thoth.config import get_config, is_background_model
+        if not (args and args[0] in COMMAND_NAMES):
+            if len(args) >= 2:
+                if args[0] in BUILTIN_MODES:
+                    final_mode = args[0]
+                    final_prompt = " ".join(args[1:])
+                else:
+                    if len(args[0].split()) == 1 and not args[0].startswith("-"):
+                        console.print(f"[red]Error:[/red] Unknown mode: {args[0]}")
+                        console.print(
+                            f"[yellow]Available modes:[/yellow] {', '.join(BUILTIN_MODES.keys())}"
+                        )
+                        sys.exit(1)
+                    final_mode = "default"
+                    final_prompt = " ".join(args)
+            elif len(args) == 1:
+                if prompt_opt:
+                    final_mode = args[0]
+                    final_prompt = prompt_opt
+                else:
+                    final_mode = "default"
+                    final_prompt = args[0]
+            else:
+                final_mode = mode_opt or "default"
+                final_prompt = prompt_opt
 
-        mode_cfg = BUILTIN_MODES.get(final_mode, {})
-        raw_model = mode_cfg.get("model")
-        model_name = raw_model if isinstance(raw_model, str) else None
-        if is_background_model(model_name):
-            click.echo(
-                "Error: --pick-model is only supported for quick (non-deep-research) modes.\n"
-                f"       Mode '{final_mode}' uses {model_name}.\n"
-                "       Interactive model selection for deep-research models would change\n"
-                "       the research quality and cost profile; edit ~/.thoth/config.toml\n"
-                "       to override the model for a deep-research mode.",
-                err=True,
+        if prompt_file:
+            from thoth.config import get_config
+
+            prompt_cfg = get_config()
+            max_bytes = int(
+                prompt_cfg.data.get("execution", {}).get("prompt_max_bytes", 1024 * 1024)
             )
-            ctx.exit(2)
+            final_prompt = _read_prompt_input(prompt_file, max_bytes)
+
+        if pick_model and (
+            resume_id or interactive or (args and args[0] in COMMAND_NAMES) or not final_prompt
+        ):
+            raise click.BadParameter(
+                "--pick-model only applies to research runs "
+                "(not with --resume, --interactive, commands, or without a prompt)"
+            )
+
+        if interactive:
+            cli_api_keys = {
+                "openai": api_key_openai,
+                "perplexity": api_key_perplexity,
+                "mock": api_key_mock,
+            }
+
+            initial_settings = InteractiveInitialSettings(
+                mode=final_mode,
+                provider=provider,
+                prompt=final_prompt,
+                async_mode=async_mode,
+                cli_api_keys=cli_api_keys,
+                clarify_mode=clarify,
+            )
+
+            asyncio.run(
+                enter_interactive_mode(
+                    initial_settings=initial_settings,
+                    project=project,
+                    output_dir=output_dir,
+                    config_path=config_path,
+                    verbose=verbose,
+                    quiet=quiet,
+                    no_metadata=no_metadata,
+                    timeout=timeout,
+                )
+            )
+            return
+
+        if args and args[0] in COMMAND_NAMES:
+            config_manager = ConfigManager()
+            config_manager.load_all_layers({"config_path": config_path})
+            handler = CommandHandler(config_manager)
+
+            command = args[0]
+            if command == "init":
+                handler.init_command(config_path=config_path)
+                return
+            elif command == "status":
+                if len(args) < 2:
+                    console.print("[red]Error:[/red] status command requires an operation ID")
+                    sys.exit(1)
+                handler.status_command(operation_id=args[1])
+                return
+            elif command == "list":
+                show_all = "--all" in args
+                handler.list_command(show_all=show_all)
+                return
+            elif command == "providers":
+                sub = args[1] if len(args) >= 2 else None
+                config_manager = ConfigManager()
+                config_manager.load_all_layers({"config_path": config_path})
+                cfg = config_manager
+                # New subcommand forms
+                if sub == "list":
+                    sys.exit(providers_list(cfg))
+                elif sub == "models":
+                    sys.exit(providers_models(cfg))
+                elif sub == "check":
+                    sys.exit(providers_check(cfg))
+                elif sub in (None, "--help", "help"):
+                    show_providers_help()
+                    sys.exit(0)
+                else:
+                    # Legacy forms: thoth providers -- --list / --models / etc.
+                    # Click strips the '--' separator so sub is the flag itself.
+                    all_args = list(args[1:]) + list(ctx.args)
+                    is_legacy = any(
+                        a in ("--list", "--models", "--keys", "--refresh-cache", "--no-cache")
+                        for a in all_args
+                    )
+                    if is_legacy:
+                        click.echo(
+                            "warning: 'thoth providers -- ...' is deprecated; "
+                            "use 'thoth providers list|models|check'",
+                        )
+                        show_models = "--models" in all_args
+                        show_list = "--list" in all_args
+                        show_keys = "--keys" in all_args
+                        refresh_cache = "--refresh-cache" in all_args
+                        no_cache = "--no-cache" in all_args
+                        filter_provider = None
+
+                        if refresh_cache and no_cache:
+                            console.print(
+                                "[red]Error:[/red] Cannot use --refresh-cache and "
+                                "--no-cache together"
+                            )
+                            sys.exit(1)
+
+                        for i, arg in enumerate(all_args):
+                            if arg in ["--provider", "-P"] and i + 1 < len(all_args):
+                                filter_provider = all_args[i + 1]
+                                break
+
+                        if not filter_provider and provider:
+                            filter_provider = provider
+
+                        asyncio.run(
+                            providers_command(
+                                show_models=show_models,
+                                show_list=show_list,
+                                show_keys=show_keys,
+                                filter_provider=filter_provider,
+                                refresh_cache=refresh_cache,
+                                no_cache=no_cache,
+                            )
+                        )
+                        return
+                    else:
+                        click.echo(f"Unknown providers subcommand: {sub}", err=True)
+                        sys.exit(2)
+            elif command == "config":
+                from thoth.config_cmd import config_command
+
+                if len(args) < 2:
+                    console.print(
+                        "[red]Error:[/red] config command requires an op "
+                        "(get|set|unset|list|path|edit|help)"
+                    )
+                    sys.exit(2)
+                op = args[1]
+                rest = list(args[2:]) + list(ctx.args)
+                rc = config_command(op, rest)
+                sys.exit(rc)
+            elif command == "modes":
+                from thoth.modes_cmd import modes_command
+
+                if len(args) >= 2 and not args[1].startswith("-"):
+                    op = args[1]
+                    rest = list(args[2:]) + list(ctx.args)
+                else:
+                    op = None
+                    rest = list(args[1:]) + list(ctx.args)
+                rc = modes_command(op, rest)
+                sys.exit(rc)
+            elif command == "help":
+                if len(args) > 1:
+                    help_command = args[1]
+                    if help_command == "init":
+                        show_init_help()
+                    elif help_command == "status":
+                        show_status_help()
+                    elif help_command == "list":
+                        show_list_help()
+                    elif help_command == "providers":
+                        show_providers_help()
+                    elif help_command == "config":
+                        show_config_help()
+                    elif help_command == "modes":
+                        show_modes_help()
+                    elif help_command == "auth":
+                        show_auth_help()
+                    else:
+                        console.print(f"[red]Error:[/red] Unknown command: {help_command}")
+                        console.print(
+                            f"[yellow]Available commands:[/yellow] {', '.join(HELP_TOPICS)}"
+                        )
+                        console.print("\nUse 'thoth help' for general help")
+                else:
+                    console.print(ctx.get_help())
+                return
+
+        if final_prompt is not None and final_prompt.strip() == "":
+            raise click.BadParameter("Prompt cannot be empty")
+
+        model_override = None
+        if pick_model and final_mode and final_prompt:
+            from thoth.config import get_config, is_background_model
+
+            mode_cfg = BUILTIN_MODES.get(final_mode, {})
+            raw_model = mode_cfg.get("model")
+            model_name = raw_model if isinstance(raw_model, str) else None
+            if is_background_model(model_name):
+                click.echo(
+                    "Error: --pick-model is only supported for quick (non-deep-research) modes.\n"
+                    f"       Mode '{final_mode}' uses {model_name}.\n"
+                    "       Interactive model selection for deep-research models would change\n"
+                    "       the research quality and cost profile; edit ~/.thoth/config.toml\n"
+                    "       to override the model for a deep-research mode.",
+                    err=True,
+                )
+                ctx.exit(2)
+            else:
+                from thoth.interactive_picker import (
+                    immediate_models_for_provider,
+                )
+                from thoth.interactive_picker import (
+                    pick_model as _pick,
+                )
+
+                raw_provider = mode_cfg.get("provider", "openai")
+                provider_name = raw_provider if isinstance(raw_provider, str) else "openai"
+                model_override = _pick(
+                    immediate_models_for_provider(provider_name, get_config())
+                )
+
+        if resume_id:
+            app_ctx = _build_app_context(verbose)
+            asyncio.run(resume_operation(resume_id, verbose, ctx=app_ctx))
+        elif final_mode and final_prompt:
+            cli_api_keys = {
+                "openai": api_key_openai,
+                "perplexity": api_key_perplexity,
+                "mock": api_key_mock,
+            }
+            _run_research_default(
+                mode=final_mode,
+                prompt=final_prompt,
+                async_mode=async_mode,
+                project=project,
+                output_dir=output_dir,
+                provider=provider,
+                input_file=input_file,
+                auto=auto,
+                verbose=verbose,
+                cli_api_keys=cli_api_keys,
+                combined=combined,
+                quiet=quiet,
+                no_metadata=no_metadata,
+                timeout_override=timeout,
+                model_override=model_override,
+            )
         else:
-            from thoth.interactive_picker import (
-                immediate_models_for_provider,
-            )
-            from thoth.interactive_picker import (
-                pick_model as _pick,
-            )
-
-            raw_provider = mode_cfg.get("provider", "openai")
-            provider_name = raw_provider if isinstance(raw_provider, str) else "openai"
-            model_override = _pick(immediate_models_for_provider(provider_name, get_config()))
-
-    if resume_id:
-        app_ctx = _build_app_context(verbose)
-        asyncio.run(resume_operation(resume_id, verbose, ctx=app_ctx))
-    elif final_mode and final_prompt:
-        cli_api_keys = {
-            "openai": api_key_openai,
-            "perplexity": api_key_perplexity,
-            "mock": api_key_mock,
-        }
-        app_ctx = _build_app_context(verbose)
-        _result = _thoth_run.run_research(
-            mode=final_mode,
-            prompt=final_prompt,
-            async_mode=async_mode,
-            project=project,
-            output_dir=output_dir,
-            provider=provider,
-            input_file=input_file,
-            auto=auto,
-            verbose=verbose,
-            cli_api_keys=cli_api_keys,
-            combined=combined,
-            quiet=quiet,
-            no_metadata=no_metadata,
-            timeout_override=timeout,
-            ctx=app_ctx,
-            model_override=model_override,
-        )
-        import inspect
-
-        if inspect.iscoroutine(_result):
-            asyncio.run(_result)
-    else:
-        console.print(ctx.get_help())
+            console.print(ctx.get_help())
 
 
 def main():
