@@ -199,6 +199,8 @@
 - `docs/superpowers/specs/2026-04-25-promote-admin-commands-design.md` — original P16 design (decisions Q2-Q7 from PR1 brainstorming)
 - `docs/superpowers/specs/2026-04-26-p16-pr2-legacy-form-audit.md` — comprehensive shim inventory (the parity checklist)
 
+**Plan**: `docs/superpowers/plans/2026-04-26-p16-pr2-implementation.md` — 12 TDD tasks mapping 1:1 to spec §10's commit sequence (~2,505 lines with bite-sized steps + concrete code blocks)
+
 **Out of scope (PR3)**
 - `--json` for every admin command (already partially shipped; full coverage in PR3)
 - `completion` subcommand and dynamic completers
