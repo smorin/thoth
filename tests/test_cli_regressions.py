@@ -65,7 +65,7 @@ def test_bug_cli_002_option_only_prompt_runs_research(monkeypatch) -> None:
 def test_bug_cli_002_resume_option_invokes_resume(monkeypatch) -> None:
     captured = {}
 
-    def fake_resume(operation_id, verbose, ctx=None):
+    def fake_resume(operation_id, verbose=False, ctx=None, **kwargs):
         captured["operation_id"] = operation_id
         captured["verbose"] = verbose
         captured["ctx"] = ctx

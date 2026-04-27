@@ -581,6 +581,10 @@ from thoth.cli_subcommands import ask as _ask_mod  # noqa: E402
 
 cli.add_command(_ask_mod.ask)
 
+from thoth.cli_subcommands import resume as _resume_mod  # noqa: E402
+
+cli.add_command(_resume_mod.resume)
+
 from thoth.cli_subcommands import init as _init_mod  # noqa: E402
 
 cli.add_command(_init_mod.init)

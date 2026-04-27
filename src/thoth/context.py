@@ -45,6 +45,10 @@ class AppContext:
     interrupt_event: threading.Event = field(default_factory=threading.Event)
     current_operation: OperationStatus | None = None
     verbose: bool = False
+    quiet: bool = False
+    no_metadata: bool = False
+    timeout_override: float | None = None
+    cli_api_keys: dict[str, str | None] = field(default_factory=dict)
 
 
 __all__ = ["AppContext"]

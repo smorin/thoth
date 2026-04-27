@@ -702,14 +702,32 @@ async def _execute_research(
 
 async def resume_operation(
     operation_id: str,
-    verbose: bool,
+    verbose: bool = False,
     ctx: AppContext | None = None,
+    *,
+    quiet: bool = False,
+    no_metadata: bool = False,
+    timeout_override: float | None = None,
+    cli_api_keys: dict[str, str | None] | None = None,
 ):
-    """Resume an existing operation by reconnecting to its providers."""
+    """Resume an existing operation by reconnecting to its providers.
+
+    Honor-set per Q1-PR2-C: the resume subcommand passes `quiet`,
+    `no_metadata`, `timeout_override`, and `cli_api_keys` as keyword
+    arguments. The legacy `--resume` flag callsite (cli.py until Task 5)
+    passes only the first three positional args; keyword-only defaults
+    keep both callsites valid during the transition window.
+    """
 
     config = get_config()
     if ctx is None:
         ctx = AppContext(config=config, verbose=verbose)
+    ctx.quiet = quiet
+    ctx.no_metadata = no_metadata
+    if timeout_override is not None:
+        ctx.timeout_override = timeout_override
+    if cli_api_keys:
+        ctx.cli_api_keys = cli_api_keys
     console = ctx.console  # noqa: F811 — shadow module-level console with ctx's
     checkpoint_manager = CheckpointManager(config)
     output_manager = OutputManager(config)
