@@ -1,9 +1,18 @@
 """`thoth providers` Click subgroup with leaves: list, models, check.
 
-PR1 preserves the existing `providers -- --list` legacy shim path by
-NOT routing the bare `thoth providers` invocation through this subgroup —
-that bare-no-leaf path falls through to the imperative dispatch in cli.py
-which still handles the legacy form. PR2 removes that shim entirely.
+PR2 removes the legacy `providers --` separator shim AND the in-group
+`--list/--models/--keys/--check/--refresh-cache/--no-cache` hidden
+subcommands per Q6-PR2-C1. Every removed form is gated to its new
+canonical via a `ctx.fail(...)` Click-native error.
+
+Per Option A from PR2 brainstorming: the new leaves route to the existing
+async `providers_command` (in commands.py) so user-visible output stays
+bit-stable across the migration. Each leaf is a thin Click wrapper that
+translates options -> `providers_command` kwargs.
+
+Click treats any token after the group name (including `--list`) as a
+subcommand-name lookup. To gate the legacy forms with our migration hint,
+we register hidden subcommands whose only job is to `ctx.fail(...)`.
 """
 
 from __future__ import annotations
@@ -13,53 +22,50 @@ import sys
 
 import click
 
-from thoth.config import get_config
-
 PROVIDER_CHOICES = ("openai", "perplexity", "mock")
+
+_LEGACY_FLAG_TO_NEW_FORM: dict[str, str] = {
+    "--list": "thoth providers list",
+    "--models": "thoth providers models",
+    "--keys": "thoth providers check",
+    "--check": "thoth providers check",
+    "--refresh-cache": "thoth providers models --refresh-cache",
+    "--no-cache": "thoth providers models --no-cache",
+}
 
 
 @click.group(
     name="providers",
     invoke_without_command=True,
-    context_settings={"ignore_unknown_options": True, "allow_extra_args": True},
-    epilog=(
-        "\b\n"
-        "--models              List available models\n"
-        "--provider, -P        Filter by specific provider\n"
-        "thoth providers models  List available models\n"
-        "OpenAI models are fetched dynamically and cached locally."
-    ),
+    context_settings={"ignore_unknown_options": True},
 )
 @click.pass_context
 def providers(ctx: click.Context) -> None:
-    """Manage provider models and API keys. OpenAI models are fetched dynamically."""
+    """Manage provider models and API keys."""
     if ctx.invoked_subcommand is not None:
         return
 
-    args = list(ctx.args)
-    legacy_flags = {"--list", "--models", "--keys", "--refresh-cache", "--no-cache"}
-    if any(arg in legacy_flags for arg in args):
-        click.echo(
-            "warning: 'thoth providers -- ...' is deprecated; "
-            "use 'thoth providers list|models|check'",
-        )
-        from thoth import commands as _commands
-
-        cfg = get_config()
-        if "--list" in args:
-            sys.exit(_commands.providers_list(cfg))
-        if "--models" in args:
-            sys.exit(_commands.providers_models(cfg))
-        if "--keys" in args or "--check" in args:
-            sys.exit(_commands.providers_check(cfg))
-        sys.exit(0)
-
-    if args:
-        click.echo(f"Unknown providers arguments: {' '.join(args)}", err=True)
-        ctx.exit(2)
-
+    # Q5-A row 4: bare `thoth providers` exits 2 (Click default for required subgroup).
     click.echo(ctx.get_help())
-    ctx.exit(0)
+    ctx.exit(2)
+
+
+def _make_legacy_gate(flag: str, new_form: str):
+    @providers.command(
+        name=flag,
+        hidden=True,
+        context_settings={"ignore_unknown_options": True, "allow_extra_args": True},
+    )
+    @click.argument("args", nargs=-1, type=click.UNPROCESSED)
+    @click.pass_context
+    def _gate(ctx: click.Context, args: tuple[str, ...]) -> None:
+        ctx.fail(f"no such option: {flag} (use '{new_form}')")
+
+    return _gate
+
+
+for _flag, _new_form in _LEGACY_FLAG_TO_NEW_FORM.items():
+    _make_legacy_gate(_flag, _new_form)
 
 
 @providers.command(name="list")
@@ -75,8 +81,14 @@ def providers_list_cmd(ctx: click.Context, filter_provider: str | None) -> None:
     """List available providers."""
     from thoth import commands as _commands
 
-    cfg = get_config()
-    sys.exit(_commands.providers_list(cfg, filter_provider=filter_provider))
+    sys.exit(
+        asyncio.run(
+            _commands.providers_command(
+                show_list=True,
+                filter_provider=filter_provider,
+            )
+        )
+    )
 
 
 @providers.command(name="models")
@@ -87,13 +99,34 @@ def providers_list_cmd(ctx: click.Context, filter_provider: str | None) -> None:
     type=click.Choice(PROVIDER_CHOICES),
     help="Filter by provider",
 )
+@click.option("--refresh-cache", is_flag=True, help="Force-refresh the model cache")
+@click.option("--no-cache", is_flag=True, help="Bypass the model cache for this call")
 @click.pass_context
-def providers_models_cmd(ctx: click.Context, filter_provider: str | None) -> None:
+def providers_models_cmd(
+    ctx: click.Context,
+    filter_provider: str | None,
+    refresh_cache: bool,
+    no_cache: bool,
+) -> None:
     """List provider models."""
+    # Q5-A row 1: --refresh-cache and --no-cache are mutually exclusive.
+    if refresh_cache and no_cache:
+        raise click.BadParameter(
+            "--refresh-cache and --no-cache are mutually exclusive",
+            param_hint="--refresh-cache / --no-cache",
+        )
     from thoth import commands as _commands
 
-    cfg = get_config()
-    sys.exit(_commands.providers_models(cfg, filter_provider=filter_provider))
+    sys.exit(
+        asyncio.run(
+            _commands.providers_command(
+                show_models=True,
+                filter_provider=filter_provider,
+                refresh_cache=refresh_cache,
+                no_cache=no_cache,
+            )
+        )
+    )
 
 
 @providers.command(name="check")
@@ -102,72 +135,10 @@ def providers_check_cmd(ctx: click.Context) -> None:
     """Check provider API key configuration."""
     from thoth import commands as _commands
 
-    cfg = get_config()
-    sys.exit(_commands.providers_check(cfg))
-
-
-def _legacy_warning() -> None:
-    click.echo(
-        "warning: 'thoth providers -- ...' is deprecated; use 'thoth providers list|models|check'",
-    )
-
-
-def _run_legacy(args: list[str]) -> None:
-    from thoth import commands as _commands
-
-    refresh_cache = "--refresh-cache" in args
-    no_cache = "--no-cache" in args
-    filter_provider = None
-    for i, arg in enumerate(args):
-        if arg in ("--provider", "-P") and i + 1 < len(args):
-            filter_provider = args[i + 1]
-            break
-        if arg.startswith("--provider="):
-            filter_provider = arg.split("=", 1)[1]
-            break
-    asyncio.run(
-        _commands.providers_command(
-            show_models="--models" in args,
-            show_list="--list" in args,
-            show_keys="--keys" in args,
-            filter_provider=filter_provider,
-            refresh_cache=refresh_cache,
-            no_cache=no_cache,
+    sys.exit(
+        asyncio.run(
+            _commands.providers_command(
+                show_keys=True,
+            )
         )
     )
-
-
-@providers.command(
-    name="--list",
-    hidden=True,
-    context_settings={"ignore_unknown_options": True, "allow_extra_args": True},
-)
-@click.argument("args", nargs=-1, type=click.UNPROCESSED)
-@click.pass_context
-def providers_legacy_list_cmd(ctx: click.Context, args: tuple[str, ...]) -> None:
-    _legacy_warning()
-    _run_legacy(["--list", *args])
-
-
-@providers.command(
-    name="--models",
-    hidden=True,
-    context_settings={"ignore_unknown_options": True, "allow_extra_args": True},
-)
-@click.argument("args", nargs=-1, type=click.UNPROCESSED)
-@click.pass_context
-def providers_legacy_models_cmd(ctx: click.Context, args: tuple[str, ...]) -> None:
-    _legacy_warning()
-    _run_legacy(["--models", *args])
-
-
-@providers.command(
-    name="--keys",
-    hidden=True,
-    context_settings={"ignore_unknown_options": True, "allow_extra_args": True},
-)
-@click.argument("args", nargs=-1, type=click.UNPROCESSED)
-@click.pass_context
-def providers_legacy_keys_cmd(ctx: click.Context, args: tuple[str, ...]) -> None:
-    _legacy_warning()
-    _run_legacy(["--keys", *args])

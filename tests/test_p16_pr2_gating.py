@@ -26,3 +26,28 @@ def test_resume_legacy_form_gated(argv, migration_hint):
     assert migration_hint in r.output, (
         f"expected migration hint {migration_hint!r} in output, got {r.output!r}"
     )
+
+
+@pytest.mark.parametrize(
+    "argv,migration_hint",
+    [
+        # providers `--` separator form
+        (["providers", "--", "--list"], "thoth providers list"),
+        (["providers", "--", "--models"], "thoth providers models"),
+        (["providers", "--", "--keys"], "thoth providers check"),
+        (["providers", "--", "--refresh-cache"], "thoth providers models --refresh-cache"),
+        (["providers", "--", "--no-cache"], "thoth providers models --no-cache"),
+        # providers in-group hidden flag form (PR1.5 shim)
+        (["providers", "--list"], "thoth providers list"),
+        (["providers", "--models"], "thoth providers models"),
+        (["providers", "--keys"], "thoth providers check"),
+        (["providers", "--check"], "thoth providers check"),
+    ],
+)
+def test_providers_legacy_form_gated(argv, migration_hint):
+    r = CliRunner().invoke(cli, argv)
+    assert r.exit_code == 2, f"expected exit 2, got {r.exit_code}\noutput={r.output!r}"
+    combined = r.output or ""
+    assert migration_hint in combined, (
+        f"expected migration hint {migration_hint!r} in output, got {combined!r}"
+    )

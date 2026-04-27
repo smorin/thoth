@@ -166,16 +166,25 @@ def test_providers_list_invokes_correct_function(monkeypatch):
 
     called = {}
 
-    def fake_list(cfg, filter_provider=None):
+    async def fake_command(
+        show_models=False,
+        show_list=False,
+        show_keys=False,
+        filter_provider=None,
+        refresh_cache=False,
+        no_cache=False,
+    ):
         called["invoked"] = True
+        called["show_list"] = show_list
         called["filter_provider"] = filter_provider
-        return 0
+        return None
 
-    monkeypatch.setattr("thoth.commands.providers_list", fake_list)
+    monkeypatch.setattr("thoth.commands.providers_command", fake_command)
     runner = CliRunner()
     result = runner.invoke(cli, ["providers", "list"])
     assert result.exit_code == 0
     assert called["invoked"] is True
+    assert called["show_list"] is True
     assert called["filter_provider"] is None
 
 
