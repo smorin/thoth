@@ -2167,7 +2167,7 @@ all_tests = [
         command=[THOTH_EXECUTABLE, "test interrupt handling", "--provider", "mock"],
         expected_stdout_patterns=[
             r"Interrupt received\. Saving checkpoint",
-            r"Checkpoint saved\. Resume with: thoth --resume",
+            r"Checkpoint saved\. Resume with: thoth resume",
         ],
         expected_exit_code=1,
         provider="mock",
@@ -2213,7 +2213,7 @@ all_tests = [
         expected_stdout_patterns=[
             r"5 consecutive transient errors",
             r"This failure is recoverable",
-            r"Resume with: .*thoth --resume",
+            r"Resume with: .*thoth resume",
         ],
         not_expected_stdout_patterns=[r"Research completed"],
         expected_exit_code=1,
@@ -2235,7 +2235,7 @@ all_tests = [
         ],
         not_expected_stdout_patterns=[
             r"This failure is recoverable",
-            r"Resume with: .*thoth --resume",
+            r"Resume with: .*thoth resume",
             r"Research completed",
         ],
         expected_exit_code=1,

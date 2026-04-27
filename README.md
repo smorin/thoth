@@ -215,7 +215,7 @@ thoth deep_research "long research topic" --async
 thoth status research-20240803-143022-a1b2c3d4e5f6g7h8
 
 # Resume operation
-thoth --resume research-20240803-143022-a1b2c3d4e5f6g7h8
+thoth resume research-20240803-143022-a1b2c3d4e5f6g7h8
 ```
 
 ### Provider Management

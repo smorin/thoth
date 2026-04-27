@@ -61,8 +61,8 @@ def extract_operation_id(output: str) -> str:
 
 
 def extract_resume_id(output: str) -> str:
-    """Extract an operation ID from a 'thoth --resume <id>' hint."""
-    match = re.search(r"thoth --resume\s+(research-\d{8}-\d{6}-[a-f0-9]{16})", output)
+    """Extract an operation ID from a 'thoth resume <id>' hint."""
+    match = re.search(r"thoth resume\s+(research-\d{8}-\d{6}-[a-f0-9]{16})", output)
     if not match:
         raise AssertionError(f"resume hint not found in output: {output!r}")
     return match.group(1)

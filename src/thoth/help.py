@@ -131,7 +131,7 @@ class ThothGroup(click.Group):
             formatter.write_text('thoth "how does DNS work"')
             formatter.write_text('thoth clarification "k8s networking" --project k8s')
             formatter.write_text("thoth deep_research --auto --project k8s --async")
-            formatter.write_text("thoth --resume op_abc123")
+            formatter.write_text("thoth resume op_abc123")
             formatter.write_text('Debug API issues: thoth deep_research "topic" -v')
 
         super().format_epilog(ctx, formatter)

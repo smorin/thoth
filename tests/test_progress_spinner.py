@@ -149,4 +149,4 @@ def test_sigint_prints_resume_hint(capsys):
         pass
     captured = capsys.readouterr()
     output = captured.out + captured.err
-    assert "Resume later: thoth --resume op_abc123" in output
+    assert "Resume later: thoth resume op_abc123" in output

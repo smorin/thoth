@@ -224,7 +224,7 @@ def _print_status_hints(operation: OperationStatus) -> None:
     elif status == "completed":
         print_hint("thoth list", "See recent runs")
     elif status == "cancelled":
-        print_hint(f"thoth --resume {op_id}", "Pick up where Ctrl-C left off")
+        print_hint(f"thoth resume {op_id}", "Pick up where Ctrl-C left off")
     elif status == "failed":
         if operation.failure_type == "permanent":
             console.print("  This failure is permanent and cannot be resumed.")
@@ -235,7 +235,7 @@ def _print_status_hints(operation: OperationStatus) -> None:
                     "Check credentials",
                 )
         else:
-            print_hint(f"thoth --resume {op_id}", "Retry from checkpoint")
+            print_hint(f"thoth resume {op_id}", "Retry from checkpoint")
 
 
 async def list_operations(show_all: bool):

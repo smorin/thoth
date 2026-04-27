@@ -626,7 +626,7 @@ async def _execute_research(
         if operation.failure_type == "recoverable":
             console.print(
                 f"\n[cyan]This failure is recoverable.[/cyan] "
-                f"Resume with: [bold]thoth --resume {operation.id}[/bold]"
+                f"Resume with: [bold]thoth resume {operation.id}[/bold]"
             )
         return
 
@@ -651,7 +651,7 @@ async def _execute_research(
         if op_failure_type == "recoverable":
             console.print(
                 f"\n[cyan]This failure is recoverable.[/cyan] "
-                f"Resume with: [bold]thoth --resume {operation.id}[/bold]"
+                f"Resume with: [bold]thoth resume {operation.id}[/bold]"
             )
         return
 
@@ -842,7 +842,7 @@ async def resume_operation(
             if operation.failure_type == "recoverable":
                 console.print(
                     f"\n[cyan]This failure is recoverable.[/cyan] "
-                    f"Resume with: [bold]thoth --resume {operation.id}[/bold]"
+                    f"Resume with: [bold]thoth resume {operation.id}[/bold]"
                 )
             raise click.Abort()
 
@@ -869,7 +869,7 @@ async def resume_operation(
             if op_failure_type == "recoverable":
                 console.print(
                     f"\n[cyan]This failure is recoverable.[/cyan] "
-                    f"Resume with: [bold]thoth --resume {operation.id}[/bold]"
+                    f"Resume with: [bold]thoth resume {operation.id}[/bold]"
                 )
             raise click.Abort()
 
