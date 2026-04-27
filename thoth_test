@@ -2126,7 +2126,7 @@ all_tests = [
         test_id="EXIT-02",
         description="Invalid subcommand op returns exit code 2",
         command=[THOTH_EXECUTABLE, "modes", "bogus_op"],
-        expected_stdout_patterns=[r"unknown modes op"],
+        expected_stderr_patterns=[r"No such command|unknown.*op"],
         expected_exit_code=2,
     ),
     TestCase(

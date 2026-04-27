@@ -540,6 +540,13 @@ def cli(
     if input_file and auto:
         raise click.BadParameter("Cannot use --input-file with --auto")
 
+    # Q5-A row 7: --clarify is meaningful only inside --interactive.
+    if clarify and not interactive:
+        raise click.BadParameter(
+            "--clarify requires --interactive",
+            param_hint="--clarify",
+        )
+
     if pick_model:
         args = _click_remainder_args(ctx)
         first = args[0] if args else None

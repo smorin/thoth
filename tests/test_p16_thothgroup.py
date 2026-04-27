@@ -219,6 +219,9 @@ def test_modes_registered():
 
 
 def test_modes_list_invokes_handler(monkeypatch):
+    """PR2 (Q5-A row 5): bare `thoth modes` exits 2 with help; `thoth modes
+    list` is the canonical leaf and dispatches to `modes_command('list', ...)`.
+    """
     from thoth.cli import cli
 
     called = {}
@@ -229,10 +232,15 @@ def test_modes_list_invokes_handler(monkeypatch):
 
     monkeypatch.setattr("thoth.modes_cmd.modes_command", fake_modes_command)
     runner = CliRunner()
-    result = runner.invoke(cli, ["modes"])
+
+    # Bare `modes` now exits 2 (no leaf default per Q5-A row 5).
+    bare = runner.invoke(cli, ["modes"])
+    assert bare.exit_code == 2
+
+    # Canonical `modes list` dispatches with op="list".
+    result = runner.invoke(cli, ["modes", "list"])
     assert result.exit_code == 0
-    # When no op is given, modes shows the list (current behavior)
-    assert called["op"] is None or called["op"] == "list"
+    assert called["op"] == "list"
 
 
 def test_help_subcommand_registered():

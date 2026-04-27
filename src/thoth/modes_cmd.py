@@ -240,11 +240,24 @@ def _op_list(args: list[str]) -> int:
     cm.load_all_layers({})
     infos = list_all_modes(cm)
 
+    # Q5-A row 11.i: source filter is applied BEFORE the --name short-circuit
+    # so `--name X --source Y` is a true intersection (empty result if X is
+    # not in source Y).
+    if source != "all":
+        infos = [m for m in infos if m.source == source]
+
     if name is not None:
         match = next((m for m in infos if m.name == name), None)
         if match is None:
-            _get_console().print(f"[red]Error:[/red] unknown mode: {name}")
-            return 1
+            if as_json:
+                print(
+                    json.dumps(
+                        {"schema_version": "1", "mode": None},
+                        indent=2,
+                        sort_keys=True,
+                    )
+                )
+            return 0
         if as_json:
             print(
                 json.dumps(
@@ -260,8 +273,6 @@ def _op_list(args: list[str]) -> int:
             _render_detail(match, full, show_secrets)
         return 0
 
-    if source != "all":
-        infos = [m for m in infos if m.source == source]
     infos = sorted(infos, key=_sort_key)
 
     if as_json:

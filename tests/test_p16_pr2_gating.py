@@ -51,3 +51,20 @@ def test_providers_legacy_form_gated(argv, migration_hint):
     assert migration_hint in combined, (
         f"expected migration hint {migration_hint!r} in output, got {combined!r}"
     )
+
+
+@pytest.mark.parametrize(
+    "argv,migration_hint",
+    [
+        (["modes", "--json"], "thoth modes list --json"),
+        (["modes", "--show-secrets"], "thoth modes list --show-secrets"),
+        (["modes", "--full"], "thoth modes list --full"),
+        (["modes", "--name", "deep_research"], "thoth modes list --name"),
+        (["modes", "--source", "user"], "thoth modes list --source"),
+    ],
+)
+def test_modes_legacy_form_gated(argv, migration_hint):
+    r = CliRunner().invoke(cli, argv)
+    assert r.exit_code == 2, f"expected exit 2, got {r.exit_code}\noutput={r.output!r}"
+    combined = r.output or ""
+    assert migration_hint in combined, f"hint {migration_hint!r} not in output {combined!r}"
