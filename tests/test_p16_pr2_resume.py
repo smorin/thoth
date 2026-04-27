@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import pytest
 from click.testing import CliRunner
 
 from thoth.cli import cli
@@ -97,3 +98,29 @@ def test_resume_honors_config_path(monkeypatch, tmp_path):
     r = CliRunner().invoke(cli, ["resume", "op_x", "--config", str(cfg)])
     assert r.exit_code == 0, r.output
     assert captured["operation_id"] == "op_x"
+
+
+# Category E: reject-list — undeclared flags are rejected by Click natively
+
+
+@pytest.mark.parametrize(
+    "rejected_arg",
+    [
+        "--auto",
+        "--input-file=x.txt",
+        "--prompt=foo",
+        "--prompt-file=foo.txt",
+        "--combined",
+        "--project=p",
+        "--output-dir=o",
+        "--async",
+        "--pick-model",
+        "--interactive",
+        "--clarify",
+    ],
+)
+def test_resume_rejects_undeclared_option(monkeypatch, rejected_arg):
+    _stub_resume(monkeypatch)
+    r = CliRunner().invoke(cli, ["resume", "op_x", rejected_arg])
+    assert r.exit_code == 2, r.output
+    assert "no such option" in r.output.lower() or "unexpected" in r.output.lower()

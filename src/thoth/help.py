@@ -49,6 +49,13 @@ class ThothGroup(click.Group):
     """
 
     def parse_args(self, ctx: click.Context, args: list[str]):
+        # Q6-PR2-C1: legacy --resume / -R flag is gated to the new subcommand.
+        # Scan the raw argv BEFORE delegating to super().parse_args so we can
+        # emit a Click-native error with the migration hint on stderr.
+        for token in args:
+            if token in ("--resume", "-R") or token.startswith("--resume="):
+                ctx.fail("no such option: --resume (use 'thoth resume OP_ID')")
+        # Existing --help auth hijack stays for now; Task 8 removes it.
         if len(args) == 2 and args[0] in ("--help", "-h") and args[1] == "auth":
             show_auth_help()
             ctx.exit(0)

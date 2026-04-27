@@ -45,7 +45,7 @@ def test_recoverable_failure_resume_reconnects_and_completes(
     )
 
     exit_code2, stdout2, stderr2 = run_thoth(
-        ["--resume", op_id],
+        ["resume", op_id],
         env_overrides={"THOTH_MOCK_BEHAVIOR": "default", "THOTH_POLL_INTERVAL": "0.1"},
     )
     combined2 = stdout2 + stderr2
@@ -87,7 +87,7 @@ def test_permanent_failure_resume_refused_with_exit_code_7(
     )
 
     exit_code2, stdout2, stderr2 = run_thoth(
-        ["--resume", op_id],
+        ["resume", op_id],
         env_overrides={"THOTH_MOCK_BEHAVIOR": "default", "THOTH_POLL_INTERVAL": "0.1"},
     )
     combined2 = stdout2 + stderr2
@@ -128,7 +128,7 @@ def test_resume_of_already_completed_operation_is_noop(
     )
 
     exit_code2, stdout2, stderr2 = run_thoth(
-        ["--resume", op_id],
+        ["resume", op_id],
         env_overrides={"THOTH_MOCK_BEHAVIOR": "default", "THOTH_POLL_INTERVAL": "0.1"},
     )
     combined2 = stdout2 + stderr2

@@ -73,7 +73,7 @@ def test_bug_cli_002_resume_option_invokes_resume(monkeypatch) -> None:
 
     monkeypatch.setattr("thoth.run.resume_operation", fake_resume)
 
-    result = CliRunner().invoke(cli, ["--resume", "op_regression"])
+    result = CliRunner().invoke(cli, ["resume", "op_regression"])
 
     assert result.exit_code == 0, result.output
     assert captured["operation_id"] == "op_regression"
@@ -161,7 +161,7 @@ def test_bug_08_extract_fallback_options_is_parse_only(
 
 
 def test_bug_10_version_must_be_used_alone() -> None:
-    result = CliRunner().invoke(cli, ["--version", "--resume", "op_123", "--async"])
+    result = CliRunner().invoke(cli, ["--version", "--async"])
 
     assert result.exit_code != 0
     assert "--version must be used alone" in result.output

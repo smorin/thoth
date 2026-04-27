@@ -101,7 +101,6 @@ def _version_conflicts(ctx: click.Context, opts: dict) -> list[str]:
         "prompt_opt": "--prompt",
         "prompt_file": "--prompt-file",
         "async_mode": "--async",
-        "resume_id": "--resume",
         "project": "--project",
         "output_dir": "--output-dir",
         "provider": "--provider",
@@ -186,8 +185,6 @@ def _extract_fallback_options(args: list[str], opts: dict) -> tuple[list[str], d
         "-q": "prompt_opt",
         "--prompt-file": "prompt_file",
         "-F": "prompt_file",
-        "--resume": "resume_id",
-        "-R": "resume_id",
         "--project": "project",
         "-p": "project",
         "--output-dir": "output_dir",
@@ -345,19 +342,6 @@ def _dispatch_click_fallback(
     args, opts = _extract_fallback_options(args, opts)
     _apply_config_path(opts.get("config_path"))
 
-    if opts.get("resume_id"):
-        if args:
-            raise click.BadParameter("Cannot use --resume with a research prompt")
-        app_ctx = _build_app_context(bool(opts.get("verbose")))
-        _run_maybe_async(
-            _thoth_run.resume_operation(
-                str(opts["resume_id"]),
-                bool(opts.get("verbose")),
-                ctx=app_ctx,
-            )
-        )
-        return
-
     if opts.get("interactive"):
         mode, prompt = _resolve_mode_and_prompt(args, opts)
         _enter_interactive_from_options(mode=mode, prompt=prompt, opts=opts)
@@ -472,7 +456,6 @@ def _run_research_default(
 )
 @click.pass_context
 @_research_options
-@click.option("--resume", "-R", "resume_id", help="Resume operation by ID")
 @click.option("--version", "-V", is_flag=True, help="Show version and exit; must be used alone")
 def cli(
     ctx,
@@ -480,7 +463,6 @@ def cli(
     prompt_opt,
     prompt_file,
     async_mode,
-    resume_id,
     project,
     output_dir,
     provider,
@@ -515,7 +497,6 @@ def cli(
     ctx.obj["prompt_opt"] = prompt_opt
     ctx.obj["prompt_file"] = prompt_file
     ctx.obj["async_mode"] = async_mode
-    ctx.obj["resume_id"] = resume_id
     ctx.obj["project"] = project
     ctx.obj["output_dir"] = output_dir
     ctx.obj["provider"] = provider
@@ -548,15 +529,11 @@ def cli(
 
     _apply_config_path(config_path)
 
-    # Group-level mutex validators. These assume --async / --resume /
-    # --prompt-file / --prompt / --input-file / --auto remain top-level
-    # global options on the @click.group. If a subcommand later takes
-    # ownership of one of these flags (e.g., --resume migrating to a
-    # `thoth resume` subcommand in PR2), move the corresponding check
-    # to that subcommand's callback.
-    if async_mode and resume_id:
-        raise click.BadParameter("Cannot use --async with --resume")
-
+    # Group-level mutex validators. These assume --async / --prompt-file /
+    # --prompt / --input-file / --auto remain top-level global options on
+    # the @click.group. If a subcommand later takes ownership of one of
+    # these flags, move the corresponding check to that subcommand's
+    # callback.
     if prompt_file and prompt_opt:
         raise click.BadParameter("Cannot use --prompt-file with --prompt")
 
@@ -566,7 +543,7 @@ def cli(
     if pick_model:
         args = _click_remainder_args(ctx)
         first = args[0] if args else None
-        if resume_id or interactive or (first in ctx.command.commands if first else False):
+        if interactive or (first in ctx.command.commands if first else False):
             raise click.BadParameter("--pick-model only applies to research runs")
         if not args and not prompt_opt and not prompt_file:
             raise click.BadParameter("--pick-model only applies to research runs with a prompt")
