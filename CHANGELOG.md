@@ -21,7 +21,7 @@ All notable changes to Thoth are documented here.
 
 ### Changed (BREAKING)
 
-- `thoth config get KEY --raw` no longer bypasses secret masking. To reveal a secret value, use `--show-secrets` (with or without `--raw`). `--raw` now controls only output formatting.
+- `thoth config get KEY --raw` no longer bypasses secret masking. To reveal a secret value, use `--show-secrets` (with or without `--raw`). `--raw` now controls only output formatting. `--raw` is supported only on `thoth config get`; `thoth config list --raw` exits 2 with a clear message (use `thoth config list --json` for machine-readable list output).
 - `thoth status` (no OP_ID) now exits 2 instead of 1 (matches Click's default for a missing required argument).
 - `thoth providers` (no leaf) now exits 2 (was 0) — Click default for required-subcommand groups.
 - `thoth modes` (no leaf) now exits 2 (was 0). Use `thoth modes list` for the previous default behavior.
@@ -64,7 +64,7 @@ All notable changes to Thoth are documented here.
 - `--pick-model` / `-M` flag for interactively selecting a model on immediate (non-background) modes.
 - Progress spinner during sync background-mode runs (via `thothspinner`).
 - Config file path surfaced in `APIKeyError` messages.
-- "Resume later: thoth --resume OP_ID" hint on Ctrl-C.
+- "Resume later: thoth resume OP_ID" hint on Ctrl-C.
 
 ### Changed
 - `--help` now shows the workflow chain (clarification → … → tdd) and worked examples for `--auto`, `--async`/`--resume`, and `-v` debugging.

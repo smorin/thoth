@@ -730,7 +730,7 @@ async def resume_operation(
         ctx.cli_api_keys = cli_api_keys
     console = ctx.console  # noqa: F811 — shadow module-level console with ctx's
     checkpoint_manager = CheckpointManager(config)
-    output_manager = OutputManager(config)
+    output_manager = OutputManager(config, no_metadata=no_metadata)
 
     operation = await checkpoint_manager.load(operation_id)
     if not operation:
@@ -770,7 +770,13 @@ async def resume_operation(
             console.print(f"[red]Provider {provider_name} has no job_id; cannot reconnect.[/red]")
             continue
         try:
-            provider = create_provider(provider_name, config, mode_config=mode_config)
+            provider = create_provider(
+                provider_name,
+                config,
+                cli_api_key=cli_api_keys.get(provider_name) if cli_api_keys else None,
+                timeout_override=timeout_override,
+                mode_config=mode_config,
+            )
         except (APIKeyError, ProviderError, ThothError) as e:
             console.print(f"[red]Error:[/red] {e.message}")
             console.print(f"[yellow]Suggestion:[/yellow] {e.suggestion}")
@@ -806,7 +812,7 @@ async def resume_operation(
 
     resume_mode_model = mode_config.get("model")
     with _poll_display(
-        quiet=False, mode_model=resume_mode_model, verbose=verbose, rich_console=console
+        quiet=quiet, mode_model=resume_mode_model, verbose=verbose, rich_console=console
     ) as progress:
         jobs: dict[str, dict[str, Any]] = {}
         for provider_name, provider in provider_instances.items():

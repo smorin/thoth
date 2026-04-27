@@ -81,3 +81,14 @@ def test_get_secret_json_show_secrets_reveals(secret_config):
     )
     assert r.exit_code == 0, r.output
     assert secret_config in r.output
+
+
+# I3 (PR2 review-fix): `config list --raw` is rejected with a clear message.
+# `--raw` is a per-layer get-only concept; for machine-readable list output
+# the user should use `config list --json`.
+def test_list_raw_rejected_with_clear_message(isolated_thoth_home):
+    r = CliRunner().invoke(cli, ["config", "list", "--raw"])
+    assert r.exit_code == 2, r.output
+    out = r.output.lower()
+    assert "--raw" in out
+    assert "config get" in out or "--json" in out

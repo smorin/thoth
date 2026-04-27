@@ -313,6 +313,12 @@ def _op_list(args: list[str]) -> int:
         elif a == "--show-secrets":
             show_secrets = True
             i += 1
+        elif a == "--raw":
+            console.print(
+                "[red]Error:[/red] --raw is only supported on 'thoth config get'; "
+                "use 'thoth config list --json' for machine-readable output"
+            )
+            return 2
         else:
             console.print(f"[red]Error:[/red] unknown arg: {a}")
             return 2
