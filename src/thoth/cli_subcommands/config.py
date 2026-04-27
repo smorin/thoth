@@ -28,11 +28,38 @@ def _dispatch(op: str, args: tuple[str, ...]) -> None:
     sys.exit(rc)
 
 
-@config.command(name="get", context_settings=_PASSTHROUGH_CONTEXT)
-@click.argument("args", nargs=-1, type=click.UNPROCESSED)
-def config_get(args: tuple[str, ...]) -> None:
+@config.command(name="get")
+@click.argument("key")
+@click.option(
+    "--layer",
+    "layer",
+    type=click.Choice(("defaults", "user", "project", "env", "cli")),
+    default=None,
+    help="Read from a specific config layer",
+)
+@click.option(
+    "--raw",
+    is_flag=True,
+    help="Read pre-merge layer data (formatting only; does NOT bypass masking)",
+)
+@click.option("--json", "as_json", is_flag=True, help="Emit JSON")
+@click.option(
+    "--show-secrets",
+    is_flag=True,
+    help="Reveal masked secret values (security-sensitive)",
+)
+def config_get(key: str, layer: str | None, raw: bool, as_json: bool, show_secrets: bool) -> None:
     """Get a configuration value."""
-    _dispatch("get", args)
+    rebuilt: list[str] = [key]
+    if layer is not None:
+        rebuilt.extend(["--layer", layer])
+    if raw:
+        rebuilt.append("--raw")
+    if as_json:
+        rebuilt.append("--json")
+    if show_secrets:
+        rebuilt.append("--show-secrets")
+    _dispatch("get", tuple(rebuilt))
 
 
 @config.command(name="set", context_settings=_PASSTHROUGH_CONTEXT)

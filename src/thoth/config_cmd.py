@@ -101,7 +101,7 @@ def _op_get(args: list[str]) -> int:
         console.print(f"[red]Error:[/red] key not found: {key}")
         return 1
 
-    if _is_secret_key(key) and not show_secrets and not raw:
+    if _is_secret_key(key) and not show_secrets:
         value = _mask_secret(value)
 
     print(_render_scalar(value, as_json))
