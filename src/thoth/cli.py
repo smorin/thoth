@@ -577,6 +577,10 @@ def cli(
 # admin subcommand migrates into `cli_subcommands/`. Keep imports here
 # (after the @click.group callback, before main()) so module-level import
 # order stays predictable.
+from thoth.cli_subcommands import ask as _ask_mod  # noqa: E402
+
+cli.add_command(_ask_mod.ask)
+
 from thoth.cli_subcommands import init as _init_mod  # noqa: E402
 
 cli.add_command(_init_mod.init)
