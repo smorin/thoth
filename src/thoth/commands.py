@@ -318,29 +318,29 @@ async def providers_command(
 ):
     """Show provider information and available models"""
     if not show_models and not show_list and not show_keys:
-        console.print("[yellow]Usage:[/yellow] thoth providers -- [OPTIONS]")
+        console.print("[yellow]Usage:[/yellow] thoth providers <list|models|check> [OPTIONS]")
         console.print("\nShow provider information and available models.")
-        console.print("\nOptions:")
-        console.print("  --list                List available providers and their status")
-        console.print("  --models              List available models from providers")
-        console.print("  --keys                Show API key configuration for each provider")
-        console.print("  --provider, -P        Filter by specific provider (with --models)")
+        console.print("\nSubcommands:")
+        console.print("  list                  List available providers and their status")
+        console.print("  models                List available models from providers")
+        console.print("  check                 Show API key configuration for each provider")
+        console.print("\nOptions (for `models`):")
+        console.print("  --provider, -P        Filter by specific provider")
         console.print("  --refresh-cache       Force refresh of cached model lists")
         console.print("  --no-cache            Bypass cache without updating it")
-        console.print("\n[dim]Note: Use -- before options to prevent parsing conflicts[/dim]")
         console.print("\nExamples:")
         console.print("  # List all available providers")
-        console.print("  $ thoth providers -- --list")
+        console.print("  $ thoth providers list")
         console.print("\n  # Show API key configuration")
-        console.print("  $ thoth providers -- --keys")
+        console.print("  $ thoth providers check")
         console.print("\n  # List all models from all providers")
-        console.print("  $ thoth providers -- --models")
+        console.print("  $ thoth providers models")
         console.print("\n  # List only OpenAI models")
-        console.print("  $ thoth providers -- --models --provider openai")
+        console.print("  $ thoth providers models --provider openai")
         console.print("\n  # Force refresh cached models")
-        console.print("  $ thoth providers -- --models --refresh-cache")
+        console.print("  $ thoth providers models --refresh-cache")
         console.print("\n  # Check current models without updating cache")
-        console.print("  $ thoth providers -- --models --no-cache")
+        console.print("  $ thoth providers models --no-cache")
         return
 
     config = get_config()
@@ -406,8 +406,8 @@ async def providers_command(
             table.add_row(provider_name, status, description, cache_info)
 
         console.print(table)
-        console.print("\nTo see available models, use: thoth providers -- --models")
-        console.print("To refresh model cache, use: thoth providers -- --models --refresh-cache")
+        console.print("\nTo see available models, use: thoth providers models")
+        console.print("To refresh model cache, use: thoth providers models --refresh-cache")
         return
 
     if show_keys:

@@ -109,12 +109,12 @@ def test_status_subcommand_registered():
 
 
 def test_status_requires_op_id():
-    """P16-TS08: thoth status (no OP_ID) → legacy op-required error."""
+    """P16-TS08: thoth status (no OP_ID) → op-required error (Click default exit 2)."""
     from thoth.cli import cli
 
     runner = CliRunner()
     result = runner.invoke(cli, ["status"])
-    assert result.exit_code == 1
+    assert result.exit_code == 2
     assert "requires an operation ID" in result.output
 
 

@@ -95,7 +95,7 @@ Run `thoth help auth` for the in-CLI version of this guide.
 
 3. **Check provider configuration:**
    ```bash
-   thoth providers -- --list
+   thoth providers list
    ```
 
 4. **Run your first research:**
@@ -221,17 +221,17 @@ thoth resume research-20240803-143022-a1b2c3d4e5f6g7h8
 ### Provider Management
 ```bash
 # List available providers and their status
-thoth providers -- --list
+thoth providers list
 
 # Show API key configuration
-thoth providers -- --keys
+thoth providers check
 
 # List available models from all providers
-thoth providers -- --models
+thoth providers models
 
 # List models from specific provider
-thoth providers -- --models --provider openai
-thoth providers -- --models -P perplexity
+thoth providers models --provider openai
+thoth providers models -P perplexity
 ```
 
 ### List Operations
@@ -562,19 +562,17 @@ API keys are resolved in the following order (highest to lowest priority):
 | init | Setup wizard for API keys | `thoth init` |
 | status | Show operation details | `thoth status research-20240803-143022-xxx` |
 | list | Show recent operations | `thoth list` |
-| providers | Manage providers and models | `thoth providers -- --list` |
+| providers | Manage providers and models | `thoth providers list` |
 | help | Show help information | `thoth help [COMMAND]` |
 
-### Providers Command Options
+### Providers Subcommands
 
-| Option | Description | Example |
-|--------|-------------|---------|
-| --list | Show available providers and status | `thoth providers -- --list` |
-| --models | List models from providers | `thoth providers -- --models` |
-| --keys | Show API key configuration | `thoth providers -- --keys` |
-| --provider, -P | Filter by specific provider | `thoth providers -- --models -P openai` |
-
-**Note**: Use `--` separator before options to prevent parsing conflicts.
+| Subcommand | Description | Example |
+|------------|-------------|---------|
+| list | Show available providers and status | `thoth providers list` |
+| models | List models from providers | `thoth providers models` |
+| check | Show API key configuration | `thoth providers check` |
+| --provider, -P | Filter by specific provider | `thoth providers models -P openai` |
 
 ## Version History
 

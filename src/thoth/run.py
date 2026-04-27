@@ -497,7 +497,7 @@ async def _run_polling_loop(
                 elif provider_status == "cancelled":
                     # Cancelled jobs cannot be resumed via the original provider
                     # job id, so route to permanent to suppress the misleading
-                    # `thoth --resume` hint.
+                    # `thoth resume` hint.
                     error_msg = status.get("error", "job was cancelled")
                     console.print(f"\n[red]✗[/red] {provider_name.title()} cancelled: {error_msg}")
                     operation.providers[provider_name]["status"] = "failed"

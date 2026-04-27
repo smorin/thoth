@@ -2,6 +2,50 @@
 
 All notable changes to Thoth are documented here.
 
+## [3.0.0] — 2026-04-26
+
+### Removed (BREAKING)
+
+- The `--resume` / `-R` global flag is removed. Use `thoth resume OP_ID` instead.
+- The `thoth providers -- --list` / `--models` / `--keys` / `--check` / `--refresh-cache` / `--no-cache` legacy `--`-separator forms are removed. Use `thoth providers list|models|check` instead.
+- The `thoth providers --list` / `--models` / `--keys` / `--check` in-group flag forms (PR1.5 hidden subcommands) are removed. Same migration as above.
+- The `thoth modes --json` / `--show-secrets` / `--full` / `--name X` / `--source X` flag-style forms are removed. Use `thoth modes list <flag>` instead.
+- The `thoth --help <topic>` parse-time hijack is removed. Use `thoth help <topic>` (or `thoth <topic> --help` for real subcommands).
+- The `auth` virtual help topic on `thoth help auth` is removed.
+- `completion` was removed from the help renderer's command listing (it was a phantom — never registered as a real subcommand).
+
+### Added
+
+- `thoth ask "PROMPT"` — canonical scripted research entry point. Accepts the full research-options stack (per Q3-PR2-C, applied identically to the cli group).
+- `thoth resume OP_ID` — canonical resume entry point. Honors `--verbose`, `--config`, `--quiet`, `--no-metadata`, `--timeout`, `--api-key-{openai,perplexity,mock}` per Q1-PR2-C.
+
+### Changed (BREAKING)
+
+- `thoth config get KEY --raw` no longer bypasses secret masking. To reveal a secret value, use `--show-secrets` (with or without `--raw`). `--raw` now controls only output formatting.
+- `thoth status` (no OP_ID) now exits 2 instead of 1 (matches Click's default for a missing required argument).
+- `thoth providers` (no leaf) now exits 2 (was 0) — Click default for required-subcommand groups.
+- `thoth modes` (no leaf) now exits 2 (was 0). Use `thoth modes list` for the previous default behavior.
+- `thoth providers models --refresh-cache --no-cache` is now mutually exclusive (was a silent ambiguity that fell through to the provider implementation).
+- `thoth modes list --name X --source Y` now intersects both filters (was: silently dropped `--source`).
+- `thoth --clarify` (without `--interactive`) now exits 2 with `--clarify requires --interactive` (was: silent no-op).
+- `thoth config get KEY --layer L` now validates `L` against the actual layer set (`defaults|user|project|env|cli`) and exits 2 on invalid values (was: silently returned wrong-layer data).
+
+### Migration from v2.x
+
+| Old form | New form |
+|---|---|
+| `thoth --resume OP_ID` | `thoth resume OP_ID` |
+| `thoth providers -- --list` | `thoth providers list` |
+| `thoth providers -- --models` | `thoth providers models` |
+| `thoth providers -- --models --provider openai` | `thoth providers models --provider openai` |
+| `thoth providers -- --models --refresh-cache` | `thoth providers models --refresh-cache` |
+| `thoth providers -- --keys` (or `--check`) | `thoth providers check` |
+| `thoth providers --list` (in-group shim) | `thoth providers list` |
+| `thoth modes --json` | `thoth modes list --json` |
+| `thoth modes --name deep_research` | `thoth modes list --name deep_research` |
+| `thoth --help auth` | (no replacement — `auth` topic dropped) |
+| `thoth config get KEY --raw` (revealing secrets) | `thoth config get KEY --show-secrets` |
+
 ## [Unreleased]
 
 ### Fixed
