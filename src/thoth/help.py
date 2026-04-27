@@ -17,7 +17,6 @@ ADMIN_COMMANDS: tuple[str, ...] = (
     "config",
     "modes",
     "providers",
-    "completion",
     "help",
 )
 
@@ -55,10 +54,6 @@ class ThothGroup(click.Group):
         for token in args:
             if token in ("--resume", "-R") or token.startswith("--resume="):
                 ctx.fail("no such option: --resume (use 'thoth resume OP_ID')")
-        # Existing --help auth hijack stays for now; Task 8 removes it.
-        if len(args) == 2 and args[0] in ("--help", "-h") and args[1] == "auth":
-            show_auth_help()
-            ctx.exit(0)
         return super().parse_args(ctx, args)
 
     def resolve_command(self, ctx: click.Context, args: list[str]):

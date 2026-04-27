@@ -267,19 +267,20 @@ def test_help_with_topic_forwards_to_subcommand_help():
     assert "init" in result.output.lower()
 
 
-def test_help_auth_calls_show_auth_help(monkeypatch):
+def test_help_auth_topic_removed():
+    """P16 PR2 T8 / Q5-A row 13.ii: `thoth help auth` virtual topic is dropped.
+
+    Replaces the prior test_help_auth_calls_show_auth_help which asserted the
+    now-removed shortcut behavior. PR3 will re-introduce auth via a real
+    subcommand registration, not a virtual help topic.
+    """
     from thoth.cli import cli
 
-    called = {}
-
-    def fake_show_auth():
-        called["invoked"] = True
-
-    monkeypatch.setattr("thoth.help.show_auth_help", fake_show_auth)
     runner = CliRunner()
     result = runner.invoke(cli, ["help", "auth"])
-    assert result.exit_code == 0
-    assert called["invoked"] is True
+    assert result.exit_code == 2
+    combined = result.output or ""
+    assert "unknown help topic" in combined.lower() or "available topics" in combined.lower()
 
 
 def test_help_unknown_topic_errors():

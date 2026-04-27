@@ -68,3 +68,29 @@ def test_modes_legacy_form_gated(argv, migration_hint):
     assert r.exit_code == 2, f"expected exit 2, got {r.exit_code}\noutput={r.output!r}"
     combined = r.output or ""
     assert migration_hint in combined, f"hint {migration_hint!r} not in output {combined!r}"
+
+
+def test_help_auth_parse_time_hijack_removed():
+    """Q5-A row 13.ii: `thoth --help auth` is no longer hijacked at parse time."""
+    r = CliRunner().invoke(cli, ["--help", "auth"])
+    # Click natively rejects 'auth' as an unexpected positional argument,
+    # OR `--help` consumes the rest and exits 0 with the group help.
+    # Either way, the OLD behavior (rendering auth-help) must NOT happen.
+    combined = r.output or ""
+    # The old hijack rendered "Authentication" prominently; verify that's gone.
+    assert "Authentication" not in combined or r.exit_code != 0
+
+
+def test_help_subcommand_topic_still_works():
+    """`thoth help status` still forwards to `thoth status --help`."""
+    r = CliRunner().invoke(cli, ["help", "status"])
+    assert r.exit_code == 0, r.output
+    assert "OP_ID" in r.output or "status" in r.output.lower()
+
+
+def test_help_auth_topic_via_help_subcommand_removed():
+    """The `auth` virtual topic on `thoth help auth` is dropped per Q5-A row 13.ii."""
+    r = CliRunner().invoke(cli, ["help", "auth"])
+    assert r.exit_code == 2, r.output
+    combined = r.output or ""
+    assert "unknown help topic" in combined.lower() or "available topics" in combined.lower()

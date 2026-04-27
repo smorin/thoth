@@ -26,7 +26,8 @@ PARITY_LABELS = [
     "providers_list",
     "config_list",
     "modes_no_args",
-    "help_auth",
+    # "help_auth" removed in P16 PR2 T8 — `thoth help auth` virtual topic
+    # was dropped per Q5-A row 13.ii.
     "unknown_command",
 ]
 
