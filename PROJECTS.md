@@ -1,4 +1,8 @@
 ## [ ] Project P18: Immediate vs Background — Explicit `kind`, Runtime Mismatch, Path Split, Streaming, Cancel (v2.16.0)
+
+**Primary spec**: `docs/superpowers/specs/2026-04-26-p18-immediate-vs-background-design.md` (decisions Q1–Q12, architecture §5, rollout §6, testing strategy §7, cross-project coordination §8, risks §9)
+**Plan**: `docs/superpowers/plans/2026-04-26-p18-immediate-vs-background.md` (TDD discipline, phase dependency graph, file map, Phase A starter steps, commit cadence, end-of-project checklist)
+
 **Goal**: Make the immediate-vs-background execution distinction a first-class, explicit property of every mode. Promote the existing `Kind = Literal["immediate", "background"]` vocabulary (`modes_cmd.py:22`) to a required `kind` field on every builtin mode, derive a `KNOWN_MODELS` registry from `BUILTIN_MODES` (single source of truth, cross-mode consistency enforced), and surface mode/model mismatches at **runtime** (not config-load) via a typed `ModeKindMismatchError` raised by the provider's `submit()`. Split `_execute_research` into `_execute_immediate` (no progress bar, no resume/status hints, streams output) and `_execute_background` (current behavior, renamed). Add a `provider.stream()` contract for the immediate path with `--out FILE` / `--out -,FILE` / `--append` flags backed by a `MultiSink`. Add a `provider.cancel()` capability per provider, gated on per-provider research, plus a `thoth cancel <op-id>` subcommand. Rename `mini_research` → `quick_research` (deprecation alias). Add an extended-only test suite, parametrized over `KNOWN_MODELS`, that hits the real API to verify each model's declared kind matches actual API behavior — gated behind `pytest -m extended` / `./thoth_test --extended`, never on default runs.
 
 **Coordination with P16 PR2 (v3.0.0)**: The `thoth ask` *subcommand* introduced by PR2 is the canonical scripted research entrypoint and inherits `--mode`. P18's path split happens **inside** the existing dispatch — when `thoth ask "..." --mode <immediate-mode>` lands post-PR2, it automatically gets streaming behavior. No coupling to PR2's merge order; P18 can ship before, after, or alongside.
@@ -190,7 +194,10 @@
 ## [ ] Project P16 PR2: Remove Legacy Shims, Add resume + ask Subcommands (v3.0.0)
 **Goal**: Remove every flag-style shim cataloged in the legacy-form audit; migrate each to a canonical Click subcommand or sub-subcommand; ensure no functionality silently disappears (every removed form must either map to a new form OR be explicitly dropped with documented justification). Triggers v3.0.0 MAJOR.
 
-**Spec**: `docs/superpowers/specs/2026-04-25-promote-admin-commands-design.md` (original PR2 decisions Q2-Q7) + `docs/superpowers/specs/2026-04-26-p16-pr2-legacy-form-audit.md` (comprehensive shim inventory)
+**Specs**:
+- `docs/superpowers/specs/2026-04-26-p16-pr2-design.md` — PR2-specific design (decisions Q1-Q7-PR2, components, testing strategy, rollout)
+- `docs/superpowers/specs/2026-04-25-promote-admin-commands-design.md` — original P16 design (decisions Q2-Q7 from PR1 brainstorming)
+- `docs/superpowers/specs/2026-04-26-p16-pr2-legacy-form-audit.md` — comprehensive shim inventory (the parity checklist)
 
 **Out of scope (PR3)**
 - `--json` for every admin command (already partially shipped; full coverage in PR3)
