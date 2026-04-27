@@ -36,7 +36,7 @@ def test_invoke_routes_mode_positional(fake_group, monkeypatch):
     """P16-TS03: invoke routes BUILTIN_MODES first arg to research path."""
     captured = {}
 
-    def fake_run(mode, prompt, ctx_obj):
+    def fake_run(mode, prompt, ctx_obj=None, **kwargs):
         captured["mode"] = mode
         captured["prompt"] = prompt
         captured["ctx_obj"] = ctx_obj
@@ -56,7 +56,7 @@ def test_invoke_routes_bare_prompt(fake_group, monkeypatch):
     """P16-TS04: invoke routes unknown first-word to default-mode bare-prompt."""
     captured = {}
 
-    def fake_run(mode, prompt, ctx_obj):
+    def fake_run(mode, prompt, ctx_obj=None, **kwargs):
         captured["mode"] = mode
         captured["prompt"] = prompt
 
@@ -104,28 +104,29 @@ def test_init_subcommand_invokes_handler(monkeypatch):
 
 def test_status_subcommand_registered():
     from thoth.cli import cli
+
     assert "status" in cli.commands
 
 
 def test_status_requires_op_id():
-    """P16-TS08: thoth status (no OP_ID) → Click missing-arg error, exit 2."""
+    """P16-TS08: thoth status (no OP_ID) → legacy op-required error."""
     from thoth.cli import cli
+
     runner = CliRunner()
     result = runner.invoke(cli, ["status"])
-    assert result.exit_code == 2
-    assert "Missing argument" in result.output or "OP_ID" in result.output
+    assert result.exit_code == 1
+    assert "requires an operation ID" in result.output
 
 
 def test_status_invokes_handler(monkeypatch):
     from thoth.cli import cli
+
     called = {}
 
     def fake_status(self, operation_id):
         called["op_id"] = operation_id
 
-    monkeypatch.setattr(
-        "thoth.commands.CommandHandler.status_command", fake_status
-    )
+    monkeypatch.setattr("thoth.commands.CommandHandler.status_command", fake_status)
     runner = CliRunner()
     result = runner.invoke(cli, ["status", "abc123"])
     assert result.exit_code == 0
@@ -134,11 +135,13 @@ def test_status_invokes_handler(monkeypatch):
 
 def test_list_subcommand_registered():
     from thoth.cli import cli
+
     assert "list" in cli.commands
 
 
 def test_list_all_flag(monkeypatch):
     from thoth.cli import cli
+
     called = {}
 
     def fake_list(self, show_all=False):
@@ -153,16 +156,19 @@ def test_list_all_flag(monkeypatch):
 
 def test_providers_subgroup_registered():
     from thoth.cli import cli
+
     assert "providers" in cli.commands
     assert isinstance(cli.commands["providers"], click.Group)
 
 
 def test_providers_list_invokes_correct_function(monkeypatch):
     from thoth.cli import cli
+
     called = {}
 
-    def fake_list(cfg):
+    def fake_list(cfg, filter_provider=None):
         called["invoked"] = True
+        called["filter_provider"] = filter_provider
         return 0
 
     monkeypatch.setattr("thoth.commands.providers_list", fake_list)
@@ -170,16 +176,19 @@ def test_providers_list_invokes_correct_function(monkeypatch):
     result = runner.invoke(cli, ["providers", "list"])
     assert result.exit_code == 0
     assert called["invoked"] is True
+    assert called["filter_provider"] is None
 
 
 def test_config_subgroup_registered():
     from thoth.cli import cli
+
     assert "config" in cli.commands
     assert isinstance(cli.commands["config"], click.Group)
 
 
 def test_config_list_invokes_handler(monkeypatch):
     from thoth.cli import cli
+
     called = {}
 
     def fake_config_command(op, rest):
@@ -196,11 +205,13 @@ def test_config_list_invokes_handler(monkeypatch):
 
 def test_modes_registered():
     from thoth.cli import cli
+
     assert "modes" in cli.commands
 
 
 def test_modes_list_invokes_handler(monkeypatch):
     from thoth.cli import cli
+
     called = {}
 
     def fake_modes_command(op, rest):
@@ -217,11 +228,13 @@ def test_modes_list_invokes_handler(monkeypatch):
 
 def test_help_subcommand_registered():
     from thoth.cli import cli
+
     assert "help" in cli.commands
 
 
 def test_help_no_topic_shows_group_help():
     from thoth.cli import cli
+
     runner = CliRunner()
     result = runner.invoke(cli, ["help"])
     assert result.exit_code == 0
@@ -230,6 +243,7 @@ def test_help_no_topic_shows_group_help():
 
 def test_help_with_topic_forwards_to_subcommand_help():
     from thoth.cli import cli
+
     runner = CliRunner()
     result = runner.invoke(cli, ["help", "init"])
     assert result.exit_code == 0
@@ -238,6 +252,7 @@ def test_help_with_topic_forwards_to_subcommand_help():
 
 def test_help_auth_calls_show_auth_help(monkeypatch):
     from thoth.cli import cli
+
     called = {}
 
     def fake_show_auth():
@@ -252,6 +267,7 @@ def test_help_auth_calls_show_auth_help(monkeypatch):
 
 def test_help_unknown_topic_errors():
     from thoth.cli import cli
+
     runner = CliRunner()
     result = runner.invoke(cli, ["help", "nosuchtopic"])
     assert result.exit_code == 2
@@ -261,6 +277,7 @@ def test_help_unknown_topic_errors():
 def test_help_has_two_sections():
     """P16-TS09: thoth --help has 'Run research' and 'Manage thoth' sections."""
     from thoth.cli import cli
+
     runner = CliRunner()
     result = runner.invoke(cli, ["--help"])
     assert result.exit_code == 0
@@ -270,6 +287,7 @@ def test_help_has_two_sections():
 
 def test_help_run_section_contains_research_verbs():
     from thoth.cli import cli
+
     runner = CliRunner()
     result = runner.invoke(cli, ["--help"])
     # ask and resume don't exist until PR2, but status and list do in PR1.
@@ -285,6 +303,7 @@ def test_help_run_section_contains_research_verbs():
 
 def test_help_manage_section_contains_admin_verbs():
     from thoth.cli import cli
+
     runner = CliRunner()
     result = runner.invoke(cli, ["--help"])
     out = result.output
@@ -301,6 +320,7 @@ def test_help_manage_section_contains_admin_verbs():
 def test_help_has_modes_epilog():
     """P16-TS10: --help mentions the positional modes."""
     from thoth.cli import cli
+
     runner = CliRunner()
     result = runner.invoke(cli, ["--help"])
     out = result.output

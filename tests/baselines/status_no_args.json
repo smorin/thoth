@@ -2,8 +2,8 @@
   "argv": [
     "status"
   ],
-  "exit_code": 2,
+  "exit_code": 1,
   "label": "status_no_args",
-  "stderr": "Usage: python -m thoth status [OPTIONS] OP_ID\nTry 'python -m thoth status -h' for help.\n\nError: Missing argument 'OP_ID'.\n",
-  "stdout": ""
+  "stderr": "",
+  "stdout": "Error: status command requires an operation ID\n"
 }

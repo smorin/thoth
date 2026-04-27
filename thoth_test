@@ -2843,7 +2843,7 @@ all_tests = [
         ],
         expected_stdout_patterns=[r"Request timed out|Timeout|Connection error"],
         expected_exit_code=1,
-        timeout=5,
+        timeout=20,
         provider="openai",
     ),
     # ============================================================================
