@@ -2,8 +2,8 @@
   "argv": [
     "status"
   ],
-  "exit_code": 1,
+  "exit_code": 2,
   "label": "status_no_args",
-  "stderr": "",
-  "stdout": "Error: status command requires an operation ID\n"
+  "stderr": "Error: status command requires an operation ID\n",
+  "stdout": ""
 }

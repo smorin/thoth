@@ -1812,8 +1812,8 @@ all_tests = [
         test_id="M5T-02",
         description="Status command shows help when no ID",
         command=[THOTH_EXECUTABLE, "status"],
-        expected_stdout_patterns=[r"Error: status command requires an operation ID"],
-        expected_exit_code=1,
+        expected_stderr_patterns=[r"Error: status command requires an operation ID"],
+        expected_exit_code=2,
     ),
     TestCase(
         test_id="M5T-03",

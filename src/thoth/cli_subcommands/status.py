@@ -14,8 +14,8 @@ from thoth.config import ConfigManager
 def status(ctx: click.Context, operation_id: str | None) -> None:
     """Check status of a research operation by ID."""
     if operation_id is None:
-        click.echo("Error: status command requires an operation ID")
-        ctx.exit(1)
+        click.echo("Error: status command requires an operation ID", err=True)
+        ctx.exit(2)
     config_path = ctx.obj.get("config_path") if ctx.obj else None
     config_manager = ConfigManager()
     config_manager.load_all_layers({"config_path": config_path})

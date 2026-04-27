@@ -47,3 +47,23 @@ def test_clarify_alone_rejected():
     assert r.exit_code == 2, r.output
     combined = r.output or ""
     assert "--interactive" in combined or "interactive" in combined.lower()
+
+
+def test_status_no_arg_exits_2():
+    """Q5-A row 6: bare `thoth status` exits 2 (Click default for missing required arg)."""
+    r = CliRunner().invoke(cli, ["status"])
+    assert r.exit_code == 2, r.output
+
+
+def test_config_get_invalid_layer_exits_2():
+    """Q5-A row 8: `config get KEY --layer NOPE` exits 2 via Click choice validation."""
+    r = CliRunner().invoke(cli, ["config", "get", "general.default_mode", "--layer", "NOPE"])
+    assert r.exit_code == 2, r.output
+    combined = r.output or ""
+    assert "invalid value" in combined.lower() or "choose from" in combined.lower()
+
+
+def test_providers_no_leaf_exits_2():
+    """Q5-A row 4: bare `thoth providers` exits 2 (no-leaf default)."""
+    r = CliRunner().invoke(cli, ["providers"])
+    assert r.exit_code == 2, r.output
