@@ -253,6 +253,239 @@ Each item below must be addressed by PR2's `resume` subcommand and `providers li
 
 ---
 
+## Comprehensive shim inventory (PR2 brainstorming)
+
+> Audit run on 2026-04-26 from working tree at HEAD `9cfab633ff626e7ce0d807f229aa054a28ec09d7`.
+> Goal: every flag-style shim, hidden subcommand, and silent-behavior path
+> in the current CLI. PR2's removal scope must be measured against this list.
+
+### Inventory legend
+
+- **Form** — exact argv that triggers the shim
+- **File:line** — where it's implemented
+- **Canonical replacement** — proposed new form for PR2
+- **Test coverage** — pytest test ids + thoth_test case ids that exercise it (or "UNTESTED" if none)
+- **Silent-drop risk** — what would silently break if we just deleted the shim
+
+### 1. `--resume` family (top-level option-as-action)
+
+Cross-reference: see section "## --resume flag" earlier in this doc for the exhaustive treatment (mutex rules, exit codes, emitter sites, test list). The single canonical replacement is `thoth resume OP_ID`. Section 10 below has one row per form.
+
+### 2. `providers --` family (legacy `--` separator + in-group flag shim)
+
+Cross-reference: see section "## providers -- (legacy shim)" earlier in this doc. Two implementations share the same handler:
+- `thoth providers -- --list/--models/--keys/--refresh-cache/--no-cache` (the `--`-separator path), routed via `providers.py:34-62` group callback that inspects `ctx.args` (an unknown-arg dispatcher).
+- `thoth providers --list/--models/--keys` (the in-group hidden-subcommand path), `providers.py:140-173`.
+
+Both emit the same deprecation warning text (`providers.py:43-46, 110-112`).
+
+### 3. `modes --` family (PR1.5 hidden-subcommand shim)
+
+| Form | File:line | Canonical | Test coverage | Silent-drop risk |
+|---|---|---|---|---|
+| `thoth modes --json` | `cli_subcommands/modes.py:72-75` (hidden cmd) → `modes_command(None, ["--json", *args])` | `thoth modes list --json` | `tests/test_cli_regressions.py:113` (test_bug_cli_006) covers `["modes","list","--json"]` parity vs `["modes","--json"]`. The flag-style form itself is **UNTESTED directly**. | JSON consumers of `modes_cmd._op_list` would silently get plain-table output if the shim disappeared without a clear error. |
+| `thoth modes --show-secrets` | `cli_subcommands/modes.py:78-81` | `thoth modes list --show-secrets` | UNTESTED | Silent secret-masking re-engagement. Security-relevant: callers who depend on `--show-secrets` to view stored API keys would see masked output with no signal. |
+| `thoth modes --full` | `cli_subcommands/modes.py:84-87` | `thoth modes list --full` (when used with `--name`) | UNTESTED | Silent truncation of `system_prompt` to 200 chars (modes_cmd.py:230). |
+| `thoth modes --name <NAME>` | `cli_subcommands/modes.py:90-98` (consumes one positional) | `thoth modes list --name NAME` | UNTESTED | Detail view disappears; user gets table of all modes with no error. |
+| `thoth modes --source <SRC>` | `cli_subcommands/modes.py:101-109` (consumes one positional) | `thoth modes list --source SRC` | UNTESTED | Source filter silently ignored; user gets all modes. |
+| `thoth modes <UNKNOWN_OP>` | `cli_subcommands/modes.py:14-28` (`ModesGroup.invoke` unknown-arg dispatcher) | Currently routes to `modes_command(arg0, args[1:])` which returns 2 with `"unknown modes op: ..."`. | `thoth_test:2128-2129` asserts `"unknown modes op"` for `modes bogus_op`. | Without `ModesGroup.invoke` override, Click would emit `"No such command 'bogus_op'"` (exit 2) — wording change only, same exit code. |
+| `thoth modes` (no leaf) | `cli_subcommands/modes.py:39-49` (`invoke_without_command=True` + `ctx.invoked_subcommand is None`) | `thoth modes list` (proposed) | `tests/test_p16_thothgroup.py:223` asserts the bare form lists modes (current default). | If `modes` becomes subcommand-required, the bare form would exit 2 — DESIGN DECISION required. |
+
+### 4. `config` subgroup analysis
+
+`src/thoth/cli_subcommands/config.py` defines 7 leaves (`get`, `set`, `unset`, `list`, `path`, `edit`, `help`), all with `context_settings=_PASSTHROUGH_CONTEXT` (`ignore_unknown_options=True, allow_extra_args=True`) and `nargs=-1, type=click.UNPROCESSED`. Every flag is parsed downstream by `config_cmd.py` ad-hoc parsers.
+
+| Form | File:line | Canonical (PR2 proposal) | Test coverage | Silent-drop risk |
+|---|---|---|---|---|
+| `thoth config` (no op) | `config.py:14-21` | exit 2 with op-required hint (current behavior) | `tests/test_p16_dispatch_parity.py:100` asserts exit 2; `tests/baselines/status_no_args.json` not relevant. | None — already canonical. |
+| `thoth config get KEY` | `config.py:31-35` → `config_cmd._op_get` | Same; promote `--raw / --json / --show-secrets / --layer` to real Click options. | `tests/test_cli_regressions.py:101` covers `--raw` end-to-end. | If passthrough removed without typed options, `--raw` etc. would silently break. |
+| `thoth config get KEY --raw` | `config_cmd.py:65-67, 104` | `thoth config get KEY --raw` | `tests/test_cli_regressions.py:101` (BUG-CLI-004). | **Security-adjacent silent drop**: line 104 reads `if _is_secret_key(key) and not show_secrets and not raw:` — `--raw` *bypasses secret masking*. PR2 must decide: (a) keep `--raw` as masking bypass (document loudly), (b) require explicit `--show-secrets` even with `--raw`. |
+| `thoth config get KEY --json` | `config_cmd.py:68-70` | Same | UNTESTED | None — pure formatting flag. |
+| `thoth config get KEY --show-secrets` | `config_cmd.py:71-73` | Same | UNTESTED | Security-adjacent (reveals masked values). |
+| `thoth config get KEY --layer L` | `config_cmd.py:59-64` | Same | UNTESTED | Returns wrong-layer data silently if dropped. |
+| `thoth config set KEY VALUE` | `config.py:38-42` → `config_cmd._op_set` | Same; promote `--project / --string` flags. | UNTESTED in pytest; no thoth_test coverage of the flags. | `--project` writes to `./thoth.toml` instead of `~/.thoth/config.toml` — silent drop = wrong target file. |
+| `thoth config set KEY VALUE --project` | `config_cmd.py:186-188` | Same | UNTESTED | See above. |
+| `thoth config set KEY VALUE --string` | `config_cmd.py:189-191` | Same | UNTESTED | Without `--string`, `_parse_value` (line 111-124) silently coerces `"true"/"false"/numbers` to bool/int/float — losing string intent. |
+| `thoth config unset KEY` | `config.py:45-49` → `config_cmd._op_unset` | Same; promote `--project`. | UNTESTED | Same wrong-target risk as `set --project`. |
+| `thoth config unset KEY --project` | `config_cmd.py:245-247` | Same | UNTESTED | See above. |
+| `thoth config list` | `config.py:52-56` → `config_cmd._op_list` | Same; promote `--keys / --json / --show-secrets / --layer`. | `tests/test_p16_thothgroup.py:201` plain invocation. | None — canonical. |
+| `thoth config list --keys` | `config_cmd.py:307-309, 330-333` | Same | UNTESTED | **Silent drop**: `--keys` returns at line 333 BEFORE the `--json` and `--show-secrets` branches; combining them silently drops the second flag. PR2 should reject the combo or document precedence. |
+| `thoth config list --json` | `config_cmd.py:310-312` | Same | UNTESTED | None — formatting flag. |
+| `thoth config list --show-secrets` | `config_cmd.py:313-315` | Same | UNTESTED | Reveals secrets — security-adjacent. |
+| `thoth config list --layer L` | `config_cmd.py:301-306` | Same | UNTESTED | Returns wrong layer's data if dropped. |
+| `thoth config list <unknown-arg>` | `config_cmd.py:316-318` | Same | UNTESTED | Already exits 2 with `"unknown arg: ..."`. |
+| `thoth config path` | `config.py:59-63` → `config_cmd._op_path` | Same; promote `--project`. | UNTESTED | None — read-only. |
+| `thoth config path --project` | `config_cmd.py:348` | Same | UNTESTED | Silently shows wrong path if `--project` dropped. |
+| `thoth config edit` | `config.py:66-70` → `config_cmd._op_edit` | Same; promote `--project`. | UNTESTED in pytest. | None — opens `$EDITOR`. |
+| `thoth config edit --project` | `config_cmd.py:366` | Same | UNTESTED | Edits wrong file silently if dropped. |
+| `thoth config help` | `config.py:73-77` → `config_cmd._op_help` (calls `help.show_config_help()`) | Use `thoth help config` (which already exists at `help_cmd.py:31-42` and forwards to `config --help`). PR2 should pick ONE: keep `config help` leaf or rely on `help config`. | UNTESTED | Two registration paths today: `thoth config help` AND `thoth help config` route through different code paths. The first prints the rich-formatted text from `help.show_config_help()`; the second prints Click's `--help` output. **They diverge.** PR2 should converge or document. |
+| `thoth config <op> <unknown-flag>` | `_PASSTHROUGH_CONTEXT` | `ignore_unknown_options=True` means Click never validates the flag; downstream parsers (`_op_get`, etc.) silently include it as a positional. | UNTESTED | Silent flag-into-positional coercion. PR2 with typed Click options would catch this. |
+| `thoth config edit -- --extra-args` | passthrough chain | No `--`-to-EDITOR forwarding implemented. The `_op_edit` shells out via `subprocess.call([editor, str(path)])` with NO arg passthrough. | UNTESTED | `$EDITOR` flags are NOT forwarded (no `--` passthrough to subprocess). Worth noting in PR2 design. |
+
+### 5. `init` / `status` / `list` / `help` subcommands
+
+| Form | File:line | Notes / passthrough |
+|---|---|---|
+| `thoth init` | `cli_subcommands/init.py:15-24` | Single subcommand, NO options, NO passthrough. Reads `ctx.obj["config_path"]` from group inheritance only. Clean. |
+| `thoth status OP_ID` | `cli_subcommands/status.py:11-23` | One positional (`OP_ID`, optional). NO flags. NO passthrough. If missing → exit 1 with `"status command requires an operation ID"` (line 17). |
+| `thoth status` (no arg) | `cli_subcommands/status.py:16-18` | Exit 1 (NOT 2). Baseline at `tests/baselines/status_no_args.json`. PR2 should consider whether exit 1 is canonical (Click's default for missing required argument is 2). |
+| `thoth list` | `cli_subcommands/list_cmd.py:12-21` | One option `--all` / `show_all`, no positional, no passthrough. Clean. |
+| `thoth list --all` | `cli_subcommands/list_cmd.py:13` | Same. |
+| `thoth help` | `cli_subcommands/help_cmd.py:20-23` | One optional positional (`topic`). If absent → prints parent-group help (top-level). |
+| `thoth help <subcommand>` | `cli_subcommands/help_cmd.py:31-42` | Forwards to `<subcommand> --help`. If unknown → exit 2 with `"Available topics: ...auth"`. |
+| `thoth help auth` | `cli_subcommands/help_cmd.py:25-28` | Special-cased: routes to `show_auth_help()` directly. `auth` is NOT a Click subcommand. **Virtual topic.** |
+| `thoth -h auth` / `thoth --help auth` | `help.py:51-55` (`ThothGroup.parse_args`) | Special-cased at parse time: if argv is exactly `[--help|-h, auth]`, calls `show_auth_help()` and exits 0. **Top-level option-as-action with hidden side effect.** No test coverage found. |
+
+### 6. Top-level group options that dispatch (option-as-action)
+
+The top-level `cli` group callback (`src/thoth/cli.py:467-624`) defines 21 options. Most are configuration only, but several trigger actions or have special precedence rules:
+
+| Flag | File:line | Trigger / behavior | Mutex rules |
+|---|---|---|---|
+| `--version` / `-V` | `cli.py:502, 590-599` | Action: prints `Thoth v<VERSION>` and `sys.exit(0)`. | Mutex with EVERY other option/positional via `_version_conflicts(ctx, opts)` (cli.py:93-125). Any other supplied option → `BadParameter("--version must be used alone; remove other arguments/options: …")`. |
+| `--resume` / `-R` | `cli.py:477, 347-358` | Action: routes to `_thoth_run.resume_operation(...)` after `_dispatch_click_fallback` runs. | Mutex with `--async` (cli.py:609-610), positional research prompt (cli.py:348-349), `--pick-model` (cli.py:621-622), `--version` (via _version_conflicts). **Silent precedence over `--interactive`/`--clarify`** (line 347 checked before line 360). |
+| `--interactive` / `-i` | `cli.py:520, 360-363` | Action: enters `enter_interactive_mode(...)`. | Mutex with `--pick-model` (cli.py:621). Silently loses to `--resume`. |
+| `--clarify` | `cli.py:521, 320` | Configures interactive mode's `clarify_mode=True`. Does NOT enter interactive mode by itself — it's a modifier consumed only when interactive is also set. | None. **Silently no-ops if `--interactive` not set.** UNTESTED. |
+| `--pick-model` / `-M` | `cli.py:522-528, 618-624, 374-376` | Modifies model selection during research run. | Mutex with `--resume`, `--interactive`, registered subcommands as `first arg`, AND requires a prompt (cli.py:621-624 — multi-condition predicate is itself a precedence rule worth flagging). |
+| `--prompt` / `-q` | `cli.py:474, 365-371` | Provides prompt content; falls through to research dispatch. | Mutex with `--prompt-file` (cli.py:612-613). |
+| `--prompt-file` / `-F` | `cli.py:475, 173-174` | Reads prompt from file/stdin; triggers research path. | Mutex with `--prompt`. |
+| `--config` / `-c` | `cli.py:511, 601` | Configures `_thoth_config._config_path` BEFORE any subcommand runs (via `_apply_config_path`). | None. Silently affects every downstream command. |
+| `--input-file` | `cli.py:486-492` | Configures research run input. | Mutex with `--auto` (cli.py:615-616). |
+| `--auto` | `cli.py:493-500` | Configures research run input. | Mutex with `--input-file`. |
+| All other options (`--mode`, `--project`, `--output-dir`, `--provider`, `--verbose`, `--api-key-*`, `--combined`, `--quiet`, `--no-metadata`, `--timeout`, `--async`) | `cli.py:473-528` | Pure configuration; no standalone action. | Various per-pair mutexes; `--async` mutex with `--resume`. |
+
+### 7. Hidden subcommands
+
+`grep -n hidden=True src/thoth/` results (8 hits, 2 modules):
+
+| File:line | Name | Purpose | PR2 disposition |
+|---|---|---|---|
+| `cli_subcommands/providers.py:140-149` | `--list` | PR1.5 in-group shim → `_run_legacy(["--list", ...])` | REMOVE per existing PR2 design. |
+| `cli_subcommands/providers.py:152-161` | `--models` | PR1.5 in-group shim → `_run_legacy(["--models", ...])` | REMOVE per existing PR2 design. |
+| `cli_subcommands/providers.py:164-173` | `--keys` | PR1.5 in-group shim → `_run_legacy(["--keys", ...])` | REMOVE per existing PR2 design. |
+| `cli_subcommands/modes.py:72-75` | `--json` | PR1.5 in-group shim → `_dispatch_default(["--json", ...])` | DECISION REQUIRED — not in current PR2 design. |
+| `cli_subcommands/modes.py:78-81` | `--show-secrets` | Same | DECISION REQUIRED |
+| `cli_subcommands/modes.py:84-87` | `--full` | Same | DECISION REQUIRED |
+| `cli_subcommands/modes.py:90-98` | `--name` | Same (consumes one positional) | DECISION REQUIRED |
+| `cli_subcommands/modes.py:101-109` | `--source` | Same (consumes one positional) | DECISION REQUIRED |
+
+### 8. Unknown-arg dispatchers
+
+Every `@click.group(invoke_without_command=True)` callback that branches on `ctx.args` / `ctx.protected_args`:
+
+| File:line | Class/callback | Branching logic | Test coverage | PR2 implication |
+|---|---|---|---|---|
+| `help.py:64-89` | `ThothGroup.invoke` | 3 paths after collecting `protected_args + args`: (1) `args[0] in self.commands` → standard dispatch; (2) `args[0] in BUILTIN_MODES` → `_dispatch_click_fallback` (mode-positional); (3) else → `_dispatch_click_fallback` (bare-prompt). No-args → option-only fallback. | `tests/test_p16_thothgroup.py` (multiple), `tests/test_cli_regressions.py:55,76` | This is the CORE shim of the entire CLI. PR2 design must explicitly preserve OR reject `thoth deep_research "topic"` (mode-positional) and `thoth "PROMPT"` (bare-prompt). The PR2 doc currently doesn't address them. |
+| `help.py:51-55` | `ThothGroup.parse_args` | Hijacks `["--help"\|"-h", "auth"]` argv shape at parse time. | UNTESTED | Documented as "auth virtual topic". PR2 should keep, remove, or convert to a real subcommand. |
+| `cli_subcommands/providers.py:34-62` | `providers` callback | Inspects `ctx.args` for `legacy_flags = {--list, --models, --keys, --refresh-cache, --no-cache}`. If found → deprecation warning + dispatch. Else if `args` → exit 2 `"Unknown providers arguments: ..."`. Else → help, exit 0. | `tests/test_providers_subcommand.py:24` (legacy form), `thoth_test:2250` (no-args). | REMOVE legacy-flags branch per PR2 design; keep no-args help. |
+| `cli_subcommands/modes.py:14-28` | `ModesGroup.invoke` | If `args[0] not in self.commands` → route to `modes_command(args[0], args[1:])`. | `thoth_test:2128` asserts `unknown modes op` for `modes bogus_op`. | DECISION REQUIRED — `modes_command` returns 2 for unknown ops with custom wording; if removed, Click's default `"No such command 'bogus_op'"` would replace the wording. |
+| `cli_subcommands/config.py:14-21` | `config` group callback | Only checks `ctx.invoked_subcommand is None` for the no-op error. Does NOT branch on `ctx.args`. | `tests/test_p16_dispatch_parity.py:100` | Already canonical — no shim. |
+
+### 9. Silent-precedence / silent-drop / silent-ambiguity table
+
+Every flag-combination the CLI accepts where the result is undefined or "first-wins" silent:
+
+| File:line | Precedence/drop | Risk |
+|---|---|---|
+| `cli.py:347, 360` | `--resume` checked before `--interactive` → resume silently wins. | Untested-but-in-production. |
+| `cli.py:474, 521` | `--clarify` set without `--interactive` → silent no-op (consumed only inside `_enter_interactive_from_options`). | Untested. |
+| `cli.py:374, 365` | `--pick-model` requires a prompt; if no prompt + no other research args, exit happens at line 367 before the `pick_model` branch — but `--pick-model` itself is validated at cli.py:621-624 and rejects if no prompt-source. Multi-condition predicate is hard to reason about. | The cli.py:621 condition `if resume_id or interactive or (first in ctx.command.commands ...)` mixes 3 mutex rules into one. If `first` (positional 0) is also in `ctx.command.commands` (e.g., `pick-model providers`), `--pick-model` is silently rejected even though a user could legitimately want it on a research call that happens to include a token matching a subcommand. |
+| `commands.py:363, 413, 442` | `providers_command` runs FIRST matching `if`-branch and `return`s: `--list` wins over `--keys` over `--models`. | Already documented earlier in this doc. |
+| `commands.py:444-456` | `--refresh-cache` + `--no-cache` both forwarded to provider; CLI does NOT validate. | Already documented. |
+| `commands.py:320` | `--refresh-cache` / `--no-cache` ALONE (no `--list/--models/--keys`) → falls into help branch, silently no-ops. | Already documented. |
+| `providers.py:53` | `--check` aliased to `--keys`; undocumented, untested. | Already documented. |
+| `providers.py:121-127` | `_run_legacy` only honors `--provider` for `--models`; `--list --provider X` legacy form silently drops the filter (the new `providers list --provider X` does honor it). | Already documented; PR2 gating fixes by structure. |
+| `config_cmd.py:104` | `_op_get`: `--raw` BYPASSES secret masking even without `--show-secrets`. | **Security-adjacent silent behavior.** Reading a secret key with `--raw` reveals it; users may not realize. PR2 should make this explicit. |
+| `config_cmd.py:330-333` | `_op_list`: `--keys` returns immediately; combined `--keys --json` silently drops `--json`; combined `--keys --show-secrets` silently drops `--show-secrets`. | Untested. PR2 should reject the combo or document precedence. |
+| `config_cmd.py:347-358` | `_op_path`, `_op_edit`, `_op_help` each only consume `--project` (or nothing for `_op_help`); every other arg silently ignored. `_op_path` uses `"--project" in args` truthiness — passing `--projects` (typo) is silently NOT honored. `_op_edit` same. | Untested. Typo-eats-flag. |
+| `modes_cmd.py:243-261` | `_op_list`: `--name X` returns at line 261 before line 263; combined `--name X --source Y` silently drops `--source`. | Untested. |
+| `modes_cmd.py:163-202` | `_op_list` re-implements arg parsing manually (does not use Click); any unknown arg → exit 2 with `"unknown arg: ..."`. Already errors hard, no silent drop. | OK. |
+| `cli.py:621` | `--pick-model` precedence predicate mixes `resume_id`, `interactive`, AND `first in ctx.command.commands`. Triple-OR is hard to test exhaustively. | Tested for `resume_id` (test_pick_model.py); `interactive` and `first-in-commands` cases UNTESTED. |
+
+### 10. Master parity checklist for PR2
+
+Every old form found in this audit must either work in PR2 or fail with a clear suggestion. Each row gets a status (`REMOVE` = drop with exit-2-suggestion, `KEEP` = canonical, `KEEP?` = design decision required, `RENAME` = move under a new leaf).
+
+| Old form | Status in PR2 | New form | Test coverage today | Test required for PR2 |
+|---|---|---|---|---|
+| `thoth --resume OP_ID` | REMOVE | `thoth resume OP_ID` | `tests/test_resume.py:48,90,131`; `tests/test_cli_regressions.py:76` | Migrated tests + new `tests/test_resume_subcommand.py` exit-2-with-suggestion test |
+| `thoth -R OP_ID` | REMOVE | `thoth resume OP_ID` | implicit via `--resume` (alias) | exit-2 test for `-R` |
+| `thoth --resume OP --pick-model` | REMOVE-path | (rejected combo on new resume) | `tests/test_pick_model.py:48,109` | Migrate + verify exit 2 |
+| `thoth --resume OP --async` | REMOVE-path | (rejected combo) | UNTESTED in pytest | New test |
+| `thoth --resume OP --interactive` | REMOVE-path | DESIGN DECISION (silently wins today) | UNTESTED | New test for chosen behavior |
+| `thoth --resume OP --config PATH` | REMOVE-path | `thoth --config PATH resume OP` (group inheritance) | UNTESTED | New test |
+| `thoth providers -- --list` | REMOVE | `thoth providers list` | `tests/test_providers_subcommand.py:24`; `thoth_test:2307` | Migrate + exit-2-with-suggestion test |
+| `thoth providers -- --models` | REMOVE | `thoth providers models` | `thoth_test:2260,2269` | Migrate |
+| `thoth providers -- --keys` | REMOVE | `thoth providers check` | UNTESTED | New test |
+| `thoth providers -- --refresh-cache` (alone) | REMOVE | DESIGN DECISION — currently silent no-op | UNTESTED | New test (likely exit 2) |
+| `thoth providers -- --no-cache` (alone) | REMOVE | DESIGN DECISION — silent no-op today | UNTESTED | New test |
+| `thoth providers -- --models --refresh-cache` | REMOVE | `thoth providers models --refresh-cache` | UNTESTED | New leaf-flag option + test |
+| `thoth providers -- --models --no-cache` | REMOVE | `thoth providers models --no-cache` | UNTESTED | New leaf-flag option + test |
+| `thoth providers -- --models --provider X --refresh-cache` | REMOVE | `thoth providers models --provider X --refresh-cache` | UNTESTED (PRD v24 documents) | New test |
+| `thoth providers -- --refresh-cache --no-cache` | REMOVE | (combo rejected on new leaf) | UNTESTED | New mutex test |
+| `thoth providers -- --list --keys` (silent drop today) | REMOVE | (combo impossible structurally) | UNTESTED | None needed (resolved by structure) |
+| `thoth providers --list` (in-group hidden) | REMOVE | `thoth providers list` | UNTESTED | exit-2-with-suggestion test |
+| `thoth providers --models` (in-group hidden) | REMOVE | `thoth providers models` | UNTESTED | exit-2 test |
+| `thoth providers --keys` (in-group hidden) | REMOVE | `thoth providers check` | UNTESTED | exit-2 test |
+| `thoth providers --check` (alias for --keys, undocumented) | REMOVE | `thoth providers check` | UNTESTED | None — drop silently or exit-2 |
+| `thoth providers` (no leaf) | KEEP | Help + exit 0 (or exit 2 — pick) | `tests/test_p16_dispatch_parity.py:89`; `thoth_test:2250` | Confirm chosen exit code |
+| `thoth modes` (no leaf) | KEEP? | DESIGN: stay as `modes list` default OR require explicit leaf | `tests/test_p16_thothgroup.py:223` | If "require leaf": exit-2 test + migrate baseline |
+| `thoth modes --json` | KEEP? | `thoth modes list --json` | UNTESTED (only the `list --json` form is tested at `tests/test_cli_regressions.py:113`) | exit-2-with-suggestion test if removed |
+| `thoth modes --show-secrets` | KEEP? | `thoth modes list --show-secrets` | UNTESTED | exit-2 test if removed |
+| `thoth modes --full` | KEEP? | `thoth modes list --full` | UNTESTED | exit-2 test if removed |
+| `thoth modes --name NAME` | KEEP? | `thoth modes list --name NAME` | UNTESTED | exit-2 test if removed |
+| `thoth modes --source SRC` | KEEP? | `thoth modes list --source SRC` | UNTESTED | exit-2 test if removed |
+| `thoth modes <UNKNOWN_OP>` | KEEP | currently exit 2 `"unknown modes op"` | `thoth_test:2128` | Decide whether to keep custom wording or accept Click default |
+| `thoth modes list` | KEEP | canonical | `tests/test_cli_regressions.py:113` | OK |
+| `thoth modes list --json/--show-secrets/--full/--name/--source` | KEEP-but-promote | Same; but flags should be Click options not passthrough | UNTESTED for individual flags | Add per-flag tests once promoted |
+| `thoth config` (no op) | KEEP | exit 2 op-required hint | `tests/test_p16_dispatch_parity.py:100` | OK |
+| `thoth config get KEY` | KEEP | canonical | `tests/test_cli_regressions.py:101` | OK |
+| `thoth config get KEY --raw` | KEEP-but-document | Promote to typed Click option; loud-document secret-bypass behavior | `tests/test_cli_regressions.py:101` | New test asserting masking-bypass behavior is documented |
+| `thoth config get KEY --json` | KEEP-but-promote | Typed flag | UNTESTED | New test |
+| `thoth config get KEY --show-secrets` | KEEP-but-promote | Typed flag | UNTESTED | New test |
+| `thoth config get KEY --layer L` | KEEP-but-promote | Typed flag | UNTESTED | New test |
+| `thoth config set KEY VALUE` | KEEP | canonical | UNTESTED | New test |
+| `thoth config set KEY VALUE --project` | KEEP-but-promote | Typed flag | UNTESTED | New test |
+| `thoth config set KEY VALUE --string` | KEEP-but-promote | Typed flag | UNTESTED | New test |
+| `thoth config unset KEY` | KEEP | canonical | UNTESTED | New test |
+| `thoth config unset KEY --project` | KEEP-but-promote | Typed flag | UNTESTED | New test |
+| `thoth config list` | KEEP | canonical | `tests/test_p16_thothgroup.py:201` | OK |
+| `thoth config list --keys` | KEEP-but-document | Promote + document precedence over `--json/--show-secrets` (or reject combo) | UNTESTED | New test for chosen behavior |
+| `thoth config list --json` | KEEP-but-promote | Typed flag | UNTESTED | New test |
+| `thoth config list --show-secrets` | KEEP-but-promote | Typed flag | UNTESTED | New test |
+| `thoth config list --layer L` | KEEP-but-promote | Typed flag | UNTESTED | New test |
+| `thoth config list --keys --json` (silent drop) | KEEP? | DESIGN: reject combo OR document precedence | UNTESTED | New test for chosen behavior |
+| `thoth config path` | KEEP | canonical | UNTESTED | New test |
+| `thoth config path --project` | KEEP-but-promote | Typed flag | UNTESTED | New test |
+| `thoth config edit` | KEEP | canonical | UNTESTED | New test |
+| `thoth config edit --project` | KEEP-but-promote | Typed flag | UNTESTED | New test |
+| `thoth config help` | KEEP? | DESIGN: keep leaf OR collapse to `thoth help config` (two paths today render different output) | UNTESTED | New convergence test |
+| `thoth init` | KEEP | canonical | covered by `tests/test_p16_*` baselines | OK |
+| `thoth status OP_ID` | KEEP | canonical | covered | OK |
+| `thoth status` (no arg) | KEEP-but-decide | exit 1 today; Click default would be exit 2 | `tests/baselines/status_no_args.json` | Recapture baseline if changed |
+| `thoth list` | KEEP | canonical | covered | OK |
+| `thoth list --all` | KEEP | canonical | UNTESTED in pytest | New test |
+| `thoth help` | KEEP | canonical | covered (renders top-level help) | OK |
+| `thoth help <subcommand>` | KEEP | canonical (forwards to `--help`) | covered | OK |
+| `thoth help auth` | KEEP-but-document | Virtual topic — `auth` is not a real subcommand | UNTESTED | New test |
+| `thoth -h auth` / `thoth --help auth` | KEEP? | `ThothGroup.parse_args` hijack — DESIGN: keep or remove | UNTESTED | New test |
+| `thoth completion` | DEAD | listed in `ADMIN_COMMANDS` (help.py:20) but never registered as a Click command. **Phantom in help renderer.** | UNTESTED | Remove from `ADMIN_COMMANDS` OR add a real `completion` subcommand |
+| `thoth deep_research "topic"` (mode-positional) | KEEP? | DESIGN: keep `ThothGroup.invoke` mode-positional path OR require `thoth ask --mode deep_research "topic"` | covered widely | Mass test migration if removed |
+| `thoth ask "PROMPT"` | NEW? | DESIGN: `ask` is in `RUN_COMMANDS` (help.py:14) but is NOT a registered subcommand today (only modes-as-positional). PR2 may need to add a real `ask` leaf. | UNTESTED (no `ask` subcommand exists) | New subcommand + tests |
+| `thoth resume OP_ID` | NEW | New canonical for `--resume` | `tests/test_resume_subcommand.py` (PR2-new) | Required |
+| `thoth "bare prompt"` (whole-argv-as-prompt) | KEEP? | DESIGN: `ThothGroup.invoke` bare-prompt path | covered widely (`tests/test_cli_regressions.py:55`) | Mass test migration if removed |
+| `thoth -m MODE -q PROMPT` | KEEP | flag-style research | covered (`tests/test_cli_regressions.py:23`) | OK |
+| `thoth --version` | KEEP | canonical | covered | OK |
+| `thoth --version <anything>` | KEEP | exit 2 mutex (`tests/test_cli_regressions.py:164`) | covered | OK |
+| `thoth --interactive` / `-i` | KEEP | enters interactive mode | covered | OK |
+| `thoth --clarify` (alone) | DEAD-MODIFIER | silent no-op without `--interactive` | UNTESTED | New test (likely exit 2 if alone) |
+| `thoth --pick-model -q PROMPT` | KEEP | research with model picker | covered | OK |
+| `thoth --pick-model --resume OP` | KEEP-mutex | exit 2 | covered | OK |
+| `thoth --pick-model --interactive` | KEEP-mutex | exit 2 | UNTESTED | New test |
+| `thoth --pick-model <subcommand>` | KEEP-mutex | exit 2 (e.g., `--pick-model providers`) | UNTESTED | New test |
+
+---
+
 ## Summary statistics
 
 - `--resume`-using tests:
