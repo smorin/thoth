@@ -61,11 +61,30 @@ def ask(
     if not (positional or prompt_opt or prompt_file):
         raise click.BadParameter("Provide a prompt: positional, --prompt, or --prompt-file")
 
+    # Q3-PR2-C: ask is the scripted research entry point. The interactive-only
+    # flags --interactive / --clarify / --pick-model don't apply; reject them
+    # with a clear error rather than silently dropping (least-surprise).
+    if interactive:
+        raise click.UsageError(
+            "--interactive does not apply to 'thoth ask'; "
+            "use 'thoth -i' (interactive mode) instead."
+        )
+    if clarify:
+        raise click.UsageError(
+            "--clarify does not apply to 'thoth ask'; "
+            "use 'thoth --clarify' (interactive mode with clarification) instead."
+        )
+    if pick_model:
+        raise click.UsageError(
+            "--pick-model does not apply to 'thoth ask'; "
+            "it requires interactive mode. Use 'thoth -i --pick-model' instead."
+        )
+
     # Subcommand-level option wins over group-level (already true via Click)
     inherited = ctx.obj or {}
 
-    def _pick(local, key):
-        return local if local is not None and local is not False else inherited.get(key)
+    def _pick(local, key: str):
+        return local if local is not None else inherited.get(key)
 
     effective_mode = _pick(mode_opt, "mode_opt") or "default"
     effective_provider = _pick(provider, "provider")
@@ -86,6 +105,7 @@ def ask(
         "mock": _pick(api_key_mock, "api_key_mock"),
     }
 
+    # Local import: avoids cli.py → cli_subcommands → cli.py circular at module load.
     from thoth.cli import (
         _apply_config_path,
         _prompt_max_bytes,

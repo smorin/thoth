@@ -103,3 +103,24 @@ def test_ask_no_prompt_at_all_rejected(monkeypatch):
     r = CliRunner().invoke(cli, ["ask"])
     assert r.exit_code == 2
     assert "prompt" in r.output.lower()
+
+
+def test_ask_interactive_flag_rejected(monkeypatch):
+    _stub_run_research(monkeypatch)
+    r = CliRunner().invoke(cli, ["ask", "topic", "--interactive"])
+    assert r.exit_code == 2
+    assert "--interactive does not apply" in r.output
+
+
+def test_ask_clarify_flag_rejected(monkeypatch):
+    _stub_run_research(monkeypatch)
+    r = CliRunner().invoke(cli, ["ask", "topic", "--clarify"])
+    assert r.exit_code == 2
+    assert "--clarify does not apply" in r.output
+
+
+def test_ask_pick_model_flag_rejected(monkeypatch):
+    _stub_run_research(monkeypatch)
+    r = CliRunner().invoke(cli, ["ask", "topic", "--pick-model"])
+    assert r.exit_code == 2
+    assert "--pick-model does not apply" in r.output
