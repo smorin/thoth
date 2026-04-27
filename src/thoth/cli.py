@@ -21,6 +21,7 @@ import click
 import thoth.config as _thoth_config
 import thoth.run as _thoth_run
 import thoth.signals as _thoth_signals
+from thoth.cli_subcommands._options import _research_options
 from thoth.config import THOTH_VERSION, ConfigManager
 from thoth.context import AppContext
 from thoth.errors import ThothError
@@ -470,62 +471,9 @@ def _run_research_default(
     context_settings={"help_option_names": ["-h", "--help"]},
 )
 @click.pass_context
-@click.option("--mode", "-m", "mode_opt", help="Research mode")
-@click.option("--prompt", "-q", "prompt_opt", help="Research prompt")
-@click.option("--prompt-file", "-F", help="Read prompt from file (use - for stdin)")
-@click.option("--async", "-A", "async_mode", is_flag=True, help="Submit and exit")
+@_research_options
 @click.option("--resume", "-R", "resume_id", help="Resume operation by ID")
-@click.option("--project", "-p", help="Project name")
-@click.option("--output-dir", "-o", help="Override output directory")
-@click.option(
-    "--provider",
-    "-P",
-    type=click.Choice(["openai", "perplexity", "mock"]),
-    help="Single provider",
-)
-@click.option(
-    "--input-file",
-    help=(
-        "Use the file at PATH as input for this mode. Use when feeding a "
-        "non-thoth document, an older run, or a file from a different project."
-    ),
-)
-@click.option(
-    "--auto",
-    is_flag=True,
-    help=(
-        "Pick up the latest output from the previous mode in the same "
-        "--project directory. The happy path for chaining modes."
-    ),
-)
-@click.option("--verbose", "-v", is_flag=True, help="Enable debug output")
 @click.option("--version", "-V", is_flag=True, help="Show version and exit; must be used alone")
-@click.option(
-    "--api-key-openai", help="API key for OpenAI provider (not recommended; prefer env vars)"
-)
-@click.option(
-    "--api-key-perplexity",
-    help="API key for Perplexity provider (not recommended; prefer env vars)",
-)
-@click.option("--api-key-mock", help="API key for Mock provider (not recommended; prefer env vars)")
-@click.option("--config", "-c", "config_path", help="Path to custom config file")
-@click.option("--combined", is_flag=True, help="Generate combined report from multiple providers")
-@click.option("--quiet", "-Q", is_flag=True, help="Minimal output during execution")
-@click.option(
-    "--no-metadata",
-    is_flag=True,
-    help="Disable metadata headers and prompt section in output files",
-)
-@click.option("--timeout", "-T", type=float, help="Override request timeout in seconds")
-@click.option("--interactive", "-i", is_flag=True, help="Enter interactive prompt mode")
-@click.option("--clarify", is_flag=True, help="Start interactive mode in Clarification Mode")
-@click.option(
-    "--pick-model",
-    "-M",
-    "pick_model",
-    is_flag=True,
-    help="Interactively pick a model (immediate modes only)",
-)
 def cli(
     ctx,
     mode_opt,
