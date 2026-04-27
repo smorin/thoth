@@ -28,10 +28,10 @@
 - [x] [P16-T15] Finalize parity gate: 8 byte-stable + 7 structural; restore exit-2 for `thoth config` no-args; recapture `status_no_args` baseline against Click natural exit-2 behavior; capture new `help_post_pr1.json` baseline
 
 ### Automated Verification
-- `uv run pytest tests/test_p16_dispatch_parity.py tests/test_p16_thothgroup.py -v` (40 passing)
-- `just check` (lint + typecheck — green)
-- Full pytest: 281 passed / 25 failed (all 25 pre-existing failures unrelated to PR1; better than T14 baseline of 33)
-- `./thoth_test -r --skip-interactive -q`: 51 failed (same as T14 baseline)
+- `uv run pytest tests/test_p16_dispatch_parity.py tests/test_p16_thothgroup.py -v` — 40 passing
+- `just check` — green (ruff + ty)
+- `uv run pytest tests/` — **312 passed / 0 failed**
+- `./thoth_test -r --skip-interactive` — **63 passed / 0 failed / 10 skipped** (the 10 skips are OpenAI/Perplexity provider tests that auto-skip when API keys are unset)
 
 ### Manual Verification
 - `thoth --help` → two-section layout
@@ -42,9 +42,10 @@
 - `thoth init --help` / `thoth list --help` → show subcommand help (no parent leak)
 
 ### Known Follow-ups (out of scope for PR1, picked up by PR2/PR3)
-- Deep_research / quick / sonar still go through imperative dispatch
-- `--mode` positional fallback still exists
-- 25 pytest failures unrelated to PR1 (test_pick_model, test_resume, test_help_auth, etc.) — pre-existing flaky/integration tests
+- Deep_research / quick / sonar mode dispatch (currently routed via `ThothGroup.invoke` mode-positional + bare-prompt fallback paths — works, but PR2 may consolidate)
+- `--mode` positional fallback still exists (intentional per spec; surrounded by parity tests)
+- `ctx.protected_args` Click 9.0 deprecation — currently suppressed via `warnings.catch_warnings` in `help.py:60-65`; revisit when Click 9 lands
+- `thoth config help` was already broken pre-refactor (no `help` leaf in config Click subgroup); `show_config_help` retained for the internal `config_command(op="help")` API path
 
 ---
 
