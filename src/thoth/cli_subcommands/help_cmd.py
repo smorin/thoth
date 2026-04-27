@@ -24,6 +24,7 @@ def help_cmd(ctx: click.Context, topic: str | None) -> None:
 
     if topic == "auth":
         from thoth.help import show_auth_help
+
         show_auth_help()
         return
 
@@ -31,7 +32,9 @@ def help_cmd(ctx: click.Context, topic: str | None) -> None:
     target_cmd = parent_group.get_command(parent, topic)
     if target_cmd is None:
         click.echo(f"Unknown help topic: {topic}", err=True)
-        click.echo(f"Available topics: {', '.join(sorted(parent_group.commands.keys()))}, auth", err=True)
+        click.echo(
+            f"Available topics: {', '.join(sorted(parent_group.commands.keys()))}, auth", err=True
+        )
         ctx.exit(2)
         return
 

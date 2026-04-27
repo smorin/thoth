@@ -57,9 +57,6 @@ from thoth.errors import (  # noqa: F401
     ProviderError,
     ThothError,
 )
-from thoth.help import (  # noqa: F401
-    show_general_help,
-)
 from thoth.interactive import (  # noqa: F401
     PROMPT_TOOLKIT_AVAILABLE,
     ClarificationSession,
