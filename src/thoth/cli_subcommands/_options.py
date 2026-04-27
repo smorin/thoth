@@ -1,12 +1,17 @@
 """Shared `_research_options` decorator stack.
 
-Per Q3-PR2-C of the P16 PR2 design, the 15-flag research-options surface is
+Per Q3-PR2-C of the P16 PR2 design, the 21-flag research-options surface is
 applied identically to (a) the top-level `cli` group and (b) the `ask`
 subcommand. This module is the single source of truth.
 
-Order of decorators matters for `--help` rendering: the order below matches
-the historical pre-PR2 order on `cli` so that `thoth --help` output is
-byte-stable against the PR1.5 baseline.
+Order of decorators matters for `--help` rendering: `_RESEARCH_OPTIONS` is
+applied in reverse so the resulting `--help` order matches list order.
+
+Note: `--resume` and `--version` (kept inline on `cli` for now; `--resume`
+removed in Task 5) now render AFTER the research-options stack rather than
+at their historical positions 5/12 in PR1.5. Parity is preserved via the
+line-set equality assertions in `tests/test_p16_dispatch_parity.py`, not
+byte-equality. Strict help-layout parity is not a regression target.
 """
 
 from __future__ import annotations
@@ -93,7 +98,7 @@ _RESEARCH_OPTIONS: list[tuple[tuple, dict]] = [
 
 
 def _research_options(f: Callable) -> Callable:
-    """Apply the full 15-flag research-options stack to a Click callback."""
+    """Apply the full 21-flag research-options stack to a Click callback."""
     for args, kwargs in reversed(_RESEARCH_OPTIONS):
         f = click.option(*args, **kwargs)(f)
     return f

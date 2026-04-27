@@ -5,10 +5,15 @@ from __future__ import annotations
 import click
 from click.testing import CliRunner
 
-from thoth.cli_subcommands._options import _research_options
+from thoth.cli_subcommands._options import _RESEARCH_OPTIONS, _research_options
 
 
-def test_research_options_decorator_adds_all_15_research_flags():
+def test_research_options_decorator_adds_all_21_research_flags():
+    # Catches accidental additions/removals in _RESEARCH_OPTIONS.
+    assert len(_RESEARCH_OPTIONS) == 21, (
+        f"expected 21 research-options entries, got {len(_RESEARCH_OPTIONS)}"
+    )
+
     @click.command()
     @_research_options
     def victim(**kwargs):
