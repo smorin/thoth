@@ -5,9 +5,9 @@ from __future__ import annotations
 import sys
 from collections.abc import Iterator
 from contextlib import contextmanager
-from typing import IO, TYPE_CHECKING
+from typing import IO, TYPE_CHECKING, Any
 
-from thoth.config import is_background_model
+from thoth.config import is_background_model, mode_kind
 
 if TYPE_CHECKING:
     from rich.console import Console
@@ -19,18 +19,30 @@ def should_show_spinner(
     async_mode: bool,
     verbose: bool,
     stream: IO[str] | None = None,
+    mode_cfg: dict[str, Any] | None = None,
 ) -> bool:
     """Decide whether to engage the progress spinner.
 
     Engages only when ALL hold:
-      - the resolved model is a background (deep-research) model
+      - the resolved mode is `kind = "background"` (P18) — falls back to the
+        model-substring check `is_background_model(model)` for legacy callers
+        that don't pass `mode_cfg`
       - --async is NOT set (sync caller is the one waiting)
       - --verbose is NOT set (verbose keeps raw-log UX)
       - the output stream is a TTY (avoid clobbering pipes/CI)
+
+    P18 contract: when `mode_cfg` is supplied, declared `kind` is the source
+    of truth — an immediate-kind mode NEVER shows a spinner, even if its model
+    name happens to match the deep-research substring (e.g., user mode forcing
+    `kind="immediate"` on a deep-research model would already have failed
+    `_validate_kind_for_model` upstream, but we defend in depth).
     """
     if async_mode or verbose:
         return False
-    if not is_background_model(model):
+    if mode_cfg is not None:
+        if mode_kind(mode_cfg) != "background":
+            return False
+    elif not is_background_model(model):
         return False
     s = stream if stream is not None else sys.stdout
     return bool(getattr(s, "isatty", lambda: False)())

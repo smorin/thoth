@@ -281,10 +281,12 @@ def _pick_model_override(mode: str, config: ConfigManager) -> str:
     mode_cfg = config.get_mode_config(mode)
     raw_model = mode_cfg.get("model")
     model_name = raw_model if isinstance(raw_model, str) else None
-    if _thoth_config.is_background_model(model_name):
+    # P18: gate on declared `kind` first (mode_cfg in scope here); falls back
+    # through `mode_kind` to the substring heuristic for legacy user modes.
+    if _thoth_config.mode_kind(mode_cfg) == "background":
         raise click.BadParameter(
-            "--pick-model is only supported for quick (non-deep-research) modes. "
-            f"Mode '{mode}' uses {model_name}."
+            "--pick-model is only supported for modes with kind='immediate'. "
+            f"Mode '{mode}' uses {model_name} (kind='background')."
         )
 
     from thoth.interactive_picker import immediate_models_for_provider

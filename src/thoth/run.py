@@ -63,17 +63,34 @@ def _poll_display(
     label: str = "Deep research running",
     expected_minutes: int = 20,
     rich_console: Console | None = None,
+    mode_cfg: dict[str, Any] | None = None,
 ):
-    """Yield ONE polling-display context: Progress XOR spinner, never both.
+    """Yield ONE polling-display context: Progress XOR spinner XOR none.
 
-    When ``should_show_spinner`` engages (background model, sync, TTY,
-    non-verbose, non-quiet), the spinner runs alone. Otherwise the existing
-    ``rich.Progress`` runs as before. The caller submits jobs and tracks
-    task ids before entering this context, so the polling loop only deals
-    with whichever display is yielded (or ``None`` for the spinner case).
+    P18: when ``mode_cfg`` declares ``kind = "immediate"``, NEITHER the
+    spinner NOR the Progress bar engages — immediate runs complete in one
+    polling tick and any progress UI is theatre. Yield ``None`` for that
+    case; the polling loop's existing per-tick render code handles ``None``
+    by simply not rendering.
+
+    When ``should_show_spinner`` engages (background mode, sync, TTY,
+    non-verbose, non-quiet), the spinner runs alone. Otherwise (background
+    mode in non-TTY, verbose, or quiet) the legacy ``rich.Progress`` bar
+    runs as before.
     """
     target_console = rich_console if rich_console is not None else console
-    if not quiet and should_show_spinner(model=mode_model, async_mode=False, verbose=verbose):
+    if mode_cfg is not None:
+        from thoth.config import mode_kind as _mode_kind
+
+        if _mode_kind(mode_cfg) != "background":
+            # Immediate runs: yield no display. The polling loop tolerates
+            # `progress=None`; immediate runs only spin the loop once because
+            # OpenAIProvider.check_status short-circuits non-background jobs.
+            yield None
+            return
+    if not quiet and should_show_spinner(
+        model=mode_model, async_mode=False, verbose=verbose, mode_cfg=mode_cfg
+    ):
         with run_with_spinner(label, expected_minutes=expected_minutes, console=target_console):
             yield None
     else:
@@ -599,8 +616,19 @@ async def _execute_research(
     await checkpoint_manager.save(operation)
 
     mode_model = mode_config.get("model")
+    # P18: gate the resume-hint emission on mode_kind. Immediate-kind runs
+    # have no upstream job to reattach to, so a "thoth resume {id}" hint is a
+    # dead end. Computed once here, used at the four failure-emission sites
+    # below.
+    from thoth.config import mode_kind as _mode_kind
+
+    is_background_kind = _mode_kind(mode_config) == "background"
     with _poll_display(
-        quiet=quiet, mode_model=mode_model, verbose=verbose, rich_console=console
+        quiet=quiet,
+        mode_model=mode_model,
+        verbose=verbose,
+        rich_console=console,
+        mode_cfg=mode_config,
     ) as progress:
         if progress is not None:
             for provider_name, info in jobs.items():
@@ -623,7 +651,7 @@ async def _execute_research(
         )
 
     if operation.status == "failed":
-        if operation.failure_type == "recoverable":
+        if operation.failure_type == "recoverable" and is_background_kind:
             console.print(
                 f"\n[cyan]This failure is recoverable.[/cyan] "
                 f"Resume with: [bold]thoth resume {operation.id}[/bold]"
@@ -648,7 +676,7 @@ async def _execute_research(
         ctx.current_operation = None
         _thoth_signals._current_checkpoint_manager = None
         _thoth_signals._current_operation = None
-        if op_failure_type == "recoverable":
+        if op_failure_type == "recoverable" and is_background_kind:
             console.print(
                 f"\n[cyan]This failure is recoverable.[/cyan] "
                 f"Resume with: [bold]thoth resume {operation.id}[/bold]"
@@ -687,7 +715,12 @@ async def _execute_research(
     if not quiet and len(operation.output_paths) > 1 and "combined" not in operation.output_paths:
         console.print("\nTo generate a combined report, run with --combined flag")
 
-    if not quiet:
+    # P18: only emit operation-ID echo + status/list hints for background runs.
+    # Immediate runs have no resumable job; the user already has the result
+    # printed in front of them. `--project` and explicit persistence (Phase E
+    # `--out FILE`) still trigger checkpoint writes, but the hints are the
+    # background-mode UX.
+    if not quiet and is_background_kind:
         console.print(f"\nOperation ID: [bold]{operation.id}[/bold]")
         print_hint(f"thoth status {operation.id}", "Re-check later")
         print_hint("thoth list", "See recent runs")

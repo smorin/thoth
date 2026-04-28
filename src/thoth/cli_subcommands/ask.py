@@ -168,12 +168,14 @@ def ask(
         import io
 
         from thoth.completion.sources import operation_ids
-        from thoth.config import BUILTIN_MODES, is_background_mode
+        from thoth.config import BUILTIN_MODES, mode_kind
         from thoth.json_output import emit_error, emit_json
         from thoth.run import get_resume_snapshot_data
 
         mode_config = BUILTIN_MODES.get(effective_mode, {})
-        is_bg = is_background_mode(mode_config) if mode_config else False
+        # P18: resolution-path migration — `mode_kind(cfg) == "background"`
+        # replaces the legacy `is_background_mode(cfg)` substring branch.
+        is_bg = mode_kind(mode_config) == "background" if mode_config else False
         force_async = is_bg or effective_async
 
         sink = io.StringIO()
