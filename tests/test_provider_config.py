@@ -92,3 +92,51 @@ def test_default_config_includes_code_interpreter_and_omits_max_tool_calls() -> 
         f"code_interpreter tool must carry container={{type: auto}} "
         f"(OpenAI API requirement), got: {code_interp_tool}"
     )
+
+
+def test_create_provider_sets_background_for_deep_research_model() -> None:
+    """Regression: create_provider must set background=True when the mode
+    pins a deep-research model. Previously only covered end-to-end via
+    test_oai_background.py — this pins the contract at the factory."""
+    from types import SimpleNamespace
+
+    from thoth.config import ConfigManager
+    from thoth.providers import create_provider
+
+    config = cast(
+        ConfigManager,
+        SimpleNamespace(
+            data={"providers": {"openai": {"api_key": "sk-test-deep-research-factory"}}}
+        ),
+    )
+    mode_config: dict[str, Any] = {"model": "o3-deep-research"}
+
+    provider = create_provider(
+        "openai",
+        config,
+        mode_config=mode_config,
+    )
+    # provider.config is the mutated provider_config dict passed to the constructor;
+    # background=True is set when is_background_mode(provider_config) is True.
+    assert provider.config.get("background") is True
+
+
+def test_create_provider_no_background_for_plain_model() -> None:
+    """Inverse: a plain (non-deep-research) model does NOT get background=True."""
+    from types import SimpleNamespace
+
+    from thoth.config import ConfigManager
+    from thoth.providers import create_provider
+
+    config = cast(
+        ConfigManager,
+        SimpleNamespace(data={"providers": {"openai": {"api_key": "sk-test-plain-factory"}}}),
+    )
+    mode_config: dict[str, Any] = {"model": "o3"}
+
+    provider = create_provider(
+        "openai",
+        config,
+        mode_config=mode_config,
+    )
+    assert provider.config.get("background", False) is False
