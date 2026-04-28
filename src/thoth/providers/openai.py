@@ -19,7 +19,13 @@ from tenacity import (
 )
 
 from thoth.config import is_background_model
-from thoth.errors import APIKeyError, APIQuotaError, ProviderError, ThothError
+from thoth.errors import (
+    APIKeyError,
+    APIQuotaError,
+    ModeKindMismatchError,
+    ProviderError,
+    ThothError,
+)
 from thoth.models import ModelCache
 from thoth.providers.base import ResearchProvider
 
@@ -135,6 +141,28 @@ class OpenAIProvider(ResearchProvider):
         timeout = self.config.get("timeout", 30.0)
         self.client = AsyncOpenAI(api_key=api_key, timeout=httpx.Timeout(timeout, connect=5.0))
 
+    def _validate_kind_for_model(self, mode: str) -> None:
+        """Refuse to submit when declared `kind` contradicts the model's required kind.
+
+        P18 contract: a mode declared `kind = "immediate"` cannot use a
+        deep-research model — those models require OpenAI's background flow.
+        Raised BEFORE any HTTP call so users see a config-edit suggestion
+        instead of a confusing API error mid-run. The reverse case
+        (`background` declared, regular model) is legal — OpenAI lets you
+        force-background any model — and is not checked.
+
+        See `docs/superpowers/specs/2026-04-26-p18-immediate-vs-background-design.md`
+        §5.6 + §4 Q1.
+        """
+        declared = self.config.get("kind")
+        if declared == "immediate" and is_background_model(self.model):
+            raise ModeKindMismatchError(
+                mode_name=mode,
+                model=self.model,
+                declared_kind="immediate",
+                required_kind="background",
+            )
+
     async def submit(
         self, prompt: str, mode: str, system_prompt: str | None = None, verbose: bool = False
     ) -> str:
@@ -143,8 +171,11 @@ class OpenAIProvider(ResearchProvider):
         Raw openai.* exceptions from the retryable inner call are mapped here to
         ThothError subclasses so callers always see a single error taxonomy.
         """
+        self._validate_kind_for_model(mode)
         try:
             return await self._submit_with_retry(prompt, mode, system_prompt, verbose)
+        except ModeKindMismatchError:
+            raise
         except (openai.APIError, Exception) as e:
             raise _map_openai_error(e, model=self.model, verbose=verbose) from e
 

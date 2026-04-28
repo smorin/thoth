@@ -89,3 +89,43 @@ class APIQuotaError(ThothError):
             "Wait for quota reset or upgrade your plan",
             exit_code=9,
         )
+
+
+class ModeKindMismatchError(ThothError):
+    """A mode's declared `kind` is incompatible with its model's required kind.
+
+    Raised by `OpenAIProvider._validate_kind_for_model` BEFORE any HTTP call,
+    so the user sees a config-edit suggestion instead of a confusing API
+    error mid-run. See spec §5.6 + §4 Q1.
+
+    Attributes (for programmatic access):
+      * mode_name      — the mode whose `kind` is wrong
+      * model          — the model the mode is configured to use
+      * declared_kind  — what the mode says (e.g., "immediate")
+      * required_kind  — what the model actually requires (e.g., "background")
+    """
+
+    def __init__(
+        self,
+        mode_name: str,
+        model: str,
+        declared_kind: str,
+        required_kind: str,
+    ):
+        self.mode_name = mode_name
+        self.model = model
+        self.declared_kind = declared_kind
+        self.required_kind = required_kind
+        super().__init__(
+            (
+                f"Mode '{mode_name}' is declared as kind='{declared_kind}', "
+                f"but model '{model}' requires kind='{required_kind}'."
+            ),
+            (
+                f"Update [modes.{mode_name}] in your config: set "
+                f"kind = '{required_kind}', or pick a model compatible with "
+                f"'{declared_kind}' execution. Run `thoth modes list` to see "
+                f"current kinds."
+            ),
+            exit_code=1,
+        )

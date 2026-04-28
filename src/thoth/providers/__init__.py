@@ -11,7 +11,7 @@ from __future__ import annotations
 import os
 from typing import TYPE_CHECKING, Any
 
-from thoth.config import is_background_mode
+from thoth.config import mode_kind
 from thoth.errors import APIKeyError, ThothError
 from thoth.providers.base import ResearchProvider
 from thoth.providers.mock import MockProvider
@@ -107,8 +107,15 @@ def create_provider(
     if mode_config and "model" in mode_config and provider_name == "openai":
         provider_config["model"] = mode_config["model"]
 
-    # Apply background mode for deep research models
-    if provider_name == "openai" and is_background_mode(provider_config):
+    # Thread the mode's declared `kind` into provider_config so the OpenAI
+    # provider's runtime validator (`_validate_kind_for_model`) can detect
+    # mismatches before any HTTP call. P18.
+    if mode_config and "kind" in mode_config:
+        provider_config["kind"] = mode_config["kind"]
+
+    # Apply background mode for deep research models. P18: resolution path
+    # uses `mode_kind` (declared `kind` first; substring fallback for legacy).
+    if provider_name == "openai" and mode_kind(provider_config) == "background":
         provider_config["background"] = True
 
     cls = PROVIDERS[provider_name]
