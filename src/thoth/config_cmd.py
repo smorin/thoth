@@ -43,8 +43,8 @@ def _dotted_get(data: dict[str, Any], key: str) -> tuple[bool, Any]:
     return True, current
 
 
-def _render_scalar(value: Any, as_json: bool) -> str:
-    if as_json:
+def _render_scalar(value: Any, json_format: bool) -> str:
+    if json_format:
         return json.dumps(value)
     if isinstance(value, bool):
         return "true" if value else "false"
