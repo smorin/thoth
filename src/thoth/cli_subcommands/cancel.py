@@ -113,8 +113,8 @@ def cancel(
 
     if not effective_quiet:
         click.echo(f"Cancelling operation {operation_id}...")
-        for name, pres in (result.get("providers") or {}).items():
-            status = pres.get("status", "?")
+        for name, provider_result in (result.get("providers") or {}).items():
+            status = provider_result.get("status", "?")
             if status == "cancelled":
                 click.echo(f"  ✓ {name}: cancelled upstream")
             elif status == "completed":
@@ -124,9 +124,9 @@ def cancel(
                     f"  ⚠ {name}: upstream cancel not supported; local checkpoint marked cancelled"
                 )
             elif status == "skipped":
-                click.echo(f"  - {name}: already {pres.get('reason', 'terminal')}")
+                click.echo(f"  - {name}: already {provider_result.get('reason', 'terminal')}")
             else:
-                click.echo(f"  ✗ {name}: {status} ({pres.get('error', '')})")
+                click.echo(f"  ✗ {name}: {status} ({provider_result.get('error', '')})")
         click.echo(f"Operation {operation_id} marked cancelled.")
     sys.exit(0)
 

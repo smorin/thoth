@@ -93,3 +93,18 @@ pre-push:
 
     gitleaks:
       run: ./scripts/check-gitleaks.sh full
+
+    # Mirror CI's Hygiene job: codespell + yamllint over the WHOLE repo
+    # at push time, not just staged files. Catches typos / YAML issues
+    # introduced in commits where the affected file is not staged again
+    # later (and survives LEFTHOOK=0 WIP commits that bypass pre-commit).
+    # Same flag set as .github/workflows/ci.yml's Hygiene job.
+    codespell-full:
+      run: |
+        uvx codespell \
+          --skip=".git,.venv,htmlcov,uv.lock,bun.lock,requirements.txt,archive,planning,research,node_modules" \
+          --ignore-words-list="thoth,perplexity,sonar,pplx,openai,hel" \
+          .
+
+    yamllint-full:
+      run: uvx yamllint -c .yamllint .
