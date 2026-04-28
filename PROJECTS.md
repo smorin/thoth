@@ -14,8 +14,9 @@ This file tracks planned, active, and completed Thoth work. New projects are add
 
 Keep this summary list updated whenever a project is added, renamed, completed, dropped, or proceeded to a successor. The detailed project entry remains the source of truth; this summary is a quick navigation index.
 
-- [ ] P21 — Configuration Profile Resolution & Overlay
+- [x] P21 — Configuration Profile Resolution & Overlay
 - [ ] P21b — Configuration Profile CRUD Commands (depends on P21)
+- [ ] P21c — Config Filename Standardization (`thoth.config.toml` everywhere)
 - [ ] P22 — OpenAI — Immediate (Synchronous) Calls
 - [ ] P23 — Perplexity — Immediate (Synchronous) Calls
 - [ ] P24 — Gemini — Immediate (Synchronous) Calls
@@ -81,7 +82,7 @@ Existing projects may use older labels such as `**Primary spec**`, `**Plan**`, o
 
 ---
 
-## [ ] Project P21: Configuration Profile Resolution & Overlay
+## [x] Project P21: Configuration Profile Resolution & Overlay
 **Goal**: Add CPP-style named configuration profile *resolution* — Thoth honors `--profile NAME`, `THOTH_PROFILE`, and `general.default_profile`, applies the selected `[profiles.<name>]` overlay between project config and env/CLI overrides, and hard-errors on missing profiles. Users manage profiles by hand-editing TOML in this project; CRUD commands ship in P21b.
 
 **References**
@@ -89,7 +90,7 @@ Existing projects may use older labels such as `**Primary spec**`, `**Plan**`, o
 - **Plan:** `docs/superpowers/plans/2026-04-28-p21-configuration-profiles.md`
 - **Research:** `research/configuration_profile_pattern.v1.md`
 
-**Status**: Planned — requirements scoped; implementation tasks unchecked.
+**Status**: Complete — resolver/overlay/root-`--profile` plumbing landed on `feat/p21-config-profiles`.
 
 **Scope**
 - Add profile sections under `[profiles.<name>]`, where nested profile keys mirror normal config paths.
@@ -112,17 +113,17 @@ Existing projects may use older labels such as `**Primary spec**`, `**Plan**`, o
 ### Tests & Tasks
 - [x] [P21-TS01] Specify the resolver/overlay test suite (resolver, `ConfigManager` overlay, root-flag plumbing) before implementation.
 - [x] [P21-T01] Flesh out requirements for configuration profile resolution using `research/configuration_profile_pattern.v1.md`.
-- [ ] [P21-TS02] `tests/test_config_profiles.py`: `resolve_profile_selection` uses `--profile` before `THOTH_PROFILE`, `THOTH_PROFILE` before `general.default_profile`, and no profile when all are absent.
-- [ ] [P21-TS03] `tests/test_config_profiles.py`: project profile shadows user profile of the same name wholesale; same-named profile tables are not merged.
-- [ ] [P21-TS04] `tests/test_config_profiles.py`: missing selected profile raises `ConfigProfileError` and names the selection source for each of `--profile` flag, `THOTH_PROFILE`, and `general.default_profile` pointer (load-time error per REQ-CPP-103).
-- [ ] [P21-T02] Add `src/thoth/config_profiles.py` with `ProfileSelection`, `ProfileLayer`, profile catalog collection, selection resolution, profile layer resolution, and profile stripping helpers.
-- [ ] [P21-T03] Add `ConfigProfileError` to `src/thoth/errors.py`.
-- [ ] [P21-TS05] `tests/test_config_profiles.py`: `ConfigManager` leaves behavior unchanged when no profile is active, applies active profile values, lets env/CLI per-setting values beat profile values, records the actual project config path (`./thoth.toml` or `./.thoth/config.toml`) used by `_load_project_config`, preserves `general.default_profile` after profile splitting, and `THOTH_PROFILE` is NOT in `_get_env_overrides` (regression guard).
-- [ ] [P21-T04] Update `ConfigManager.load_all_layers` to record the actual project config path used by `_load_project_config`, load raw user/project profiles, resolve the active profile, expose `profile_selection`/`active_profile`/`profile_catalog`, and merge a `profile` layer between project and env.
-- [ ] [P21-TS06] `tests/test_config_profiles.py`: root `--profile` reaches `thoth config get` and `thoth config list` (via `config_cmd._load_manager`); unknown root profile errors before command output; runtime `--profile`/`THOTH_PROFILE` does NOT mutate the persisted `general.default_profile` (B20: persisted `fast` + `--profile bar` → `config get` returns `fast`, and `cm.profile_selection.name == "bar"` from source `flag`).
-- [ ] [P21-T05] Add root `--profile` to `_RESEARCH_OPTIONS`, inherited-option policy (`DEFAULT_HONOR` includes `"profile"`), root fallback parsing in `_extract_fallback_options`, and **every** existing config-loading call site, including `src/thoth/config_cmd.py` (`_load_manager` and each `get_config_*_data` entry that reads merged config) and `src/thoth/cli_subcommands/config.py` leaves that forward inherited profile.
-- [ ] [P21-T06] Update `README.md`, `manual_testing_instructions.md`, and `src/thoth/help.py` with hand-edit profile examples (TOML structure, selection precedence, worked invocations). Documentation examples must show profiles that change the default mode/project, run all available deep-research providers (`["openai", "perplexity"]` today, with a "future-ready" callout pointing at gemini), force one deep-research provider, default to an immediate mode, and store a future-ready interactive default profile. README explains that `--profile`/`THOTH_PROFILE` are read-only runtime inputs and never mutate `general.default_profile`.
-- [ ] [P21-T07] Update `PROJECTS.md` as implementation tasks land.
+- [x] [P21-TS02] `tests/test_config_profiles.py`: `resolve_profile_selection` uses `--profile` before `THOTH_PROFILE`, `THOTH_PROFILE` before `general.default_profile`, and no profile when all are absent.
+- [x] [P21-TS03] `tests/test_config_profiles.py`: project profile shadows user profile of the same name wholesale; same-named profile tables are not merged.
+- [x] [P21-TS04] `tests/test_config_profiles.py`: missing selected profile raises `ConfigProfileError` and names the selection source for each of `--profile` flag, `THOTH_PROFILE`, and `general.default_profile` pointer (load-time error per REQ-CPP-103).
+- [x] [P21-T02] Add `src/thoth/config_profiles.py` with `ProfileSelection`, `ProfileLayer`, profile catalog collection, selection resolution, profile layer resolution, and profile stripping helpers.
+- [x] [P21-T03] Add `ConfigProfileError` to `src/thoth/errors.py`.
+- [x] [P21-TS05] `tests/test_config_profiles.py`: `ConfigManager` leaves behavior unchanged when no profile is active, applies active profile values, lets env/CLI per-setting values beat profile values, records the actual project config path (`./thoth.toml` or `./.thoth/config.toml`) used by `_load_project_config`, preserves `general.default_profile` after profile splitting, and `THOTH_PROFILE` is NOT in `_get_env_overrides` (regression guard).
+- [x] [P21-T04] Update `ConfigManager.load_all_layers` to record the actual project config path used by `_load_project_config`, load raw user/project profiles, resolve the active profile, expose `profile_selection`/`active_profile`/`profile_catalog`, and merge a `profile` layer between project and env.
+- [x] [P21-TS06] `tests/test_config_profiles.py`: root `--profile` reaches `thoth config get` and `thoth config list` (via `config_cmd._load_manager`); unknown root profile errors before command output; runtime `--profile`/`THOTH_PROFILE` does NOT mutate the persisted `general.default_profile` (B20: persisted `fast` + `--profile bar` → `config get` returns `fast`, and `cm.profile_selection.name == "bar"` from source `flag`).
+- [x] [P21-T05] Add root `--profile` to `_RESEARCH_OPTIONS`, inherited-option policy (`DEFAULT_HONOR` includes `"profile"`), root fallback parsing in `_extract_fallback_options`, and **every** existing config-loading call site, including `src/thoth/config_cmd.py` (`_load_manager` and each `get_config_*_data` entry that reads merged config) and `src/thoth/cli_subcommands/config.py` leaves that forward inherited profile.
+- [x] [P21-T06] Update `README.md`, `manual_testing_instructions.md`, and `src/thoth/help.py` with hand-edit profile examples (TOML structure, selection precedence, worked invocations). Documentation examples must show profiles that change the default mode/project, run all available deep-research providers (`["openai", "perplexity"]` today, with a "future-ready" callout pointing at gemini), force one deep-research provider, default to an immediate mode, and store a future-ready interactive default profile. README explains that `--profile`/`THOTH_PROFILE` are read-only runtime inputs and never mutate `general.default_profile`.
+- [x] [P21-T07] Update `PROJECTS.md` as implementation tasks land.
 
 ### Automated Verification
 - `uv run pytest tests/test_config_profiles.py tests/test_config_cmd.py -v` passes.

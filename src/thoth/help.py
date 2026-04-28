@@ -214,6 +214,14 @@ def show_config_help():
     console.print("\n[bold]Notable keys:[/bold]")
     console.print("  execution.prompt_max_bytes  Cap on --prompt-file / stdin bytes")
     console.print("                              (default: 1048576 = 1 MiB)")
+    console.print("\n[bold]Profile selection:[/bold]")
+    console.print(
+        "  --profile NAME (also THOTH_PROFILE env, or general.default_profile in config)"
+    )
+    console.print("  Profile sections live under [profiles.<name>] and overlay top-level config.")
+    console.print(
+        "  CLI management commands (`thoth config profiles ...`) ship in a follow-up project (P21b)."
+    )
     console.print("\n[bold]Notes:[/bold]")
     console.print("  API key values are masked by default; use --show-secrets to reveal.")
     console.print("  Writes preserve comments and formatting of the target TOML file.")
