@@ -1,19 +1,21 @@
 # Design — Immediate vs Background: Explicit `kind`, Runtime Mismatch, Path Split, Streaming, Cancel (P18)
 
-**Status:** Draft (drafted from session brainstorm 2026-04-25 → 2026-04-26)
+**Status:** Draft — Reevaluated 2026-04-27 against post-P16-PR3 codebase. Goal unchanged; file references and target version updated. See §11 Reevaluation log.
 **Created:** 2026-04-26
+**Reevaluated:** 2026-04-27
 **Project ID:** P18
-**Target version:** v2.16.0 (MINOR — fully additive; warn-only for the user-mode `kind`-required transition)
+**Target version:** v3.1.0 (MINOR — next minor after v3.0.0 ships from release-please; fully additive; warn-only for the user-mode `kind`-required transition)
 **Tracking:** `PROJECTS.md` § "Project P18" — canonical task list lives there
 **Predecessors:**
 - **P11** (`thoth modes` Discovery, v2.11.0) — established `Kind = Literal["immediate", "background"]` at the rendering layer (`modes_cmd.py:22`). P18 promotes that vocabulary to a *declared* data field on every mode.
 - **P13** (P11 follow-up, v2.11.1) — introduced `is_background_model` / `is_background_mode` substring rules (`config.py:136-155`). P18 deprecates these as the *resolution* path; they survive only inside the runtime mismatch check as the source of truth for "what does this provider require for this model?"
+- **P14** (CLI Ergonomics v1, v2.13.0) — added `should_show_spinner` (`progress.py:16`) which already gates spinner-vs-Progress display on `is_background_model(model)`. P18 extends this to **also** suppress the Progress bar for immediate runs (today's behavior: spinner for background TTY, Progress bar for everything else; post-P18: spinner for background TTY, no progress UI for immediate).
+- **P16 PR1+PR2+PR3** (Click-native CLI, v3.0.0 — landed in commit `f8b62f2`) — established `cli_subcommands/` directory, `ThothGroup` dispatcher, shared `_research_options` decorator stack (`cli_subcommands/_options.py`), `--json` envelope contract via `json_output.py`, `completion/sources.py` data sources, and `thoth ask`/`thoth resume` subcommands. P18 plugs into these structures; no PR2/PR3 changes needed.
 - **P17** (Spec Round-Trip, in flight) — annotates `is_background_mode` as a shipped §4 helper. P17 itself is doc-only and unchanged by this spec; an additive note ("further evolved by P18") may be added once P18 lands.
 
 **Related (concurrent or downstream):**
-- **P16 PR2** (`v3.0.0`, `docs/superpowers/specs/2026-04-25-promote-admin-commands-design.md`) — introduces `thoth ask PROMPT` as a Click subcommand. P18's path split happens *inside* the existing dispatch and applies regardless of how the run was invoked: `thoth ask "..." --mode <immediate-mode>` post-PR2 will automatically stream once P18 lands. **No merge-order coupling**; either project can land first.
 - **P12** (CLI Mode Editing — `thoth modes set/add`) — once P18 ships, mode-editing commands must surface `kind` as a required field for new user modes. P12 should be drafted with awareness of the P18 contract.
-- **Future P19 (v3.0.0 follow-up)** — converts the user-mode `kind` warning to a hard error; drops `mini_research` deprecation alias; drops the `async: bool` legacy override. Lands alongside P16 PR2's other v3.0.0 breakages.
+- **Future P19 (next major)** — converts the user-mode `kind` warning to a hard error; drops `mini_research` deprecation alias; drops the `async: bool` legacy override; drops the `is_background_mode` thin wrapper. Lands when the next major (v4.0.0) breakage window opens.
 
 ---
 
@@ -91,33 +93,41 @@ class ResearchProvider:
         raise NotImplementedError(f"{type(self).__name__} does not support cancel")
 ```
 
-### 5.2 File layout
+### 5.2 File layout (verified against current `main`, 2026-04-27)
 
 | File | State | Responsibility |
 |---|---|---|
-| `src/thoth/config.py` | Modified | Add `kind` to all 12 `BUILTIN_MODES` entries; add `mode_kind(cfg)`; thin `is_background_mode` wrapper kept; warn-once on user modes missing `kind` in `_validate_config` |
+| `src/thoth/config.py` | Modified | Add `kind` to all 12 `BUILTIN_MODES` entries (`config.py:41-133`); add `mode_kind(cfg)`; thin `is_background_mode` wrapper kept (still called by 6 sites); warn-once on user modes missing `kind` in `_validate_config` (`config.py:367`) |
 | `src/thoth/models.py` | Modified | Add `ModelSpec` NamedTuple + `derive_known_models()` + `KNOWN_MODELS` module constant. Cross-mode kind conflict raises at import. |
 | `src/thoth/errors.py` | Modified | Add `ModeKindMismatchError(ThothError)` carrying `mode_name`/`model`/`declared_kind`/`required_kind` |
 | `src/thoth/providers/base.py` | Modified | Add `StreamEvent` dataclass; add `stream()` and `cancel()` raising `NotImplementedError` |
-| `src/thoth/providers/__init__.py` | Modified | Thread `mode_config["kind"]` into `provider_config["kind"]` in `create_provider` (`__init__.py:107`) |
-| `src/thoth/providers/openai.py` | Modified | Add `_validate_kind_for_model(mode)` (called first in `submit()`); implement `stream()` via `client.responses.stream`; implement `cancel()` via `client.responses.cancel`; remove the `if not background: return completed` shortcut in `check_status` (Phase J cleanup) |
+| `src/thoth/providers/__init__.py` | Modified | Thread `mode_config["kind"]` into `provider_config["kind"]` in `create_provider` (currently `providers/__init__.py:107-112`); replace `is_background_mode(provider_config)` call with `mode_kind(provider_config) == "background"` |
+| `src/thoth/providers/openai.py` | Modified | Add `_validate_kind_for_model(mode)` (called first in `submit()`); implement `stream()` via `client.responses.stream`; implement `cancel()` via `client.responses.cancel`; remove the `if not background: return completed` shortcut in `check_status` (`providers/openai.py:232-233`, Phase J cleanup) |
 | `src/thoth/providers/mock.py` | Modified | Implement `stream()` (deterministic chunks) and `cancel()` (pop from internal jobs dict, mark cancelled) |
 | `src/thoth/providers/perplexity.py` | Modified | Optional: implement `cancel()` *only if* Phase F research confirms upstream support; otherwise leave base `NotImplementedError` |
-| `src/thoth/run.py` | Modified | Rename `_execute_research` → `_execute_background`; add top-level `execute()` dispatcher; add `_execute_immediate` (no `Progress`, no polling, streams to `MultiSink`); gate every `thoth resume {id}` / `thoth status {id}` hint on `mode_kind == "background"` |
+| `src/thoth/progress.py` | Modified | Migrate `should_show_spinner` (`progress.py:16-36`) to call `mode_kind(mode_cfg) == "background"` once a `mode_cfg` is plumbed through; for now keep `is_background_model(model)` as the model-level helper. Extend the gate so the **Progress bar is also suppressed** for immediate runs (currently spinner is gated, Progress bar is not). |
+| `src/thoth/run.py` | Modified | Rename `_execute_research` (`run.py:550`) → `_execute_background`; add top-level `execute()` dispatcher; add `_execute_immediate` (no `Progress`, no polling, streams to `MultiSink`); gate every `thoth resume {id}` / `thoth status {id}` hint (`run.py:629, 654, 691, 692`) on `mode_kind == "background"`; conditionally suppress `Operation ID` echo (`run.py:199, 311, 691`) for immediate runs unless `--project` or `--out FILE` set |
+| `src/thoth/cli.py` | Modified | Replace `_thoth_config.is_background_model(model_name)` (`cli.py:284`) call site with `mode_kind` once a mode_cfg is in scope |
+| `src/thoth/cli_subcommands/_options.py` | Modified | Add `--out PATH` (repeatable, accepts `-`, comma-list accepted) and `--append` flags to `_RESEARCH_OPTIONS` so they are inherited by both top-level CLI and `thoth ask`. Update help string for `--pick-model` from "(immediate modes only)" to reference declared `kind`. |
+| `src/thoth/cli_subcommands/_option_policy.py` | Modified | Add `out` and `append` entries to the option-policy mapping so inheritance + validation work consistently |
+| `src/thoth/cli_subcommands/ask.py` | Modified | Wire `--out`/`--append` arg through to `_run_research_default` and the `--json` envelope path. Replace `is_background_mode(mode_config)` (`ask.py:176`) with `mode_kind(mode_config) == "background"`. |
+| `src/thoth/cli_subcommands/cancel.py` | NEW | `@click.command("cancel")` + `OP_ID` positional + `--json`, delegates to `cancel_operation()`; mirrors `cli_subcommands/resume.py` pattern |
+| `src/thoth/cli_subcommands/modes.py` | Modified | Add `--kind <immediate\|background>` filter; the completer is **already wired** as dead-code in `completion/sources.py:79-81 mode_kind` (left as P18 forward-compat by PR3) — Phase D plugs it in |
+| `src/thoth/interactive_picker.py` | Modified | Replace `is_background_model(model)` filter (`interactive_picker.py:35,44`) with `mode_kind(mode_cfg) == "immediate"` once a mode_cfg is in scope; the user-facing UX (filter immediate-only models for `--pick-model`) is unchanged |
 | `src/thoth/sinks.py` | NEW | `MultiSink` class — fans `write(chunk)` to a list of `IO[str]` handles, lazy file open, ordered close in `finally` |
-| `src/thoth/cli_subcommands/cancel.py` | NEW | `@click.command("cancel")` + `OP_ID` positional, delegates to `cancel_operation()` |
 | `src/thoth/commands.py` | Modified | Add `cancel_operation(op_id, ctx)`; gate `thoth resume` hints on background kind |
+| `src/thoth/modes_cmd.py` | Modified | Replace substring fallback in `_derive_kind` (`modes_cmd.py:46-50`) with: read `cfg["kind"]` first; fall back to legacy heuristic only with a warning. Wire the `--kind` filter into `_op_list`. |
 | `src/thoth/signals.py` | Modified | Ctrl-C path calls `cancel_operation` best-effort with 5s timeout before exit |
-| `src/thoth/cli.py` | Modified | Add `--out PATH` (repeatable, accepts `-`, comma-list accepted) and `--append` flags to research-running paths; `cli.add_command(cancel)` registration |
-| `tests/test_*.py` | NEW | 11 new test files covering builtin schema, registry, mismatch, immediate path, background regression, mode aliases, streaming, sinks, cancel, cancel subcommand, user-mode kind warning |
+| `tests/test_*.py` | NEW | 11+ new test files covering builtin schema, registry, mismatch, immediate path, background regression, mode aliases, streaming, sinks, cancel, cancel subcommand, user-mode kind warning, modes `--kind` filter |
 | `tests/extended/test_model_kind_runtime.py` | NEW | Parametrized over `KNOWN_MODELS`, gated on `@pytest.mark.extended`; hits real API |
-| `pyproject.toml` | Modified | Register `extended` marker; `addopts = "-m 'not extended'"`; new `[tool.pytest.ini_options].markers` entry |
+| `pyproject.toml` | Modified | Register `extended` marker; `addopts = "-m 'not extended'"`; new `[tool.pytest.ini_options].markers` entry. Currently no `[tool.pytest.ini_options]` table present — Phase I creates it. |
 | `justfile` | Modified | Add `test-extended` recipe |
 | `thoth_test` | Modified | Add `--extended` flag and category column |
 | `.github/workflows/extended.yml` | NEW | Nightly cron, gated on `OPENAI_API_KEY` repo secret; informational, not gating |
 | `planning/p18-cancel-research.md` | NEW | Findings from Phase F research items (one section per provider) |
 | `README.md` | Modified | Document `--out` flag; document `kind` field for user-defined modes; document `thoth cancel`; document the immediate-vs-background contract briefly |
 | `manual_testing_instructions.md` | Modified | Streaming, cancel, mismatch, alias scenarios |
+| `.release-please-manifest.json` / `pyproject.toml` / `src/thoth/__init__.py` | NOT modified | Release-please manages all version bumps. Currently `2.5.0` (manifest); next release tag will be `v3.0.0` from the queued `feat!` bump in #24. Land P18 after v3.0.0 tag for v3.1.0 release. |
 
 ### 5.3 What gets added
 
@@ -245,15 +255,18 @@ The existing `thoth_test` integration runner is already exhaustive for backgroun
 
 ## 8. Cross-project coordination
 
-### 8.1 P16 PR2 — `thoth ask` subcommand (v3.0.0)
+### 8.1 P16 — Click-native CLI + `thoth ask` (v3.0.0 — SHIPPED to `main` 2026-04-27)
 
-PR2 introduces `thoth ask PROMPT` as the canonical scripted research entrypoint, inheriting the full research flag set (`--mode`, `--async`, `--auto`, `--input-file`, `--pick-model`, etc.). P18's path split happens at the dispatch layer below `ask`:
+PR1 + PR2 + PR3 all merged in commit `f8b62f2`. The structures P18 plugs into now exist:
 
-- `thoth ask "..."` (default mode → immediate kind) post-P18 → `_execute_immediate` → streams to stdout
-- `thoth ask "..." --mode deep_research` → `_execute_background` → today's polling loop
-- `thoth ask "..." --mode thinking --out answer.md` → `_execute_immediate` → streams to file
+- **`thoth ask PROMPT`** (`cli_subcommands/ask.py`) — canonical scripted research entrypoint, inheriting the 21-flag research-options stack from `cli_subcommands/_options.py:_research_options`.
+- **`thoth resume OP_ID`** (`cli_subcommands/resume.py`) — replaces the removed `--resume` flag.
+- **`--json` everywhere** via `json_output.py:emit_json` / `emit_error`. `thoth ask --json` already implements **Option E**: "background mode → submit envelope; immediate → run synchronously and emit snapshot from latest checkpoint" (`ask.py:158-231`). This is the kind-aware split applied to the JSON path; P18 brings the same split to the human-readable path and adds streaming.
+- **`completion/sources.py:79 mode_kind`** is committed as **dead-code** with the comment *"Per spec §6.4: `mode_kind` is committed as dead code (~5 LOC) for P18 forward-compat — P18 will wire `--kind` later."* Phase D plugs it into `cli_subcommands/modes.py` as `--kind <immediate|background>`.
+- **`should_show_spinner`** (`progress.py:16`) gates spinner display on `is_background_model(model)` for non-verbose TTY runs. P18 extends this so immediate runs see **neither** spinner nor Progress (today: spinner suppressed, Progress still fires).
+- **`interactive_picker.py:44`** filters `--pick-model` candidates with `is_background_model` to enforce "immediate models only". After P18, the filter migrates to `mode_kind(cfg) == "immediate"`.
 
-**Merge-order independence:** P18 can land before, after, or alongside PR2. If P18 lands first, the streaming benefit is realized through the existing `--mode` / `-q` paths until PR2's `ask` subcommand goes live, at which point users get the same streaming through the new verb at no extra cost. If PR2 lands first, `thoth ask` initially emits with today's progress-bar UX; P18 then upgrades it to streaming. **Recommended action**: add a one-line cross-reference to the P16 PR2 spec noting that immediate-mode streaming arrives via P18.
+P18 introduces no breaking changes; it lands as **v3.1.0** (next minor after v3.0.0 release tag).
 
 ### 8.2 P12 — `thoth modes set/add/unset`
 
@@ -261,24 +274,25 @@ P12 adds CLI surface for editing user modes. After P18, the editing UX must:
 
 - Surface `kind` as a required field for new modes (interactive prompt or `--kind` flag)
 - Validate `kind ∈ {"immediate", "background"}` at write time
-- Warn if `kind` and model name appear inconsistent (forwards-compat with the v3.0.0 hard-error transition)
+- Warn if `kind` and model name appear inconsistent (forwards-compat with the next-major hard-error transition)
 
-P12 can absorb these requirements into its existing scope; no separate cross-project task needed.
+P12 can absorb these requirements into its existing scope; no separate cross-project task needed. The `cli_subcommands/modes.py` file already exists (`thoth modes list/json` shipped in P11) — P12 grows it.
 
 ### 8.3 P17 — Spec round-trip annotation
 
 P17 is doc-only and unchanged by P18. After P18 lands, P17's spec annotation may add a forward-pointing note to the §4 row covering `is_background_mode`: *"P18 deprecated this helper as a resolution path; survives as a thin wrapper over `mode_kind`."* Optional, not load-bearing.
 
-### 8.4 P19 (future) — v3.0.0 breakages
+### 8.4 Future P19 (next-major breakages)
 
-A separate PROJECTS.md entry will be drafted to land alongside P16 PR2 in v3.0.0. P19 closes out the deprecations P18 starts:
+A separate PROJECTS.md entry will be drafted whenever the next major (v4.0.0) breakage window opens. P19 closes out the deprecations P18 starts:
 
 - User modes missing `kind` → **error** at config load (was: warn-once)
 - `mini_research` alias → **removed** (was: alias-with-warning)
 - `async: bool` field in modes → **removed** (was: warning)
 - `is_background_mode` thin wrapper → **removed** (was: kept for compat)
+- `is_background_model` → kept (still the source of truth in `_validate_kind_for_model`; only its role as a *resolution* path is removed)
 
-P19 is referenced from P18's PROJECTS.md goal block but not drafted yet. Trigger: P18 lands and stabilizes for one minor.
+P19 is referenced from P18's PROJECTS.md goal block but not drafted yet. Trigger: P18 lands and stabilizes for one minor + a v4.0.0 breakage window opens.
 
 ## 9. Risks and open items
 
@@ -293,14 +307,47 @@ P19 is referenced from P18's PROJECTS.md goal block but not drafted yet. Trigger
 
 None blocking. The session brainstorm closed all design questions; remaining items are research tasks (T18/T19/T20) intentionally scoped into Phase F so findings can shape Phase G impl.
 
-## 10. Acceptance criteria for v2.16.0
+## 10. Acceptance criteria for v3.1.0
 
 - Every builtin mode has a `kind` field; `KNOWN_MODELS` is derived (no separate registry)
 - A misconfigured mode (immediate kind + deep-research model) fails at provider `submit()` with `ModeKindMismatchError` *before* any API call
-- Immediate runs do not emit polling progress, operation IDs (unless persisted), or resume hints
-- `--out` supports stdout, file, tee, and append for immediate runs
+- Immediate runs do not emit polling progress, spinner, operation IDs (unless persisted via `--project` or `--out FILE`), or resume hints
+- `--out` supports stdout, file, tee, and append for immediate runs (added to `_RESEARCH_OPTIONS` so both top-level CLI and `thoth ask` inherit it)
+- `thoth modes --kind <immediate|background>` filters output (wires the dead-code `mode_kind` completer in `completion/sources.py:79`)
 - `provider.cancel()` exists on the base; OpenAI + Mock implement it; Perplexity/Gemini status reflects research findings
 - `thoth cancel <op-id>` cancels in-flight background ops upstream and updates the checkpoint
 - Extended test suite parametrizes over `KNOWN_MODELS` and runs only under the `extended` marker
 - All deprecation warnings surface (`mini_research`, `async: bool`, missing user-mode `kind`) without erroring; default test suite green
+- All 9 call sites of `is_background_mode` / `is_background_model` audited (`config.py`, `interactive_picker.py`, `cli.py:284`, `progress.py:33`, `modes_cmd.py:51`, `providers/openai.py:176,183`, `providers/__init__.py:111`, `cli_subcommands/ask.py:176`); resolution-path callers migrate to `mode_kind(cfg)`; `is_background_model(model)` remains the model-level helper inside `_validate_kind_for_model` and `should_show_spinner`
 - Documentation updated (`README.md`, `manual_testing_instructions.md`) to reflect immediate vs background, streaming, and cancel surfaces
+
+---
+
+## 11. Reevaluation log
+
+### 2026-04-27 — Reevaluation against post-P16-PR3 codebase
+
+**Context:** Spec was drafted 2026-04-26 against a v2.5.0 codebase pre-PR2. Between draft and reevaluation, commit `f8b62f2` (PR2 + PR3 combined) shipped Click-native subcommands, `--json` universality, and shell completion. Several P18 hooks now exist in the codebase awaiting wiring.
+
+**No design-level decision changed.** The architecture, contracts, and 12 locked Q&As (§4) remain valid. What changed is the *integration surface*: where exactly P18 code plugs in, and which file/line references are stale.
+
+**Adjustments made in this reevaluation:**
+
+1. **Target version**: `v2.16.0` → **`v3.1.0`** (release-please will tag v3.0.0 from the queued `feat!` in #24; P18 is the next minor after).
+2. **Predecessors**: added P14 (`should_show_spinner` shipped) and P16 PR1+PR2+PR3 (Click-native CLI shipped) to clarify what P18 builds on.
+3. **§5.2 file layout**: 6 new rows (`progress.py`, `cli.py`, `cli_subcommands/_options.py`, `cli_subcommands/_option_policy.py`, `cli_subcommands/ask.py`, `cli_subcommands/modes.py`, `interactive_picker.py`, `modes_cmd.py`) reflecting where the kind/streaming/picker integration touches. `--out` flag moves from `cli.py` to `cli_subcommands/_options.py:_RESEARCH_OPTIONS` so both top-level CLI and `thoth ask` inherit it via the existing decorator stack.
+4. **§5.4 deprecation list**: enumerates the 9 actual call sites of `is_background_mode`/`is_background_model` (verified by grep on current `main`), distinguishing resolution-path callers (migrate to `mode_kind`) from model-level callers (keep using `is_background_model` for the API-enforcement boundary inside the runtime mismatch check).
+5. **§8.1 cross-project**: P16 status updated from "v3.0.0 — pending" to "shipped to `main`". Removed merge-order-independence language; replaced with "P18 plugs into shipped structures" (no PR2-side change required).
+6. **§8.4 future P19**: target window changed from "v3.0.0 follow-up" to "next-major (v4.0.0)" since v3.0.0 is already locked by PR2/PR3 breakages.
+7. **§10 acceptance**: added "modes `--kind` filter wired" criterion (Phase D growth) and "9 call sites audited" gate.
+
+**New sub-task added by reevaluation**: **`thoth modes --kind <immediate|background>` filter** (Phase D in PROJECTS.md). The completer is already committed dead-code in `completion/sources.py:79-81`; this finishes the round-trip the PR3 author intentionally left open.
+
+**Spec sections NOT touched in this reevaluation** (still valid as-drafted): §1 Goal, §2 Motivation, §3 Out of scope, §4 Decisions Q1–Q12, §5.1 Shape (dispatcher), §5.3 What's added, §5.5 What's removed, §5.6 Runtime mismatch check, §5.7 Dispatch flow walkthroughs, §6 Rollout (10 phases A–J), §7 Testing strategy, §9 Risks. The architecture stands.
+
+**Action items emitted by this reevaluation** (cross-referenced into PROJECTS.md):
+- Task: `--kind` filter on `thoth modes` (Phase D)
+- Task: `should_show_spinner` extended to also suppress Progress for immediate (Phase C)
+- Task: `interactive_picker.py:44` filter migrated to `mode_kind` (Phase A or C)
+- Task: `_research_options` line 91 help text for `--pick-model` references declared `kind` (Phase D)
+- Task: full audit of 9 `is_background_*` call sites with migration matrix (Phase A end)
