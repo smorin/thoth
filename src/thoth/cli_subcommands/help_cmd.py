@@ -6,12 +6,19 @@ from typing import cast
 
 import click
 
+from thoth.cli_subcommands._option_policy import (
+    NO_INHERITED_OPTIONS,
+    validate_inherited_options,
+)
+
 
 @click.command(name="help")
 @click.argument("topic", required=False)
 @click.pass_context
 def help_cmd(ctx: click.Context, topic: str | None) -> None:
     """Show help (general or for a specific topic)."""
+    validate_inherited_options(ctx, "help", NO_INHERITED_OPTIONS)
+
     parent = cast(click.Context, ctx.parent)
     parent_group = cast(click.Group, parent.command)
 
