@@ -266,9 +266,33 @@ def config_path(ctx: click.Context, args: tuple[str, ...], as_json: bool) -> Non
 
 @config.command(name="edit", context_settings=_PASSTHROUGH_CONTEXT)
 @click.argument("args", nargs=-1, type=click.UNPROCESSED)
+@click.option("--json", "as_json", is_flag=True, help="Emit JSON envelope")
 @click.pass_context
-def config_edit(ctx: click.Context, args: tuple[str, ...]) -> None:
+def config_edit(ctx: click.Context, args: tuple[str, ...], as_json: bool) -> None:
     """Open config file in $EDITOR."""
+    if as_json:
+        from thoth.config_cmd import get_config_edit_data
+        from thoth.json_output import emit_error, emit_json
+
+        validate_inherited_options(ctx, "config edit", DEFAULT_HONOR)
+        config_path_inh = inherited_value(ctx, "config_path")
+        project = "--project" in args
+        data = get_config_edit_data(project=project, config_path=config_path_inh)
+        if data.get("error") == "PROJECT_CONFIG_CONFLICT":
+            emit_error(
+                "PROJECT_CONFIG_CONFLICT",
+                "--config cannot be used with --project",
+                exit_code=2,
+            )
+        if data["editor_exit_code"] != 0:
+            emit_error(
+                "EDITOR_FAILED",
+                f"$EDITOR exited with code {data['editor_exit_code']}",
+                {"exit_code": data["editor_exit_code"], "path": data["path"]},
+                exit_code=1,
+            )
+        emit_json(data)
+
     _dispatch(ctx, "edit", args)
 
 

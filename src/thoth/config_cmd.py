@@ -530,16 +530,20 @@ def _op_help(args: list[str], *, config_path: str | Path | None = None) -> int:
     return 0
 
 
-def _op_edit(args: list[str], *, config_path: str | Path | None = None) -> int:
+def get_config_edit_data(*, project: bool, config_path: str | Path | None) -> dict:
+    """Pure data function for `thoth config edit`.
+
+    Opens `$EDITOR` on the resolved config path and returns a dict with
+    the editor's exit code. Caller is responsible for translating a
+    non-zero `editor_exit_code` into an EDITOR_FAILED envelope.
+    """
     import os
     import shutil
     import subprocess  # noqa: S404
 
-    project, rc = _parse_project_only(args, "edit")
-    if rc != 0:
-        return rc
-    if _reject_config_project_conflict(project, config_path):
-        return 2
+    if project and config_path is not None:
+        return {"editor_exit_code": 2, "path": None, "error": "PROJECT_CONFIG_CONFLICT"}
+
     path = _target_path(project, config_path)
     path.parent.mkdir(parents=True, exist_ok=True)
     if not path.exists():
@@ -548,7 +552,18 @@ def _op_edit(args: list[str], *, config_path: str | Path | None = None) -> int:
         path.write_text(tomlkit.dumps(doc))
 
     editor = os.environ.get("EDITOR") or shutil.which("vi") or "vi"
-    return subprocess.call([editor, str(path)])  # noqa: S603
+    rc = subprocess.call([editor, str(path)])  # noqa: S603
+    return {"editor_exit_code": rc, "path": str(path)}
+
+
+def _op_edit(args: list[str], *, config_path: str | Path | None = None) -> int:
+    project, rc = _parse_project_only(args, "edit")
+    if rc != 0:
+        return rc
+    if _reject_config_project_conflict(project, config_path):
+        return 2
+    data = get_config_edit_data(project=project, config_path=config_path)
+    return int(data["editor_exit_code"])
 
 
 def config_command(op: str, args: list[str], *, config_path: str | Path | None = None) -> int:
@@ -570,6 +585,7 @@ def config_command(op: str, args: list[str], *, config_path: str | Path | None =
 
 __all__ = [
     "config_command",
+    "get_config_edit_data",
     "get_config_get_data",
     "get_config_list_data",
     "get_config_path_data",

@@ -60,3 +60,20 @@ def test_data_functions_exclude_as_json(isolated_thoth_home):
     ):
         fn = getattr(cc, name)
         assert "as_json" not in inspect.signature(fn).parameters, name
+
+
+def test_get_config_edit_data_invokes_editor_returns_dict(isolated_thoth_home, monkeypatch):
+    from thoth.config_cmd import get_config_edit_data
+
+    monkeypatch.setenv("EDITOR", "true")  # `true` exits 0
+    data = get_config_edit_data(project=False, config_path=None)
+    assert data["editor_exit_code"] == 0
+    assert "path" in data
+
+
+def test_get_config_edit_data_propagates_editor_failure(isolated_thoth_home, monkeypatch):
+    from thoth.config_cmd import get_config_edit_data
+
+    monkeypatch.setenv("EDITOR", "false")  # `false` exits 1
+    data = get_config_edit_data(project=False, config_path=None)
+    assert data["editor_exit_code"] != 0

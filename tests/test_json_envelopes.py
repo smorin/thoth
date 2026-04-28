@@ -80,3 +80,14 @@ def test_status_json_missing_op_emits_OPERATION_NOT_FOUND(cli, isolated_thoth_ho
     payload = json.loads(result.output)
     assert payload["status"] == "error"
     assert payload["error"]["code"] == "OPERATION_NOT_FOUND"
+
+
+def test_config_edit_json_with_editor_true_emits_success_envelope(
+    cli, isolated_thoth_home, monkeypatch
+):
+    monkeypatch.setenv("EDITOR", "true")
+    runner = CliRunner()
+    result = runner.invoke(cli, ["config", "edit", "--json"], catch_exceptions=False)
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert payload["status"] == "ok"
