@@ -1,3 +1,83 @@
+## [ ] Project P20: Extended Real-API Workflow Coverage — Mirror Mock Contracts
+
+**Goal**: Expand the `@pytest.mark.extended` real-API suite from model-kind smoke checks into periodic workflow coverage that mirrors the important mock/thoth_test contracts. These tests stay out of default pytest, run manually or nightly, and answer: "Does the real OpenAI runtime still honor the immediate/background split, output sinks, file output semantics, status/cancel behavior, and option forwarding?"
+
+**Primary dependency**: P18 immediate-vs-background path split and `tests/extended/test_model_kind_runtime.py`.
+**Primary files**:
+- Add: `tests/extended/test_real_api_workflows.py`
+- Modify: `tests/extended/conftest.py` if shared real-API helpers are split out
+- Modify: `pyproject.toml` only if adding a narrower marker such as `extended_slow`
+- Modify: `justfile` only if adding a helper command such as `just test-extended-workflows`
+
+**Scope rule**: mirror the mock contracts at the workflow boundary, but keep assertions stable for real LLM output. Assert non-empty output, file creation/non-creation, metadata presence/absence, CLI status text, operation state, secret masking, and checkpoint/output paths. Do **not** assert deterministic prose.
+
+**Cost and safety gates**
+- All tests use `@pytest.mark.extended`; default `uv run pytest` must still deselect them.
+- Tests that complete real background deep-research jobs should also use a second marker or env gate, e.g. `@pytest.mark.extended_slow` or `THOTH_EXTENDED_SLOW=1`.
+- Use tiny prompts and isolated temp output/config/state directories.
+- Prefer `--async` + `cancel` for background state-machine checks where completion is not required.
+- Always assert CLI-provided API keys are not printed in stdout/stderr.
+- Cancel any still-running background job in `finally`.
+
+### Test Design
+
+**Shared helpers**
+- [ ] [P20-TS01] Add an extended-test CLI runner fixture that:
+  - skips unless `OPENAI_API_KEY` is set;
+  - sets isolated `HOME`, `XDG_CONFIG_HOME`, `XDG_STATE_HOME`, `XDG_CACHE_HOME`;
+  - runs `python -m thoth ...` or `uv run thoth ...` with a bounded timeout;
+  - returns `exit_code`, `stdout`, `stderr`, and temp output paths;
+  - scrubs secrets from captured failure output.
+- [ ] [P20-TS02] Add helper assertions for real-output files:
+  - `assert_nonempty_file(path)`;
+  - `assert_no_default_result_files(tmp_path, provider="openai")`;
+  - `assert_metadata_present(path, prompt_fragment, mode, provider)`;
+  - `assert_metadata_absent(path)`;
+  - `assert_secret_not_leaked(stdout, stderr, secret)`.
+
+**Immediate real-API workflows, mirror mock streaming/output-sink tests**
+- [ ] [P20-TS03] `thoth ask "extended immediate stdout" --mode thinking --provider openai` streams non-empty stdout, exits 0, creates no default result file, emits no background completion/status/resume hints.
+- [ ] [P20-TS04] `thoth ask "extended immediate file" --mode thinking --provider openai --out answer.md` writes a non-empty `answer.md`, suppresses streamed stdout, and creates no default result file.
+- [ ] [P20-TS05] `--out -,answer.md` tees real streamed output to stdout and file; both are non-empty.
+- [ ] [P20-TS06] repeatable `--out - --out answer.md` behaves like the comma-list tee form.
+- [ ] [P20-TS07] `--append` appends instead of truncating: run twice to the same file and assert file size grows and the first run's content prefix is preserved.
+- [ ] [P20-TS08] bare prompt form supports leading `--out`: `thoth --out answer.md --provider openai "extended bare leading"`.
+- [ ] [P20-TS09] bare prompt form supports trailing `--out`: `thoth "extended bare trailing" --provider openai --out answer.md`.
+- [ ] [P20-TS10] immediate `--output-dir DIR` alone does not create a background-style result file.
+- [ ] [P20-TS11] immediate `--quiet` still streams the answer but suppresses progress/background-only UI.
+
+**Background real-API workflows, mirror BG-* and file-output tests**
+- [ ] [P20-TS12] `thoth deep_research "extended bg async" --provider openai --async` returns an operation ID, writes a checkpoint, and `thoth status <op-id>` reports a valid queued/running/completed state; cancel if still active.
+- [ ] [P20-TS13] `thoth cancel <op-id>` against a running real OpenAI background job marks the checkpoint cancelled and exits 0.
+- [ ] [P20-TS14] gated slow test: synchronous `thoth deep_research "extended bg complete" --provider openai --output-dir DIR` eventually exits 0 and writes a non-empty OpenAI result file with metadata.
+- [ ] [P20-TS15] `--project extended-project` writes under `base_output_dir/extended-project/` and reports the project output location.
+- [ ] [P20-TS16] `--input-file input.md` records `input_files:` metadata in the generated result.
+- [ ] [P20-TS17] `--no-metadata` writes a non-empty result file without YAML metadata, `operation_id:`, or the `### Prompt` section.
+- [ ] [P20-TS18] `--quiet` still writes the result file while suppressing `Research completed`, `Results saved to:`, progress text, and status/list hints as appropriate for quiet background mode.
+- [ ] [P20-TS19] `--prompt-file prompt.txt` uses the prompt file; assert metadata or output path reflects the file prompt enough to prove the prompt source was honored.
+- [ ] [P20-TS20] `--prompt-file -` accepts stdin in a subprocess run and completes or submits correctly.
+- [ ] [P20-TS21] `--api-key-openai sk-...` works without `OPENAI_API_KEY` in the environment and does not leak the key in stdout/stderr.
+
+**Chained and multi-output workflows**
+- [ ] [P20-TS22] gated slow test: `--auto` chain in one project. Run a first background mode that writes an output, then run the next background mode with `--auto --project same-project`; assert the second operation records the previous output under `input_files:`.
+- [ ] [P20-TS23] `--auto` with no previous project output prints the warning and does not crash.
+- [ ] [P20-TS24] `--combined` real-provider test remains skipped until at least two real providers are operational, or until a mixed real+mock policy is explicitly accepted. When enabled, assert separate provider outputs plus a combined report are written and the combined report contains provider section headers.
+- [ ] [P20-TS25] no `--combined` means no combined report is written, even when multiple provider outputs exist.
+
+**Real provider runtime contract expansion**
+- [ ] [P20-TS26] Extend `tests/extended/test_model_kind_runtime.py` so every `KNOWN_MODELS` entry also proves the provider path used matches the declared kind:
+  - immediate models exercise `provider.stream()` and produce at least one text delta;
+  - background models exercise `submit()` + `check_status()` and are cancellable when still running.
+- [ ] [P20-TS27] Add a mismatch defense test with real provider construction but no HTTP call: immediate-declared deep-research model raises `ModeKindMismatchError` before any request is made.
+
+### Acceptance Criteria
+- `uv run pytest -q` still reports the extended workflow tests as deselected by default.
+- `uv run pytest -m extended tests/extended/test_real_api_workflows.py -v` runs the fast real-API workflow tests when `OPENAI_API_KEY` is present.
+- Slow/costly background completion and `--auto` chain tests are separately gated and documented in their skip reasons.
+- Every immediate mock workflow with `--out`, tee, append, bare prompt, quiet, and no default result file has a corresponding real-API extended test.
+- Every background mock workflow for project, input file, no metadata, quiet, prompt-file, stdin, CLI API key, status/cancel, and output-file creation has a corresponding real-API extended test or a documented provider-availability skip.
+- `--combined` and `--auto` are explicitly covered by future extended tests, not just by mock/integration tests.
+
 ## [ ] Project P18: Immediate vs Background — Explicit `kind`, Runtime Mismatch, Path Split, Streaming, Cancel (v3.1.0)
 
 **Primary spec**: `docs/superpowers/specs/2026-04-26-p18-immediate-vs-background-design.md` (decisions Q1–Q12 §4, architecture §5, rollout §6, testing strategy §7, cross-project coordination §8, risks §9, **§11 reevaluation log 2026-04-27**)
@@ -10,6 +90,8 @@
 **Coordination with shipped P16 (v3.0.0 — landed in `f8b62f2`)**: `thoth ask` is the canonical scripted research entrypoint and inherits `_research_options`. P18's path split happens **inside** the existing dispatch — `thoth ask "..." --mode <immediate-mode>` automatically gets streaming behavior. `thoth ask --json` already implements the kind-aware split (Option E in `cli_subcommands/ask.py:158-231`); P18 brings the same split to the human-readable path. No PR2/PR3 changes required.
 
 **Follow-up tracked separately**: requiring `kind` on user-defined modes lands as **warn-once** in P18; the **error** form is deferred to a future P19 / **v4.0.0** breakage window (when the next major opens — v3.0.0 is already locked by P16 breakages).
+
+**Future test-hardening project**: add dedicated background-mode regression coverage for `--combined` and `--auto`. P18 now pins the immediate/background split and the core background options, but `--combined` multi-provider report generation and `--auto` cross-run input chaining still need explicit tests under the new contract.
 
 **Out of Scope**
 - Renaming mode `thinking` (kept — `kind` carries the execution-model semantics now; further renaming would collide with PR2's `ask` subcommand)
