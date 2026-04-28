@@ -48,6 +48,7 @@ _RESUME_HONOR = DEFAULT_HONOR | {
 @click.option("--api-key-openai", help="API key for OpenAI provider")
 @click.option("--api-key-perplexity", help="API key for Perplexity provider")
 @click.option("--api-key-mock", help="API key for Mock provider")
+@click.option("--json", "as_json", is_flag=True, help="Emit JSON snapshot envelope")
 @click.pass_context
 def resume(
     ctx: click.Context,
@@ -60,6 +61,7 @@ def resume(
     api_key_openai: str | None,
     api_key_perplexity: str | None,
     api_key_mock: str | None,
+    as_json: bool,
 ) -> None:
     """Resume a previously-checkpointed operation by ID."""
     validate_inherited_options(ctx, "resume", _RESUME_HONOR)
@@ -67,6 +69,29 @@ def resume(
     # Local import: avoids cli.py → cli_subcommands → cli.py circular at module load.
     import thoth.run as _thoth_run
     from thoth.cli import _apply_config_path, _build_app_context, _run_maybe_async
+
+    if as_json:
+        from thoth.json_output import emit_error, emit_json
+
+        effective_config = config_path or (ctx.obj or {}).get("config_path")
+        _apply_config_path(effective_config)
+
+        data = _thoth_run.get_resume_snapshot_data(operation_id)
+        if data is None:
+            emit_error(
+                "OPERATION_NOT_FOUND",
+                f"Operation {operation_id} not found",
+                {"operation_id": operation_id},
+                exit_code=6,
+            )
+        if data["status"] == "failed_permanent":
+            emit_error(
+                "OPERATION_FAILED_PERMANENTLY",
+                data["last_error"] or "operation failed permanently",
+                data,
+                exit_code=7,
+            )
+        emit_json(data)
 
     # Group-level inheritance for honored values per Q1-PR2-C
     inherited = ctx.obj or {}

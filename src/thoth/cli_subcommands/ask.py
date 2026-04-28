@@ -9,12 +9,40 @@ from __future__ import annotations
 
 import click
 
+from thoth.cli_subcommands._option_policy import (
+    DEFAULT_HONOR,
+    inherited_api_keys,
+    inherited_value,
+    pick_value,
+    validate_inherited_options,
+)
 from thoth.cli_subcommands._options import _research_options
+
+_ASK_HONOR = DEFAULT_HONOR | {
+    "mode_opt",
+    "prompt_opt",
+    "prompt_file",
+    "async_mode",
+    "project",
+    "output_dir",
+    "provider",
+    "input_file",
+    "auto",
+    "verbose",
+    "api_key_openai",
+    "api_key_perplexity",
+    "api_key_mock",
+    "combined",
+    "quiet",
+    "no_metadata",
+    "timeout",
+}
 
 
 @click.command(name="ask")
 @click.argument("prompt_args", nargs=-1)
 @_research_options
+@click.option("--json", "as_json", is_flag=True, help="Emit JSON envelope")
 @click.pass_context
 def ask(
     ctx: click.Context,
@@ -40,25 +68,32 @@ def ask(
     interactive: bool,
     clarify: bool,
     pick_model: bool,
+    as_json: bool,
 ) -> None:
     """Run a research operation with the given prompt."""
+    validate_inherited_options(ctx, "ask", _ASK_HONOR)
+
     positional = " ".join(prompt_args) if prompt_args else None
+    inherited_prompt_opt = inherited_value(ctx, "prompt_opt")
+    inherited_prompt_file = inherited_value(ctx, "prompt_file")
+    effective_prompt_opt = prompt_opt if prompt_opt is not None else inherited_prompt_opt
+    effective_prompt_file = prompt_file if prompt_file is not None else inherited_prompt_file
 
     # Q7-B + Q3-C mutex: positional vs --prompt vs --prompt-file
-    if positional and prompt_opt:
+    if positional and effective_prompt_opt:
         raise click.BadParameter(
             "Cannot use --prompt with positional prompt argument", param_hint="--prompt"
         )
-    if positional and prompt_file:
+    if positional and effective_prompt_file:
         raise click.BadParameter(
             "Cannot use --prompt-file with positional prompt argument",
             param_hint="--prompt-file",
         )
-    if prompt_opt and prompt_file:
+    if effective_prompt_opt and effective_prompt_file:
         raise click.BadParameter(
             "Cannot use --prompt-file with --prompt", param_hint="--prompt-file"
         )
-    if not (positional or prompt_opt or prompt_file):
+    if not (positional or effective_prompt_opt or effective_prompt_file):
         raise click.BadParameter("Provide a prompt: positional, --prompt, or --prompt-file")
 
     # Q3-PR2-C: ask is the scripted research entry point. The interactive-only
@@ -83,26 +118,24 @@ def ask(
     # Subcommand-level option wins over group-level (already true via Click)
     inherited = ctx.obj or {}
 
-    def _pick(local, key: str):
-        return local if local is not None else inherited.get(key)
-
-    effective_mode = _pick(mode_opt, "mode_opt") or "default"
-    effective_provider = _pick(provider, "provider")
-    effective_project = _pick(project, "project")
-    effective_output_dir = _pick(output_dir, "output_dir")
-    effective_input_file = _pick(input_file, "input_file")
+    effective_mode = pick_value(mode_opt, ctx, "mode_opt") or "default"
+    effective_provider = pick_value(provider, ctx, "provider")
+    effective_project = pick_value(project, ctx, "project")
+    effective_output_dir = pick_value(output_dir, ctx, "output_dir")
+    effective_input_file = pick_value(input_file, ctx, "input_file")
     effective_async = bool(async_mode or inherited.get("async_mode"))
     effective_auto = bool(auto or inherited.get("auto"))
     effective_verbose = bool(verbose or inherited.get("verbose"))
     effective_combined = bool(combined or inherited.get("combined"))
     effective_quiet = bool(quiet or inherited.get("quiet"))
     effective_no_metadata = bool(no_metadata or inherited.get("no_metadata"))
-    effective_timeout = _pick(timeout, "timeout")
-    effective_config = _pick(config_path, "config_path")
+    effective_timeout = pick_value(timeout, ctx, "timeout")
+    effective_config = pick_value(config_path, ctx, "config_path")
+    root_api_keys = inherited_api_keys(ctx)
     cli_api_keys = {
-        "openai": _pick(api_key_openai, "api_key_openai"),
-        "perplexity": _pick(api_key_perplexity, "api_key_perplexity"),
-        "mock": _pick(api_key_mock, "api_key_mock"),
+        "openai": api_key_openai or root_api_keys["openai"],
+        "perplexity": api_key_perplexity or root_api_keys["perplexity"],
+        "mock": api_key_mock or root_api_keys["mock"],
     }
 
     # Local import: avoids cli.py → cli_subcommands → cli.py circular at module load.
@@ -115,12 +148,87 @@ def ask(
 
     _apply_config_path(effective_config)
 
-    if prompt_file:
-        effective_prompt = _read_prompt_input(str(prompt_file), _prompt_max_bytes())
-    elif prompt_opt:
-        effective_prompt = prompt_opt
+    if effective_prompt_file:
+        effective_prompt = _read_prompt_input(str(effective_prompt_file), _prompt_max_bytes())
+    elif effective_prompt_opt:
+        effective_prompt = effective_prompt_opt
     else:
         effective_prompt = positional or ""
+
+    if as_json:
+        # Option E (spec §6.7, §8.4): background mode → submit envelope;
+        # immediate → run synchronously and emit snapshot from latest checkpoint.
+        # We invoke `_run_research_default` via a stdout redirect because it
+        # writes Rich progress/log lines even with `quiet=True`. Only the
+        # final `emit_json` reaches the real stdout so the envelope parses.
+        # Post-hoc operation_id lookup via the checkpoint store is a known
+        # scope-minimization choice (T13 plan); a future PR could refactor
+        # `_run_research_default` to RETURN the operation_id directly.
+        import contextlib
+        import io
+
+        from thoth.completion.sources import operation_ids
+        from thoth.config import BUILTIN_MODES, is_background_mode
+        from thoth.json_output import emit_error, emit_json
+        from thoth.run import get_resume_snapshot_data
+
+        mode_config = BUILTIN_MODES.get(effective_mode, {})
+        is_bg = is_background_mode(mode_config) if mode_config else False
+        force_async = is_bg or effective_async
+
+        sink = io.StringIO()
+        try:
+            with contextlib.redirect_stdout(sink), contextlib.redirect_stderr(sink):
+                _run_research_default(
+                    mode=effective_mode,
+                    prompt=effective_prompt,
+                    async_mode=force_async,
+                    project=effective_project,
+                    output_dir=effective_output_dir,
+                    provider=effective_provider,
+                    input_file=effective_input_file,
+                    auto=effective_auto,
+                    verbose=False,
+                    cli_api_keys=cli_api_keys,
+                    combined=effective_combined,
+                    quiet=True,
+                    no_metadata=effective_no_metadata,
+                    timeout_override=effective_timeout,
+                    model_override=None,
+                )
+        except SystemExit as exc:
+            if exc.code not in (None, 0):
+                emit_error(
+                    "PROVIDER_FAILURE",
+                    "ask --json failed",
+                    {"exit_code": exc.code},
+                    exit_code=1,
+                )
+        except Exception as exc:  # noqa: BLE001 — wrap any provider error in envelope
+            emit_error(
+                "PROVIDER_FAILURE",
+                str(exc) or "ask --json failed",
+                {"exception": type(exc).__name__},
+                exit_code=1,
+            )
+
+        ids = operation_ids(None, None, "")
+        op_id = ids[-1] if ids else None
+
+        if force_async:
+            emit_json(
+                {
+                    "operation_id": op_id,
+                    "status": "submitted",
+                    "mode": effective_mode,
+                    "provider": effective_provider,
+                }
+            )
+        else:
+            data = get_resume_snapshot_data(op_id) if op_id else None
+            if data is None:
+                emit_json({"status": "no_checkpoint", "mode": effective_mode})
+            emit_json(data)
 
     _run_research_default(
         mode=effective_mode,

@@ -32,7 +32,10 @@ JSON_COMMANDS: list[tuple[str, list[str], int]] = [
     ("config_unset", ["config", "unset", "test.key", "--json"], 0),
     ("modes_list", ["modes", "list", "--json"], 0),
     ("modes_list_by_name", ["modes", "list", "--json", "--name", "default"], 0),
-    # T13 will append rows for ask + resume per the spec §10 commit sequence.
+    # T13: ask + resume rows. ask rows live in test_json_non_blocking.py
+    # (Category G timing tests). The smoke-row below covers the resume
+    # OPERATION_NOT_FOUND envelope.
+    ("resume_missing_op", ["resume", "research-MISSING", "--json"], 6),
 ]
 
 
