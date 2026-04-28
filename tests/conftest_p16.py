@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 import sys
-from collections.abc import Callable
+import tempfile
+from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import TypedDict
 
@@ -15,11 +17,11 @@ import pytest
 BASELINES_DIR = Path(__file__).parent / "baselines"
 
 
-def _scrub_home(s: str) -> str:
+def _scrub_home(s: str, home: str | None = None) -> str:
     """Replace user's home directory with <HOME> placeholder for portable baselines."""
-    home = os.path.expanduser("~")
-    if home and home != "/":
-        return s.replace(home, "<HOME>")
+    home_path = home or os.path.expanduser("~")
+    if home_path and home_path != "/":
+        return s.replace(home_path, "<HOME>")
     return s
 
 
@@ -41,15 +43,24 @@ def baseline() -> Callable[[str], BaselineRecord]:
 
 
 @pytest.fixture
-def run_thoth() -> Callable[[list[str]], tuple[int, str, str]]:
+def run_thoth() -> Iterator[Callable[[list[str]], tuple[int, str, str]]]:
+    home = Path(tempfile.mkdtemp(prefix="tp16", dir="/tmp"))
+
     def _run(argv: list[str]) -> tuple[int, str, str]:
         result = subprocess.run(
             [sys.executable, "-m", "thoth", *argv],
             capture_output=True,
             text=True,
             timeout=30,
-            env={"THOTH_TEST_MODE": "1", "PATH": "/usr/bin:/bin"},
+            env={"THOTH_TEST_MODE": "1", "PATH": "/usr/bin:/bin", "HOME": str(home)},
         )
-        return result.returncode, _scrub_home(result.stdout), _scrub_home(result.stderr)
+        return (
+            result.returncode,
+            _scrub_home(result.stdout, str(home)),
+            _scrub_home(result.stderr, str(home)),
+        )
 
-    return _run
+    try:
+        yield _run
+    finally:
+        shutil.rmtree(home, ignore_errors=True)
