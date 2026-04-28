@@ -6,6 +6,14 @@ import sys
 
 import click
 
+from thoth.cli_subcommands._option_policy import (
+    DEFAULT_HONOR,
+    NO_INHERITED_OPTIONS,
+    inherited_value,
+    validate_inherited_options,
+)
+from thoth.completion.sources import config_keys as _config_keys_completer
+
 _PASSTHROUGH_CONTEXT = {"ignore_unknown_options": True, "allow_extra_args": True}
 
 
@@ -14,6 +22,7 @@ _PASSTHROUGH_CONTEXT = {"ignore_unknown_options": True, "allow_extra_args": True
 def config(ctx: click.Context) -> None:
     """Inspect and edit configuration."""
     if ctx.invoked_subcommand is None:
+        validate_inherited_options(ctx, "config", NO_INHERITED_OPTIONS)
         click.echo(
             "Error: config command requires an op (get|set|unset|list|path|edit|help)",
             err=True,
@@ -21,15 +30,25 @@ def config(ctx: click.Context) -> None:
         ctx.exit(2)
 
 
-def _dispatch(op: str, args: tuple[str, ...]) -> None:
+def _dispatch(
+    ctx: click.Context,
+    op: str,
+    args: tuple[str, ...],
+    honored_options=DEFAULT_HONOR,
+) -> None:
     from thoth.config_cmd import config_command
 
-    rc = config_command(op, list(args))
+    validate_inherited_options(ctx, f"config {op}", honored_options)
+    config_path = inherited_value(ctx, "config_path")
+    if config_path is None:
+        rc = config_command(op, list(args))
+    else:
+        rc = config_command(op, list(args), config_path=config_path)
     sys.exit(rc)
 
 
 @config.command(name="get")
-@click.argument("key")
+@click.argument("key", shell_complete=_config_keys_completer)
 @click.option(
     "--layer",
     "layer",
@@ -48,7 +67,15 @@ def _dispatch(op: str, args: tuple[str, ...]) -> None:
     is_flag=True,
     help="Reveal masked secret values (security-sensitive)",
 )
-def config_get(key: str, layer: str | None, raw: bool, as_json: bool, show_secrets: bool) -> None:
+@click.pass_context
+def config_get(
+    ctx: click.Context,
+    key: str,
+    layer: str | None,
+    raw: bool,
+    as_json: bool,
+    show_secrets: bool,
+) -> None:
     """Get a configuration value."""
     rebuilt: list[str] = [key]
     if layer is not None:
@@ -59,46 +86,52 @@ def config_get(key: str, layer: str | None, raw: bool, as_json: bool, show_secre
         rebuilt.append("--json")
     if show_secrets:
         rebuilt.append("--show-secrets")
-    _dispatch("get", tuple(rebuilt))
+    _dispatch(ctx, "get", tuple(rebuilt))
 
 
 @config.command(name="set", context_settings=_PASSTHROUGH_CONTEXT)
 @click.argument("args", nargs=-1, type=click.UNPROCESSED)
-def config_set(args: tuple[str, ...]) -> None:
+@click.pass_context
+def config_set(ctx: click.Context, args: tuple[str, ...]) -> None:
     """Set a configuration value."""
-    _dispatch("set", args)
+    _dispatch(ctx, "set", args)
 
 
 @config.command(name="unset", context_settings=_PASSTHROUGH_CONTEXT)
 @click.argument("args", nargs=-1, type=click.UNPROCESSED)
-def config_unset(args: tuple[str, ...]) -> None:
+@click.pass_context
+def config_unset(ctx: click.Context, args: tuple[str, ...]) -> None:
     """Unset a configuration value."""
-    _dispatch("unset", args)
+    _dispatch(ctx, "unset", args)
 
 
 @config.command(name="list", context_settings=_PASSTHROUGH_CONTEXT)
 @click.argument("args", nargs=-1, type=click.UNPROCESSED)
-def config_list(args: tuple[str, ...]) -> None:
+@click.pass_context
+def config_list(ctx: click.Context, args: tuple[str, ...]) -> None:
     """List all configuration values. Supports --json."""
-    _dispatch("list", args)
+    _dispatch(ctx, "list", args)
 
 
 @config.command(name="path", context_settings=_PASSTHROUGH_CONTEXT)
 @click.argument("args", nargs=-1, type=click.UNPROCESSED)
-def config_path(args: tuple[str, ...]) -> None:
+@click.pass_context
+def config_path(ctx: click.Context, args: tuple[str, ...]) -> None:
     """Show config file path."""
-    _dispatch("path", args)
+    _dispatch(ctx, "path", args)
 
 
 @config.command(name="edit", context_settings=_PASSTHROUGH_CONTEXT)
 @click.argument("args", nargs=-1, type=click.UNPROCESSED)
-def config_edit(args: tuple[str, ...]) -> None:
+@click.pass_context
+def config_edit(ctx: click.Context, args: tuple[str, ...]) -> None:
     """Open config file in $EDITOR."""
-    _dispatch("edit", args)
+    _dispatch(ctx, "edit", args)
 
 
 @config.command(name="help", context_settings=_PASSTHROUGH_CONTEXT)
 @click.argument("args", nargs=-1, type=click.UNPROCESSED)
-def config_help(args: tuple[str, ...]) -> None:
+@click.pass_context
+def config_help(ctx: click.Context, args: tuple[str, ...]) -> None:
     """Show config command help."""
-    _dispatch("help", args)
+    _dispatch(ctx, "help", args, NO_INHERITED_OPTIONS)

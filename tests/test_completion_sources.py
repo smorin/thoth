@@ -143,3 +143,43 @@ def test_mode_kind_returns_immediate_and_background_choices():
     ctx, param = _make_ctx_param()
     out = mode_kind(ctx, param, "")
     assert set(out) >= {"immediate", "background"}
+
+
+def test_resume_op_id_argument_has_operation_ids_completer():
+    from thoth.cli_subcommands.resume import resume
+    from thoth.completion.sources import operation_ids
+
+    op_id_param = next(p for p in resume.params if p.name == "operation_id")
+    assert op_id_param._custom_shell_complete is operation_ids
+
+
+def test_status_op_id_argument_has_operation_ids_completer():
+    from thoth.cli_subcommands.status import status
+    from thoth.completion.sources import operation_ids
+
+    op_id_param = next(p for p in status.params if p.name == "operation_id")
+    assert op_id_param._custom_shell_complete is operation_ids
+
+
+def test_config_get_key_argument_has_config_keys_completer():
+    from thoth.cli_subcommands.config import config_get
+    from thoth.completion.sources import config_keys
+
+    key_param = next(p for p in config_get.params if p.name == "key")
+    assert key_param._custom_shell_complete is config_keys
+
+
+def test_modes_list_name_option_has_mode_names_completer():
+    from thoth.cli_subcommands.modes import modes_list
+    from thoth.completion.sources import mode_names
+
+    name_param = next(p for p in modes_list.params if p.name == "name")
+    assert name_param._custom_shell_complete is mode_names
+
+
+def test_providers_list_provider_option_has_provider_names_completer():
+    from thoth.cli_subcommands.providers import providers_list_cmd
+    from thoth.completion.sources import provider_names
+
+    provider_param = next(p for p in providers_list_cmd.params if p.name == "filter_provider")
+    assert provider_param._custom_shell_complete is provider_names

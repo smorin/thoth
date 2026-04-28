@@ -16,9 +16,26 @@ from __future__ import annotations
 
 import click
 
+from thoth.cli_subcommands._option_policy import (
+    DEFAULT_HONOR,
+    inherited_api_keys,
+    validate_inherited_options,
+)
+from thoth.completion.sources import operation_ids as _operation_ids_completer
+
+_RESUME_HONOR = DEFAULT_HONOR | {
+    "verbose",
+    "quiet",
+    "no_metadata",
+    "timeout",
+    "api_key_openai",
+    "api_key_perplexity",
+    "api_key_mock",
+}
+
 
 @click.command(name="resume")
-@click.argument("operation_id", metavar="OP_ID")
+@click.argument("operation_id", metavar="OP_ID", shell_complete=_operation_ids_completer)
 @click.option("--verbose", "-v", is_flag=True, help="Enable debug output")
 @click.option("--config", "-c", "config_path", help="Path to custom config file")
 @click.option("--quiet", "-Q", is_flag=True, help="Minimal output during execution")
@@ -45,6 +62,8 @@ def resume(
     api_key_mock: str | None,
 ) -> None:
     """Resume a previously-checkpointed operation by ID."""
+    validate_inherited_options(ctx, "resume", _RESUME_HONOR)
+
     # Local import: avoids cli.py → cli_subcommands → cli.py circular at module load.
     import thoth.run as _thoth_run
     from thoth.cli import _apply_config_path, _build_app_context, _run_maybe_async
@@ -56,10 +75,11 @@ def resume(
     effective_no_metadata = bool(no_metadata or inherited.get("no_metadata"))
     effective_timeout = timeout if timeout is not None else inherited.get("timeout")
     effective_config = config_path or inherited.get("config_path")
+    root_api_keys = inherited_api_keys(ctx)
     cli_api_keys = {
-        "openai": api_key_openai or inherited.get("api_key_openai"),
-        "perplexity": api_key_perplexity or inherited.get("api_key_perplexity"),
-        "mock": api_key_mock or inherited.get("api_key_mock"),
+        "openai": api_key_openai or root_api_keys["openai"],
+        "perplexity": api_key_perplexity or root_api_keys["perplexity"],
+        "mock": api_key_mock or root_api_keys["mock"],
     }
 
     _apply_config_path(effective_config)
