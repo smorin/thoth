@@ -27,6 +27,7 @@ black-box testing using subprocess and pexpect. Each test validates:
 """
 
 import atexit
+import concurrent.futures
 import json
 import os
 import re
@@ -35,6 +36,7 @@ import signal
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -344,6 +346,7 @@ def find_latest_output_file(pattern: str = "*_*_*_*_*.md") -> Path | None:
 
 
 _TEST_CONFIG_HOME: Path | None = None
+_TEST_CONFIG_HOME_LOCK = threading.Lock()
 
 
 def _ensure_test_config_home() -> Path:
@@ -354,13 +357,14 @@ def _ensure_test_config_home() -> Path:
     at the same tmpdir so tests get an isolated unified tree.
     """
     global _TEST_CONFIG_HOME
-    if _TEST_CONFIG_HOME is None:
-        _TEST_CONFIG_HOME = Path(tempfile.mkdtemp(prefix="thoth-test-"))
-        os.environ["XDG_CONFIG_HOME"] = str(_TEST_CONFIG_HOME)
-        os.environ["XDG_STATE_HOME"] = str(_TEST_CONFIG_HOME)
-        os.environ["XDG_CACHE_HOME"] = str(_TEST_CONFIG_HOME)
-        atexit.register(shutil.rmtree, str(_TEST_CONFIG_HOME), True)
-    return _TEST_CONFIG_HOME
+    with _TEST_CONFIG_HOME_LOCK:
+        if _TEST_CONFIG_HOME is None:
+            _TEST_CONFIG_HOME = Path(tempfile.mkdtemp(prefix="thoth-test-"))
+            os.environ["XDG_CONFIG_HOME"] = str(_TEST_CONFIG_HOME)
+            os.environ["XDG_STATE_HOME"] = str(_TEST_CONFIG_HOME)
+            os.environ["XDG_CACHE_HOME"] = str(_TEST_CONFIG_HOME)
+            atexit.register(shutil.rmtree, str(_TEST_CONFIG_HOME), True)
+        return _TEST_CONFIG_HOME
 
 
 def _prepare_test_isolation(
@@ -392,6 +396,66 @@ def _prepare_test_isolation(
     # (and break T-SIG-01's 1.5s SIGINT timing). Keep uv on the shared cache.
     env.setdefault("UV_CACHE_DIR", str(Path.home() / ".cache" / "uv"))
     return tmpdir, cmd, env, output_base
+
+
+# Flags that cause `_prepare_test_isolation` to skip its --output-dir injection.
+# A TestCase using any of these is opting OUT of per-test tmpdir isolation, so
+# its output target must be unique across the suite or parallel runs will race.
+_OUTPUT_FLAGS = ("-o", "--output-dir")
+_PROJECT_FLAG = "--project"
+
+
+def _resolve_output_target(cmd: list[str]) -> Path | None:
+    """Return the resolved output Path for ``cmd`` if it opts out of tmpdir
+    injection, else None.
+
+    Parses the first occurrence of -o/--output-dir/--project (matches click's
+    "last value wins" behavior is NOT used here; we use first-occurrence to
+    match how `_prepare_test_isolation` checks `any(a in cmd for a in (...))`).
+    Cross-flag collisions are detected because --project X resolves to the
+    same canonical path as -o research-outputs/X.
+    """
+    for i, arg in enumerate(cmd):
+        if arg in _OUTPUT_FLAGS and i + 1 < len(cmd):
+            return (Path.cwd() / Path(cmd[i + 1]).expanduser()).resolve()
+        if arg == _PROJECT_FLAG and i + 1 < len(cmd):
+            return (Path.cwd() / "research-outputs" / cmd[i + 1]).resolve()
+    return None
+
+
+def detect_parallel_hazards(tests: list["TestCase"]) -> list[str]:
+    """Return one human-readable error per duplicate output-path collision.
+
+    A TestCase that passes -o/--output-dir/--project opts out of the runner's
+    --output-dir injection (see _prepare_test_isolation, line ~383). If two
+    such TestCases resolve to the same output path, parallel execution will
+    race on writes/cleanup. An empty list means the suite is parallel-safe.
+    """
+    by_path: dict[Path, list[str]] = {}
+    flag_used: dict[Path, str] = {}
+    for tc in tests:
+        target = _resolve_output_target(tc.command)
+        if target is None:
+            continue
+        by_path.setdefault(target, []).append(tc.test_id)
+        if target not in flag_used:
+            for arg in tc.command:
+                if arg in _OUTPUT_FLAGS or arg == _PROJECT_FLAG:
+                    flag_used[target] = arg
+                    break
+
+    hazards: list[str] = []
+    for target, ids in sorted(by_path.items()):
+        if len(ids) <= 1:
+            continue
+        ids_str = " and ".join(ids) if len(ids) == 2 else ", ".join(ids)
+        hazards.append(
+            f"Parallel hazard: tests {ids_str} both write to '{target}' "
+            f"(via {flag_used.get(target, '?')}). Parallel execution would "
+            f"race; use a unique per-test path or remove the explicit flag "
+            f"so the runner can inject --output-dir."
+        )
+    return hazards
 
 
 def get_checkpoint_dir(config_home: Path) -> Path:
@@ -921,6 +985,7 @@ class TestRunner:
         requested_providers: list[str] | None = None,
         quiet: bool = False,
         report_json_path: str | None = None,
+        jobs: int = 1,
     ):
         self.results: list[TestResult] = []
         self.start_time = time.time()
@@ -933,6 +998,7 @@ class TestRunner:
         self.save_output = save_output
         self.quiet = quiet
         self._report_json_path = report_json_path
+        self.jobs = max(1, jobs)
         if save_output:
             self.output_dir = Path("test_outputs") / datetime.now().strftime("%Y%m%d_%H%M%S")
             self.output_dir.mkdir(parents=True, exist_ok=True)
@@ -1305,11 +1371,10 @@ api_key = "{api_key}"
         """Run all test cases and generate report"""
         self.filtered_tests = test_cases
         total_tests = len(test_cases)
+        parallel = self.jobs > 1
 
         if self.quiet:
-            for test_case in test_cases:
-                result = self.run_test(test_case)
-                self.results.append(result)
+            results_by_idx = self._run_dispatch(test_cases, parallel, progress=None, task=None)
         else:
             with Progress(
                 SpinnerColumn(),
@@ -1318,24 +1383,57 @@ api_key = "{api_key}"
                 TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
                 console=console,
             ) as progress:
-                task = progress.add_task("Running tests...", total=total_tests)
+                desc = f"Running tests (j={self.jobs})..." if parallel else "Running tests..."
+                task = progress.add_task(desc, total=total_tests)
+                results_by_idx = self._run_dispatch(test_cases, parallel, progress, task)
 
-                for current_num, test_case in enumerate(test_cases, 1):
-                    # Update progress with test number
-                    progress.update(
-                        task,
-                        description=f"Running test {current_num}/{total_tests}: {test_case.test_id}: {test_case.description}",
-                    )
-
-                    # Run test
-                    result = self.run_test(test_case)
-                    self.results.append(result)
-
-                    # Update progress
-                    progress.advance(task)
+        # Preserve test_cases order in results regardless of completion order.
+        self.results = [results_by_idx[i] for i in range(len(test_cases))]
 
         # Generate report
         self.generate_report()
+
+    def _run_dispatch(
+        self,
+        test_cases: list[TestCase],
+        parallel: bool,
+        progress: "Progress | None",
+        task: Any,
+    ) -> dict[int, TestResult]:
+        """Run tests sequentially or via a thread pool; return idx->TestResult."""
+        results: dict[int, TestResult] = {}
+        total = len(test_cases)
+
+        if not parallel:
+            for current_num, test_case in enumerate(test_cases, 1):
+                if progress is not None and task is not None:
+                    progress.update(
+                        task,
+                        description=f"Running test {current_num}/{total}: {test_case.test_id}: {test_case.description}",
+                    )
+                results[current_num - 1] = self.run_test(test_case)
+                if progress is not None and task is not None:
+                    progress.advance(task)
+            return results
+
+        # Parallel path: each test already isolates state via per-test tmpdir +
+        # XDG_*_HOME, so threads are safe. Subprocess waits release the GIL,
+        # so threads (vs. processes) avoid pickling overhead and import cost.
+        completed = 0
+        with concurrent.futures.ThreadPoolExecutor(max_workers=self.jobs) as pool:
+            futures = {pool.submit(self.run_test, tc): idx for idx, tc in enumerate(test_cases)}
+            for fut in concurrent.futures.as_completed(futures):
+                idx = futures[fut]
+                results[idx] = fut.result()
+                completed += 1
+                if progress is not None and task is not None:
+                    tc = test_cases[idx]
+                    progress.update(
+                        task,
+                        description=f"Completed {completed}/{total}: {tc.test_id}: {tc.description}",
+                    )
+                    progress.advance(task)
+        return results
 
     def _generate_quiet_report(self):
         total_time = time.time() - self.start_time
@@ -2923,6 +3021,14 @@ all_tests = [
     is_flag=True,
     help="Silent on pass; fenced failure blocks on fail.",
 )
+@click.option(
+    "-j",
+    "--jobs",
+    "jobs",
+    default="1",
+    show_default=True,
+    help="Run tests in parallel with N worker threads. 'auto' uses CPU count.",
+)
 def main(
     run,
     all,
@@ -2940,6 +3046,7 @@ def main(
     last_failed,
     report_json,
     quiet,
+    jobs,
 ):
     """Thoth Test Suite - Comprehensive regression tests for Thoth CLI
 
@@ -3149,6 +3256,37 @@ def main(
     test_api_keys = get_test_api_keys()
     validate_test_environment(test_api_keys, requested_providers)
 
+    # Resolve --jobs: 'auto' -> cpu_count, integer otherwise.
+    if isinstance(jobs, str) and jobs.lower() == "auto":
+        jobs_n = os.cpu_count() or 1
+    else:
+        try:
+            jobs_n = int(jobs)
+        except (TypeError, ValueError):
+            click.echo(f"--jobs must be an integer or 'auto', got: {jobs!r}", err=True)
+            sys.exit(2)
+        if jobs_n < 1:
+            click.echo("--jobs must be >= 1", err=True)
+            sys.exit(2)
+
+    # Fail-fast on parallel-safety hazards. Serial runs warn but proceed since
+    # they're unaffected; parallel runs abort to prevent flaky cross-test races.
+    hazards = detect_parallel_hazards(tests_to_run)
+    if hazards:
+        msg = "\n  ".join(hazards)
+        if jobs_n > 1:
+            click.echo(
+                f"thoth_test: parallel-execution hazards found:\n  {msg}",
+                err=True,
+            )
+            sys.exit(2)
+        else:
+            click.echo(
+                f"thoth_test: WARNING: parallel-execution hazards "
+                f"(currently running with -j 1):\n  {msg}",
+                err=True,
+            )
+
     # Create test runner and execute tests
     runner = TestRunner(
         verbose=verbose,
@@ -3156,6 +3294,7 @@ def main(
         requested_providers=requested_providers,
         quiet=quiet,
         report_json_path=report_json,
+        jobs=jobs_n,
     )
     runner.run_all_tests(tests_to_run)
 
