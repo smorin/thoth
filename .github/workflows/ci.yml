@@ -97,35 +97,19 @@ jobs:
           head: ${{ github.event.pull_request.head.sha || github.sha }}
           extra_args: --results=verified,unknown
 
-  test-linux:
-    name: Test (Python ${{ matrix.python-version }} on ubuntu-latest)
-    runs-on: ubuntu-latest
+  test:
+    name: Test (Python ${{ matrix.python-version }} on ${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
+        os: [ubuntu-latest, macos-latest]
         python-version: ["3.11", "3.12", "3.13"]
     steps:
       - uses: actions/checkout@v6.0.2
       - uses: astral-sh/setup-uv@v8.0.0
         with:
           python-version: ${{ matrix.python-version }}
-          enable-cache: true
-      - name: Run tests (mock provider only)
-        env:
-          MOCK_API_KEY: ci-test-key
-        run: ./thoth_test -r --provider mock --skip-interactive
-
-  test-macos:
-    name: Test (Python 3.13 on macos-latest)
-    # macOS runners cost 10x Linux on GitHub Actions, so we only run them on
-    # push to main — not on every PR.
-    if: github.event_name == 'push'
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@v6.0.2
-      - uses: astral-sh/setup-uv@v8.0.0
-        with:
-          python-version: "3.13"
           enable-cache: true
       - name: Run tests (mock provider only)
         env:
