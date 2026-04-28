@@ -1,5 +1,6 @@
 ## Development Principles
 - When planning features, look at using design patterns that make it easy to keep code consistent. And then put in place best practices.
+- Shared Codex-style agent instructions live in `AGENTS.md`; keep this file and `AGENTS.md` aligned when changing repo guidance.
 
 ## Fast Iteration Loop
 

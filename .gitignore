@@ -56,6 +56,7 @@ openai.env
 !CONTRIBUTING.md
 !PUBLISH.md
 !RELEASE.md
+!AGENTS.md
 !CLAUDE.md
 !thoth.*.md
 !temp.*.md
