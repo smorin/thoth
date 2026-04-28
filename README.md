@@ -683,5 +683,5 @@ make your full modified source code available to those users. See the
 [GNU AGPL FAQ](https://www.gnu.org/licenses/why-affero-gpl.html) for the
 rationale behind the network-service clause.
 
-Copyright © 2025–2026 Steve Morin. Contributions are accepted under the
+Copyright © 2025-2026 Steve Morin. Contributions are accepted under the
 same AGPL-3.0-or-later terms.
