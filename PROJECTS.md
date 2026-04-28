@@ -451,7 +451,7 @@
 
 ---
 
-## [ ] Project P16 PR3: Automation Polish — `completion` subcommand + universal `--json` (v3.0.0)
+## [x] Project P16 PR3: Automation Polish — `completion` subcommand + universal `--json` (v3.0.0)
 **Goal**: Ship the automation-and-scripting half of v3.0.0. Add `thoth completion {bash,zsh,fish}` (with `--install`) backed by dynamic completers in `completion/sources.py`. Add `--json` to every data/action admin command via the B-deferred per-handler `get_*_data() -> dict` extraction pattern, with envelope contract centralized in `json_output.py`. Completion script success stays raw shell output for `eval "$(thoth completion zsh)"`; `completion --json` is only for structured errors/install metadata. `help` stays human-only. Closes PRD F-70 and Plan M21-07. Lands as the final commit before release-please opens the v3.0.0 PR.
 
 **Specs**:
@@ -479,44 +479,44 @@
 
 ### Tests & Tasks
 **Phase A — `json_output.py` foundation**
-- [ ] [P16-PR3-TS01] `tests/test_json_output.py`: `emit_json({"foo":1})` writes `{"status":"ok","data":{"foo":1}}` to stdout and exits 0
-- [ ] [P16-PR3-TS02] `tests/test_json_output.py`: `emit_error("CODE", "msg", {"detail":1})` writes `{"status":"error","error":{"code":"CODE","message":"msg","details":{"detail":1}}}` and exits 1; `exit_code=2` honored
-- [ ] [P16-PR3-TS03] Round-trip parse test: every emitted envelope is `json.loads`-able
-- [ ] [P16-PR3-T01] Create `src/thoth/json_output.py` with `emit_json(data)` and `emit_error(code, message, details=None, exit_code=1)`. Stdlib only.
+- [x] [P16-PR3-TS01] `tests/test_json_output.py`: `emit_json({"foo":1})` writes `{"status":"ok","data":{"foo":1}}` to stdout and exits 0
+- [x] [P16-PR3-TS02] `tests/test_json_output.py`: `emit_error("CODE", "msg", {"detail":1})` writes `{"status":"error","error":{"code":"CODE","message":"msg","details":{"detail":1}}}` and exits 1; `exit_code=2` honored
+- [x] [P16-PR3-TS03] Round-trip parse test: every emitted envelope is `json.loads`-able
+- [x] [P16-PR3-T01] Create `src/thoth/json_output.py` with `emit_json(data)` and `emit_error(code, message, details=None, exit_code=1)`. Stdlib only.
 
 **Phase B — `completion` subcommand**
-- [ ] [P16-PR3-TS04] `tests/test_completion.py`: `thoth completion bash` emits a script containing `_THOTH_COMPLETE=bash_source thoth`
-- [ ] [P16-PR3-TS05] Same for `zsh` and `fish`; `thoth completion zsh-bogus --json` exits 2 with `UNSUPPORTED_SHELL`
-- [ ] [P16-PR3-TS06] `tests/test_completion_install.py`: `thoth completion bash --install` writes to `~/.bashrc` (tmp-home fixture); rerun detects existing block and prompts before overwrite
-- [ ] [P16-PR3-TS07] Non-tty + no `--force` → install refuses with helpful error
-- [ ] [P16-PR3-T02] Confirm existing `click>=8.0` pin and Click 8.x lockfile; keep `fish` in the required shell set
-- [ ] [P16-PR3-T03] Create `src/thoth/completion/__init__.py`, `script.py` (init script generation), `sources.py` (completer data functions: `operation_ids`, `mode_names`, `config_keys`, `provider_names`)
-- [ ] [P16-PR3-T04] Add `src/thoth/cli_subcommands/completion.py` with `@click.command("completion")` + string `shell` arg validated in the command body against `{bash,zsh,fish}` + `--install/--force/--json` flags. Do not use a raw `click.Choice`, because invalid-shell errors must be emit-able as `UNSUPPORTED_SHELL` JSON.
-- [ ] [P16-PR3-T05] Wire `shell_complete=` callbacks into existing subcommands: `resume OP_ID`, `status OP_ID`, `config get KEY`, `config set KEY`, `modes list --name NAME`
+- [x] [P16-PR3-TS04] `tests/test_completion.py`: `thoth completion bash` emits a script containing `_THOTH_COMPLETE=bash_source thoth`
+- [x] [P16-PR3-TS05] Same for `zsh` and `fish`; `thoth completion zsh-bogus --json` exits 2 with `UNSUPPORTED_SHELL`
+- [x] [P16-PR3-TS06] `tests/test_completion_install.py`: `thoth completion bash --install` writes to `~/.bashrc` (tmp-home fixture); rerun detects existing block and prompts before overwrite
+- [x] [P16-PR3-TS07] Non-tty + no `--force` → install refuses with helpful error
+- [x] [P16-PR3-T02] Confirm existing `click>=8.0` pin and Click 8.x lockfile; keep `fish` in the required shell set
+- [x] [P16-PR3-T03] Create `src/thoth/completion/__init__.py`, `script.py` (init script generation), `sources.py` (completer data functions: `operation_ids`, `mode_names`, `config_keys`, `provider_names`)
+- [x] [P16-PR3-T04] Add `src/thoth/cli_subcommands/completion.py` with `@click.command("completion")` + string `shell` arg validated in the command body against `{bash,zsh,fish}` + `--install/--force/--json` flags. Do not use a raw `click.Choice`, because invalid-shell errors must be emit-able as `UNSUPPORTED_SHELL` JSON.
+- [x] [P16-PR3-T05] Wire `shell_complete=` callbacks into existing subcommands: `resume OP_ID`, `status OP_ID`, `config get KEY`, `config set KEY`, `modes list --name NAME`
 
 **Phase C — `--json` rollout (one task per command, B-deferred extraction each)**
-- [ ] [P16-PR3-TS08] `tests/test_json_envelopes.py`: parametrized over every data/action `--json` command (`init`, `status`, `list`, `providers list/models/check`, `config get/set/unset/list/path/edit`, `modes list`, `ask`, `resume`) — each emits a top-level object with `status` field, parses cleanly. `completion --json` error/install cases are covered in completion tests; `help` intentionally has no `--json`.
-- [ ] [P16-PR3-T06] `init --json` (requires `--non-interactive` per spec §8.2; emit `JSON_REQUIRES_NONINTERACTIVE` otherwise)
-- [ ] [P16-PR3-T07] `status OP_ID --json` (extract `get_status_data()` from `commands.show_status`)
-- [ ] [P16-PR3-T08] `list --json` (extract `get_list_data()` from `commands.list_operations`)
-- [ ] [P16-PR3-T09] `providers list/models/check --json` (extract `get_providers_*_data()` siblings)
-- [ ] [P16-PR3-T10] `config get/set/unset/list/path --json` (extract `get_config_*_data()` siblings)
-- [ ] [P16-PR3-T11] `config edit --json` (success envelope after editor closes; `EDITOR_FAILED` on non-zero editor exit)
-- [ ] [P16-PR3-T12] `modes list --json` (legacy `modes --json` was removed in PR2; migrate the P11 schema into the new envelope contract)
-- [ ] [P16-PR3-T13] `ask --json` and `resume --json` (research-path JSON: minimal envelope with `operation_id`, `status`, `result_path` — full streaming output stays human-readable)
+- [x] [P16-PR3-TS08] `tests/test_json_envelopes.py`: parametrized over every data/action `--json` command (`init`, `status`, `list`, `providers list/models/check`, `config get/set/unset/list/path/edit`, `modes list`, `ask`, `resume`) — each emits a top-level object with `status` field, parses cleanly. `completion --json` error/install cases are covered in completion tests; `help` intentionally has no `--json`.
+- [x] [P16-PR3-T06] `init --json` (requires `--non-interactive` per spec §8.2; emit `JSON_REQUIRES_NONINTERACTIVE` otherwise)
+- [x] [P16-PR3-T07] `status OP_ID --json` (extract `get_status_data()` from `commands.show_status`)
+- [x] [P16-PR3-T08] `list --json` (extract `get_list_data()` from `commands.list_operations`)
+- [x] [P16-PR3-T09] `providers list/models/check --json` (extract `get_providers_*_data()` siblings)
+- [x] [P16-PR3-T10] `config get/set/unset/list/path --json` (extract `get_config_*_data()` siblings)
+- [x] [P16-PR3-T11] `config edit --json` (success envelope after editor closes; `EDITOR_FAILED` on non-zero editor exit)
+- [x] [P16-PR3-T12] `modes list --json` (legacy `modes --json` was removed in PR2; migrate the P11 schema into the new envelope contract)
+- [x] [P16-PR3-T13] `ask --json` and `resume --json` (research-path JSON: minimal envelope with `operation_id`, `status`, `result_path` — full streaming output stays human-readable)
 
 **Phase D — CI lint rules**
-- [ ] [P16-PR3-T14] Add CI check: `! grep -rnE "as_json" src/thoth/commands.py src/thoth/config_cmd.py src/thoth/modes_cmd.py` (handlers must not branch on JSON flag)
-- [ ] [P16-PR3-T15] Add CI check: `JSON_COMMANDS` parametrize-list in `test_json_envelopes.py` is complete — every data/action `@click.command` in `cli_subcommands/` with a success-envelope `--json` path appears in the list. Exclude `help` and raw completion-script success; assert `completion --json` error/install paths in completion tests.
+- [x] [P16-PR3-T14] Add CI check: `! grep -rnE "as_json" src/thoth/commands.py src/thoth/config_cmd.py src/thoth/modes_cmd.py` (handlers must not branch on JSON flag)
+- [x] [P16-PR3-T15] Add CI check: `JSON_COMMANDS` parametrize-list in `test_json_envelopes.py` is complete — every data/action `@click.command` in `cli_subcommands/` with a success-envelope `--json` path appears in the list. Exclude `help` and raw completion-script success; assert `completion --json` error/install paths in completion tests.
 
 **Phase E — Documentation + release**
-- [ ] [P16-PR3-T16] Update `planning/thoth.prd.v24.md:96` ("Added shell completion support") from aspirational to actually-shipped (spec §13 stale-PRD note)
-- [ ] [P16-PR3-T17] Document JSON envelope contract in `README.md` and a new `docs/json-output.md`
-- [ ] [P16-PR3-T18] Mark PRD F-70 and Plan M21-07 complete
-- [ ] [P16-PR3-T19] CHANGELOG entries (non-breaking — pure additions, but consolidate v3.0.0 narrative): `feat: shell completion (bash, zsh, fish)`, `feat: --json on all data/action admin commands`
-- [ ] [P16-PR3-T20] Verify release-please opens v3.0.0 PR after PR3 merges; merge → tag → publish
+- [x] [P16-PR3-T16] Update `planning/thoth.prd.v24.md:96` ("Added shell completion support") from aspirational to actually-shipped (spec §13 stale-PRD note)
+- [x] [P16-PR3-T17] Document JSON envelope contract in `README.md` and a new `docs/json-output.md`
+- [x] [P16-PR3-T18] Mark PRD F-70 and Plan M21-07 complete
+- [x] [P16-PR3-T19] CHANGELOG entries (non-breaking — pure additions, but consolidate v3.0.0 narrative): `feat: shell completion (bash, zsh, fish)`, `feat: --json on all data/action admin commands`
+- [x] [P16-PR3-T20] Verify release-please opens v3.0.0 PR after PR3 merges; merge → tag → publish
 
-- [ ] Regression Test Status
+- [x] Regression Test Status
 
 ### Automated Verification
 - `uv run pytest tests/test_json_output.py tests/test_completion.py tests/test_completion_install.py tests/test_json_envelopes.py -v` — all green
