@@ -36,6 +36,11 @@ JSON_COMMANDS: list[tuple[str, list[str], int]] = [
     # (Category G timing tests). The smoke-row below covers the resume
     # OPERATION_NOT_FOUND envelope.
     ("resume_missing_op", ["resume", "research-MISSING", "--json"], 6),
+    # T15: lint-meta coverage rows for `completion` (UNSUPPORTED_SHELL error
+    # envelope) and `config edit` (success envelope; EDITOR=true monkeypatched
+    # in the parametrize body).
+    ("completion_unsupported_shell", ["completion", "powershell", "--json"], 2),
+    ("config_edit_with_editor_true", ["config", "edit", "--json"], 0),
 ]
 
 
@@ -47,7 +52,10 @@ def cli():
 
 
 @pytest.mark.parametrize("label,argv,exit_code", JSON_COMMANDS, ids=[c[0] for c in JSON_COMMANDS])
-def test_json_envelope_contract(label, argv, exit_code, cli, isolated_thoth_home):
+def test_json_envelope_contract(label, argv, exit_code, cli, isolated_thoth_home, monkeypatch):
+    # `config edit` opens $EDITOR; force a no-op editor for the parametrize row.
+    if "edit" in argv:
+        monkeypatch.setenv("EDITOR", "true")
     runner = CliRunner()  # NOTE: drop mix_stderr=False — Click 8.3 removed it (PR2 precedent)
     result = runner.invoke(cli, argv, catch_exceptions=False)
 
