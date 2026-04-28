@@ -346,6 +346,44 @@ class OpenAIProvider(ResearchProvider):
             "created_at": datetime.now(),
         }
 
+    async def cancel(self, job_id: str) -> dict[str, Any]:
+        """Best-effort upstream cancel via OpenAI Responses API.
+
+        P18 Phase G. Documented in `planning/p18-cancel-research.md`:
+          * `client.responses.cancel(job_id)` works for queued/in_progress
+            background responses.
+          * Already-completed jobs return status='completed' (no error).
+          * The full Response object is returned; we map .status to our
+            uniform status dict.
+
+        If `job_id` isn't in our local `self.jobs` dict (e.g., `thoth cancel`
+        invoked after a fresh process start), we attempt `reconnect()` first.
+        """
+        if job_id not in self.jobs:
+            try:
+                await self.reconnect(job_id)
+            except Exception as e:
+                return {
+                    "status": "permanent_error",
+                    "error": f"reconnect failed: {e}",
+                    "error_class": type(e).__name__,
+                }
+        try:
+            response = await self.client.responses.cancel(job_id)
+            status = getattr(response, "status", None)
+            if status == "completed":
+                # Job finished before cancel landed.
+                return {"status": "completed", "progress": 1.0}
+            # Treat any non-completed terminal state as cancelled (cancelled,
+            # failed, incomplete, or any future state).
+            return {"status": "cancelled", "error": "Response was cancelled"}
+        except Exception as e:
+            return {
+                "status": "permanent_error",
+                "error": str(e),
+                "error_class": type(e).__name__,
+            }
+
     async def stream(
         self,
         prompt: str,

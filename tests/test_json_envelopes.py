@@ -36,6 +36,8 @@ JSON_COMMANDS: list[tuple[str, list[str], int]] = [
     # (Category G timing tests). The smoke-row below covers the resume
     # OPERATION_NOT_FOUND envelope.
     ("resume_missing_op", ["resume", "research-MISSING", "--json"], 6),
+    # P18 Phase G: cancel subcommand. Missing-op exits 6 with OPERATION_NOT_FOUND envelope.
+    ("cancel_missing_op", ["cancel", "research-MISSING", "--json"], 6),
     # T15: lint-meta coverage rows for `completion` (UNSUPPORTED_SHELL error
     # envelope) and `config edit` (success envelope; EDITOR=true monkeypatched
     # in the parametrize body).

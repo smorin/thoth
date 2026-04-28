@@ -571,6 +571,10 @@ from thoth.cli_subcommands import resume as _resume_mod  # noqa: E402
 
 cli.add_command(_resume_mod.resume)
 
+from thoth.cli_subcommands import cancel as _cancel_mod  # noqa: E402
+
+cli.add_command(_cancel_mod.cancel)
+
 from thoth.cli_subcommands import init as _init_mod  # noqa: E402
 
 cli.add_command(_init_mod.init)
