@@ -64,6 +64,13 @@ dev = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# P18 Phase I: `extended` marker tests hit the real provider APIs (cost +
+# wall-clock). They are gated out of the default suite via `addopts`. Run
+# explicitly with `uv run pytest -m extended` or `just test-extended`.
+markers = [
+    "extended: real-API contract tests; gated, not run by default",
+]
+addopts = "-m 'not extended'"
 
 [tool.ruff]
 target-version = "py311"
