@@ -163,6 +163,68 @@ thoth "prompt" --no-metadata
 thoth "prompt" --quiet
 ```
 
+### Streaming output for immediate modes (P18, v3.1.0+)
+
+Immediate-kind modes (`default`, `thinking`, `clarification`) stream tokens
+to stdout as they arrive — no progress bar, no operation-ID echo, no
+resume hint. Use `--out` to redirect or tee:
+
+```bash
+# Stream to stdout (default)
+thoth ask "what is X" --mode thinking
+
+# Write to a file (truncate)
+thoth ask "what is X" --mode thinking --out answer.md
+
+# Tee to stdout AND a file
+thoth ask "what is X" --mode thinking --out -,answer.md
+
+# Append instead of truncating
+thoth ask "what is X" --mode thinking --out answer.md --append
+```
+
+Background-kind modes (e.g. `deep_research`, `quick_research`,
+`exploration`, etc.) continue to use `--project` / `--output-dir` for
+persistent output. `--out` is currently immediate-only.
+
+### Cancelling a running operation
+
+```bash
+# Cancel an in-flight background operation by ID
+thoth cancel a1b2c3d4-...
+
+# Returns exit 6 if the operation isn't found; 0 otherwise.
+# JSON envelope available:
+thoth cancel a1b2c3d4-... --json
+```
+
+`thoth cancel` calls the provider's upstream cancel endpoint where
+supported (OpenAI Responses API), then marks the local checkpoint as
+cancelled. Providers without upstream cancel (e.g., Perplexity at the
+time of writing) have the local checkpoint marked cancelled but the
+upstream job runs to completion.
+
+### Filtering modes by execution kind (P18)
+
+Each mode is declared as `kind = "immediate"` (synchronous, streaming)
+or `kind = "background"` (async, polling-loop). User-defined modes in
+`~/.config/thoth/config.toml` should declare `kind` explicitly; missing
+`kind` warns once and falls back to a substring heuristic on the model
+name.
+
+```bash
+# Show only immediate-kind modes
+thoth modes --kind immediate
+
+# Show only background-kind modes
+thoth modes --kind background
+```
+
+A misconfigured mode (e.g., declared `immediate` but using a
+deep-research model) raises `ModeKindMismatchError` at submit time
+with a config-edit suggestion — before any HTTP call hits the
+provider.
+
 ### Interactive Mode
 ```bash
 # Enter interactive prompt mode with enhanced UI

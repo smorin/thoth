@@ -260,6 +260,12 @@ class OpenAIProvider(ResearchProvider):
         job_info = self.jobs[job_id]
 
         # If not background mode, it's already completed
+        # TODO(v4.0.0 / future P19): remove this shortcut. Post-P18,
+        # immediate-kind runs use `_execute_immediate` which calls
+        # `provider.stream()` directly and never reaches `check_status`.
+        # The shortcut survives only as defense-in-depth for edge cases like
+        # `--async` on a non-deep-research model. Confirm dead via a full
+        # audit before deletion.
         if not job_info.get("background", False):
             return {"status": "completed", "progress": 1.0}
 
