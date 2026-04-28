@@ -398,6 +398,66 @@ def _prepare_test_isolation(
     return tmpdir, cmd, env, output_base
 
 
+# Flags that cause `_prepare_test_isolation` to skip its --output-dir injection.
+# A TestCase using any of these is opting OUT of per-test tmpdir isolation, so
+# its output target must be unique across the suite or parallel runs will race.
+_OUTPUT_FLAGS = ("-o", "--output-dir")
+_PROJECT_FLAG = "--project"
+
+
+def _resolve_output_target(cmd: list[str]) -> Path | None:
+    """Return the resolved output Path for ``cmd`` if it opts out of tmpdir
+    injection, else None.
+
+    Parses the first occurrence of -o/--output-dir/--project (matches click's
+    "last value wins" behavior is NOT used here; we use first-occurrence to
+    match how `_prepare_test_isolation` checks `any(a in cmd for a in (...))`).
+    Cross-flag collisions are detected because --project X resolves to the
+    same canonical path as -o research-outputs/X.
+    """
+    for i, arg in enumerate(cmd):
+        if arg in _OUTPUT_FLAGS and i + 1 < len(cmd):
+            return (Path.cwd() / Path(cmd[i + 1]).expanduser()).resolve()
+        if arg == _PROJECT_FLAG and i + 1 < len(cmd):
+            return (Path.cwd() / "research-outputs" / cmd[i + 1]).resolve()
+    return None
+
+
+def detect_parallel_hazards(tests: list["TestCase"]) -> list[str]:
+    """Return one human-readable error per duplicate output-path collision.
+
+    A TestCase that passes -o/--output-dir/--project opts out of the runner's
+    --output-dir injection (see _prepare_test_isolation, line ~383). If two
+    such TestCases resolve to the same output path, parallel execution will
+    race on writes/cleanup. An empty list means the suite is parallel-safe.
+    """
+    by_path: dict[Path, list[str]] = {}
+    flag_used: dict[Path, str] = {}
+    for tc in tests:
+        target = _resolve_output_target(tc.command)
+        if target is None:
+            continue
+        by_path.setdefault(target, []).append(tc.test_id)
+        if target not in flag_used:
+            for arg in tc.command:
+                if arg in _OUTPUT_FLAGS or arg == _PROJECT_FLAG:
+                    flag_used[target] = arg
+                    break
+
+    hazards: list[str] = []
+    for target, ids in sorted(by_path.items()):
+        if len(ids) <= 1:
+            continue
+        ids_str = " and ".join(ids) if len(ids) == 2 else ", ".join(ids)
+        hazards.append(
+            f"Parallel hazard: tests {ids_str} both write to '{target}' "
+            f"(via {flag_used.get(target, '?')}). Parallel execution would "
+            f"race; use a unique per-test path or remove the explicit flag "
+            f"so the runner can inject --output-dir."
+        )
+    return hazards
+
+
 def get_checkpoint_dir(config_home: Path) -> Path:
     """Return <config_home>/thoth/checkpoints for the given per-test config home."""
     return config_home / "thoth" / "checkpoints"
@@ -3208,6 +3268,24 @@ def main(
         if jobs_n < 1:
             click.echo("--jobs must be >= 1", err=True)
             sys.exit(2)
+
+    # Fail-fast on parallel-safety hazards. Serial runs warn but proceed since
+    # they're unaffected; parallel runs abort to prevent flaky cross-test races.
+    hazards = detect_parallel_hazards(tests_to_run)
+    if hazards:
+        msg = "\n  ".join(hazards)
+        if jobs_n > 1:
+            click.echo(
+                f"thoth_test: parallel-execution hazards found:\n  {msg}",
+                err=True,
+            )
+            sys.exit(2)
+        else:
+            click.echo(
+                f"thoth_test: WARNING: parallel-execution hazards "
+                f"(currently running with -j 1):\n  {msg}",
+                err=True,
+            )
 
     # Create test runner and execute tests
     runner = TestRunner(
