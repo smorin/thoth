@@ -102,14 +102,31 @@ for _flag, _new_form in _LEGACY_FLAG_TO_NEW_FORM.items():
     help="Filter by provider",
     shell_complete=_provider_names_completer,
 )
+@click.option("--json", "as_json", is_flag=True, help="Emit JSON envelope")
 @click.pass_context
-def providers_list_cmd(ctx: click.Context, filter_provider: str | None) -> None:
+def providers_list_cmd(ctx: click.Context, filter_provider: str | None, as_json: bool) -> None:
     """List available providers."""
     validate_inherited_options(ctx, "providers list", _PROVIDERS_LIST_HONOR)
 
     from thoth import commands as _commands
+    from thoth.config import ConfigManager
+    from thoth.json_output import emit_error, emit_json
 
     effective_provider = pick_value(filter_provider, ctx, "provider")
+
+    if as_json:
+        config_manager = ConfigManager()
+        config_manager.load_all_layers({})
+        data = _commands.get_providers_list_data(config_manager, filter_provider=effective_provider)
+        if data.get("unknown"):
+            emit_error(
+                "UNKNOWN_PROVIDER",
+                f"Unknown provider: {effective_provider}",
+                {"provider": effective_provider},
+                exit_code=1,
+            )
+        emit_json(data)
+
     keys = inherited_api_keys(ctx)
     if _has_api_keys(keys):
         sys.exit(
@@ -142,12 +159,14 @@ def providers_list_cmd(ctx: click.Context, filter_provider: str | None) -> None:
 )
 @click.option("--refresh-cache", is_flag=True, help="Force-refresh the model cache")
 @click.option("--no-cache", is_flag=True, help="Bypass the model cache for this call")
+@click.option("--json", "as_json", is_flag=True, help="Emit JSON envelope")
 @click.pass_context
 def providers_models_cmd(
     ctx: click.Context,
     filter_provider: str | None,
     refresh_cache: bool,
     no_cache: bool,
+    as_json: bool,
 ) -> None:
     """List provider models."""
     validate_inherited_options(ctx, "providers models", _PROVIDERS_MODELS_HONOR)
@@ -159,8 +178,18 @@ def providers_models_cmd(
             param_hint="--refresh-cache / --no-cache",
         )
     from thoth import commands as _commands
+    from thoth.config import ConfigManager
+    from thoth.json_output import emit_json
 
     effective_provider = pick_value(filter_provider, ctx, "provider")
+
+    if as_json:
+        config_manager = ConfigManager()
+        config_manager.load_all_layers({})
+        emit_json(
+            _commands.get_providers_models_data(config_manager, filter_provider=effective_provider)
+        )
+
     keys = inherited_api_keys(ctx)
     timeout = inherited_value(ctx, "timeout")
     if timeout is not None:
@@ -209,14 +238,29 @@ def providers_models_cmd(
     help="Filter by provider",
     shell_complete=_provider_names_completer,
 )
+@click.option("--json", "as_json", is_flag=True, help="Emit JSON envelope")
 @click.pass_context
-def providers_check_cmd(ctx: click.Context, filter_provider: str | None) -> None:
+def providers_check_cmd(ctx: click.Context, filter_provider: str | None, as_json: bool) -> None:
     """Check provider API key configuration."""
     validate_inherited_options(ctx, "providers check", _PROVIDERS_CHECK_HONOR)
 
     from thoth import commands as _commands
+    from thoth.config import ConfigManager
+    from thoth.json_output import emit_json
 
     effective_provider = pick_value(filter_provider, ctx, "provider")
+
+    if as_json:
+        config_manager = ConfigManager()
+        config_manager.load_all_layers({})
+        # Honor `--provider` by narrowing the providers view before checking.
+        if effective_provider is not None:
+            full = config_manager.data["providers"]
+            config_manager.data["providers"] = {
+                effective_provider: full.get(effective_provider, {})
+            }
+        emit_json(_commands.get_providers_check_data(config_manager))
+
     keys = inherited_api_keys(ctx)
     if _has_api_keys(keys):
         sys.exit(

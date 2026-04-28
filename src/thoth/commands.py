@@ -620,35 +620,34 @@ async def providers_command(
             console.print()
 
 
-def providers_list(config: ConfigManager, filter_provider: str | None = None) -> int:
-    """List configured providers and whether each has a usable key."""
+def get_providers_list_data(config: ConfigManager, filter_provider: str | None = None) -> dict:
+    """Pure data function for `thoth providers list`.
+
+    Returns:
+        {"providers": [{"name": str, "key_set": bool}, ...]} on success.
+        {"providers": [], "filter_provider": ..., "unknown": True} when
+        `filter_provider` is unknown.
+    """
     import os
     import re
 
-    from rich.console import Console as _Console
-
     providers = sorted(config.data["providers"].keys())
+    if filter_provider and filter_provider not in providers:
+        return {"providers": [], "filter_provider": filter_provider, "unknown": True}
     if filter_provider:
-        if filter_provider not in providers:
-            print(f"Error: Unknown provider: {filter_provider}", file=sys.stderr)
-            print(f"Available providers: {', '.join(providers)}", file=sys.stderr)
-            return 1
         providers = [filter_provider]
 
-    _console = _Console()
-    _console.print("Configured providers:")
+    out = []
     for name in providers:
         raw = config.data["providers"][name].get("api_key", "")
         m = re.match(r"\$\{(\w+)\}", raw or "")
         resolved = os.environ.get(m.group(1)) if m else (raw or None)
-        _console.print(f"  {name:<12} {'key set' if resolved else 'no key'}")
-    return 0
+        out.append({"name": name, "key_set": bool(resolved)})
+    return {"providers": out}
 
 
-def providers_models(config: ConfigManager, filter_provider: str | None = None) -> int:
-    """List models known per provider, derived from BUILTIN_MODES."""
-    from rich.console import Console as _Console
-
+def get_providers_models_data(config: ConfigManager, filter_provider: str | None = None) -> dict:
+    """Pure data function for `thoth providers models`."""
     from thoth.config import BUILTIN_MODES
 
     seen: dict[str, set[str]] = {}
@@ -656,26 +655,21 @@ def providers_models(config: ConfigManager, filter_provider: str | None = None) 
         p = str(cfg["provider"])
         if filter_provider and p != filter_provider:
             continue
-        if p not in seen:
-            seen[p] = set()
-        seen[p].add(str(cfg["model"]))
-    _console = _Console()
-    if filter_provider and not seen:
-        _console.print(f"[red]No models found for provider:[/] {filter_provider}")
-        return 1
-    for provider, models in sorted(seen.items()):
-        _console.print(f"{provider}:")
-        for m in sorted(models):
-            _console.print(f"  {m}")
-    return 0
+        seen.setdefault(p, set()).add(str(cfg["model"]))
+
+    return {
+        "providers": [
+            {"name": provider, "models": sorted(models)}
+            for provider, models in sorted(seen.items())
+        ],
+        "filter_provider": filter_provider,
+    }
 
 
-def providers_check(config: ConfigManager) -> int:
-    """Exit 0 if every configured provider has a usable key; else 2."""
+def get_providers_check_data(config: ConfigManager) -> dict:
+    """Pure data function for `thoth providers check`."""
     import os
     import re
-
-    from rich.console import Console as _Console
 
     missing = []
     for name, p in config.data["providers"].items():
@@ -684,9 +678,52 @@ def providers_check(config: ConfigManager) -> int:
         resolved = os.environ.get(m.group(1)) if m else (raw or None)
         if not resolved:
             missing.append(name)
+    return {"missing": missing, "complete": not missing}
+
+
+def providers_list(config: ConfigManager, filter_provider: str | None = None) -> int:
+    """List configured providers and whether each has a usable key (Rich)."""
+    from rich.console import Console as _Console
+
+    data = get_providers_list_data(config, filter_provider=filter_provider)
+    if data.get("unknown"):
+        all_providers = sorted(config.data["providers"].keys())
+        print(f"Error: Unknown provider: {filter_provider}", file=sys.stderr)
+        print(f"Available providers: {', '.join(all_providers)}", file=sys.stderr)
+        return 1
+
     _console = _Console()
-    if missing:
-        _console.print(f"[red]Missing keys for:[/] {', '.join(missing)}")
+    _console.print("Configured providers:")
+    for entry in data["providers"]:
+        label = "key set" if entry["key_set"] else "no key"
+        _console.print(f"  {entry['name']:<12} {label}")
+    return 0
+
+
+def providers_models(config: ConfigManager, filter_provider: str | None = None) -> int:
+    """List models known per provider, derived from BUILTIN_MODES (Rich)."""
+    from rich.console import Console as _Console
+
+    data = get_providers_models_data(config, filter_provider=filter_provider)
+    _console = _Console()
+    if filter_provider and not data["providers"]:
+        _console.print(f"[red]No models found for provider:[/] {filter_provider}")
+        return 1
+    for entry in data["providers"]:
+        _console.print(f"{entry['name']}:")
+        for m in entry["models"]:
+            _console.print(f"  {m}")
+    return 0
+
+
+def providers_check(config: ConfigManager) -> int:
+    """Exit 0 if every configured provider has a usable key; else 2 (Rich)."""
+    from rich.console import Console as _Console
+
+    data = get_providers_check_data(config)
+    _console = _Console()
+    if not data["complete"]:
+        _console.print(f"[red]Missing keys for:[/] {', '.join(data['missing'])}")
         return 2
     _console.print("[green]All providers have keys set[/]")
     return 0
@@ -696,6 +733,9 @@ __all__ = [
     "CommandHandler",
     "get_init_data",
     "get_list_data",
+    "get_providers_check_data",
+    "get_providers_list_data",
+    "get_providers_models_data",
     "get_status_data",
     "list_command",
     "list_operations",

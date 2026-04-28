@@ -18,8 +18,14 @@ JSON_COMMANDS: list[tuple[str, list[str], int]] = [
     ("status_missing_op", ["status", "research-MISSING", "--json"], 6),
     ("list_empty", ["list", "--json"], 0),
     ("list_all_empty", ["list", "--all", "--json"], 0),
-    # T09–T13 will append rows for providers, config, modes, ask,
-    # resume per the spec §10 commit sequence.
+    ("providers_list", ["providers", "list", "--json"], 0),
+    ("providers_models", ["providers", "models", "--json"], 0),
+    ("providers_check", ["providers", "check", "--json"], 0),
+    # NOTE: `providers check` exits 0 with `data.complete=False` even when
+    # keys missing — the JSON envelope decouples machine state from process
+    # exit code.
+    # T10–T13 will append rows for config, modes, ask, resume per the spec
+    # §10 commit sequence.
 ]
 
 
