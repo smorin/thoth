@@ -26,7 +26,8 @@ PARITY_LABELS = [
     "providers_list",
     "config_list",
     "modes_no_args",
-    "help_auth",
+    # "help_auth" removed in P16 PR2 T8 — `thoth help auth` virtual topic
+    # was dropped per Q5-A row 13.ii.
     "unknown_command",
 ]
 
@@ -100,11 +101,7 @@ def test_config_no_args_errors_with_op_hint(run_thoth):
     exit_code, stdout, stderr = run_thoth(["config"])
     assert exit_code == 2
     combined = stdout + stderr
-    assert (
-        "op" in combined.lower()
-        or "required" in combined.lower()
-        or "(get|set" in combined
-    )
+    assert "op" in combined.lower() or "required" in combined.lower() or "(get|set" in combined
 
 
 def test_help_init_forwards_to_subcommand(run_thoth):
@@ -112,3 +109,20 @@ def test_help_init_forwards_to_subcommand(run_thoth):
     exit_code, stdout, stderr = run_thoth(["help", "init"])
     assert exit_code == 0
     assert "init" in stdout.lower()
+
+
+def test_fallback_timeout_options_are_coerced_to_float():
+    """Post-prompt global options should match Click's option typing."""
+    from thoth.cli import _extract_fallback_options
+
+    positional, parsed = _extract_fallback_options(["prompt", "--timeout", "30.0"], {})
+
+    assert positional == ["prompt"]
+    assert parsed["timeout"] == 30.0
+    assert isinstance(parsed["timeout"], float)
+
+    positional, parsed = _extract_fallback_options(["prompt", "--timeout=0.001"], {})
+
+    assert positional == ["prompt"]
+    assert parsed["timeout"] == 0.001
+    assert isinstance(parsed["timeout"], float)

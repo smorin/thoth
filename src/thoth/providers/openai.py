@@ -66,7 +66,7 @@ def _map_openai_error(
         return ProviderError(
             "openai",
             f"Model '{model}' not found. Please check available models with "
-            f"'thoth providers -- --models --provider openai'",
+            f"'thoth providers models --provider openai'",
             raw_error=raw,
         )
 

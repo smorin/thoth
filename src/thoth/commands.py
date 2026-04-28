@@ -224,7 +224,7 @@ def _print_status_hints(operation: OperationStatus) -> None:
     elif status == "completed":
         print_hint("thoth list", "See recent runs")
     elif status == "cancelled":
-        print_hint(f"thoth --resume {op_id}", "Pick up where Ctrl-C left off")
+        print_hint(f"thoth resume {op_id}", "Pick up where Ctrl-C left off")
     elif status == "failed":
         if operation.failure_type == "permanent":
             console.print("  This failure is permanent and cannot be resumed.")
@@ -235,7 +235,7 @@ def _print_status_hints(operation: OperationStatus) -> None:
                     "Check credentials",
                 )
         else:
-            print_hint(f"thoth --resume {op_id}", "Retry from checkpoint")
+            print_hint(f"thoth resume {op_id}", "Retry from checkpoint")
 
 
 async def list_operations(show_all: bool):
@@ -318,34 +318,41 @@ async def providers_command(
 ):
     """Show provider information and available models"""
     if not show_models and not show_list and not show_keys:
-        console.print("[yellow]Usage:[/yellow] thoth providers -- [OPTIONS]")
+        console.print("[yellow]Usage:[/yellow] thoth providers <list|models|check> [OPTIONS]")
         console.print("\nShow provider information and available models.")
-        console.print("\nOptions:")
-        console.print("  --list                List available providers and their status")
-        console.print("  --models              List available models from providers")
-        console.print("  --keys                Show API key configuration for each provider")
-        console.print("  --provider, -P        Filter by specific provider (with --models)")
+        console.print("\nSubcommands:")
+        console.print("  list                  List available providers and their status")
+        console.print("  models                List available models from providers")
+        console.print("  check                 Show API key configuration for each provider")
+        console.print("\nOptions (for `models`):")
+        console.print("  --provider, -P        Filter by specific provider")
         console.print("  --refresh-cache       Force refresh of cached model lists")
         console.print("  --no-cache            Bypass cache without updating it")
-        console.print("\n[dim]Note: Use -- before options to prevent parsing conflicts[/dim]")
         console.print("\nExamples:")
         console.print("  # List all available providers")
-        console.print("  $ thoth providers -- --list")
+        console.print("  $ thoth providers list")
         console.print("\n  # Show API key configuration")
-        console.print("  $ thoth providers -- --keys")
+        console.print("  $ thoth providers check")
         console.print("\n  # List all models from all providers")
-        console.print("  $ thoth providers -- --models")
+        console.print("  $ thoth providers models")
         console.print("\n  # List only OpenAI models")
-        console.print("  $ thoth providers -- --models --provider openai")
+        console.print("  $ thoth providers models --provider openai")
         console.print("\n  # Force refresh cached models")
-        console.print("  $ thoth providers -- --models --refresh-cache")
+        console.print("  $ thoth providers models --refresh-cache")
         console.print("\n  # Check current models without updating cache")
-        console.print("  $ thoth providers -- --models --no-cache")
+        console.print("  $ thoth providers models --no-cache")
         return
 
     config = get_config()
 
     all_providers = ["openai", "perplexity", "mock"]
+    selected_providers = all_providers
+    if filter_provider:
+        if filter_provider not in all_providers:
+            print(f"Error: Unknown provider: {filter_provider}", file=sys.stderr)
+            print(f"Available providers: {', '.join(all_providers)}", file=sys.stderr)
+            sys.exit(1)
+        selected_providers = [filter_provider]
 
     provider_descriptions = {
         "openai": "OpenAI GPT models",
@@ -360,7 +367,7 @@ async def providers_command(
         table.add_column("Description", style="dim", width=25)
         table.add_column("Model Cache", style="dim", width=30)
 
-        for provider_name in all_providers:
+        for provider_name in selected_providers:
             try:
                 provider = create_provider(provider_name, config)
                 status = "[green]✓ Ready[/green]"
@@ -399,8 +406,8 @@ async def providers_command(
             table.add_row(provider_name, status, description, cache_info)
 
         console.print(table)
-        console.print("\nTo see available models, use: thoth providers -- --models")
-        console.print("To refresh model cache, use: thoth providers -- --models --refresh-cache")
+        console.print("\nTo see available models, use: thoth providers models")
+        console.print("To refresh model cache, use: thoth providers models --refresh-cache")
         return
 
     if show_keys:
@@ -415,7 +422,7 @@ async def providers_command(
         table.add_column("Environment Variable", style="green", width=22)
         table.add_column("CLI Argument", style="yellow", width=22)
 
-        for provider_name in all_providers:
+        for provider_name in selected_providers:
             env_var = env_vars.get(provider_name, f"{provider_name.upper()}_API_KEY")
             cli_arg = f"--api-key-{provider_name}"
             table.add_row(provider_name, env_var, cli_arg)
@@ -432,13 +439,7 @@ async def providers_command(
         )
         return
 
-    providers = all_providers
-    if filter_provider:
-        if filter_provider not in providers:
-            print(f"Error: Unknown provider: {filter_provider}", file=sys.stderr)
-            print(f"Available providers: {', '.join(providers)}", file=sys.stderr)
-            sys.exit(1)
-        providers = [filter_provider]
+    providers = selected_providers
 
     if refresh_cache:
         console.print("Fetching available models (refreshing cache)...\n")
@@ -495,16 +496,24 @@ async def providers_command(
             console.print()
 
 
-def providers_list(config: ConfigManager) -> int:
+def providers_list(config: ConfigManager, filter_provider: str | None = None) -> int:
     """List configured providers and whether each has a usable key."""
     import os
     import re
 
     from rich.console import Console as _Console
 
+    providers = sorted(config.data["providers"].keys())
+    if filter_provider:
+        if filter_provider not in providers:
+            print(f"Error: Unknown provider: {filter_provider}", file=sys.stderr)
+            print(f"Available providers: {', '.join(providers)}", file=sys.stderr)
+            return 1
+        providers = [filter_provider]
+
     _console = _Console()
     _console.print("Configured providers:")
-    for name in sorted(config.data["providers"].keys()):
+    for name in providers:
         raw = config.data["providers"][name].get("api_key", "")
         m = re.match(r"\$\{(\w+)\}", raw or "")
         resolved = os.environ.get(m.group(1)) if m else (raw or None)
@@ -512,7 +521,7 @@ def providers_list(config: ConfigManager) -> int:
     return 0
 
 
-def providers_models(config: ConfigManager) -> int:
+def providers_models(config: ConfigManager, filter_provider: str | None = None) -> int:
     """List models known per provider, derived from BUILTIN_MODES."""
     from rich.console import Console as _Console
 
@@ -521,10 +530,15 @@ def providers_models(config: ConfigManager) -> int:
     seen: dict[str, set[str]] = {}
     for cfg in BUILTIN_MODES.values():
         p = str(cfg["provider"])
+        if filter_provider and p != filter_provider:
+            continue
         if p not in seen:
             seen[p] = set()
         seen[p].add(str(cfg["model"]))
     _console = _Console()
+    if filter_provider and not seen:
+        _console.print(f"[red]No models found for provider:[/] {filter_provider}")
+        return 1
     for provider, models in sorted(seen.items()):
         _console.print(f"{provider}:")
         for m in sorted(models):

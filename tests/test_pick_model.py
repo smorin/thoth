@@ -45,7 +45,7 @@ def test_pick_model_rejected_with_resume(monkeypatch):
         return "gpt-4o-mini"
 
     monkeypatch.setattr("thoth.interactive_picker.pick_model", fake_pick)
-    r = CliRunner().invoke(cli, ["--pick-model", "--resume", "op_test_123"])
+    r = CliRunner().invoke(cli, ["--pick-model", "resume", "op_test_123"])
     assert r.exit_code != 0
     assert "only applies to research runs" in r.output
     assert picked["called"] is False
@@ -106,7 +106,7 @@ def test_pick_model_error_does_not_say_mode_none(monkeypatch):
 
     for argv in (
         ["--pick-model"],
-        ["--pick-model", "--resume", "op_test_123"],
+        ["--pick-model", "resume", "op_test_123"],
         ["--pick-model", "-i"],
         ["--pick-model", "providers", "list"],
     ):

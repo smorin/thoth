@@ -23,7 +23,7 @@ def test_help_has_workflow_chain():
 
 def test_help_has_resume_example():
     out = _help()
-    assert "thoth --resume" in out
+    assert "thoth resume" in out
 
 
 def test_help_has_verbose_example():

@@ -7,8 +7,6 @@ import warnings
 import click
 from rich.console import Console
 
-from thoth.config import BUILTIN_MODES, THOTH_VERSION
-
 console = Console()
 
 
@@ -19,7 +17,6 @@ ADMIN_COMMANDS: tuple[str, ...] = (
     "config",
     "modes",
     "providers",
-    "completion",
     "help",
 )
 
@@ -29,6 +26,13 @@ def _run_research_default(*args, **kwargs):
     from thoth.cli import _run_research_default as _impl
 
     return _impl(*args, **kwargs)
+
+
+def _dispatch_click_fallback(ctx: click.Context, args: list[str]):
+    # Lazy import to avoid circular import (cli.py imports ThothGroup).
+    from thoth.cli import _dispatch_click_fallback as _impl
+
+    return _impl(ctx, args, _run_research_default)
 
 
 class ThothGroup(click.Group):
@@ -42,6 +46,15 @@ class ThothGroup(click.Group):
 
     The two-section help renderer is added in Task 11.
     """
+
+    def parse_args(self, ctx: click.Context, args: list[str]):
+        # Q6-PR2-C1: legacy --resume / -R flag is gated to the new subcommand.
+        # Scan the raw argv BEFORE delegating to super().parse_args so we can
+        # emit a Click-native error with the migration hint on stderr.
+        for token in args:
+            if token in ("--resume", "-R") or token.startswith("--resume="):
+                ctx.fail("no such option: --resume (use 'thoth resume OP_ID')")
+        return super().parse_args(ctx, args)
 
     def resolve_command(self, ctx: click.Context, args: list[str]):
         try:
@@ -71,13 +84,11 @@ class ThothGroup(click.Group):
                 return super().invoke(ctx)
             # Path 2: positional mode dispatch
             if first in BUILTIN_MODES:
-                prompt = " ".join(args[1:]) if len(args) > 1 else ""
-                return _run_research_default(mode=first, prompt=prompt, ctx_obj=ctx.obj)
+                return _dispatch_click_fallback(ctx, args)
             # Path 3: bare-prompt fallback (whole arg vector is the prompt)
-            prompt = " ".join(args)
-            return _run_research_default(mode="default", prompt=prompt, ctx_obj=ctx.obj)
-        # No args: standard group help (Click default)
-        return super().invoke(ctx)
+            return _dispatch_click_fallback(ctx, args)
+        # No args: option-only research/resume/interactive fallback.
+        return _dispatch_click_fallback(ctx, args)
 
     def format_commands(self, ctx: click.Context, formatter):
         """Render commands in two sections: Run research / Manage thoth."""
@@ -107,13 +118,23 @@ class ThothGroup(click.Group):
 
         with formatter.section("Modes (positional)"):
             modes_str = ", ".join(sorted(BUILTIN_MODES))
-            formatter.write_text(
-                f"Pass as the first positional argument: {modes_str}"
-            )
+            formatter.write_text(f"Pass as the first positional argument: {modes_str}")
             formatter.write_paragraph()
+            formatter.write_text("Run `thoth modes` for provider, model, and kind per mode.")
+            formatter.write_paragraph()
+            formatter.write_text('Example: thoth deep_research "explain transformers"')
+
+        with formatter.section("Workflow chain"):
             formatter.write_text(
-                'Example: thoth deep_research "explain transformers"'
+                "clarification → exploration → deep_dive → tutorial → solution → prd → tdd"
             )
+
+        with formatter.section("Examples"):
+            formatter.write_text('thoth "how does DNS work"')
+            formatter.write_text('thoth clarification "k8s networking" --project k8s')
+            formatter.write_text("thoth deep_research --auto --project k8s --async")
+            formatter.write_text("thoth resume op_abc123")
+            formatter.write_text('Debug API issues: thoth deep_research "topic" -v')
 
         super().format_epilog(ctx, formatter)
 
@@ -152,43 +173,6 @@ def show_config_help():
     console.print("  Writes preserve comments and formatting of the target TOML file.")
 
 
-def show_general_help(ctx):
-    """Show enhanced general help with command overview"""
-    console.print("\n[bold]Thoth - AI-Powered Research Assistant[/bold]")
-    console.print(f"Version {THOTH_VERSION}")
-    console.print("\n[bold]Usage:[/bold]")
-    console.print("  thoth [COMMAND] [OPTIONS]")
-    console.print('  thoth [MODE] "PROMPT" [OPTIONS]')
-    console.print('  thoth "PROMPT" [OPTIONS]')
-    console.print("\n[bold]Quick Start:[/bold]")
-    console.print("  # Simple prompt (uses default mode)")
-    console.print('  $ thoth "how does DNS work"')
-    console.print("\n  # Specify a research mode")
-    console.print('  $ thoth deep_research "explain kubernetes networking"')
-    console.print("\n[bold]Commands:[/bold]")
-    console.print("  init            Initialize configuration")
-    console.print("  status <ID>     Check operation status")
-    console.print("  list            List research operations")
-    console.print("  config <OP>     Inspect and edit configuration")
-    console.print("  help [COMMAND]  Show help (general or command-specific)")
-    console.print("\n[bold]Research Modes:[/bold]")
-    console.print(f"  {', '.join(BUILTIN_MODES.keys())}")
-    console.print("  Run [bold]thoth modes[/bold] for provider, model, and kind per mode.")
-    console.print("\n[bold]Common Options:[/bold]")
-    console.print("  --mode, -m      Research mode to use")
-    console.print("  --prompt, -q     Research prompt")
-    console.print("  --async, -A     Submit and exit immediately")
-    console.print("  --project, -p   Project name for organized output")
-    console.print("  --verbose, -v   Show debug output")
-    console.print("  --version, -V   Show version and exit")
-    console.print("\n[bold]For detailed command help:[/bold]")
-    console.print("  $ thoth help init")
-    console.print("  $ thoth help status")
-    console.print("  $ thoth help list")
-    console.print("\n[bold]For all options:[/bold]")
-    console.print("  $ thoth --help")
-
-
 def render_auth_help() -> str:
     return (
         "Authentication — recommended order:\n"
@@ -217,5 +201,4 @@ __all__ = [
     "render_auth_help",
     "show_auth_help",
     "show_config_help",
-    "show_general_help",
 ]

@@ -101,7 +101,7 @@ def _op_get(args: list[str]) -> int:
         console.print(f"[red]Error:[/red] key not found: {key}")
         return 1
 
-    if _is_secret_key(key) and not show_secrets and not raw:
+    if _is_secret_key(key) and not show_secrets:
         value = _mask_secret(value)
 
     print(_render_scalar(value, as_json))
@@ -313,6 +313,12 @@ def _op_list(args: list[str]) -> int:
         elif a == "--show-secrets":
             show_secrets = True
             i += 1
+        elif a == "--raw":
+            console.print(
+                "[red]Error:[/red] --raw is only supported on 'thoth config get'; "
+                "use 'thoth config list --json' for machine-readable output"
+            )
+            return 2
         else:
             console.print(f"[red]Error:[/red] unknown arg: {a}")
             return 2

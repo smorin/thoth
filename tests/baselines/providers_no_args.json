@@ -1,9 +1,0 @@
-{
-  "argv": [
-    "providers"
-  ],
-  "exit_code": 0,
-  "label": "providers_no_args",
-  "stderr": "",
-  "stdout": "\nthoth providers - List providers and available models\n\nDescription:\n  Shows available providers and their configuration status,\n  lists available models from each LLM provider,\n  or displays API key configuration information.\n  OpenAI models are fetched dynamically via API and cached locally.\n  Model cache auto-refreshes after 1 week.\n  Perplexity models are returned from a predefined list.\n  Perplexity research execution is not implemented yet.\n\nUsage:\n  thoth providers -- [OPTIONS]\n\nOptions:\n  --list                List available providers and their status\n  --models              List available models from providers\n  --keys                Show API key configuration for each provider\n  --provider, -P        Filter by specific provider (with --models)\n  --refresh-cache       Force refresh of cached model lists\n  --no-cache            Bypass cache without updating it\n\nNote:\n  Use -- before options to prevent parsing conflicts\n\nAvailable providers:\n  \u2022 openai     - OpenAI GPT models (cached)\n  \u2022 perplexity - Perplexity Sonar models (not implemented)\n  \u2022 mock       - Mock provider for testing\n\nExamples:\n  # List all available providers\n  $ thoth providers -- --list\n\n  # Show API key configuration\n  $ thoth providers -- --keys\n\n  # List all models from all providers\n  $ thoth providers -- --models\n\n  # List only OpenAI models\n  $ thoth providers -- --models --provider openai\n\n  # Force refresh cached models\n  $ thoth providers -- --models --refresh-cache\n\n  # Bypass cache without updating it\n  $ thoth providers -- --models --no-cache\n  $ thoth providers -- --models -P openai\n\nRelated commands:\n  thoth help       - Show general help\n"
-}

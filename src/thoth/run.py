@@ -497,7 +497,7 @@ async def _run_polling_loop(
                 elif provider_status == "cancelled":
                     # Cancelled jobs cannot be resumed via the original provider
                     # job id, so route to permanent to suppress the misleading
-                    # `thoth --resume` hint.
+                    # `thoth resume` hint.
                     error_msg = status.get("error", "job was cancelled")
                     console.print(f"\n[red]✗[/red] {provider_name.title()} cancelled: {error_msg}")
                     operation.providers[provider_name]["status"] = "failed"
@@ -626,7 +626,7 @@ async def _execute_research(
         if operation.failure_type == "recoverable":
             console.print(
                 f"\n[cyan]This failure is recoverable.[/cyan] "
-                f"Resume with: [bold]thoth --resume {operation.id}[/bold]"
+                f"Resume with: [bold]thoth resume {operation.id}[/bold]"
             )
         return
 
@@ -651,7 +651,7 @@ async def _execute_research(
         if op_failure_type == "recoverable":
             console.print(
                 f"\n[cyan]This failure is recoverable.[/cyan] "
-                f"Resume with: [bold]thoth --resume {operation.id}[/bold]"
+                f"Resume with: [bold]thoth resume {operation.id}[/bold]"
             )
         return
 
@@ -702,17 +702,35 @@ async def _execute_research(
 
 async def resume_operation(
     operation_id: str,
-    verbose: bool,
+    verbose: bool = False,
     ctx: AppContext | None = None,
+    *,
+    quiet: bool = False,
+    no_metadata: bool = False,
+    timeout_override: float | None = None,
+    cli_api_keys: dict[str, str | None] | None = None,
 ):
-    """Resume an existing operation by reconnecting to its providers."""
+    """Resume an existing operation by reconnecting to its providers.
+
+    Honor-set per Q1-PR2-C: the resume subcommand passes `quiet`,
+    `no_metadata`, `timeout_override`, and `cli_api_keys` as keyword
+    arguments. The legacy `--resume` flag callsite (cli.py until Task 5)
+    passes only the first three positional args; keyword-only defaults
+    keep both callsites valid during the transition window.
+    """
 
     config = get_config()
     if ctx is None:
         ctx = AppContext(config=config, verbose=verbose)
+    ctx.quiet = quiet
+    ctx.no_metadata = no_metadata
+    if timeout_override is not None:
+        ctx.timeout_override = timeout_override
+    if cli_api_keys:
+        ctx.cli_api_keys = cli_api_keys
     console = ctx.console  # noqa: F811 — shadow module-level console with ctx's
     checkpoint_manager = CheckpointManager(config)
-    output_manager = OutputManager(config)
+    output_manager = OutputManager(config, no_metadata=no_metadata)
 
     operation = await checkpoint_manager.load(operation_id)
     if not operation:
@@ -752,7 +770,13 @@ async def resume_operation(
             console.print(f"[red]Provider {provider_name} has no job_id; cannot reconnect.[/red]")
             continue
         try:
-            provider = create_provider(provider_name, config, mode_config=mode_config)
+            provider = create_provider(
+                provider_name,
+                config,
+                cli_api_key=cli_api_keys.get(provider_name) if cli_api_keys else None,
+                timeout_override=timeout_override,
+                mode_config=mode_config,
+            )
         except (APIKeyError, ProviderError, ThothError) as e:
             console.print(f"[red]Error:[/red] {e.message}")
             console.print(f"[yellow]Suggestion:[/yellow] {e.suggestion}")
@@ -788,7 +812,7 @@ async def resume_operation(
 
     resume_mode_model = mode_config.get("model")
     with _poll_display(
-        quiet=False, mode_model=resume_mode_model, verbose=verbose, rich_console=console
+        quiet=quiet, mode_model=resume_mode_model, verbose=verbose, rich_console=console
     ) as progress:
         jobs: dict[str, dict[str, Any]] = {}
         for provider_name, provider in provider_instances.items():
@@ -824,7 +848,7 @@ async def resume_operation(
             if operation.failure_type == "recoverable":
                 console.print(
                     f"\n[cyan]This failure is recoverable.[/cyan] "
-                    f"Resume with: [bold]thoth --resume {operation.id}[/bold]"
+                    f"Resume with: [bold]thoth resume {operation.id}[/bold]"
                 )
             raise click.Abort()
 
@@ -851,7 +875,7 @@ async def resume_operation(
             if op_failure_type == "recoverable":
                 console.print(
                     f"\n[cyan]This failure is recoverable.[/cyan] "
-                    f"Resume with: [bold]thoth --resume {operation.id}[/bold]"
+                    f"Resume with: [bold]thoth resume {operation.id}[/bold]"
                 )
             raise click.Abort()
 

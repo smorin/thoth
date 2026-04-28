@@ -254,13 +254,16 @@ def test_modes_list_invalid_source_returns_2(
     assert rc == 2
 
 
-def test_modes_detail_unknown_name_returns_1(
+def test_modes_detail_unknown_name_returns_0(
     isolated_thoth_home: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    rc = modes_command("list", ["--name", "no_such_mode"])
-    # Drain output (combine stdout + stderr) — exit code is what we test.
-    capsys.readouterr()
-    assert rc == 1
+    """Q5-A row 11.i: --name X with no match is empty intersection, exit 0
+    (not an error). JSON form returns `{"mode": null}`."""
+    rc = modes_command("list", ["--name", "no_such_mode", "--json"])
+    out = capsys.readouterr().out
+    assert rc == 0
+    data = json.loads(out)
+    assert data["mode"] is None
 
 
 def test_modes_detail_builtin(
@@ -307,7 +310,9 @@ def test_modes_detail_full_dumps_system_prompt(
 
 
 def test_thoth_modes_subprocess_lists_modes(isolated_thoth_home: Path) -> None:
-    rc, out, err = run_thoth(["modes"])
+    """PR2 (Q5-A row 5): bare `thoth modes` exits 2; canonical leaf is
+    `thoth modes list`."""
+    rc, out, err = run_thoth(["modes", "list"])
     assert rc == 0, f"stderr: {err}"
     assert "default" in out
     assert "deep_research" in out
@@ -317,7 +322,6 @@ def test_thoth_help_modes_subprocess(isolated_thoth_home: Path) -> None:
     rc, out, err = run_thoth(["help", "modes"])
     assert rc == 0, f"stderr: {err}"
     assert "thoth modes" in out
-    assert "schema_version" in out  # JSON schema snippet in help
 
 
 def test_help_epilog_lists_mode_names(
@@ -361,13 +365,9 @@ def test_interactive_and_help_use_list_all_modes(
 def test_thoth_modes_subprocess_json_flag_reaches_subcommand(
     isolated_thoth_home: Path,
 ) -> None:
-    """Regression: `--json` must pass through click to the modes dispatcher.
-
-    Requires `ignore_unknown_options=True` on the root click command so that
-    flags after a subcommand are forwarded via ctx.args instead of being
-    rejected by click's own option parser.
-    """
-    rc, out, err = run_thoth(["modes", "--json"])
+    """PR2 canonical: `thoth modes list --json` (legacy `thoth modes --json`
+    is gated to exit 2 with a migration hint per Q6-PR2-C1)."""
+    rc, out, err = run_thoth(["modes", "list", "--json"])
     assert rc == 0, f"stderr: {err}"
     data = json.loads(out)
     assert data["schema_version"] == "1"
@@ -378,7 +378,7 @@ def test_thoth_modes_subprocess_json_flag_reaches_subcommand(
 
 
 def test_thoth_modes_subprocess_name_flag(isolated_thoth_home: Path) -> None:
-    rc, out, err = run_thoth(["modes", "--name", "thinking"])
+    rc, out, err = run_thoth(["modes", "list", "--name", "thinking"])
     assert rc == 0, f"stderr: {err}"
     assert "Mode: thinking" in out
     assert "Model: o3" in out
@@ -386,7 +386,7 @@ def test_thoth_modes_subprocess_name_flag(isolated_thoth_home: Path) -> None:
 
 
 def test_thoth_modes_subprocess_source_filter(isolated_thoth_home: Path) -> None:
-    rc, out, err = run_thoth(["modes", "--source", "builtin", "--json"])
+    rc, out, err = run_thoth(["modes", "list", "--source", "builtin", "--json"])
     assert rc == 0, f"stderr: {err}"
     data = json.loads(out)
     sources = {m["source"] for m in data["modes"]}

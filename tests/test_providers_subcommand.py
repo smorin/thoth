@@ -20,8 +20,8 @@ def test_providers_check_returns_status():
     assert r.exit_code in (0, 2)
 
 
-def test_old_form_deprecated_but_works():
+def test_old_form_gated_with_migration_hint():
     r = CliRunner().invoke(cli, ["providers", "--", "--list"])
-    assert r.exit_code == 0
-    assert "deprecated" in r.output.lower()
-    assert "openai" in r.output.lower()
+    assert r.exit_code == 2
+    combined = r.output or ""
+    assert "thoth providers list" in combined

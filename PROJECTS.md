@@ -1,3 +1,545 @@
+## [ ] Project P18: Immediate vs Background — Explicit `kind`, Runtime Mismatch, Path Split, Streaming, Cancel (v2.16.0)
+
+**Primary spec**: `docs/superpowers/specs/2026-04-26-p18-immediate-vs-background-design.md` (decisions Q1–Q12, architecture §5, rollout §6, testing strategy §7, cross-project coordination §8, risks §9)
+**Plan**: `docs/superpowers/plans/2026-04-26-p18-immediate-vs-background.md` (TDD discipline, phase dependency graph, file map, Phase A starter steps, commit cadence, end-of-project checklist)
+
+**Goal**: Make the immediate-vs-background execution distinction a first-class, explicit property of every mode. Promote the existing `Kind = Literal["immediate", "background"]` vocabulary (`modes_cmd.py:22`) to a required `kind` field on every builtin mode, derive a `KNOWN_MODELS` registry from `BUILTIN_MODES` (single source of truth, cross-mode consistency enforced), and surface mode/model mismatches at **runtime** (not config-load) via a typed `ModeKindMismatchError` raised by the provider's `submit()`. Split `_execute_research` into `_execute_immediate` (no progress bar, no resume/status hints, streams output) and `_execute_background` (current behavior, renamed). Add a `provider.stream()` contract for the immediate path with `--out FILE` / `--out -,FILE` / `--append` flags backed by a `MultiSink`. Add a `provider.cancel()` capability per provider, gated on per-provider research, plus a `thoth cancel <op-id>` subcommand. Rename `mini_research` → `quick_research` (deprecation alias). Add an extended-only test suite, parametrized over `KNOWN_MODELS`, that hits the real API to verify each model's declared kind matches actual API behavior — gated behind `pytest -m extended` / `./thoth_test --extended`, never on default runs.
+
+**Coordination with P16 PR2 (v3.0.0)**: The `thoth ask` *subcommand* introduced by PR2 is the canonical scripted research entrypoint and inherits `--mode`. P18's path split happens **inside** the existing dispatch — when `thoth ask "..." --mode <immediate-mode>` lands post-PR2, it automatically gets streaming behavior. No coupling to PR2's merge order; P18 can ship before, after, or alongside.
+
+**Follow-up tracked separately**: requiring `kind` on user-defined modes lands as **warn-once** in P18; the **error** form joins the v3.0.0 breakage window in a future P19 entry alongside P16 PR2.
+
+**Out of Scope**
+- Renaming mode `thinking` (kept — `kind` carries the execution-model semantics now; further renaming would collide with PR2's `ask` subcommand)
+- `--out` for **background** mode (deferred — background already has `--project` + combined-report mechanics; bolting `--out` on is a separate conversation)
+- Reworking reasoning-summary rendering in streaming mode (gated behind a future `--show-reasoning` flag, design TBD)
+- Implementing Perplexity/Gemini providers (still `NotImplementedError`; their `cancel()` and `stream()` impls land when the providers do)
+- Removing the `is_background_model` substring rule from the runtime mismatch check — it remains the source of truth for "what does *this provider* require for this model?"
+- Erroring on user modes missing `kind` (warn-once only in P18; error form deferred to v3.0.0 follow-up)
+
+### Design Notes
+- **`KNOWN_MODELS` derivation** (`models.py` or `config.py`): built once at import time from `BUILTIN_MODES`. Same `(provider, model)` pair appearing under two different `kind` values across builtins → `ThothError` at module import (we shipped a broken config). User-only models are intentionally excluded from `KNOWN_MODELS` — user opted in, user owns kind correctness.
+- **Mismatch is detected at the provider, not the config layer.** `OpenAIProvider.submit()` calls `self._validate_kind_for_model(mode)` first thing; raises `ModeKindMismatchError` if `declared_kind == "immediate"` but `is_background_model(self.model)`. The reverse (`background` declared, regular model) is legal — OpenAI lets you force-background any model. `create_provider` (`providers/__init__.py:107`) threads `mode_config["kind"]` into `provider_config`.
+- **`mode_kind(cfg) -> Literal["immediate","background"]`** replaces `is_background_mode` as the canonical resolver. Precedence: explicit `kind` field → legacy `async: bool` (deprecation warning) → substring sniff on model name (warn-once for user modes, error for builtins missing `kind`).
+- **Path split** (`run.py`): `execute(...)` matches on `mode_kind(mode_config)` and dispatches to `_execute_immediate` or `_execute_background`. Immediate path skips: progress bar, polling loop, `transition_to("running")` checkpoint write, resume hint on failure, operation-ID echo (unless `--project` or `--out FILE` set).
+- **`provider.stream()`** new contract on `ResearchProvider` base: `async def stream(prompt, mode, system_prompt, verbose) -> AsyncIterator[StreamEvent]`. OpenAI impl uses `client.responses.stream(...)`. Mock yields deterministic chunks for tests. Default base raises `NotImplementedError`. Defense in depth: providers refuse to stream a model whose API requires background — but the runtime mismatch check should already have caught it.
+- **`MultiSink`** sinks `write(chunk)` to a list of `IO[str]`. stdout is one entry; file is opened lazily on first chunk (don't truncate on empty output) and closed in `finally`. `--out -` (default), `--out FILE`, `--out -,FILE`, repeatable `--out` flag, `--append` flag for non-truncating writes.
+- **`provider.cancel(job_id)`** new optional contract; default raises `NotImplementedError`. OpenAI impl calls `client.responses.cancel(job_id)` for background jobs. Per-provider research items below cover Perplexity + Gemini before any non-OpenAI cancel impl is attempted.
+- **Mode rename**: `mini_research` → `quick_research`. The old name remains in `BUILTIN_MODES` carrying a `_deprecated_alias_for: "quick_research"` marker; `get_mode_config` resolves through it with a one-time deprecation warning. Deletion targets v3.0.0 follow-up.
+- **`thoth cancel <op-id>`** subcommand: loads operation from checkpoint, instantiates each provider that has a non-completed job, calls `cancel()` (catches `NotImplementedError` and reports "this provider does not support upstream cancellation; the local checkpoint is marked cancelled"), updates checkpoint to `cancelled`, exits 0. Ctrl-C during a running background op should also call `cancel()` best-effort with a short timeout before exiting.
+- **Extended test suite**: `tests/extended/` directory; `@pytest.mark.extended` registered in `pyproject.toml`; default `addopts = "-m 'not extended'"` skips it. Parametrized over `KNOWN_MODELS`; submits a tiny ping prompt, asserts kind contract holds (immediate → first `check_status` is `completed`; background → `running`/`queued`/`completed`); calls `cancel()` after confirming a background submission to limit cost. Run via `uv run pytest -m extended` / `just test-extended` / `./thoth_test -r --extended`. Designed for nightly CI, not PR CI.
+- **Cleanup last**: once the path split is firm and immediate runs no longer flow through the polling loop, delete the `if not job_info.get("background", False): return {"status": "completed"}` shortcut in `OpenAIProvider.check_status` (`providers/openai.py:232-233`) — it becomes unreachable.
+
+### Tests & Tasks
+**Phase A — `kind` schema + `KNOWN_MODELS` derivation (no behavior change)**
+- [ ] [P18-TS01] `tests/test_builtin_modes_have_kind.py`: every entry in `BUILTIN_MODES` declares `kind ∈ {"immediate","background"}`
+- [ ] [P18-TS02] `tests/test_known_models_registry.py`: `derive_known_models()` returns one entry per unique `(provider, model)` across builtins; cross-mode kind conflicts raise `ThothError` at module import
+- [ ] [P18-TS03] `tests/test_known_models_registry.py`: every builtin's `(provider, model, kind)` triple appears in `KNOWN_MODELS`
+- [ ] [P18-T01] Add `kind` field to all 12 entries in `BUILTIN_MODES` (`config.py:42-133`)
+- [ ] [P18-T02] Add `ModelSpec` NamedTuple + `derive_known_models()` + module-level `KNOWN_MODELS` constant (in `models.py`)
+- [ ] [P18-T03] Add `mode_kind(cfg) -> Literal["immediate","background"]` resolver in `config.py`; thin `is_background_mode` wrapper kept for compat with deprecation comment
+
+**Phase B — Runtime mismatch error (additive, user-visible)**
+- [ ] [P18-TS04] `tests/test_mode_kind_mismatch.py`: `OpenAIProvider.submit(...)` with `kind="immediate"` + `model="o3-deep-research"` raises `ModeKindMismatchError` *before* any HTTP call (use `respx`/cassette to assert no API hit)
+- [ ] [P18-TS05] Same with `kind="immediate"` + `model="o4-mini-deep-research"`
+- [ ] [P18-TS06] `kind="background"` + `model="o3"` does NOT raise (legal force-background)
+- [ ] [P18-TS07] `tests/test_mode_kind_mismatch.py`: `ModeKindMismatchError` carries `mode_name`, `model`, `declared_kind`, `required_kind` attrs and renders a user-facing `suggestion` referencing `[modes.{mode_name}]`
+- [ ] [P18-T04] Add `ModeKindMismatchError` class to `errors.py` (subclass of `ThothError`)
+- [ ] [P18-T05] Thread `mode_config["kind"]` through `create_provider` (`providers/__init__.py:107`) into `provider_config["kind"]`
+- [ ] [P18-T06] Add `OpenAIProvider._validate_kind_for_model(mode)` and call it as the first line of `submit()`
+
+**Phase C — Path split + hint suppression**
+- [ ] [P18-TS08] `tests/test_immediate_path.py`: an immediate-mode run produces no `Progress` rendering, no operation-ID echo (unless `--project` or `--out FILE` set), no `thoth resume` hint on failure
+- [ ] [P18-TS09] `tests/test_background_path.py`: existing background-mode behavior unchanged (regression gate — uses existing fixtures)
+- [ ] [P18-TS10] `tests/test_immediate_path.py`: an immediate-mode run with `--project foo` DOES write a checkpoint and emit operation ID
+- [ ] [P18-T07] Rename `_execute_research` → `_execute_background` in `run.py`; extract a top-level `execute(...)` dispatcher that matches `mode_kind(mode_config)`
+- [ ] [P18-T08] Add `_execute_immediate` (initially non-streaming — single `submit()` call, direct `get_result()` call, sink to stdout); skips progress bar, polling loop, resume hints
+- [ ] [P18-T09] Audit `run.py:580,606,644,654,827,854` and `signals.py:93,99` and `commands.py:227,238` — gate every `thoth resume {id}` / `thoth status {id}` hint emission on `mode_kind(mode_config) == "background"`
+
+**Phase D — Mode rename (deprecation alias)**
+- [ ] [P18-TS11] `tests/test_mode_aliases.py`: `--mode mini_research` resolves to `quick_research`'s config, prints a one-time deprecation warning per process
+- [ ] [P18-T10] Add `quick_research` builtin (copy of current `mini_research` with renamed key + `kind="background"`); keep `mini_research` as `{"_deprecated_alias_for": "quick_research"}` stub
+- [ ] [P18-T11] `get_mode_config` resolves alias and emits deprecation warning via stdlib `warnings`
+
+**Phase E — Streaming + output sinks**
+- [ ] [P18-TS12] `tests/test_provider_stream_contract.py`: `MockProvider.stream()` yields deterministic chunks; aggregating them equals the full mock result
+- [ ] [P18-TS13] `tests/test_provider_stream_contract.py`: `OpenAIProvider.stream()` (cassette-replay) yields text deltas; final aggregated string matches non-streaming `get_result` output for the same prompt
+- [ ] [P18-TS14] `tests/test_provider_stream_contract.py`: streaming a background-only model raises (defense in depth — should be unreachable post-mismatch-check)
+- [ ] [P18-TS15] `tests/test_output_sinks.py`: `--out -` writes to stdout only; `--out FILE` writes to file only and creates it; `--out -,FILE` tees; `--append` opens with `"a"`, default opens with `"w"`; file is opened lazily (no empty file on aborted submit)
+- [ ] [P18-T12] Add `StreamEvent` dataclass (`kind`, `text`) and `async def stream(...)` to `ResearchProvider` base raising `NotImplementedError`
+- [ ] [P18-T13] Implement `MockProvider.stream()` — fixed chunk list with small `await asyncio.sleep(0)` between yields
+- [ ] [P18-T14] Implement `OpenAIProvider.stream()` using `client.responses.stream(...)` for non-deep-research models; translate `response.output_text.delta` into `StreamEvent("text", delta)`
+- [ ] [P18-T15] Add `MultiSink` class (in `output.py` or new `sinks.py`) — fans `write(chunk)` to a list of `IO[str]` handles, lazy file open, ordered close in `finally`
+- [ ] [P18-T16] Add `--out PATH` (repeatable, accepts `-`, comma-list also accepted) and `--append` flags to research-running subcommands; wire to `MultiSink` inside `_execute_immediate`
+- [ ] [P18-T17] Update `_execute_immediate` to call `provider.stream()` and feed chunks into the configured `MultiSink`
+
+**Phase F — Cancel: research per provider**
+- [ ] [P18-T18] **Research item: OpenAI cancel.** WebFetch `https://platform.openai.com/docs/api-reference/responses` (cancel endpoint section) and `https://cookbook.openai.com/examples/deep_research_api/introduction_to_deep_research_api`. Confirm: signature of `client.responses.cancel(response_id)`, accepted source states, returned status string. Document findings in `planning/p18-cancel-research.md`.
+- [ ] [P18-T19] **Research item: Perplexity cancel.** WebFetch `https://docs.perplexity.ai/getting-started/models/models/sonar-deep-research` and `https://docs.perplexity.ai/guides/chat-completions-guide`. Confirm: does the async submission flow expose a cancel endpoint, or must we orphan the request_id? Document in `planning/p18-cancel-research.md`.
+- [ ] [P18-T20] **Research item: Gemini cancel.** WebFetch `https://ai.google.dev/gemini-api/docs/deep-research` and `https://ai.google.dev/gemini-api/docs/interactions`. Confirm: Interactions API cancel/abort semantics. Document in `planning/p18-cancel-research.md`.
+
+**Phase G — Cancel: implementation**
+- [ ] [P18-TS16] `tests/test_provider_cancel.py`: `MockProvider.cancel(job_id)` removes the job and returns `{"status":"cancelled","error":"cancelled by user"}`
+- [ ] [P18-TS17] `tests/test_provider_cancel.py` (cassette): `OpenAIProvider.cancel(job_id)` calls `responses.cancel`, returns cancelled-shaped status
+- [ ] [P18-TS18] `tests/test_provider_cancel.py`: providers that don't implement cancel raise `NotImplementedError`; the `thoth cancel` CLI catches it and reports "upstream cancel not supported, local checkpoint marked cancelled"
+- [ ] [P18-TS19] `tests/test_cancel_subcommand.py`: `thoth cancel <op-id>` updates the checkpoint to `cancelled`, calls `provider.cancel()` for each non-completed provider, exits 0
+- [ ] [P18-TS20] `tests/test_cancel_subcommand.py`: `thoth cancel MISSING_ID` exits 6 (matching `thoth resume` missing-op behavior)
+- [ ] [P18-T21] Add `async def cancel(self, job_id: str) -> dict[str, Any]` to `ResearchProvider` base raising `NotImplementedError`
+- [ ] [P18-T22] Implement `MockProvider.cancel()`
+- [ ] [P18-T23] Implement `OpenAIProvider.cancel()` per Phase F findings
+- [ ] [P18-T24] (Perplexity/Gemini cancel impls — only if Phase F research confirms upstream support; otherwise leave as the base `NotImplementedError`)
+- [ ] [P18-T25] Add `src/thoth/cli_subcommands/cancel.py` — `@click.command("cancel")`, `OP_ID` required positional, delegates to a new `cancel_operation(op_id, ctx)` in `commands.py`
+- [ ] [P18-T26] Add `cancel_operation()` to `commands.py` — load operation, iterate non-completed providers, call `provider.cancel()` (catch `NotImplementedError`), update checkpoint, emit user-facing summary
+- [ ] [P18-T27] Wire Ctrl-C signal path (`signals.py`) to call `cancel_operation()` best-effort with a 5s timeout before exiting
+
+**Phase H — User-mode `kind` warning (warn-once now; v3.0.0 follow-up errors)**
+- [ ] [P18-TS21] `tests/test_user_mode_kind_warning.py`: a user TOML with a `[modes.X]` table missing `kind` triggers a one-time warning at config load referencing the offending key
+- [ ] [P18-T28] Add the warning emission in `_validate_config` / mode-merge path; do not error
+- [ ] [P18-T29] Add a `# TODO(v3.0.0): error on missing kind in user modes` comment at the warning site, cross-referencing P16 PR2 / future P19
+
+**Phase I — Extended test infrastructure**
+- [ ] [P18-TS22] `tests/extended/test_model_kind_runtime.py`: parametrized over `KNOWN_MODELS`, hits real API, asserts immediate-kind models return `completed` on first `check_status` and background-kind models return `running`/`queued`/`completed`; cancels background submissions to limit cost
+- [ ] [P18-T30] Register `extended` marker in `pyproject.toml` `[tool.pytest.ini_options].markers` and add `addopts = "-m 'not extended'"` to default invocation
+- [ ] [P18-T31] Add `just test-extended` recipe → `uv run pytest -m extended -v`
+- [ ] [P18-T32] Add `--extended` flag to `thoth_test` runner (parses to a category column); wire to category filter
+- [ ] [P18-T33] Add `.github/workflows/extended.yml` (nightly cron, gated on `OPENAI_API_KEY` repo secret); failures notify but don't block PRs
+
+**Phase J — Documentation + cleanup**
+- [ ] [P18-T34] Update `README.md` with `--out` flag examples; document the `kind` field for user-defined modes; document `thoth cancel`
+- [ ] [P18-T35] Update `manual_testing_instructions.md` with immediate-vs-background streaming/cancel scenarios
+- [ ] [P18-T36] Remove the `if not job_info.get("background", False): return {"status": "completed"}` shortcut in `OpenAIProvider.check_status` (`providers/openai.py:232-233`) — unreachable post-Phase C
+- [ ] [P18-T37] CHANGELOG entries (non-breaking — additive only): `feat: explicit "kind" field on built-in modes`, `feat: streaming output for immediate modes (--out)`, `feat: thoth cancel <op-id>`, `feat: rename mini_research mode to quick_research (alias kept)`, `chore: deprecate "async" mode-config key`
+
+- [ ] Regression Test Status
+
+### Automated Verification
+- `uv run pytest tests/test_builtin_modes_have_kind.py tests/test_known_models_registry.py tests/test_mode_kind_mismatch.py tests/test_immediate_path.py tests/test_background_path.py tests/test_mode_aliases.py tests/test_provider_stream_contract.py tests/test_output_sinks.py tests/test_provider_cancel.py tests/test_cancel_subcommand.py tests/test_user_mode_kind_warning.py -v` — all green
+- `uv run pytest tests/` — full suite green
+- `./thoth_test -r --skip-interactive -q` — full suite green
+- `just check` — green (ruff + ty)
+- `uv run pytest -m extended -v` — green when `OPENAI_API_KEY` is present (nightly CI; not gating PRs)
+- No reachable call to `is_background_model` substring sniffing on a builtin mode (covered by P18-TS01)
+
+### Manual Verification
+- `thoth deep_research "topic"` (or PR2's `thoth ask "topic" --mode deep_research`) behaves identically to today (background regression)
+- `thoth thinking "what is X"` (or PR2's `thoth ask "what is X" --mode thinking`) streams to stdout in seconds, prints no operation ID, prints no `thoth resume` hint
+- `thoth ask "..." --mode thinking --out answer.md` writes to `answer.md` only; rerun with `--append` appends; `--out -,answer.md` tees to both
+- `thoth ask "..." --mode mini_research` prints a deprecation warning pointing at `quick_research`, then runs as background
+- Edit user TOML, add `[modes.foo]` with provider/model but no `kind` → next thoth run prints a one-time warning at config load, then proceeds (warn-only in v2.16.0)
+- `thoth ask "..." --mode quick_research --model o3` (manual override forcing immediate kind on a background-only model) → fails fast with `ModeKindMismatchError` carrying `[modes.quick_research]` config-edit suggestion; no API call made
+- `thoth cancel <op-id>` for a running background op → checkpoint updated to `cancelled`, OpenAI `responses.cancel` called, exit 0
+- `thoth cancel <op-id>` for a completed op → exits with helpful "operation already completed" message
+- Ctrl-C during a `deep_research` run → cancellation issued upstream before process exits
+
+### Acceptance criteria
+- Every builtin mode has a `kind` field; `KNOWN_MODELS` is derived (no separate registry)
+- A misconfigured mode (immediate kind + deep-research model) fails at provider `submit()` with `ModeKindMismatchError` before any API call
+- Immediate runs do not emit polling progress, operation IDs (unless persisted), or resume hints
+- `--out` supports stdout, file, tee, and append for immediate runs
+- `provider.cancel()` exists on the base; OpenAI + Mock implement it; Perplexity/Gemini status reflects research findings
+- `thoth cancel <op-id>` cancels in-flight background ops upstream and updates the checkpoint
+- Extended test suite parametrizes over `KNOWN_MODELS` and runs only under the `extended` marker
+
+---
+
+## [ ] Project P17: thoth-ergonomics-v1 Spec Round-Trip — Annotate Implementation Status (no code change)
+**Goal**: Close the documentation round-trip on the `thoth-ergonomics-v1` spec. The spec was never back-linked from `PROJECTS.md`, which silently allowed §3.4 (decided dropped) and §3.7 (already shipped) to look "open" from a `PROJECTS.md`-only audit. After this project, the spec itself carries an `## Implementation status` block citing the project/task IDs (P11, P14, dropped) for each §3 item, so future audits can grep the spec to know it's fully accounted for. **Zero code change** — this is purely a documentation correctness project.
+
+**Primary spec**: `docs/superpowers/specs/2026-04-24-thoth-ergonomics-design.md`
+**Implementation plan that records the dropped scope**: `planning/thoth.plan.v9.md:18` — *"❌ Drop v8 Task 6 — `thoth workflow` command. User direction; `thoth modes` already shows kind."*
+
+### Spec § → outcome map (the actual deliverable, recorded inline so this project entry is self-contained)
+
+| Spec § | Item | Outcome | Where |
+|---|---|---|---|
+| 3.1 | `providers` subcommand group | ✅ Shipped | P14-T06 (`v2.13.0`) |
+| 3.2 | thothspinner sync-poll progress | ✅ Shipped | P14-T07/T08/T09 (`v2.13.0`) |
+| 3.3 | Mode-ladder help reorganization | ✅ Shipped (simplified per v9 plan) | P14-T04 (`v2.13.0`) — `help.py:127` workflow chain string |
+| **3.4** | **`thoth workflow` / `thoth guide` command** | **`[~]` Won't fix** — superseded by `thoth modes` (P11) | Decision: `planning/thoth.plan.v9.md:18`. Rationale: `thoth modes` already lists every mode with provider/model/`kind=immediate\|background`/source/description in one table, making a separate workflow-ladder command redundant. Adding `thoth workflow` would duplicate discovery surface. |
+| 3.5 | API-key documentation pass + `thoth help auth` | ✅ Shipped | P14-T05 (`v2.13.0`) |
+| 3.6 | `--input-file` vs `--auto` clearer help | ✅ Shipped | P14-T03 (`v2.13.0`) — verified in current `--help` |
+| 3.7 | `-v` / `--verbose` worked example in help | ✅ Shipped (one-liner form) | P14-T04 (`v2.13.0`) — `help.py:135` (`Debug API issues: thoth deep_research "topic" -v`); test at `tests/test_cli_help.py:29` (`test_help_has_verbose_example`). Per spec line 230 ("documentation follows behavior"), the realized form is a single example line, not the multi-line block originally drafted in spec §3.7. |
+| 3.8 | Surface config path on errors | ✅ Shipped | P14-T01/T02 (`v2.13.0`) — `format_config_context()` in `errors.py`; verified live (error message includes "Config file:" and "Env checked:") |
+| 3.9 | `--pick-model` interactive flag | ✅ Shipped | P14-T11/T12 (`v2.13.0`); P15 follow-up bug fixes |
+| §4 | `is_deep_research_model` shared helper | ✅ Shipped (renamed) | P11 / P13 — became `is_background_mode` / `is_background_model` |
+| §4 | `format_config_context` helper | ✅ Shipped | P14-T01 |
+| §4 | Help rendering helpers | ✅ Shipped | P14-T04, P14-T05 |
+
+**Net:** 8 of 9 §3 items shipped + 3 of 3 §4 helpers shipped; 1 item (§3.4) explicitly retired with rationale.
+
+**Out of Scope**
+- Reviving `thoth workflow` — explicitly retired, do not re-implement without a fresh design decision overriding `planning/thoth.plan.v9.md:18`
+- Adding the multi-line `-v` example block from spec §3.7 lines 219–226 — the realized one-line form is sufficient per "doc follows behavior" (spec line 230) and a future verbose-output redesign would invalidate the multi-line example anyway
+- Any code change at all — this is a documentation-only project
+
+### Tests & Tasks
+- [~] [P17-T01..06] **RETIRED** — `thoth workflow` / `thoth guide` command tasks. Decision: `planning/thoth.plan.v9.md:18` (`thoth modes` already provides discovery). Tasks intentionally numbered to preserve audit trail; do not re-allocate these IDs.
+- [~] [P17-T07..08] **NOT NEEDED** — `-v` example tasks. Already shipped in P14-T04 (`help.py:135`, tested at `tests/test_cli_help.py:29`). Marking won't-fix because no follow-up work is required, not because the feature is dropped.
+- [ ] [P17-T09] Add an `## Implementation status` block at the top of `docs/superpowers/specs/2026-04-24-thoth-ergonomics-design.md` reproducing the §-outcome map above. Pin each ✅ row to its `Pxx-T##` shipping task; pin §3.4 to its drop decision in `planning/thoth.plan.v9.md:18` and the supersession by P11.
+- [ ] [P17-T10] Annotate `docs/superpowers/specs/2026-04-24-thoth-ergonomics-design.md:135` (the §3.4 `thoth workflow` heading) with a one-line callout: `> **Status:** Dropped per planning/thoth.plan.v9.md:18 — superseded by 'thoth modes' (P11).` so a reader landing in §3.4 directly sees the decision without scrolling to the top.
+- [ ] [P17-T11] Verify `planning/project_promote_commands.md:5` and `planning/thoth.plan.v9.md:6` (the only other files that reference this spec) don't need updates — they're plan-side, the spec is the source of truth getting annotated.
+
+### Automated Verification
+- `grep -n "Implementation status" docs/superpowers/specs/2026-04-24-thoth-ergonomics-design.md` → returns line 1-region match
+- `grep -n "Dropped per" docs/superpowers/specs/2026-04-24-thoth-ergonomics-design.md` → returns the §3.4 callout line
+- No code, no tests, no `just check` impact — `git diff --stat` shows only the spec file changed
+
+### Manual Verification
+- Open the spec — top of file lists every §3 item with shipping commit/project, §3.4 explicitly marked dropped with link to v9 plan
+- A new contributor grepping `PROJECTS.md` for `2026-04-24-thoth-ergonomics-design.md` lands on this entry and immediately sees §3.4 was dropped (no temptation to start implementing)
+- Future spec audits (`grep -L "Implementation status" docs/superpowers/specs/*.md`) reveal which other specs still lack a round-trip annotation
+
+---
+
+## [x] Project P16 PR2: Remove Legacy Shims, Add resume + ask Subcommands (v3.0.0)
+**Goal**: Remove every flag-style shim cataloged in the legacy-form audit; migrate each to a canonical Click subcommand or sub-subcommand; ensure no functionality silently disappears (every removed form must either map to a new form OR be explicitly dropped with documented justification). Triggers v3.0.0 MAJOR.
+
+**Completed:** 2026-04-26
+**Pytest count:** 389 passed
+**thoth_test count:** 63 passed, 10 skipped (mock-only run: 63 passed, 1 skipped)
+**Commits landed on main:** 12 (Tasks 1–12 per the implementation plan)
+**FU01–FU05** remain unchecked (deferred to PR3 / P12 / Click 9.0 per scope).
+
+**Specs**:
+- `docs/superpowers/specs/2026-04-26-p16-pr2-design.md` — PR2-specific design (decisions Q1-Q7-PR2, components, testing strategy, rollout)
+- `docs/superpowers/specs/2026-04-25-promote-admin-commands-design.md` — original P16 design (decisions Q2-Q7 from PR1 brainstorming)
+- `docs/superpowers/specs/2026-04-26-p16-pr2-legacy-form-audit.md` — comprehensive shim inventory (the parity checklist)
+
+**Plan**: `docs/superpowers/plans/2026-04-26-p16-pr2-implementation.md` — 12 TDD tasks mapping 1:1 to spec §10's commit sequence (~2,505 lines with bite-sized steps + concrete code blocks)
+
+**Out of scope (PR3)**
+- `--json` for every admin command (already partially shipped; full coverage in PR3)
+- `completion` subcommand and dynamic completers
+- Per-handler `get_*_data()` extraction
+- Mode-editing operations (`thoth modes set/add/unset` — P12)
+- New 3/4 exit codes — keep today's 0/1/2 scheme (spec §8.3)
+- Behavior changes in handlers below the dispatch (handlers in `commands.py`/`config_cmd.py`/`modes_cmd.py` stay byte-identical)
+
+### Architectural decisions locked from brainstorming
+- [Q1-PR2] resume option-set: TIGHT + HONOR — accepts `--verbose`, `--config`, `--quiet`, `--no-metadata`, `--timeout`, `--api-key-{openai,perplexity,mock}`; rejects `--auto`, `--input-file`, `--prompt-file`, `--combined`, `--project`, `--output-dir`, `--prompt`, `--async`, `--pick-model`, `--version`, `--interactive`, `--clarify` with clear `BadParameter` errors
+- [Q2-PR2] modes hidden-subcommand shim: REMOVE in PR2 (decision A — full consistency with providers shim removal)
+- [Q3-PR2] `ask` is a NEW canonical subcommand (positional-arg equivalent of `-q/--prompt`); bare-prompt and `-q` continue to work alongside
+- [Q4-PR2] `-R` short alias for `--resume`: REMOVED with `--resume` (audit line 8)
+- [Q5-PR2] `ignore_unknown_options=True` on top-level group: REMOVED (typos like `--verbsoe` exit 2 instead of being silently swallowed)
+- [More decisions captured during brainstorming will be added as they're locked]
+
+### Migration tasks (one per legacy form — every section-10 row)
+
+**`--resume` family (audit lines 411-416)**
+- [x] [P16PR2-T01] Migrate `thoth --resume OP_ID` → `thoth resume OP_ID`. Implement `resume` subcommand at `src/thoth/cli_subcommands/resume.py` accepting honored options per [Q1-PR2]. Update emitters at `run.py:629/654/827/854`, `signals.py:93/99`, `commands.py:227/238`, `help.py:134`. Update fixture regex at `tests/_fixture_helpers.py:63-65`.
+- [x] [P16PR2-T02] Remove top-level `--resume`/`-R` global flag from `src/thoth/cli.py:477`. Remove `_dispatch_click_fallback` resume branch at `cli.py:347-358`. Add gating: `thoth --resume OP_ID` exits 2 with stderr suggestion `"Use 'thoth resume OP_ID'"`.
+- [x] [P16PR2-T03] Remove `-R OP_ID` short alias (same removal — both `--resume` and `-R` reach same handler per audit line 8). Confirm exit-2 hint applies.
+- [x] [P16PR2-T04] Reject combo `thoth resume <op> --pick-model` at the new `resume` subcommand level (currently rejected at cli.py:621-622 — preserve `BadParameter` semantics, exit 2). Migrate `tests/test_pick_model.py:48,109`.
+- [x] [P16PR2-T05] Reject combo `thoth resume <op> --async` at the new subcommand (currently rejected at cli.py:609-610). Audit line 414 — currently untested in pytest.
+- [x] [P16PR2-T06] Reject combo `thoth resume <op> --interactive` / `--clarify` (DESIGN: per [Q1-PR2] TIGHT, both rejected with `BadParameter`). Currently silently lets resume win (audit line 60) — make explicit error.
+- [x] [P16PR2-T07] Honor `thoth --config <path> resume <op>` group inheritance via `_apply_config_path` BEFORE resume call (preserve cli.py:345 production behavior currently untested per audit line 43, line 416).
+
+**`providers --` family (audit lines 417-430)**
+- [x] [P16PR2-T08] Remove `providers -- --list` legacy shim implementation at `src/thoth/cli_subcommands/providers.py:34-99`. Add gating: exits 2 with stderr suggestion `"Use 'thoth providers list'"`.
+- [x] [P16PR2-T09] Remove `providers -- --models` legacy shim. Add gating exit-2 suggestion `"Use 'thoth providers models'"`.
+- [x] [P16PR2-T10] Remove `providers -- --keys` legacy shim (currently UNTESTED in pytest, audit line 114). Add gating exit-2 suggestion `"Use 'thoth providers check'"`.
+- [x] [P16PR2-T11] DESIGN-DECISION: `providers -- --refresh-cache` ALONE today is silent no-op (audit line 115, line 420). Decide: gate to exit 2 with suggestion to use `providers models --refresh-cache`, OR drop silently. Recommend exit 2.
+- [x] [P16PR2-T12] DESIGN-DECISION: `providers -- --no-cache` ALONE today is silent no-op (audit line 116, line 421). Same decision as T11.
+- [x] [P16PR2-T13] Add `--refresh-cache` flag to `providers models` leaf in `cli_subcommands/providers.py`; forward to `commands.providers_command(refresh_cache=True)` (audit line 422 — UNTESTED but in production via legacy `-- --models --refresh-cache`).
+- [x] [P16PR2-T14] Add `--no-cache` flag to `providers models` leaf; forward to `commands.providers_command(no_cache=True)` (audit line 423 — UNTESTED but in production).
+- [x] [P16PR2-T15] Verify `providers models --provider X --refresh-cache` works after T13 (PRD v24 documents this; audit line 424).
+- [x] [P16PR2-T16] Reject combo `providers models --refresh-cache --no-cache` with `BadParameter` (audit line 425, line 129 — currently silent ambiguity). Add explicit mutex.
+- [x] [P16PR2-T17] Document removal of `--list --keys` silent-drop combo (audit line 426 — resolved structurally by separate leaves; no action needed beyond confirmation).
+- [x] [P16PR2-T18] Remove in-group hidden shim `providers --list` at `providers.py:140-149`. Add gating exit-2 suggestion (audit line 427).
+- [x] [P16PR2-T19] Remove in-group hidden shim `providers --models` at `providers.py:152-161`. Add gating exit-2 suggestion (audit line 428).
+- [x] [P16PR2-T20] Remove in-group hidden shim `providers --keys` at `providers.py:164-173`. Add gating exit-2 suggestion (audit line 429).
+- [x] [P16PR2-T21] Remove undocumented `--check` alias for `--keys` at `providers.py:53` (audit line 120, line 430). No test, no docs — drop silently or with exit-2 hint.
+- [x] [P16PR2-T22] DESIGN-DECISION: `thoth providers` (no leaf) — currently exits 0 with help (providers.py:60); `tests/test_p16_dispatch_parity.py:89` accepts 0 OR 2. Pick canonical exit (audit line 250, line 431). Recommend Click default exit 2 for required-subcommand consistency.
+- [x] [P16PR2-T23] Update `commands.py` self-references in help text (commands.py:321,333,335,337,339,341,343,409,410) from `thoth providers -- [OPTIONS]` to flat forms (audit line 211).
+- [x] [P16PR2-T24] Update `src/thoth/providers/openai.py:69` reference `'thoth providers -- --models --provider openai'` to new flat form (audit line 212).
+
+**`modes --` hidden-shim family (audit lines 432-440)**
+- [x] [P16PR2-T25] DESIGN-DECISION: `thoth modes` (no leaf) — currently behaves as `modes list`; `tests/test_p16_thothgroup.py:223` asserts bare form lists modes (audit line 432). Decide: keep shortcut OR require explicit leaf. Per [Q2-PR2] FULL-CONSISTENCY: require explicit leaf; bare form exits 2 with suggestion `"Use 'thoth modes list'"`.
+- [x] [P16PR2-T26] Remove `thoth modes --json` hidden subcommand at `cli_subcommands/modes.py:72-75`. Add gating exit-2 suggestion `"Use 'thoth modes list --json'"` (audit line 433 — UNTESTED directly).
+- [x] [P16PR2-T27] Remove `thoth modes --show-secrets` hidden subcommand at `modes.py:78-81`. Add gating exit-2 suggestion. **Security-relevant** per audit line 287: callers depending on secret-reveal would silently get masked output. Migration hint must be loud.
+- [x] [P16PR2-T28] Remove `thoth modes --full` hidden subcommand at `modes.py:84-87`. Add gating exit-2 suggestion (audit line 435).
+- [x] [P16PR2-T29] Remove `thoth modes --name <NAME>` hidden subcommand at `modes.py:90-98`. Add gating exit-2 suggestion (audit line 436).
+- [x] [P16PR2-T30] Remove `thoth modes --source <SRC>` hidden subcommand at `modes.py:101-109`. Add gating exit-2 suggestion (audit line 437).
+- [x] [P16PR2-T31] DESIGN-DECISION: `thoth modes <UNKNOWN_OP>` — currently `ModesGroup.invoke` routes to `modes_command(arg0, …)` which returns 2 with `"unknown modes op: ..."` wording (audit line 438; thoth_test:2128). Decide: keep custom wording OR accept Click default `"No such command 'bogus_op'"`. Either way, exit code stays 2.
+- [x] [P16PR2-T32] Promote `--json`, `--show-secrets`, `--full`, `--name`, `--source` to typed Click options on `modes list` leaf (audit line 440 KEEP-but-promote). Currently passthrough via `_PASSTHROUGH_CONTEXT`.
+
+**`config` subgroup promote-to-typed (audit lines 441-462)**
+- [x] [P16PR2-T33] Promote `--raw` on `config get` to typed Click option (audit line 443). **Security-adjacent**: `config_cmd.py:104` shows `--raw` BYPASSES secret masking even without `--show-secrets`. Verbatim line: `if _is_secret_key(key) and not show_secrets and not raw:`. Must be loud-documented.
+- [x] [P16PR2-T34] DESIGN-DECISION: `config get KEY --raw` masking-bypass behavior (audit line 302, line 398, line 443). Options: (a) keep as masking bypass (loud-document in `--help`), (b) require explicit `--show-secrets` even with `--raw`. Recommend (b) — explicit security posture.
+- [x] [P16PR2-T35] Promote `--json` on `config get` to typed Click option (audit line 444 — UNTESTED).
+- [x] [P16PR2-T36] Promote `--show-secrets` on `config get` to typed Click option (audit line 445 — UNTESTED, security-adjacent).
+- [x] [P16PR2-T37] Promote `--layer` on `config get` to typed Click option (audit line 446 — UNTESTED; returns wrong-layer data silently if dropped).
+- [x] [P16PR2-T38] Promote `--project` on `config set` to typed Click option (audit line 448 — silent drop = wrong target file: `./thoth.toml` vs `~/.thoth/config.toml`).
+- [x] [P16PR2-T39] Promote `--string` on `config set` to typed Click option (audit line 449). Without it, `_parse_value` (config_cmd.py:111-124) silently coerces `"true"/"false"/numbers` to bool/int/float — losing string intent.
+- [x] [P16PR2-T40] Promote `--project` on `config unset` to typed Click option (audit line 451 — wrong-target risk).
+- [x] [P16PR2-T41] Promote `--keys` on `config list` to typed Click option (audit line 453). DESIGN: reject combo `--keys --json` / `--keys --show-secrets` OR document precedence (currently `--keys` wins silently per `config_cmd.py:330-333`).
+- [x] [P16PR2-T42] Promote `--json` on `config list` to typed Click option (audit line 454).
+- [x] [P16PR2-T43] Promote `--show-secrets` on `config list` to typed Click option (audit line 455 — security-adjacent).
+- [x] [P16PR2-T44] Promote `--layer` on `config list` to typed Click option (audit line 456).
+- [x] [P16PR2-T45] Promote `--project` on `config path` to typed Click option (audit line 459). Currently `config_cmd.py:347-358` uses `"--project" in args` truthiness — typo `--projects` is silently NOT honored.
+- [x] [P16PR2-T46] Promote `--project` on `config edit` to typed Click option (audit line 461).
+- [x] [P16PR2-T47] DESIGN-DECISION: `thoth config help` (audit line 462) — currently two divergent paths render different output: `config help` leaf at `config_cmd._op_help` calls `help.show_config_help()` (rich-formatted), while `thoth help config` at `help_cmd.py:31-42` forwards to `config --help` (Click format). Pick one path; converge or document.
+
+**Top-level / cross-cutting (audit lines 463-486)**
+- [x] [P16PR2-T48] Add `thoth ask PROMPT` as NEW canonical subcommand at `src/thoth/cli_subcommands/ask.py` (audit line 474 — currently in `RUN_COMMANDS` at help.py:14 but NOT a registered subcommand). Inherit full research flag set per [Q3-PR2]. Register in `cli.add_command(...)` and `ThothGroup.format_commands` "Run research" section.
+- [x] [P16PR2-T49] DESIGN-DECISION: `thoth deep_research "topic"` (mode-positional via `ThothGroup.invoke` at help.py:64-89) — KEEP? row at audit line 473. Removing would force mass test migration. Recommend KEEP (currently covered widely, low ROI to remove).
+- [x] [P16PR2-T50] DESIGN-DECISION: `thoth "bare prompt"` (whole-argv-as-prompt via `ThothGroup.invoke`) — KEEP? row at audit line 476. Same scope-risk as T49. Recommend KEEP (`tests/test_cli_regressions.py:55` and many others).
+- [x] [P16PR2-T51] DESIGN-DECISION: `thoth -h auth` / `thoth --help auth` parse-time hijack at `help.py:51-55` — KEEP? at audit line 471. UNTESTED. Decide: keep, remove, or convert `auth` to a real subcommand. Recommend keep with new test for the virtual topic.
+- [x] [P16PR2-T52] Add test for `thoth help auth` virtual topic at `help_cmd.py:25-28` (audit line 470 — UNTESTED).
+- [x] [P16PR2-T53] DESIGN-DECISION: `thoth --clarify` (alone, without `--interactive`) — currently silent no-op (audit line 481, line 391). Decide: exit 2 if alone, OR keep silent. Recommend exit 2.
+- [x] [P16PR2-T54] Remove dead `completion` listing from `ADMIN_COMMANDS` at `help.py:20` (audit line 472). Currently a phantom in help renderer with no Click command registered. Removal happens here; real `completion` subcommand lands in PR3.
+- [x] [P16PR2-T55] DESIGN-DECISION: `thoth status` (no arg) currently exits 1 with `"status command requires an operation ID"` (status.py:16-18). Click's natural default for missing required argument is exit 2. Audit line 331, line 465. Decide: recapture baseline at exit 1 (preserve divergence) OR change to exit 2 (Click natural). Recommend exit 2.
+- [x] [P16PR2-T56] Remove `ignore_unknown_options=True` from top-level `@click.group()` decorator per [Q5-PR2]. Audit hidden behavior change: typos like `thoth --verbsoe deep_research` will exit 2 instead of being silently absorbed. Add CHANGELOG callout.
+- [x] [P16PR2-T57] Audit and remove `ctx.args` plumbing in `cli.py` if no longer reachable after T56 (spec §5.3).
+- [x] [P16PR2-T58] DESIGN-DECISION: `--pick-model` precedence predicate at `cli.py:621-624` mixes `resume_id`, `interactive`, AND `first in ctx.command.commands` into a triple-OR (audit line 392, line 484-485). Decompose into separate explicit mutex checks. Cases for `interactive` and `first-in-commands` are UNTESTED.
+- [x] [P16PR2-T59] Add test for `--pick-model --interactive` mutex (audit line 484 — UNTESTED).
+- [x] [P16PR2-T60] Add test for `--pick-model <subcommand>` mutex e.g. `--pick-model providers` (audit line 485 — UNTESTED).
+
+**README / docs / migration housekeeping**
+- [x] [P16PR2-T61] Update `README.md:218` example `thoth --resume research-…` to new `thoth resume …` form.
+- [x] [P16PR2-T62] Update `manual_testing_instructions.md` to use new forms (post-PR2 manual flow).
+- [x] [P16PR2-T63] Update help epilog at `src/thoth/help.py:134` from `thoth --resume op_abc123` example to `thoth resume op_abc123`.
+- [x] [P16PR2-T64] Update `planning/thoth.prd.v24.md` references to old forms.
+- [x] [P16PR2-T65] CHANGELOG entries: `feat!: replace --resume flag with 'thoth resume' subcommand`, `feat!: remove 'thoth providers -- --…' legacy shim`, `feat!: remove 'thoth modes --…' hidden-subcommand shim`, `feat!: add 'thoth ask PROMPT' subcommand`, `feat!: remove ignore_unknown_options (typos now exit 2)` — release-please picks up the `!` for v3.0.0.
+- [x] [P16PR2-T66] Archive `planning/project_promote_commands.md` to `archive/` per CLAUDE.md versioning policy (now superseded by spec).
+
+### Silent-drop resolution tasks (one per untested-but-in-production behavior, audit lines 504-516)
+
+- [x] [P16PR2-T67] SILENT-DROP: `thoth --resume <op>` exit code 6 (op not found) at `run.py:719-720`. Preserve in new `resume` subcommand. Add explicit test (P16PR2-TS04).
+- [x] [P16PR2-T68] SILENT-DROP: `thoth --resume <op> --config <path>` config inheritance at `cli.py:345`. Preserve in new `resume` subcommand per [Q1-PR2] HONOR. Add explicit test (P16PR2-TS05).
+- [x] [P16PR2-T69] SILENT-DROP: `thoth --resume <op> --verbose` verbose flow-through at `cli.py:354`. Preserve in new `resume` subcommand per [Q1-PR2]. Add explicit test (P16PR2-TS06).
+- [x] [P16PR2-T70] SILENT-DROP: `thoth --resume <op> -i / --clarify` resume-silently-wins behavior at `cli.py:347,360`. Per [Q1-PR2] TIGHT, REJECT with `BadParameter` (covered by P16PR2-T06).
+- [x] [P16PR2-T71] SILENT-DROP: `thoth providers -- --keys` (no test, audit line 508). Resolved by P16PR2-T10 gating; add new-form test for `providers check` at P16PR2-TS11.
+- [x] [P16PR2-T72] SILENT-DROP: `thoth providers -- --refresh-cache` alone (silent no-op, audit line 509). Resolved by P16PR2-T11 gating decision.
+- [x] [P16PR2-T73] SILENT-DROP: `thoth providers -- --no-cache` alone (silent no-op, audit line 510). Resolved by P16PR2-T12 gating decision.
+- [x] [P16PR2-T74] SILENT-DROP: `thoth providers -- --models --refresh-cache` combo (audit line 511). Resolved structurally by P16PR2-T13.
+- [x] [P16PR2-T75] SILENT-DROP: `thoth providers -- --models --no-cache` combo (audit line 512). Resolved structurally by P16PR2-T14.
+- [x] [P16PR2-T76] SILENT-DROP: `thoth providers -- --models --provider X --refresh-cache` per-provider refresh (audit line 513, documented in PRD v24). Resolved structurally; add test at P16PR2-TS15.
+- [x] [P16PR2-T77] SILENT-DROP: `thoth providers -- --refresh-cache --no-cache` silent ambiguity at `commands.py:454-455` (audit line 514, line 129). Resolved by P16PR2-T16 explicit mutex rejection. Add test asserting `BadParameter`.
+- [x] [P16PR2-T78] SILENT-DROP: `thoth providers -- --list --keys` (silent drop of second flag at `commands.py:363,413,442` per audit line 515, line 130). Resolved structurally by separate leaves.
+- [x] [P16PR2-T79] SILENT-DROP: `providers --check` alias for `--keys` (in-group shim, no test, no docs, audit line 516). Resolved by P16PR2-T21 removal.
+
+### Test-coverage tasks (one per row of section 10 needing a test)
+
+**resume subcommand tests**
+- [x] [P16PR2-TS01] Test: `thoth resume <valid_op>` exits 0 + emits `"Research completed"`. Migrates `tests/test_resume.py:48`.
+- [x] [P16PR2-TS02] Test: `thoth resume <op>` (permanent fail fixture) exits 7 + emits `"failed permanently"`. Migrates `tests/test_resume.py:90`.
+- [x] [P16PR2-TS03] Test: `thoth resume <op>` (already completed) exits 0 + emits `"already completed"`. Migrates `tests/test_resume.py:131`.
+- [x] [P16PR2-TS04] Test: `thoth resume MISSING_OP` exits 6 (audit line 70 — NEW, fills silent-drop gap T67).
+- [x] [P16PR2-TS05] Test: `thoth --config <path> resume <op>` honors config inheritance (NEW, fills silent-drop gap T68).
+- [x] [P16PR2-TS06] Test: `thoth resume <op> --verbose` verbose flow-through (NEW, fills silent-drop gap T69).
+- [x] [P16PR2-TS07] Mutex tests: `thoth resume <op> --async`, `... --pick-model`, `... -q "prompt"`, `... -i`, `... --clarify`, `... --version` — each exits 2 with `BadParameter` (audit lines 414-415, line 60). NEW.
+- [x] [P16PR2-TS08] Migrate `tests/test_pick_model.py:48,109` (`--pick-model --resume`) to new `resume` subcommand form.
+- [x] [P16PR2-TS09] Migrate `tests/test_cli_regressions.py:76` (BUG-CLI-002 regression) to `thoth resume op_regression`.
+- [x] [P16PR2-TS10] Verify `tests/test_cli_regressions.py:164` (BUG-CLI-010 — `--version` mutex) still triggers under new shape.
+
+**resume gating tests**
+- [x] [P16PR2-TS11] Category-F gate: `thoth --resume OP_ID` exits 2 with stderr hint `"Use 'thoth resume OP_ID'"` (covers T02).
+- [x] [P16PR2-TS12] Category-F gate: `thoth -R OP_ID` exits 2 with same hint (covers T03).
+
+**resume emitter / consumer tests**
+- [x] [P16PR2-TS13] Update `tests/test_progress_spinner.py:152` to assert emitter prints `"Resume later: thoth resume op_abc123"`.
+- [x] [P16PR2-TS14] Update `tests/test_cli_help.py:26` to assert `"thoth resume"` substring (was `"thoth --resume"`).
+- [x] [P16PR2-TS15] Update `tests/_fixture_helpers.py:63-65` `extract_resume_id` regex from `r"thoth --resume\s+…"` to new form. Verify all RES-tests still extract op_id.
+- [x] [P16PR2-TS16] Update thoth_test patterns at `thoth_test:2170` (TS-09 signal/Ctrl-C `r"Checkpoint saved\. Resume with: thoth --resume"`).
+- [x] [P16PR2-TS17] Update thoth_test pattern at `thoth_test:2216` (TR-02 `r"Resume with: .*thoth --resume"`).
+- [x] [P16PR2-TS18] Update thoth_test pattern at `thoth_test:2238` (TR-03 negative-assertion variant).
+
+**providers subcommand tests**
+- [x] [P16PR2-TS19] Test: `thoth providers list` exits 0 with all provider names (audit line 199).
+- [x] [P16PR2-TS20] Test: `thoth providers list --provider X` filters to one provider (currently works in new form — confirm coverage).
+- [x] [P16PR2-TS21] Test: `thoth providers models` exits 0 (audit line 201).
+- [x] [P16PR2-TS22] Test: `thoth providers models --provider X` (no models) exits 1 (audit line 202).
+- [x] [P16PR2-TS23] Test: `thoth providers models --provider invalid` exits 1, stderr contains verbatim `"Unknown provider: invalid"` AND `"Available providers: openai, perplexity, mock"` (audit line 154, line 207). Migrates `thoth_test:2290-2297` T-PROV-10.
+- [x] [P16PR2-TS24] Test: `thoth providers check` exits 0 (all keys) or 2 (any missing) per audit line 203.
+- [x] [P16PR2-TS25] Test: `thoth providers list` preserves verbatim `"Perplexity search AI (not.*implemented)"` row text (audit line 155, line 208). Migrates `thoth_test:2307` P07-M2-01.
+- [x] [P16PR2-TS26] Test: `thoth help providers` preserves epilog patterns `--models.*List available models`, `--provider.*Filter by specific provider` (audit line 110, line 209). Migrates thoth_test T-PROV-09.
+- [x] [P16PR2-TS27] Test: `thoth providers models --refresh-cache` triggers `"Fetching available models (refreshing cache)..."` from commands.py:445 (NEW, covers T13/T74).
+- [x] [P16PR2-TS28] Test: `thoth providers models --no-cache` forwards `no_cache=True` (NEW, covers T14/T75).
+- [x] [P16PR2-TS29] Test: `thoth providers models --refresh-cache --no-cache` rejected with `BadParameter` exit 2 (NEW, covers T16/T77).
+- [x] [P16PR2-TS30] Test: `thoth providers models --provider openai --refresh-cache` works (NEW, covers T15/T76).
+- [x] [P16PR2-TS31] Migrate `thoth_test:2260` T-PROV-07 `providers -- --models --provider mock` to `providers models --provider mock`.
+- [x] [P16PR2-TS32] Migrate `thoth_test:2269` T-PROV-08 `providers -- --models` to `providers models`.
+
+**providers gating tests**
+- [x] [P16PR2-TS33] Category-F gate: `thoth providers -- --list` exits 2 with hint `"Use 'thoth providers list'"` (covers T08).
+- [x] [P16PR2-TS34] Category-F gate: `thoth providers -- --models` exits 2 with hint (covers T09).
+- [x] [P16PR2-TS35] Category-F gate: `thoth providers -- --keys` exits 2 with hint `"Use 'thoth providers check'"` (covers T10).
+- [x] [P16PR2-TS36] Category-F gate: `thoth providers --list` (in-group hidden) exits 2 with hint (covers T18).
+- [x] [P16PR2-TS37] Category-F gate: `thoth providers --models` (in-group hidden) exits 2 (covers T19).
+- [x] [P16PR2-TS38] Category-F gate: `thoth providers --keys` (in-group hidden) exits 2 (covers T20).
+- [x] [P16PR2-TS39] Update `tests/test_providers_subcommand.py:23-27` (`test_old_form_deprecated_but_works`) to assert exit-2-with-hint, OR delete if redundant with new TS33.
+- [x] [P16PR2-TS40] Test: `thoth providers` (no leaf) exits per T22 decision (likely Click default exit 2). Verify `tests/test_p16_dispatch_parity.py:89` baseline.
+
+**modes subcommand tests**
+- [x] [P16PR2-TS41] Category-F gate: `thoth modes --json` exits 2 with hint `"Use 'thoth modes list --json'"` (covers T26).
+- [x] [P16PR2-TS42] Category-F gate: `thoth modes --show-secrets` exits 2 with hint (covers T27).
+- [x] [P16PR2-TS43] Category-F gate: `thoth modes --full` exits 2 with hint (covers T28).
+- [x] [P16PR2-TS44] Category-F gate: `thoth modes --name X` exits 2 with hint (covers T29).
+- [x] [P16PR2-TS45] Category-F gate: `thoth modes --source X` exits 2 with hint (covers T30).
+- [x] [P16PR2-TS46] Test: `thoth modes` (no leaf) per T25 decision (exit 2 with `"Use 'thoth modes list'"` if removing default-to-list shortcut).
+- [x] [P16PR2-TS47] Test: `thoth modes <UNKNOWN_OP>` per T31 decision (exit 2; wording either custom or Click-default).
+- [x] [P16PR2-TS48] Test: `thoth modes list --json` (typed flag, NEW per T32).
+- [x] [P16PR2-TS49] Test: `thoth modes list --show-secrets` (typed flag, NEW per T32).
+- [x] [P16PR2-TS50] Test: `thoth modes list --full` (typed flag, NEW per T32).
+- [x] [P16PR2-TS51] Test: `thoth modes list --name NAME` (typed flag, NEW per T32).
+- [x] [P16PR2-TS52] Test: `thoth modes list --source SRC` (typed flag, NEW per T32).
+
+**config subcommand tests**
+- [x] [P16PR2-TS53] Test: `thoth config get KEY --raw` per T34 decision (masking-bypass behavior). Audit verbatim: `config_cmd.py:104` `if _is_secret_key(key) and not show_secrets and not raw:`. **Security-critical test.**
+- [x] [P16PR2-TS54] Test: `thoth config get KEY --json` (typed flag, NEW per T35).
+- [x] [P16PR2-TS55] Test: `thoth config get KEY --show-secrets` (typed flag, NEW per T36).
+- [x] [P16PR2-TS56] Test: `thoth config get KEY --layer L` (typed flag, NEW per T37).
+- [x] [P16PR2-TS57] Test: `thoth config set KEY VALUE` (NEW canonical).
+- [x] [P16PR2-TS58] Test: `thoth config set KEY VALUE --project` (typed flag, NEW per T38).
+- [x] [P16PR2-TS59] Test: `thoth config set KEY VALUE --string` (typed flag, NEW per T39 — verify `"true"` stays string not bool).
+- [x] [P16PR2-TS60] Test: `thoth config unset KEY` (NEW canonical).
+- [x] [P16PR2-TS61] Test: `thoth config unset KEY --project` (typed flag, NEW per T40).
+- [x] [P16PR2-TS62] Test: `thoth config list --keys` per T41 decision (typed flag + combo policy).
+- [x] [P16PR2-TS63] Test: `thoth config list --json` (typed flag, NEW per T42).
+- [x] [P16PR2-TS64] Test: `thoth config list --show-secrets` (typed flag, NEW per T43).
+- [x] [P16PR2-TS65] Test: `thoth config list --layer L` (typed flag, NEW per T44).
+- [x] [P16PR2-TS66] Test: `thoth config list --keys --json` per T41 decision (reject combo OR document precedence).
+- [x] [P16PR2-TS67] Test: `thoth config path` (NEW per audit line 458).
+- [x] [P16PR2-TS68] Test: `thoth config path --project` (typed flag, NEW per T45).
+- [x] [P16PR2-TS69] Test: `thoth config edit` (NEW per audit line 460).
+- [x] [P16PR2-TS70] Test: `thoth config edit --project` (typed flag, NEW per T46).
+- [x] [P16PR2-TS71] Test: `thoth config help` convergence per T47 decision (collapse to `thoth help config` OR keep leaf).
+
+**ask subcommand tests**
+- [x] [P16PR2-TS72] Test: `thoth ask "hello"` (mock provider) routes to default-mode research; equivalent to `thoth -q "hello"` and `thoth "hello"`.
+- [x] [P16PR2-TS73] Test: `thoth ask "x" --mode deep_research --async` honors flags identically to bare-prompt path.
+- [x] [P16PR2-TS74] Surprising-parse test: `thoth init` (subcommand) vs `thoth "init the database"` (bare-prompt) disambiguated correctly; `thoth ask` (no arg) exits 2.
+
+**Top-level / cross-cutting tests**
+- [x] [P16PR2-TS75] Test: `thoth list --all` (audit line 467 — UNTESTED in pytest).
+- [x] [P16PR2-TS76] Test: `thoth help auth` virtual topic (audit line 470 — UNTESTED, covers T52).
+- [x] [P16PR2-TS77] Test: `thoth -h auth` parse-time hijack at help.py:51-55 per T51 decision (audit line 471 — UNTESTED).
+- [x] [P16PR2-TS78] Test: `thoth --clarify` alone per T53 decision (audit line 481 — UNTESTED).
+- [x] [P16PR2-TS79] Test: `thoth --pick-model --interactive` mutex (audit line 484 — UNTESTED, covers T59).
+- [x] [P16PR2-TS80] Test: `thoth --pick-model providers` mutex (audit line 485 — UNTESTED, covers T60).
+- [x] [P16PR2-TS81] Strict-options test: `thoth --verbsoe deep_research "x"` (typo) exits 2 with Click "no such option" error (covers T56 removal of `ignore_unknown_options`).
+- [x] [P16PR2-TS82] Recapture `tests/baselines/status_no_args.json` per T55 decision (exit 1 vs exit 2).
+- [x] [P16PR2-TS83] Recapture `tests/baselines/providers_list.json` if T18-T21 change wording (audit line 238).
+
+### Out-of-PR2 follow-ups (deferred to PR3 or later)
+
+- [ ] [P16PR2-FU01] (Deferred to PR3) Add `--json` to `resume`, `ask`, and every admin command per spec §6.5 B-deferred extraction pattern.
+- [ ] [P16PR2-FU02] (Deferred to PR3) Implement real `completion` Click subcommand (currently a phantom listing in `help.py:20` removed by P16PR2-T54).
+- [ ] [P16PR2-FU03] (Deferred to PR3) `thoth resume <TAB>` op-id dynamic completer in `completion/sources.py`.
+- [ ] [P16PR2-FU04] (Deferred to P12) Mode-editing operations: `thoth modes set/add/unset`.
+- [ ] [P16PR2-FU05] (Deferred — Click 9.0) Re-evaluate `ctx.protected_args` deprecation warning suppression at `help.py:60-65`.
+
+### Automated verification (PR2 acceptance criteria)
+- [ ] `uv run pytest tests/` — green, count >= current baseline (312)
+- [ ] `./thoth_test -r --skip-interactive` — green, count >= current baseline (63)
+- [ ] `just check` — green
+- [ ] `git grep "thoth --resume"` returns ZERO results in `src/`, `tests/`, `README.md`, `manual_testing_instructions.md` (except CHANGELOG and the spec/audit/plan docs themselves)
+- [ ] `git grep "thoth providers --"` returns ZERO results in `src/`, `tests/`, README, docs (same exception)
+- [ ] `git grep "thoth modes --"` returns ZERO results in `src/`, `tests/`, README, docs (same exception)
+- [ ] Every row of audit section 10's master parity checklist has a checked-off "Test required" entry (cross-reference TS01-TS83 against audit lines 411-486)
+- [ ] `grep -rn "ignore_unknown_options=True" src/thoth/cli.py` returns ZERO results (T56)
+
+### Manual Verification
+- `thoth ask "hello"` → runs default-mode research (mock provider works without API key)
+- `thoth resume <op_id>` → resumes recoverable failure end-to-end
+- `thoth --resume <op_id>` → exits 2 with hint pointing to `thoth resume`
+- `thoth providers -- --list` → exits 2 with hint pointing to `thoth providers list`
+- `thoth modes --json` → exits 2 with hint pointing to `thoth modes list --json`
+- `thoth --verbsoe deep_research "x"` → exits 2 with Click "no such option" error (was silently absorbed pre-PR2)
+- `thoth config get OPENAI_API_KEY --raw` → behavior matches T34 decision (masking-bypass either documented loud OR rejected without `--show-secrets`)
+
+---
+
+## [ ] Project P16 PR3: Automation Polish — `completion` subcommand + universal `--json` (v3.0.0)
+**Goal**: Ship the automation-and-scripting half of v3.0.0. Add `thoth completion {bash,zsh,fish}` (with `--install`) backed by dynamic completers in `completion/sources.py`. Add `--json` to every admin command via the B-deferred per-handler `get_*_data() -> dict` extraction pattern, with envelope contract centralized in `json_output.py`. Closes PRD F-70 and Plan M21-07. Lands as the final commit before release-please opens the v3.0.0 PR.
+
+**Primary spec**: `docs/superpowers/specs/2026-04-25-promote-admin-commands-design.md` (decisions Q4 completion, Q5 `--json`, §6.3 `completion/`, §6.4 `json_output.py`, §6.5 B-deferred handler pattern, §10 PR3 rollout)
+
+**Out of Scope**
+- New subcommands beyond `completion` (PR2 already shipped `ask`/`resume`)
+- Removing anything (spec §5.3: "PR3 — Nothing removed; pure addition")
+- Reworking exit codes (still 0/1/2; granular `error.code` strings live inside JSON envelopes only — spec §8.3)
+- Migrating `interactive.py::SlashCommandCompleter` to `completion/sources.py` — optional polish, not blocker (spec §3, §6.3)
+
+### Design Notes
+- **JSON envelope contract** (spec §6.4): success = `{"status":"ok","data":{...}}`; error = `{"status":"error","error":{"code":"STRING_CODE","message":"...","details":{...}?}}`. Top-level object always. Stdlib only (`json`, `sys`).
+- **Critical invariant** (spec §7.2): the subcommand wrapper is the ONLY place that knows about `--json`. Handlers below never branch on the flag. CI lint rule: `! grep -rn "as_json\|as_json:" src/thoth/commands.py src/thoth/config_cmd.py src/thoth/modes_cmd.py`. If a future PR adds `as_json=True` plumbing, lint fails.
+- **B-deferred extraction** (spec §6.5): each handler that needs `--json` gets a `get_*_data() -> dict` sibling extracted; the existing Rich-printing function is refactored to call the data function, then format. No `as_json` flag in handler signatures.
+- **Completer data sources** (spec §6.3) live in `completion/sources.py` as pure functions: `operation_ids`, `mode_names`, `config_keys`, `provider_names`. Importable by both Click `shell_complete=` callbacks AND `interactive.py::SlashCommandCompleter` (shared-data-source design constraint from Q4).
+- **`completion install`** writes to conventional shell rc location (e.g., `~/.zshrc`, `~/.bashrc`, `~/.config/fish/completions/thoth.fish`) with prompt-before-overwrite in tty; refuses silently in non-tty unless `--force`. Detect existing `_thoth_completion` block; preview + prompt y/n.
+- **fish support contingency** (spec §13): requires Click ≥ 8.x. Verify `pyproject.toml` pin in T01; if bump is non-trivial, fish defers to a v3.0.x follow-up (bash + zsh ship in v3.0.0).
+- **`init --json`** requires `--non-interactive` (spec §8.2). Without it: `emit_error("JSON_REQUIRES_NONINTERACTIVE", ...)` exit 2.
+- **`config edit --json`**: success envelope after editor closes; failure → `emit_error("EDITOR_FAILED", ..., {"exit_code": N})`.
+
+### Tests & Tasks
+**Phase A — `json_output.py` foundation**
+- [ ] [P16-PR3-TS01] `tests/test_json_output.py`: `emit_json({"foo":1})` writes `{"status":"ok","data":{"foo":1}}` to stdout and exits 0
+- [ ] [P16-PR3-TS02] `tests/test_json_output.py`: `emit_error("CODE", "msg", {"detail":1})` writes `{"status":"error","error":{"code":"CODE","message":"msg","details":{"detail":1}}}` and exits 1; `exit_code=2` honored
+- [ ] [P16-PR3-TS03] Round-trip parse test: every emitted envelope is `json.loads`-able
+- [ ] [P16-PR3-T01] Create `src/thoth/json_output.py` with `emit_json(data)` and `emit_error(code, message, details=None, exit_code=1)`. Stdlib only.
+
+**Phase B — `completion` subcommand**
+- [ ] [P16-PR3-TS04] `tests/test_completion.py`: `thoth completion bash` emits a script containing `_THOTH_COMPLETE=bash_source thoth`
+- [ ] [P16-PR3-TS05] Same for `zsh` and (if Click≥8) `fish`; `thoth completion zsh-bogus` exits 2 with `UNSUPPORTED_SHELL` (with `--json`)
+- [ ] [P16-PR3-TS06] `tests/test_completion_install.py`: `thoth completion bash --install` writes to `~/.bashrc` (tmp-home fixture); rerun detects existing block and prompts before overwrite
+- [ ] [P16-PR3-TS07] Non-tty + no `--force` → install refuses with helpful error
+- [ ] [P16-PR3-T02] Verify Click pin in `pyproject.toml` ≥ 8.x; bump if needed for fish support; if bump is non-trivial, defer fish per spec §13
+- [ ] [P16-PR3-T03] Create `src/thoth/completion/__init__.py`, `script.py` (init script generation), `sources.py` (completer data functions: `operation_ids`, `mode_names`, `config_keys`, `provider_names`)
+- [ ] [P16-PR3-T04] Add `src/thoth/cli_subcommands/completion.py` with `@click.command("completion")` + `[bash|zsh|fish]` choice arg + `--install/--force` flags
+- [ ] [P16-PR3-T05] Wire `shell_complete=` callbacks into existing subcommands: `resume OP_ID`, `status OP_ID`, `config get KEY`, `config set KEY`, `modes --name NAME`
+
+**Phase C — `--json` rollout (one task per command, B-deferred extraction each)**
+- [ ] [P16-PR3-TS08] `tests/test_json_envelopes.py`: parametrized over every `--json` command (`init`, `status`, `list`, `providers list/models/check`, `config get/set/unset/list/path/edit`, `modes`, `ask`, `resume`) — each emits a top-level object with `status` field, parses cleanly
+- [ ] [P16-PR3-T06] `init --json` (requires `--non-interactive` per spec §8.2; emit `JSON_REQUIRES_NONINTERACTIVE` otherwise)
+- [ ] [P16-PR3-T07] `status OP_ID --json` (extract `get_status_data()` from `commands.show_status`)
+- [ ] [P16-PR3-T08] `list --json` (extract `get_list_data()` from `commands.list_operations`)
+- [ ] [P16-PR3-T09] `providers list/models/check --json` (extract `get_providers_*_data()` siblings)
+- [ ] [P16-PR3-T10] `config get/set/unset/list/path --json` (extract `get_config_*_data()` siblings)
+- [ ] [P16-PR3-T11] `config edit --json` (success envelope after editor closes; `EDITOR_FAILED` on non-zero editor exit)
+- [ ] [P16-PR3-T12] `modes --json` (already exists per P11; verify it conforms to new envelope contract or migrate)
+- [ ] [P16-PR3-T13] `ask --json` and `resume --json` (research-path JSON: minimal envelope with `operation_id`, `status`, `result_path` — full streaming output stays human-readable)
+
+**Phase D — CI lint rules**
+- [ ] [P16-PR3-T14] Add CI check: `! grep -rnE "as_json|as_json:" src/thoth/commands.py src/thoth/config_cmd.py src/thoth/modes_cmd.py` (handlers must not branch on JSON flag)
+- [ ] [P16-PR3-T15] Add CI check: `JSON_COMMANDS` parametrize-list in `test_json_envelopes.py` is complete — every `@click.command` in `cli_subcommands/` with `--json` flag appears in the list
+
+**Phase E — Documentation + release**
+- [ ] [P16-PR3-T16] Update `planning/thoth.prd.v24.md:96` ("Added shell completion support") from aspirational to actually-shipped (spec §13 stale-PRD note)
+- [ ] [P16-PR3-T17] Document JSON envelope contract in `README.md` and a new `docs/json-output.md`
+- [ ] [P16-PR3-T18] Mark PRD F-70 and Plan M21-07 complete
+- [ ] [P16-PR3-T19] CHANGELOG entries (non-breaking — pure additions, but consolidate v3.0.0 narrative): `feat: shell completion (bash, zsh, fish)`, `feat: --json on every admin command`
+- [ ] [P16-PR3-T20] Verify release-please opens v3.0.0 PR after PR3 merges; merge → tag → publish
+
+- [ ] Regression Test Status
+
+### Automated Verification
+- `uv run pytest tests/test_json_output.py tests/test_completion.py tests/test_completion_install.py tests/test_json_envelopes.py -v` — all green
+- `uv run pytest tests/` — full suite green
+- `./thoth_test -r --skip-interactive -q` — full suite green
+- `just check` — green (ruff + ty)
+- CI lint rule: `! grep -rnE "as_json" src/thoth/commands.py src/thoth/config_cmd.py src/thoth/modes_cmd.py` exits 0
+- `thoth --json status NONEXISTENT_ID | jq .status` returns `"error"`; `.error.code` returns `"OPERATION_NOT_FOUND"`
+
+### Manual Verification
+- `eval "$(thoth completion zsh)"` then `thoth resume <TAB>` shows live op-ids from `~/.thoth/operations/`
+- `thoth completion bash --install` writes to `~/.bashrc`; rerun prompts before overwrite
+- `thoth init --json --non-interactive` emits success envelope; `thoth init --json` (no flag) emits `JSON_REQUIRES_NONINTERACTIVE` exit 2
+- `thoth providers list --json | jq '.data[].name'` returns provider names
+- `thoth config edit --json` emits success envelope after vim closes
+
+### Acceptance criteria for v3.0.0 release (cumulative across PR1+PR2+PR3, per spec §11)
+- `thoth --help` shows two-section layout + epilog
+- Every admin command is a real Click subcommand
+- `thoth ask` works as canonical scripted form; `thoth resume OP_ID` is the only resume form
+- `thoth --resume OP_ID` and `thoth providers -- --list` both exit 2 with migration hints
+- `thoth completion bash|zsh|fish` ships working init scripts
+- `thoth resume <TAB>`, `thoth status <TAB>`, `thoth config get <TAB>` complete with live data
+- Every admin command supports `--json` with valid envelope
+- CHANGELOG documents v3.0.0 with breaking changes and migration paths
+
+---
+
 ## [x] Project P16 PR1: Click-Native CLI Refactor — Subcommand Migration & Parity Gate (v2.15.0)
 **Goal**: Migrate `thoth`'s imperative `cli.py` dispatch into Click subcommands (`init`, `status`, `list`, `providers`, `config`, `modes`, `help`) and lock the user-visible behavior with a parity gate before any further refactors.
 
@@ -28,10 +570,10 @@
 - [x] [P16-T15] Finalize parity gate: 8 byte-stable + 7 structural; restore exit-2 for `thoth config` no-args; recapture `status_no_args` baseline against Click natural exit-2 behavior; capture new `help_post_pr1.json` baseline
 
 ### Automated Verification
-- `uv run pytest tests/test_p16_dispatch_parity.py tests/test_p16_thothgroup.py -v` (40 passing)
-- `just check` (lint + typecheck — green)
-- Full pytest: 281 passed / 25 failed (all 25 pre-existing failures unrelated to PR1; better than T14 baseline of 33)
-- `./thoth_test -r --skip-interactive -q`: 51 failed (same as T14 baseline)
+- `uv run pytest tests/test_p16_dispatch_parity.py tests/test_p16_thothgroup.py -v` — 40 passing
+- `just check` — green (ruff + ty)
+- `uv run pytest tests/` — **312 passed / 0 failed**
+- `./thoth_test -r --skip-interactive` — **63 passed / 0 failed / 10 skipped** (the 10 skips are OpenAI/Perplexity provider tests that auto-skip when API keys are unset)
 
 ### Manual Verification
 - `thoth --help` → two-section layout
@@ -42,9 +584,10 @@
 - `thoth init --help` / `thoth list --help` → show subcommand help (no parent leak)
 
 ### Known Follow-ups (out of scope for PR1, picked up by PR2/PR3)
-- Deep_research / quick / sonar still go through imperative dispatch
-- `--mode` positional fallback still exists
-- 25 pytest failures unrelated to PR1 (test_pick_model, test_resume, test_help_auth, etc.) — pre-existing flaky/integration tests
+- Deep_research / quick / sonar mode dispatch (currently routed via `ThothGroup.invoke` mode-positional + bare-prompt fallback paths — works, but PR2 may consolidate)
+- `--mode` positional fallback still exists (intentional per spec; surrounded by parity tests)
+- `ctx.protected_args` Click 9.0 deprecation — currently suppressed via `warnings.catch_warnings` in `help.py:60-65`; revisit when Click 9 lands
+- `thoth config help` was already broken pre-refactor (no `help` leaf in config Click subgroup); `show_config_help` retained for the internal `config_command(op="help")` API path
 
 ---
 
