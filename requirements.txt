@@ -7,7 +7,7 @@ anyio==4.10.0
     # via
     #   httpx
     #   openai
-certifi==2025.8.3
+certifi==2026.4.22
     # via
     #   httpcore
     #   httpx
