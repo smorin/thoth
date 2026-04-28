@@ -3,7 +3,8 @@ name = "thoth"
 version = "2.5.0"
 description = "AI-Powered Research Assistant — orchestrates parallel LLM providers for comprehensive research reports"
 readme = "README.md"
-license = "MIT"
+license = "AGPL-3.0-or-later"
+license-files = ["LICENSE"]
 authors = [
     { name = "Steve Morin", email = "steve.morin@gmail.com" }
 ]
@@ -16,7 +17,7 @@ classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
     "Intended Audience :: Science/Research",
-    "License :: OSI Approved :: MIT License",
+    "License :: OSI Approved :: GNU Affero General Public License v3 or later (AGPLv3+)",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",

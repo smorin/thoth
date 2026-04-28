@@ -3,7 +3,7 @@
 [![PyPI version](https://img.shields.io/pypi/v/thoth.svg)](https://pypi.org/project/thoth/)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![CI](https://github.com/smorin/thoth/actions/workflows/ci.yml/badge.svg)](https://github.com/smorin/thoth/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](LICENSE)
 
 Thoth is a command-line tool that automates deep technical research using multiple LLM providers. It orchestrates parallel execution of OpenAI's Deep Research API and Perplexity's research models to deliver comprehensive, multi-perspective research reports.
 
@@ -612,4 +612,13 @@ See `docs/json-output.md` for the envelope contract and per-command schemas.
 
 ## License
 
-[MIT License](LICENSE)
+[GNU Affero General Public License v3.0 or later](LICENSE) (AGPL-3.0-or-later).
+
+In short: you may use, modify, and redistribute thoth, but if you offer a
+modified version as a network service to others (a SaaS), you must also
+make your full modified source code available to those users. See the
+[GNU AGPL FAQ](https://www.gnu.org/licenses/why-affero-gpl.html) for the
+rationale behind the network-service clause.
+
+Copyright © 2025–2026 Steve Morin. Contributions are accepted under the
+same AGPL-3.0-or-later terms.
