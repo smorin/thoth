@@ -136,6 +136,9 @@ class TestCase:
     not_expected_stdout_patterns: list[str] = field(default_factory=list)
     not_expected_stderr_patterns: list[str] = field(default_factory=list)
     expected_files: list[str] = field(default_factory=list)
+    not_expected_files: list[str] = field(default_factory=list)
+    expected_file_content_patterns: dict[str, list[str]] = field(default_factory=dict)
+    not_expected_file_content_patterns: dict[str, list[str]] = field(default_factory=dict)
     timeout: int = TEST_TIMEOUT
     cleanup_files: list[str] = field(default_factory=list)
     skip: bool = False
@@ -301,6 +304,82 @@ def validate_file_creation(
     return True, created_files, ""
 
 
+def validate_file_absence(
+    not_expected_files: list[str],
+    since: float = 0.0,
+    base: Path = Path("."),
+) -> tuple[bool, list[Path], str]:
+    """Check that matching files were not created after ``since``."""
+    unexpected_files = []
+
+    for file_pattern in not_expected_files:
+        matching_files = [p for p in base.glob(file_pattern) if p.stat().st_mtime >= since]
+        unexpected_files.extend(matching_files)
+
+    if unexpected_files:
+        return (
+            False,
+            unexpected_files,
+            f"Unexpected files created: {', '.join(str(p) for p in unexpected_files)}",
+        )
+
+    return True, [], ""
+
+
+def validate_file_contents(
+    expected_file_content_patterns: dict[str, list[str]],
+    since: float = 0.0,
+    base: Path = Path("."),
+) -> tuple[bool, list[Path], str]:
+    """Check that matching files contain all required regex patterns."""
+    matched_files: list[Path] = []
+
+    for file_pattern, content_patterns in expected_file_content_patterns.items():
+        matching_files = [p for p in base.glob(file_pattern) if p.stat().st_mtime >= since]
+        if not matching_files:
+            return False, matched_files, f"Missing expected files for content check: {file_pattern}"
+
+        for file_path in matching_files:
+            matched_files.append(file_path)
+            content = file_path.read_text(encoding="utf-8")
+            for content_pattern in content_patterns:
+                if not re.search(content_pattern, content, re.MULTILINE | re.DOTALL):
+                    return (
+                        False,
+                        matched_files,
+                        f"Missing content pattern {content_pattern!r} in {file_path}",
+                    )
+
+    return True, matched_files, ""
+
+
+def validate_file_content_absence(
+    not_expected_file_content_patterns: dict[str, list[str]],
+    since: float = 0.0,
+    base: Path = Path("."),
+) -> tuple[bool, list[Path], str]:
+    """Check that matching files do not contain forbidden regex patterns."""
+    matched_files: list[Path] = []
+
+    for file_pattern, content_patterns in not_expected_file_content_patterns.items():
+        matching_files = [p for p in base.glob(file_pattern) if p.stat().st_mtime >= since]
+        if not matching_files:
+            return False, matched_files, f"Missing expected files for content check: {file_pattern}"
+
+        for file_path in matching_files:
+            matched_files.append(file_path)
+            content = file_path.read_text(encoding="utf-8")
+            for content_pattern in content_patterns:
+                if re.search(content_pattern, content, re.MULTILINE | re.DOTALL):
+                    return (
+                        False,
+                        matched_files,
+                        f"Unexpected content pattern {content_pattern!r} in {file_path}",
+                    )
+
+    return True, matched_files, ""
+
+
 def validate_output(
     output: str, expected_patterns: list[str], not_expected_patterns: list[str]
 ) -> tuple[bool, str]:
@@ -337,6 +416,13 @@ def create_test_config(config_dir: Path, content: str):
     config_file = config_dir / "config.toml"
     config_file.write_text(content)
     return config_file
+
+
+def create_test_input_file(config_dir: Path):
+    """Create a test input file for --input-file cases."""
+    input_file = config_dir / "input.md"
+    input_file.write_text("background input file content\n")
+    return input_file
 
 
 def find_latest_output_file(pattern: str = "*_*_*_*_*.md") -> Path | None:
@@ -435,6 +521,11 @@ def _prepare_test_isolation(
     # (and break T-SIG-01's 1.5s SIGINT timing). Keep uv on the shared cache.
     env.setdefault("UV_CACHE_DIR", str(Path.home() / ".cache" / "uv"))
     return tmpdir, cmd, env, output_base
+
+
+def _expand_tmpdir_placeholders(cmd: list[str], tmpdir: Path) -> list[str]:
+    """Expand {tmpdir} placeholders after per-test isolation is allocated."""
+    return [arg.replace("{tmpdir}", str(tmpdir)) for arg in cmd]
 
 
 def _resolve_output_target(cmd: list[str]) -> tuple[Path | None, str | None]:
@@ -699,6 +790,7 @@ class InteractiveTestRunner:
         # Set up environment
         test_env = os.environ.copy()
         test_env["COLUMNS"] = "80"  # Standard terminal width
+        test_env.setdefault("UV_CACHE_DIR", str(Path.home() / ".cache" / "uv"))
 
         # Add test-specific environment variables
         if test_case.env:
@@ -1304,6 +1396,8 @@ api_key = "{api_key}"
 """
                 config_path.write_text(config_content)
 
+        test_command = _expand_tmpdir_placeholders(test_command, tmpdir)
+
         # Create test prompt file if needed
         if "--prompt-file" in test_command:
             idx = test_command.index("--prompt-file")
@@ -1430,6 +1524,46 @@ api_key = "{api_key}"
                 if not passed:
                     result.passed = False
                     result.error_message = f"File validation failed: {error}"
+                    return result
+
+            if test_case.not_expected_files:
+                passed, unexpected_files, error = validate_file_absence(
+                    test_case.not_expected_files,
+                    since=start_time,
+                    base=output_base if output_base is not None else Path("."),
+                )
+                result.created_files.extend(unexpected_files)
+                if not passed:
+                    result.passed = False
+                    result.error_message = f"File absence validation failed: {error}"
+                    return result
+
+            if test_case.expected_file_content_patterns:
+                passed, matched_files, error = validate_file_contents(
+                    test_case.expected_file_content_patterns,
+                    since=start_time,
+                    base=output_base if output_base is not None else Path("."),
+                )
+                result.created_files.extend(
+                    p for p in matched_files if p not in result.created_files
+                )
+                if not passed:
+                    result.passed = False
+                    result.error_message = f"File content validation failed: {error}"
+                    return result
+
+            if test_case.not_expected_file_content_patterns:
+                passed, matched_files, error = validate_file_content_absence(
+                    test_case.not_expected_file_content_patterns,
+                    since=start_time,
+                    base=output_base if output_base is not None else Path("."),
+                )
+                result.created_files.extend(
+                    p for p in matched_files if p not in result.created_files
+                )
+                if not passed:
+                    result.passed = False
+                    result.error_message = f"File content absence validation failed: {error}"
                     return result
         finally:
             # Always run teardown function if provided
@@ -1725,6 +1859,16 @@ api_key = "{api_key}"
 # Test Definitions
 # ============================================================================
 
+
+def mock_stream_patterns(prompt: str, mode: str = "default") -> list[str]:
+    """Expected stdout contract for immediate-mode mock streaming."""
+    return [
+        rf"# Mock streaming response \(mode={re.escape(mode)}\)",
+        rf"Echo: {re.escape(prompt)}",
+        r"Done\.",
+    ]
+
+
 # All test cases
 all_tests = [
     # Basic CLI Tests (No Provider Required)
@@ -1737,11 +1881,10 @@ all_tests = [
     ),
     TestCase(
         test_id="M1T-02",
-        description="Quick mode with mock provider creates output file",
+        description="Quick mode with mock provider streams without default result file",
         command=[THOTH_EXECUTABLE, "test prompt", "--provider", "mock"],
-        expected_stdout_patterns=[r"Research completed", r"Results saved to:"],
-        expected_files=["*_*_*_mock_*.md"],
-        cleanup_files=["*_*_*_mock_*.md"],
+        expected_stdout_patterns=mock_stream_patterns("test prompt"),
+        not_expected_files=["*_*_*_mock_*.md"],
         expected_exit_code=0,
         provider="mock",
         api_key_method="env",
@@ -1749,10 +1892,21 @@ all_tests = [
     TestCase(
         test_id="M1T-03",
         description="Filename follows correct pattern",
-        command=[THOTH_EXECUTABLE, "test filename pattern", "--provider", "mock"],
-        expected_stdout_patterns=[r"\d{4}-\d{2}-\d{2}_\d{6}_\w+_mock_[\w-]+\.md"],
-        expected_files=["????-??-??_??????_*_mock_*.md"],
-        cleanup_files=["*_*_*_mock_*.md"],
+        command=[
+            THOTH_EXECUTABLE,
+            "test filename pattern",
+            "--provider",
+            "mock",
+            "--project",
+            "filename_pattern_test",
+        ],
+        expected_stdout_patterns=mock_stream_patterns("test filename pattern") + [r"Saved to:"],
+        expected_files=["research-outputs/filename_pattern_test/????-??-??_??????_*_mock_*.md"],
+        cleanup_files=[
+            "research-outputs/filename_pattern_test/*",
+            "research-outputs/filename_pattern_test",
+            "research-outputs",
+        ],
         expected_exit_code=0,
         provider="mock",
         api_key_method="env",
@@ -1780,9 +1934,8 @@ all_tests = [
         test_id="MOCK-01",
         description="Mock provider works with environment API key",
         command=[THOTH_EXECUTABLE, "test env key", "--provider", "mock"],
-        expected_stdout_patterns=[r"Research completed"],
-        expected_files=["*_mock_*.md"],
-        cleanup_files=["*_mock_*.md"],
+        expected_stdout_patterns=mock_stream_patterns("test env key"),
+        not_expected_files=["*_mock_*.md"],
         expected_exit_code=0,
         provider="mock",
         api_key_method="env",
@@ -1798,9 +1951,8 @@ all_tests = [
             "--api-key-mock",
             "dummy-key",
         ],
-        expected_stdout_patterns=[r"Research completed"],
-        expected_files=["*_mock_*.md"],
-        cleanup_files=["*_mock_*.md"],
+        expected_stdout_patterns=mock_stream_patterns("test cli key"),
+        not_expected_files=["*_mock_*.md"],
         expected_exit_code=0,
         provider="mock",
         api_key_method="cli",
@@ -1810,9 +1962,8 @@ all_tests = [
         test_id="T-CLI-03",
         description="Short form -P works for provider flag",
         command=[THOTH_EXECUTABLE, "test short provider flag", "-P", "mock"],
-        expected_stdout_patterns=[r"Research completed"],
-        expected_files=["*_mock_*.md"],
-        cleanup_files=["*_mock_*.md"],
+        expected_stdout_patterns=mock_stream_patterns("test short provider flag"),
+        not_expected_files=["*_mock_*.md"],
         expected_exit_code=0,
         provider="mock",
         api_key_method="env",
@@ -1866,9 +2017,9 @@ all_tests = [
             "--config",
             "./test_config.toml",
         ],
-        expected_stdout_patterns=[r"Research completed"],
-        expected_files=["*_mock_*.md"],
-        cleanup_files=["*_mock_*.md", "test_config.toml"],
+        expected_stdout_patterns=mock_stream_patterns("test custom config"),
+        not_expected_files=["*_mock_*.md"],
+        cleanup_files=["test_config.toml"],
         expected_exit_code=0,
         provider="mock",
         api_key_method="config",
@@ -1878,9 +2029,8 @@ all_tests = [
         test_id="M3T-01",
         description="Mock provider completes successfully",
         command=[THOTH_EXECUTABLE, "test mock", "--provider", "mock"],
-        expected_stdout_patterns=[r"Research completed"],
-        expected_files=["*_mock_*.md"],
-        cleanup_files=["*_mock_*.md"],
+        expected_stdout_patterns=mock_stream_patterns("test mock"),
+        not_expected_files=["*_mock_*.md"],
         expected_exit_code=0,
         provider="mock",
         api_key_method="env",
@@ -1904,6 +2054,205 @@ all_tests = [
         api_key_method="env",
     ),
     TestCase(
+        test_id="BG-01",
+        description="Background mode works with command-line mock API key",
+        command=[
+            THOTH_EXECUTABLE,
+            "deep_research",
+            "background cli key",
+            "--provider",
+            "mock",
+            "--api-key-mock",
+            "dummy-key",
+        ],
+        expected_stdout_patterns=[r"Research completed", r"Results saved to:"],
+        expected_files=["*_mock_*.md"],
+        expected_file_content_patterns={
+            "*_mock_*.md": [r"Prompt: background cli key", r"Mode: deep_research"]
+        },
+        cleanup_files=["*_mock_*.md"],
+        expected_exit_code=0,
+        provider="mock",
+        api_key_method="cli",
+    ),
+    TestCase(
+        test_id="BG-02",
+        description="Background mode works with custom config file",
+        command=[
+            THOTH_EXECUTABLE,
+            "deep_research",
+            "background config",
+            "--provider",
+            "mock",
+            "--config",
+            "./test_config.toml",
+        ],
+        expected_stdout_patterns=[r"Research completed", r"Results saved to:"],
+        expected_files=["*_mock_*.md"],
+        expected_file_content_patterns={
+            "*_mock_*.md": [r"Prompt: background config", r"Mode: deep_research"]
+        },
+        cleanup_files=["*_mock_*.md", "test_config.toml"],
+        expected_exit_code=0,
+        provider="mock",
+        api_key_method="config",
+    ),
+    TestCase(
+        test_id="BG-03",
+        description="Background mode reads prompt from file",
+        command=[
+            THOTH_EXECUTABLE,
+            "deep_research",
+            "--prompt-file",
+            "test_prompt.txt",
+            "--provider",
+            "mock",
+        ],
+        expected_stdout_patterns=[r"Research completed", r"Results saved to:"],
+        expected_files=["*_mock_*.md"],
+        expected_file_content_patterns={
+            "*_mock_*.md": [r"Prompt: test prompt from file", r"Mode: deep_research"]
+        },
+        cleanup_files=["*_mock_*.md", "test_prompt.txt"],
+        expected_exit_code=0,
+        provider="mock",
+        api_key_method="env",
+    ),
+    TestCase(
+        test_id="BG-04",
+        description="Background mode reads prompt from stdin",
+        command=[THOTH_EXECUTABLE, "deep_research", "--prompt-file", "-", "--provider", "mock"],
+        stdin_input="background prompt from stdin\n",
+        expected_stdout_patterns=[r"Research completed", r"Results saved to:"],
+        expected_files=["*_mock_*.md"],
+        expected_file_content_patterns={
+            "*_mock_*.md": [r"Prompt: background prompt from stdin", r"Mode: deep_research"]
+        },
+        cleanup_files=["*_mock_*.md"],
+        expected_exit_code=0,
+        provider="mock",
+        api_key_method="env",
+    ),
+    TestCase(
+        test_id="BG-05",
+        description="Background mode supports short -P provider flag",
+        command=[THOTH_EXECUTABLE, "deep_research", "background short provider", "-P", "mock"],
+        expected_stdout_patterns=[r"Research completed", r"Results saved to:"],
+        expected_files=["*_mock_*.md"],
+        expected_file_content_patterns={
+            "*_mock_*.md": [r"Prompt: background short provider", r"Mode: deep_research"]
+        },
+        cleanup_files=["*_mock_*.md"],
+        expected_exit_code=0,
+        provider="mock",
+        api_key_method="env",
+    ),
+    TestCase(
+        test_id="BG-06",
+        description="Background mode writes project outputs under --project",
+        command=[
+            THOTH_EXECUTABLE,
+            "deep_research",
+            "background project",
+            "--provider",
+            "mock",
+            "--project",
+            "background-project-bg06",
+        ],
+        expected_stdout_patterns=[r"Research completed", r"Results saved to:"],
+        expected_files=["research-outputs/background-project-bg06/*_mock_*.md"],
+        expected_file_content_patterns={
+            "research-outputs/background-project-bg06/*_mock_*.md": [
+                r"Prompt: background project",
+                r"Mode: deep_research",
+            ]
+        },
+        cleanup_files=[
+            "research-outputs/background-project-bg06/*",
+            "research-outputs/background-project-bg06",
+        ],
+        expected_exit_code=0,
+        provider="mock",
+        api_key_method="env",
+    ),
+    TestCase(
+        test_id="BG-07",
+        description="Background mode records --input-file in output metadata",
+        command=[
+            THOTH_EXECUTABLE,
+            "deep_research",
+            "background input file",
+            "--provider",
+            "mock",
+            "--input-file",
+            "{tmpdir}/input.md",
+        ],
+        setup_func=create_test_input_file,
+        expected_stdout_patterns=[r"Research completed", r"Results saved to:"],
+        expected_files=["*_mock_*.md"],
+        expected_file_content_patterns={
+            "*_mock_*.md": [
+                r"Prompt: background input file",
+                r"Mode: deep_research",
+                r"input_files:",
+                r"input\.md",
+            ]
+        },
+        cleanup_files=["*_mock_*.md"],
+        expected_exit_code=0,
+        provider="mock",
+        api_key_method="env",
+    ),
+    TestCase(
+        test_id="BG-08",
+        description="Background mode honors --no-metadata in output files",
+        command=[
+            THOTH_EXECUTABLE,
+            "deep_research",
+            "background no metadata",
+            "--provider",
+            "mock",
+            "--no-metadata",
+        ],
+        expected_stdout_patterns=[r"Research completed", r"Results saved to:"],
+        expected_files=["*_mock_*.md"],
+        expected_file_content_patterns={
+            "*_mock_*.md": [
+                r"# Mock Research Results",
+                r"## Prompt: background no metadata",
+            ]
+        },
+        not_expected_file_content_patterns={
+            "*_mock_*.md": [r"^---$", r"operation_id:", r"### Prompt"]
+        },
+        cleanup_files=["*_mock_*.md"],
+        expected_exit_code=0,
+        provider="mock",
+        api_key_method="env",
+    ),
+    TestCase(
+        test_id="BG-09",
+        description="Background mode honors --quiet while still writing output",
+        command=[
+            THOTH_EXECUTABLE,
+            "deep_research",
+            "background quiet",
+            "--provider",
+            "mock",
+            "--quiet",
+        ],
+        expected_stdout_patterns=[r"_mock_background-quiet\.md"],
+        not_expected_stdout_patterns=[r"Research completed", r"Results saved to:", r"Progress:"],
+        expected_files=["*_mock_*.md"],
+        expected_file_content_patterns={
+            "*_mock_*.md": [r"Prompt: background quiet", r"Mode: deep_research"]
+        },
+        cleanup_files=["*_mock_*.md"],
+        expected_exit_code=0,
+        provider="mock",
+        api_key_method="env",
+    ),
+    TestCase(
         test_id="M3T-03",
         description="Invalid provider shows error",
         command=[THOTH_EXECUTABLE, "test", "--provider", "invalid-provider"],
@@ -1917,10 +2266,9 @@ all_tests = [
         test_id="M4T-01",
         description="Default mode is 'default' not 'deep_research'",
         command=[THOTH_EXECUTABLE, "test default mode", "--provider", "mock", "-v"],
-        expected_stdout_patterns=[r"Operation ID:"],
-        expected_files=["*_default_*.md"],
+        expected_stdout_patterns=[r"Operation ID:", *mock_stream_patterns("test default mode")],
+        not_expected_files=["*_default_*.md"],
         not_expected_stdout_patterns=[r"Mode: deep_research"],
-        cleanup_files=["*_default_*.md"],
         expected_exit_code=0,
         provider="mock",
         api_key_method="env",
@@ -1935,9 +2283,8 @@ all_tests = [
             "--provider",
             "mock",
         ],
-        expected_stdout_patterns=[r"Research completed"],
-        expected_files=["*_thinking_*.md"],
-        cleanup_files=["*_thinking_*.md"],
+        expected_stdout_patterns=mock_stream_patterns("test thinking mode", mode="thinking"),
+        not_expected_files=["*_thinking_*.md"],
         expected_exit_code=0,
         provider="mock",
         api_key_method="env",
@@ -1959,9 +2306,8 @@ all_tests = [
             "--provider",
             "mock",
         ],
-        expected_stdout_patterns=[r"Research completed"],
-        expected_files=["*_clarification_*.md"],
-        cleanup_files=["*_clarification_*.md"],
+        expected_stdout_patterns=mock_stream_patterns("test clarification", mode="clarification"),
+        not_expected_files=["*_clarification_*.md"],
         expected_exit_code=0,
         provider="mock",
         api_key_method="env",
@@ -2051,11 +2397,11 @@ all_tests = [
         test_id="M5T-10b",
         description="Synchronous operation transitions queued→running→completed",
         command=[THOTH_EXECUTABLE, "test lifecycle sync", "--provider", "mock"],
-        expected_stdout_patterns=[r"Research completed|Results saved"],
+        expected_stdout_patterns=mock_stream_patterns("test lifecycle sync"),
+        not_expected_files=["*_mock_*.md"],
         expected_exit_code=0,
         provider="mock",
         api_key_method="env",
-        cleanup_files=["*_mock_*.md"],
     ),
     TestCase(
         test_id="M5T-10c",
@@ -2093,11 +2439,23 @@ all_tests = [
     # Milestone 6: Output Management
     TestCase(
         test_id="M6T-01",
-        description="Files created in current directory by default",
-        command=[THOTH_EXECUTABLE, "test output", "--provider", "mock"],
-        expected_stdout_patterns=[r"Results saved to:"],
-        expected_files=["*_mock_*.md"],
-        cleanup_files=["*_mock_*.md"],
+        description="Explicit --out writes immediate stream to a file",
+        command=[
+            THOTH_EXECUTABLE,
+            "ask",
+            "test output",
+            "--mode",
+            "thinking",
+            "--provider",
+            "mock",
+            "--out",
+            "{tmpdir}/stream-output.md",
+        ],
+        not_expected_stdout_patterns=[r"# Mock streaming response"],
+        expected_files=["stream-output.md"],
+        expected_file_content_patterns={
+            "stream-output.md": mock_stream_patterns("test output", mode="thinking")
+        },
         expected_exit_code=0,
         provider="mock",
         api_key_method="env",
@@ -2107,15 +2465,79 @@ all_tests = [
         description="Output directory can be specified",
         command=[
             THOTH_EXECUTABLE,
+            "deep_research",
             "test output dir",
             "--provider",
             "mock",
             "-o",
             "test_output",
         ],
-        expected_stdout_patterns=[r"Results saved to:"],
+        expected_stdout_patterns=[r"Research completed", r"Results saved to:"],
         expected_files=["test_output/*_mock_*.md"],
+        expected_file_content_patterns={
+            "test_output/*_mock_*.md": [
+                r"Prompt: test output dir",
+                r"Mode: deep_research",
+                r"mock research result",
+            ]
+        },
         cleanup_files=["test_output/*", "test_output"],
+        expected_exit_code=0,
+        provider="mock",
+        api_key_method="env",
+    ),
+    TestCase(
+        test_id="M6T-03",
+        description="Immediate --output-dir alone does not create a result file",
+        command=[
+            THOTH_EXECUTABLE,
+            "test output dir immediate",
+            "--provider",
+            "mock",
+            "-o",
+            "immediate_output",
+        ],
+        expected_stdout_patterns=mock_stream_patterns("test output dir immediate"),
+        not_expected_files=["immediate_output/*_mock_*.md"],
+        cleanup_files=["immediate_output"],
+        expected_exit_code=0,
+        provider="mock",
+        api_key_method="env",
+    ),
+    TestCase(
+        test_id="M6T-04",
+        description="Bare prompt leading --out writes immediate stream to a file",
+        command=[
+            THOTH_EXECUTABLE,
+            "--out",
+            "{tmpdir}/bare-output.md",
+            "--provider",
+            "mock",
+            "bare output",
+        ],
+        not_expected_stdout_patterns=[r"# Mock streaming response"],
+        expected_files=["bare-output.md"],
+        expected_file_content_patterns={"bare-output.md": mock_stream_patterns("bare output")},
+        expected_exit_code=0,
+        provider="mock",
+        api_key_method="env",
+    ),
+    TestCase(
+        test_id="M6T-05",
+        description="Bare prompt trailing --out writes immediate stream to a file",
+        command=[
+            THOTH_EXECUTABLE,
+            "bare trailing output",
+            "--provider",
+            "mock",
+            "--out",
+            "{tmpdir}/bare-trailing-output.md",
+        ],
+        not_expected_stdout_patterns=[r"# Mock streaming response"],
+        expected_files=["bare-trailing-output.md"],
+        expected_file_content_patterns={
+            "bare-trailing-output.md": mock_stream_patterns("bare trailing output")
+        },
         expected_exit_code=0,
         provider="mock",
         api_key_method="env",
@@ -2125,9 +2547,8 @@ all_tests = [
         test_id="M7T-02",
         description="Verbose mode shows detailed info",
         command=[THOTH_EXECUTABLE, "test verbose", "--provider", "mock", "-v"],
-        expected_stdout_patterns=[r"Operation ID:"],
-        expected_files=["*_mock_*.md"],
-        cleanup_files=["*_mock_*.md"],
+        expected_stdout_patterns=[r"Operation ID:", *mock_stream_patterns("test verbose")],
+        not_expected_files=["*_mock_*.md"],
         expected_exit_code=0,
         provider="mock",
         api_key_method="env",
@@ -2169,9 +2590,8 @@ all_tests = [
         test_id="EDGE-02",
         description="Very long prompt is handled",
         command=[THOTH_EXECUTABLE, "a" * 1000, "--provider", "mock"],
-        expected_stdout_patterns=[r"Research completed"],
-        expected_files=["*_mock_*.md"],
-        cleanup_files=["*_mock_*.md"],
+        expected_stdout_patterns=mock_stream_patterns("a" * 1000),
+        not_expected_files=["*_mock_*.md"],
         expected_exit_code=0,
         provider="mock",
         api_key_method="env",
@@ -2197,10 +2617,9 @@ all_tests = [
         test_id="COMB-02",
         description="No combined report without --combined flag",
         command=[THOTH_EXECUTABLE, "test no combined", "--provider", "mock"],
-        expected_stdout_patterns=[r"Research completed"],
-        expected_files=["*_mock_*.md"],
+        expected_stdout_patterns=mock_stream_patterns("test no combined"),
         not_expected_stdout_patterns=[r"_combined_"],
-        cleanup_files=["*_mock_*.md"],
+        not_expected_files=["*_mock_*.md", "*_combined_*.md"],
         expected_exit_code=0,
         provider="mock",
         api_key_method="env",
@@ -2216,9 +2635,9 @@ all_tests = [
             "--provider",
             "mock",
         ],
-        expected_stdout_patterns=[r"Research completed"],
-        expected_files=["*_mock_*.md"],
-        cleanup_files=["*_mock_*.md", "test_prompt.txt"],
+        expected_stdout_patterns=mock_stream_patterns("test prompt from file"),
+        not_expected_files=["*_mock_*.md"],
+        cleanup_files=["test_prompt.txt"],
         expected_exit_code=0,
         provider="mock",
         api_key_method="env",
@@ -2228,9 +2647,8 @@ all_tests = [
         description="Read prompt from stdin",
         command=[THOTH_EXECUTABLE, "--prompt-file", "-", "--provider", "mock"],
         stdin_input="test prompt from stdin\n",
-        expected_stdout_patterns=[r"Research completed"],
-        expected_files=["*_mock_*.md"],
-        cleanup_files=["*_mock_*.md"],
+        expected_stdout_patterns=mock_stream_patterns("test prompt from stdin"),
+        not_expected_files=["*_mock_*.md"],
         expected_exit_code=0,
         provider="mock",
         api_key_method="env",
@@ -2247,9 +2665,9 @@ all_tests = [
             "--provider",
             "mock",
         ],
-        expected_stdout_patterns=[r"Research completed"],
-        expected_files=["*_mock_*.md"],
-        cleanup_files=["*_mock_*.md", "custom_config.toml"],
+        expected_stdout_patterns=mock_stream_patterns("test config"),
+        not_expected_files=["*_mock_*.md"],
+        cleanup_files=["custom_config.toml"],
         expected_exit_code=0,
         provider="mock",
         api_key_method="env",
@@ -2259,9 +2677,9 @@ all_tests = [
         test_id="QUIET-01",
         description="Quiet mode suppresses output",
         command=[THOTH_EXECUTABLE, "test quiet", "--quiet", "--provider", "mock"],
+        expected_stdout_patterns=mock_stream_patterns("test quiet"),
         not_expected_stdout_patterns=[r"Progress:", r"Researching:"],
-        expected_files=["*_mock_*.md"],
-        cleanup_files=["*_mock_*.md"],
+        not_expected_files=["*_mock_*.md"],
         expected_exit_code=0,
         provider="mock",
         api_key_method="env",
@@ -2270,9 +2688,9 @@ all_tests = [
         test_id="QUIET-02",
         description="Quiet mode short form -Q",
         command=[THOTH_EXECUTABLE, "test quiet short", "-Q", "--provider", "mock"],
+        expected_stdout_patterns=mock_stream_patterns("test quiet short"),
         not_expected_stdout_patterns=[r"Progress:", r"Researching:"],
-        expected_files=["*_mock_*.md"],
-        cleanup_files=["*_mock_*.md"],
+        not_expected_files=["*_mock_*.md"],
         expected_exit_code=0,
         provider="mock",
         api_key_method="env",
@@ -2289,7 +2707,7 @@ all_tests = [
             "--provider",
             "mock",
         ],
-        expected_stdout_patterns=[r"Research completed"],
+        expected_stdout_patterns=mock_stream_patterns("test project") + [r"Saved to:"],
         expected_files=["research-outputs/test_project/*_mock_*.md"],
         cleanup_files=[
             "research-outputs/test_project/*",
@@ -2328,9 +2746,8 @@ all_tests = [
         test_id="REAL-01",
         description="OpenAI provider with real API key",
         command=[THOTH_EXECUTABLE, "test openai", "--provider", "openai"],
-        expected_stdout_patterns=[r"Research completed"],
-        expected_files=["*_openai_*.md"],
-        cleanup_files=["*_openai_*.md"],
+        expected_stdout_patterns=[r".+"],
+        not_expected_files=["*_openai_*.md"],
         expected_exit_code=0,
         provider="openai",
         api_key_method="env",
@@ -2350,7 +2767,13 @@ all_tests = [
     TestCase(
         test_id="T-SIG-01",
         description="Graceful exit on Ctrl-C with checkpoint save",
-        command=[THOTH_EXECUTABLE, "test interrupt handling", "--provider", "mock"],
+        command=[
+            THOTH_EXECUTABLE,
+            "deep_research",
+            "test interrupt handling",
+            "--provider",
+            "mock",
+        ],
         expected_stdout_patterns=[
             r"Interrupt received\. Saving checkpoint",
             r"Checkpoint saved\. Resume with: thoth resume",
@@ -2368,7 +2791,7 @@ all_tests = [
     TestCase(
         test_id="TR-01",
         description="Transient errors below threshold are retried and job completes",
-        command=[THOTH_EXECUTABLE, "transient retry", "--provider", "mock"],
+        command=[THOTH_EXECUTABLE, "deep_research", "transient retry", "--provider", "mock"],
         env={
             "THOTH_MOCK_BEHAVIOR": "flake:2",
             "THOTH_POLL_INTERVAL": "0.1",
@@ -2391,7 +2814,7 @@ all_tests = [
     TestCase(
         test_id="TR-02",
         description="Transient errors above threshold fail with recoverable status and resume hint",
-        command=[THOTH_EXECUTABLE, "transient exhaust", "--provider", "mock"],
+        command=[THOTH_EXECUTABLE, "deep_research", "transient exhaust", "--provider", "mock"],
         env={
             "THOTH_MOCK_BEHAVIOR": "flake:10",
             "THOTH_POLL_INTERVAL": "0.1",
@@ -2420,6 +2843,29 @@ all_tests = [
             r"Mock permanent failure",
         ],
         not_expected_stdout_patterns=[
+            r"This failure is recoverable",
+            r"Resume with: .*thoth resume",
+            r"Research completed",
+        ],
+        expected_exit_code=1,
+        provider="mock",
+        api_key_method="env",
+        cleanup_files=["*_mock_*.md"],
+    ),
+    TestCase(
+        test_id="TR-04",
+        description="Immediate transient-like stream failure is permanent and non-resumable",
+        command=[THOTH_EXECUTABLE, "immediate flake fail", "--provider", "mock"],
+        env={
+            "THOTH_MOCK_BEHAVIOR": "flake:2",
+            "THOTH_POLL_INTERVAL": "0.1",
+        },
+        expected_stdout_patterns=[
+            r"permanent failure",
+            r"Mock streaming failure \(behavior=flake:2\)",
+        ],
+        not_expected_stdout_patterns=[
+            r"transient error",
             r"This failure is recoverable",
             r"Resume with: .*thoth resume",
             r"Research completed",
@@ -2901,7 +3347,7 @@ all_tests = [
         test_id="M8T-01",
         description="OpenAI provider initialization with API key",
         command=[THOTH_EXECUTABLE, "test openai init", "--provider", "openai", "-v"],
-        expected_stdout_patterns=[r"openai API Key: .*\.\.\.", r"Research completed"],
+        expected_stdout_patterns=[r"openai API Key: .*\.\.\.", r".+"],
         expected_exit_code=0,
         provider="openai",
         api_key_method="env",
@@ -2964,11 +3410,21 @@ all_tests = [
     ),
     TestCase(
         test_id="M8T-06",
-        description="OpenAI provider creates output file",
-        command=[THOTH_EXECUTABLE, "test output", "--provider", "openai"],
-        expected_stdout_patterns=[r"Research completed"],
-        expected_files=["*_openai_*.md"],
-        cleanup_files=["*_openai_*.md"],
+        description="OpenAI provider writes explicit --out file",
+        command=[
+            THOTH_EXECUTABLE,
+            "ask",
+            "test output",
+            "--mode",
+            "thinking",
+            "--provider",
+            "openai",
+            "--out",
+            "{tmpdir}/openai-output.md",
+        ],
+        not_expected_stdout_patterns=[r".+"],
+        expected_files=["openai-output.md"],
+        expected_file_content_patterns={"openai-output.md": [r".+"]},
         expected_exit_code=0,
         provider="openai",
         api_key_method="env",
@@ -2977,7 +3433,7 @@ all_tests = [
         test_id="M8T-07",
         description="OpenAI provider with verbose shows configuration",
         command=[THOTH_EXECUTABLE, "test verbose", "--provider", "openai", "-v"],
-        expected_stdout_patterns=[r"openai API Key: .*\.\.\.", r"Research completed"],
+        expected_stdout_patterns=[r"openai API Key: .*\.\.\.", r".+"],
         expected_exit_code=0,
         provider="openai",
         api_key_method="env",
@@ -2988,7 +3444,7 @@ all_tests = [
         description="OpenAI provider handles rate limit gracefully",
         command=[THOTH_EXECUTABLE, "test rate limit", "--provider", "openai"],
         # This test expects normal completion (rate limits are retried)
-        expected_stdout_patterns=[r"Research completed|Rate limit"],
+        expected_stdout_patterns=[r".+|Rate limit"],
         expected_exit_code=0,
         provider="openai",
         api_key_method="env",
@@ -3005,9 +3461,9 @@ all_tests = [
             "--config",
             "./test_config.toml",
         ],
-        expected_stdout_patterns=[r"Research completed"],
-        expected_files=["*_openai_*.md"],
-        cleanup_files=["*_openai_*.md", "test_config.toml"],
+        expected_stdout_patterns=[r".+"],
+        not_expected_files=["*_openai_*.md"],
+        cleanup_files=["test_config.toml"],
         expected_exit_code=0,
         provider="openai",
         api_key_method="config",
@@ -3035,7 +3491,13 @@ all_tests = [
     TestCase(
         test_id="BUG03-03",
         description="polling loop: mock provider research completes correctly with fixed poll loop",
-        command=[THOTH_EXECUTABLE, "test poll fix regression", "--provider", "mock"],
+        command=[
+            THOTH_EXECUTABLE,
+            "deep_research",
+            "test poll fix regression",
+            "--provider",
+            "mock",
+        ],
         env={"THOTH_POLL_INTERVAL": "2"},
         expected_stdout_patterns=[r"(?i)research completed|output saved"],
         cleanup_files=["*_mock_*.md"],
