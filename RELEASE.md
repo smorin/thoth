@@ -65,7 +65,7 @@ Thoth releases are automated by **release-please** (version bumps + changelog + 
 | `src/thoth/__init__.py` | Package `__version__` (bumped by release-please via `x-release-please-version`) |
 | `.release-please-manifest.json` | release-please's authoritative version per package |
 | `release-please-config.json` | release-please behavior + changelog sections |
-| `commitlint.config.js` | Allowed commit types / header length |
+| `commitlint.config.mjs` | Allowed commit types / header length |
 | `package.json` + `bun.lock` | Bun dev dependency on `@commitlint/*` |
 | `uv.lock` | Locked dependency graph (committed to repo) |
 | `.github/workflows/ci.yml` | Tests, lint, typecheck on push/PR |

@@ -51,7 +51,7 @@ jobs:
       - name: codespell
         run: >
           uvx codespell
-          --skip=".git,.venv,htmlcov,uv.lock,requirements.txt,archive,planning,research"
+          --skip=".git,.venv,htmlcov,uv.lock,bun.lock,requirements.txt,archive,planning,research"
           --ignore-words-list="thoth,perplexity,sonar,pplx,openai,hel"
           .
       - name: bandit
