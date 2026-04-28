@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 import warnings
 
 import click
@@ -34,6 +35,47 @@ def _dispatch_click_fallback(ctx: click.Context, args: list[str]):
     from thoth.cli import _dispatch_click_fallback as _impl
 
     return _impl(ctx, args, _run_research_default)
+
+
+def _visible_help_context(ctx: click.Context | None) -> click.Context | None:
+    while ctx is not None and getattr(ctx.command, "hidden", False):
+        ctx = ctx.parent
+    return ctx
+
+
+class HelpFirstUsageError(click.UsageError):
+    """Usage error that renders the most specific command help before the error."""
+
+    def __init__(
+        self,
+        original: click.UsageError,
+        *,
+        fallback_ctx: click.Context | None = None,
+    ):
+        self.original = original
+        help_ctx = _visible_help_context(original.ctx) or fallback_ctx
+        super().__init__(original.format_message(), ctx=help_ctx)
+
+    def format_message(self) -> str:
+        return self.original.format_message()
+
+    def show(self, file=None) -> None:
+        if file is None:
+            file = sys.stderr
+        if self.ctx is not None:
+            click.echo(self.ctx.get_help(), file=file)
+            click.echo(file=file)
+        click.echo(f"Error: {self.format_message()}", file=file)
+
+
+def _help_first_usage_error(
+    error: click.UsageError,
+    *,
+    fallback_ctx: click.Context | None = None,
+) -> HelpFirstUsageError:
+    if isinstance(error, HelpFirstUsageError):
+        return error
+    return HelpFirstUsageError(error, fallback_ctx=fallback_ctx)
 
 
 class ThothGroup(click.Group):
@@ -82,7 +124,10 @@ class ThothGroup(click.Group):
             first = args[0]
             # Path 1: registered subcommand → standard dispatch
             if first in self.commands:
-                return super().invoke(ctx)
+                try:
+                    return super().invoke(ctx)
+                except click.UsageError as error:
+                    raise _help_first_usage_error(error, fallback_ctx=ctx) from error
             # Path 2: positional mode dispatch
             if first in BUILTIN_MODES:
                 return _dispatch_click_fallback(ctx, args)

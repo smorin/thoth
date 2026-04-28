@@ -31,8 +31,12 @@ def immediate_models_for_provider(provider: str, config: ConfigManager) -> list[
     Walks `config.data["modes"]` (merged BUILTIN + user overlay), so user-defined
     modes in `[modes.*]` are surfaced. No provider-specific hardcoded extras —
     the picker reflects what is actually configured.
+
+    P18: each mode dict carries `kind`; we filter on declared kind first
+    (canonical), falling back to substring sniff via `mode_kind` for legacy
+    user modes that haven't migrated.
     """
-    from thoth.config import is_background_model
+    from thoth.config import mode_kind
 
     seen: set[str] = set()
     for cfg in config.data.get("modes", {}).values():
@@ -41,6 +45,6 @@ def immediate_models_for_provider(provider: str, config: ConfigManager) -> list[
         if cfg.get("provider") != provider:
             continue
         model = cfg.get("model")
-        if isinstance(model, str) and not is_background_model(model):
+        if isinstance(model, str) and mode_kind(cfg) == "immediate":
             seen.add(model)
     return sorted(seen)

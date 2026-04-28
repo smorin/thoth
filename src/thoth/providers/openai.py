@@ -19,7 +19,13 @@ from tenacity import (
 )
 
 from thoth.config import is_background_model
-from thoth.errors import APIKeyError, APIQuotaError, ProviderError, ThothError
+from thoth.errors import (
+    APIKeyError,
+    APIQuotaError,
+    ModeKindMismatchError,
+    ProviderError,
+    ThothError,
+)
 from thoth.models import ModelCache
 from thoth.providers.base import ResearchProvider
 
@@ -135,6 +141,28 @@ class OpenAIProvider(ResearchProvider):
         timeout = self.config.get("timeout", 30.0)
         self.client = AsyncOpenAI(api_key=api_key, timeout=httpx.Timeout(timeout, connect=5.0))
 
+    def _validate_kind_for_model(self, mode: str) -> None:
+        """Refuse to submit when declared `kind` contradicts the model's required kind.
+
+        P18 contract: a mode declared `kind = "immediate"` cannot use a
+        deep-research model — those models require OpenAI's background flow.
+        Raised BEFORE any HTTP call so users see a config-edit suggestion
+        instead of a confusing API error mid-run. The reverse case
+        (`background` declared, regular model) is legal — OpenAI lets you
+        force-background any model — and is not checked.
+
+        See `docs/superpowers/specs/2026-04-26-p18-immediate-vs-background-design.md`
+        §5.6 + §4 Q1.
+        """
+        declared = self.config.get("kind")
+        if declared == "immediate" and is_background_model(self.model):
+            raise ModeKindMismatchError(
+                mode_name=mode,
+                model=self.model,
+                declared_kind="immediate",
+                required_kind="background",
+            )
+
     async def submit(
         self, prompt: str, mode: str, system_prompt: str | None = None, verbose: bool = False
     ) -> str:
@@ -143,8 +171,11 @@ class OpenAIProvider(ResearchProvider):
         Raw openai.* exceptions from the retryable inner call are mapped here to
         ThothError subclasses so callers always see a single error taxonomy.
         """
+        self._validate_kind_for_model(mode)
         try:
             return await self._submit_with_retry(prompt, mode, system_prompt, verbose)
+        except ModeKindMismatchError:
+            raise
         except (openai.APIError, Exception) as e:
             raise _map_openai_error(e, model=self.model, verbose=verbose) from e
 
@@ -229,6 +260,12 @@ class OpenAIProvider(ResearchProvider):
         job_info = self.jobs[job_id]
 
         # If not background mode, it's already completed
+        # TODO(v4.0.0 / future P19): remove this shortcut. Post-P18,
+        # immediate-kind runs use `_execute_immediate` which calls
+        # `provider.stream()` directly and never reaches `check_status`.
+        # The shortcut survives only as defense-in-depth for edge cases like
+        # `--async` on a non-deep-research model. Confirm dead via a full
+        # audit before deletion.
         if not job_info.get("background", False):
             return {"status": "completed", "progress": 1.0}
 
@@ -314,6 +351,103 @@ class OpenAIProvider(ResearchProvider):
             "background": True,
             "created_at": datetime.now(),
         }
+
+    async def cancel(self, job_id: str) -> dict[str, Any]:
+        """Best-effort upstream cancel via OpenAI Responses API.
+
+        P18 Phase G. Documented in `planning/p18-cancel-research.md`:
+          * `client.responses.cancel(job_id)` works for queued/in_progress
+            background responses.
+          * Already-completed jobs return status='completed' (no error).
+          * The full Response object is returned; we map .status to our
+            uniform status dict.
+
+        If `job_id` isn't in our local `self.jobs` dict (e.g., `thoth cancel`
+        invoked after a fresh process start), we attempt `reconnect()` first.
+        """
+        if job_id not in self.jobs:
+            try:
+                await self.reconnect(job_id)
+            except Exception as e:
+                return {
+                    "status": "permanent_error",
+                    "error": f"reconnect failed: {e}",
+                    "error_class": type(e).__name__,
+                }
+        try:
+            response = await self.client.responses.cancel(job_id)
+            status = getattr(response, "status", None)
+            if status == "completed":
+                # Job finished before cancel landed.
+                return {"status": "completed", "progress": 1.0}
+            # Treat any non-completed terminal state as cancelled (cancelled,
+            # failed, incomplete, or any future state).
+            return {"status": "cancelled", "error": "Response was cancelled"}
+        except Exception as e:
+            return {
+                "status": "permanent_error",
+                "error": str(e),
+                "error_class": type(e).__name__,
+            }
+
+    async def stream(
+        self,
+        prompt: str,
+        mode: str,
+        system_prompt: str | None = None,
+        verbose: bool = False,
+    ):
+        """Yield text deltas from the OpenAI Responses streaming API.
+
+        P18 Phase E: only legal for non-background (immediate-kind) models.
+        Background models require server-side async submission and don't
+        stream tokens. The `_validate_kind_for_model` runtime check upstream
+        catches the mismatch; this method is defense-in-depth.
+
+        Translates OpenAI's `response.output_text.delta` events into our
+        `StreamEvent(kind="text", text=delta)` and emits a terminal
+        `StreamEvent(kind="done", text="")` when the stream completes.
+        """
+        from thoth.providers.base import StreamEvent
+
+        self._validate_kind_for_model(mode)
+        if is_background_model(self.model):
+            raise NotImplementedError(
+                f"OpenAIProvider.stream(): model {self.model!r} requires background "
+                f"submission; streaming is not supported. Use submit() + check_status() instead."
+            )
+
+        input_messages: list[dict[str, Any]] = []
+        if system_prompt:
+            input_messages.append(
+                {
+                    "role": "developer",
+                    "content": [{"type": "input_text", "text": system_prompt}],
+                }
+            )
+        input_messages.append({"role": "user", "content": [{"type": "input_text", "text": prompt}]})
+
+        request_params: dict[str, Any] = {
+            "model": self.model,
+            "input": input_messages,
+        }
+        # o-series response models reject `temperature`; only set it on chat-style models
+        if not self.model.startswith("o"):
+            request_params["temperature"] = self.config.get("temperature", 0.7)
+
+        try:
+            async with self.client.responses.stream(**request_params) as stream:
+                async for event in stream:
+                    event_type = getattr(event, "type", None)
+                    if event_type == "response.output_text.delta":
+                        delta = getattr(event, "delta", "") or ""
+                        if delta:
+                            yield StreamEvent(kind="text", text=delta)
+                    # Other event types (response.created, response.completed, etc.)
+                    # are skipped — we only surface text deltas to consumers for now.
+            yield StreamEvent(kind="done", text="")
+        except (openai.APIError, Exception) as e:
+            raise _map_openai_error(e, model=self.model, verbose=verbose) from e
 
     async def get_result(self, job_id: str, verbose: bool = False) -> str:
         """Get the Deep Research result"""

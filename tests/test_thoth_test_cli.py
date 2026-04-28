@@ -466,3 +466,101 @@ def test_rerun_hint_uses_id_not_t(thoth_test_mod, tmp_path, monkeypatch, capsys)
     assert "--id FAIL-1" in out
     assert "--last-failed" in out
     assert "-t FAIL-1" not in out
+
+
+def test_interactive_runner_pins_uv_cache_dir(thoth_test_mod, monkeypatch):
+    captured = {}
+
+    class FakeChild:
+        before = ""
+        exitstatus = 0
+        signalstatus = None
+
+        def expect(self, pattern, timeout=None):
+            return 0
+
+        def isalive(self):
+            return False
+
+        def close(self, force=False):
+            return None
+
+    def fake_spawn(command, args=None, env=None, **kwargs):
+        captured["env"] = env or {}
+        return FakeChild()
+
+    monkeypatch.delenv("UV_CACHE_DIR", raising=False)
+    monkeypatch.setattr(thoth_test_mod.pexpect, "spawn", fake_spawn)
+
+    runner = thoth_test_mod.InteractiveTestRunner()
+    result = runner.run_interactive_test(
+        thoth_test_mod.TestCase(
+            test_id="INT-UV",
+            description="interactive uv cache",
+            command=["./thoth", "-i"],
+            test_type="interactive",
+        )
+    )
+
+    assert result.passed
+    assert captured["env"]["UV_CACHE_DIR"] == str(pathlib.Path.home() / ".cache" / "uv")
+
+
+def test_validate_file_contents_checks_recent_matching_files(thoth_test_mod, tmp_path):
+    target = tmp_path / "answer.md"
+    target.write_text("# Mock streaming response\n\nEcho: test output\n")
+
+    passed, matched, error = thoth_test_mod.validate_file_contents(
+        {"answer.md": [r"# Mock streaming response", r"Echo: test output"]},
+        since=0.0,
+        base=tmp_path,
+    )
+
+    assert passed
+    assert matched == [target]
+    assert error == ""
+
+
+def test_validate_file_contents_reports_missing_pattern(thoth_test_mod, tmp_path):
+    target = tmp_path / "answer.md"
+    target.write_text("wrong content")
+
+    passed, matched, error = thoth_test_mod.validate_file_contents(
+        {"answer.md": [r"Echo: test output"]},
+        since=0.0,
+        base=tmp_path,
+    )
+
+    assert not passed
+    assert matched == [target]
+    assert "Missing content pattern" in error
+
+
+def test_validate_file_content_absence_reports_forbidden_pattern(thoth_test_mod, tmp_path):
+    target = tmp_path / "answer.md"
+    target.write_text("---\noperation_id: op_test\n---\n\n# Mock Research Results\n")
+
+    passed, matched, error = thoth_test_mod.validate_file_content_absence(
+        {"answer.md": [r"operation_id:"]},
+        since=0.0,
+        base=tmp_path,
+    )
+
+    assert not passed
+    assert matched == [target]
+    assert "Unexpected content pattern" in error
+
+
+def test_validate_file_content_absence_allows_missing_pattern(thoth_test_mod, tmp_path):
+    target = tmp_path / "answer.md"
+    target.write_text("# Mock Research Results\n")
+
+    passed, matched, error = thoth_test_mod.validate_file_content_absence(
+        {"answer.md": [r"operation_id:"]},
+        since=0.0,
+        base=tmp_path,
+    )
+
+    assert passed
+    assert matched == [target]
+    assert error == ""

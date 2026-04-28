@@ -652,6 +652,9 @@ def get_providers_models_data(config: ConfigManager, filter_provider: str | None
 
     seen: dict[str, set[str]] = {}
     for cfg in BUILTIN_MODES.values():
+        # P18: alias stubs (`_deprecated_alias_for`) don't carry provider/model.
+        if "_deprecated_alias_for" in cfg:
+            continue
         p = str(cfg["provider"])
         if filter_provider and p != filter_provider:
             continue
@@ -729,8 +732,91 @@ def providers_check(config: ConfigManager) -> int:
     return 0
 
 
+async def cancel_operation(
+    op_id: str,
+    *,
+    config: ConfigManager | None = None,
+    cli_api_keys: dict[str, str | None] | None = None,
+) -> dict[str, Any]:
+    """P18 Phase G: cancel a previously-started operation.
+
+    Loads the operation from checkpoint, calls `provider.cancel(job_id)` for
+    each non-completed provider on the operation, updates the checkpoint to
+    `cancelled`, and returns a structured result for the caller to render.
+
+    Returns one of:
+      * {"status": "ok",  "operation_id": ..., "providers": {...}}
+      * {"status": "not_found", "operation_id": ...}              — exit 6
+      * {"status": "already_terminal", "operation_id": ..., "previous": "completed"|"cancelled"|...}
+
+    Catches `NotImplementedError` from providers without upstream cancel
+    support; reports best-effort behavior in `providers[name]` as
+    "upstream cancel not supported". The local checkpoint is marked
+    cancelled regardless.
+    """
+    cm = config if config is not None else get_config()
+    cpm = CheckpointManager(cm)
+    op = await cpm.load(op_id)
+    if op is None:
+        return {"status": "not_found", "operation_id": op_id}
+
+    if op.status in ("completed", "cancelled", "failed"):
+        return {
+            "status": "already_terminal",
+            "operation_id": op_id,
+            "previous": op.status,
+        }
+
+    # Local import to avoid CLI ↔ providers circular at module load.
+    from thoth.providers import create_provider
+
+    per_provider: dict[str, dict[str, Any]] = {}
+    for provider_name, pdata in op.providers.items():
+        if pdata.get("status") in ("completed", "cancelled", "failed"):
+            per_provider[provider_name] = {"status": "skipped", "reason": pdata.get("status")}
+            continue
+        job_id = pdata.get("job_id")
+        if not job_id:
+            per_provider[provider_name] = {"status": "no_job_id"}
+            continue
+        try:
+            mode_config = cm.get_mode_config(op.mode)
+            provider_instance = create_provider(
+                provider_name,
+                cm,
+                cli_api_key=(cli_api_keys or {}).get(provider_name) if cli_api_keys else None,
+                mode_config=mode_config,
+            )
+            cancel_result = await provider_instance.cancel(job_id)
+            per_provider[provider_name] = cancel_result
+            op.providers[provider_name]["status"] = "cancelled"
+        except NotImplementedError as e:
+            per_provider[provider_name] = {
+                "status": "upstream_unsupported",
+                "error": str(e),
+            }
+            op.providers[provider_name]["status"] = "cancelled"
+        except Exception as e:  # noqa: BLE001 — best-effort, swallow and report
+            per_provider[provider_name] = {
+                "status": "permanent_error",
+                "error": str(e),
+                "error_class": type(e).__name__,
+            }
+            op.providers[provider_name]["status"] = "cancelled"
+
+    op.transition_to("cancelled")
+    await cpm.save(op)
+
+    return {
+        "status": "ok",
+        "operation_id": op_id,
+        "providers": per_provider,
+    }
+
+
 __all__ = [
     "CommandHandler",
+    "cancel_operation",
     "get_init_data",
     "get_list_data",
     "get_providers_check_data",

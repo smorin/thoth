@@ -65,6 +65,13 @@ dev = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# P18 Phase I: `extended` marker tests hit the real provider APIs (cost +
+# wall-clock). They are gated out of the default suite via `addopts`. Run
+# explicitly with `uv run pytest -m extended` or `just test-extended`.
+markers = [
+    "extended: real-API contract tests; gated, not run by default",
+]
+addopts = "-m 'not extended'"
 
 [tool.ruff]
 target-version = "py311"
@@ -97,4 +104,11 @@ ignore = [
 quote-style = "double"
 indent-style = "space"
 line-ending = "auto"
+
+# Single source of truth for codespell skip + ignore lists. Both
+# lefthook (pre-commit + pre-push) and the CI Hygiene job pick this up
+# automatically by invoking `uvx codespell` with no flag overrides.
+[tool.codespell]
+skip = ".git,.venv,htmlcov,uv.lock,bun.lock,requirements.txt,archive,planning,research,node_modules"
+ignore-words-list = "thoth,perplexity,sonar,pplx,openai,hel"
 

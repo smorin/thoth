@@ -119,6 +119,13 @@ test:
 test-serial:
     uv run pytest tests/ -v
 
+# Run extended (real-API) contract tests. Gated by `pytest -m extended`;
+# requires OPENAI_API_KEY (Perplexity skipped until provider lands). P18
+# Phase I — runs nightly via .github/workflows/extended.yml.
+[group: 'testing']
+test-extended:
+    uv run pytest -m extended -v
+
 # Run tests skipping interactive mode (fast, CI-safe)
 [group: 'testing']
 test-skip-interactive:

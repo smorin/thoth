@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import asyncio
 import os
+from collections.abc import AsyncIterator
 from typing import Any
 
-from thoth.providers.base import ResearchProvider
+from thoth.providers.base import ResearchProvider, StreamEvent
 from thoth.utils import generate_operation_id
 
 
@@ -126,3 +127,44 @@ This mock provider successfully completed the research task.
             {"id": "mock-model-v1", "created": 1680000000, "owned_by": "mock"},
             {"id": "mock-model-v2", "created": 1690000000, "owned_by": "mock"},
         ]
+
+    async def stream(
+        self,
+        prompt: str,
+        mode: str,
+        system_prompt: str | None = None,
+        verbose: bool = False,
+    ) -> AsyncIterator[StreamEvent]:
+        """Yield deterministic chunks for hermetic test coverage of streaming.
+
+        Honors THOTH_MOCK_BEHAVIOR for parity with the polling-loop path:
+        `permanent` and `flake:N` raise so the immediate path's failure
+        handling matches what background-mode tests expect.
+
+        The happy-path chunked output is structured so callers can verify:
+          * the prompt round-trips into the streamed text
+          * the final event is `done`
+        """
+        if self._behavior == "permanent":
+            raise RuntimeError("Mock permanent failure")
+        if self._behavior.startswith("flake:"):
+            # Stream path doesn't model retry; permanent-fail when flake is set.
+            raise RuntimeError(f"Mock streaming failure (behavior={self._behavior})")
+
+        chunks = [
+            f"# Mock streaming response (mode={mode})\n\n",
+            "Echo: ",
+            prompt,
+            "\n\nDone.",
+        ]
+        for c in chunks:
+            yield StreamEvent(kind="text", text=c)
+            # Yield to the event loop between chunks so async consumers can
+            # interleave; tests that don't await scheduling still pass.
+            await asyncio.sleep(0)
+        yield StreamEvent(kind="done", text="")
+
+    async def cancel(self, job_id: str) -> dict[str, Any]:
+        """Pop the job and report cancelled. Used by extended cancel tests."""
+        self.jobs.pop(job_id, None)
+        return {"status": "cancelled", "error": "cancelled by user"}

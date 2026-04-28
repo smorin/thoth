@@ -17,7 +17,7 @@ from rich.console import Console
 from rich.table import Table
 
 from thoth._secrets import _mask_tree
-from thoth.config import BUILTIN_MODES, ConfigManager, is_background_mode
+from thoth.config import BUILTIN_MODES, ConfigManager, mode_kind
 
 Source = Literal["builtin", "user", "overridden"]
 Kind = Literal["immediate", "background", "unknown"]
@@ -45,10 +45,26 @@ def _normalize_providers(cfg: dict[str, Any]) -> list[str]:
 
 
 def _derive_kind(cfg: dict[str, Any], warnings: list[str]) -> Kind:
-    if not cfg.get("model") and "async" not in cfg:
-        warnings.append("missing `model` and no explicit `async` — kind unknown")
+    """Resolve a mode's display kind for the `thoth modes` table.
+
+    P18: prefer the declared `kind` field; fall back to `mode_kind` (which
+    handles the legacy `async` key + substring sniff). Missing model AND no
+    declared kind AND no async → kind=unknown with a warning.
+    """
+    if "kind" in cfg:
+        kind_raw = cfg["kind"]
+        if kind_raw == "immediate":
+            return "immediate"
+        if kind_raw == "background":
+            return "background"
+        warnings.append(f"invalid `kind` value {kind_raw!r} — must be 'immediate' or 'background'")
         return "unknown"
-    return "background" if is_background_mode(cfg) else "immediate"
+    if not cfg.get("model") and "async" not in cfg:
+        warnings.append("missing `model` and no explicit `kind`/`async` — kind unknown")
+        return "unknown"
+    # Legacy fallback path; mode_kind() emits its own DeprecationWarning if `async` is set.
+    resolved = mode_kind(cfg)
+    return "background" if resolved == "background" else "immediate"
 
 
 def _compute_overrides(builtin: dict[str, Any], user: dict[str, Any]) -> dict[str, dict[str, Any]]:
@@ -160,15 +176,19 @@ def _info_to_dict(m: ModeInfo, show_secrets: bool) -> dict[str, Any]:
     return d
 
 
+_VALID_KINDS = ("immediate", "background")
+
+
 def _parse_list_flags(
     args: list[str],
-) -> tuple[bool, bool, str, str | None, bool, int]:
-    """Return (as_json, show_secrets, source, name, full, error_rc). rc=0 means ok."""
+) -> tuple[bool, bool, str, str | None, bool, str | None, int]:
+    """Return (as_json, show_secrets, source, name, full, kind, error_rc). rc=0 means ok."""
     as_json = False
     show_secrets = False
     source = "all"
     name: str | None = None
     full = False
+    kind: str | None = None
     i = 0
     while i < len(args):
         a = args[i]
@@ -184,24 +204,35 @@ def _parse_list_flags(
         elif a == "--source":
             if i + 1 >= len(args):
                 _get_console().print("[red]Error:[/red] --source requires a value")
-                return as_json, show_secrets, source, name, full, 2
+                return as_json, show_secrets, source, name, full, kind, 2
             source = args[i + 1]
             if source not in _VALID_SOURCES:
                 _get_console().print(
                     f"[red]Error:[/red] --source must be one of {', '.join(_VALID_SOURCES)}"
                 )
-                return as_json, show_secrets, source, name, full, 2
+                return as_json, show_secrets, source, name, full, kind, 2
             i += 2
         elif a == "--name":
             if i + 1 >= len(args):
                 _get_console().print("[red]Error:[/red] --name requires a value")
-                return as_json, show_secrets, source, name, full, 2
+                return as_json, show_secrets, source, name, full, kind, 2
             name = args[i + 1]
+            i += 2
+        elif a == "--kind":
+            if i + 1 >= len(args):
+                _get_console().print("[red]Error:[/red] --kind requires a value")
+                return as_json, show_secrets, source, name, full, kind, 2
+            kind = args[i + 1]
+            if kind not in _VALID_KINDS:
+                _get_console().print(
+                    f"[red]Error:[/red] --kind must be one of {', '.join(_VALID_KINDS)}"
+                )
+                return as_json, show_secrets, source, name, full, kind, 2
             i += 2
         else:
             _get_console().print(f"[red]Error:[/red] unknown arg: {a}")
-            return as_json, show_secrets, source, name, full, 2
-    return as_json, show_secrets, source, name, full, 0
+            return as_json, show_secrets, source, name, full, kind, 2
+    return as_json, show_secrets, source, name, full, kind, 0
 
 
 def _render_detail(m: ModeInfo, full: bool, show_secrets: bool) -> None:
@@ -238,12 +269,16 @@ def get_modes_list_data(
     source: str,
     show_secrets: bool,
     config_path: str | None = None,
+    kind: str | None = None,
 ) -> dict:
     """Pure data function for `thoth modes list`.
 
     Returns:
         - {"modes": [...]} when `name` is None
         - {"mode": {...} | None} when `name` is set
+
+    P18 Phase D: optional `kind` filter (`"immediate"` | `"background"`).
+
     Per spec §7.2, this function NEVER takes an `as_json` flag — the
     JSON-vs-Rich choice lives at the subcommand-wrapper layer.
     """
@@ -253,6 +288,8 @@ def get_modes_list_data(
 
     if source != "all":
         infos = [m for m in infos if m.source == source]
+    if kind is not None:
+        infos = [m for m in infos if m.kind == kind]
 
     if name is not None:
         match = next((m for m in infos if m.name == name), None)
@@ -266,7 +303,7 @@ def get_modes_list_data(
 
 
 def _op_list(args: list[str], *, config_path: str | None = None) -> int:
-    as_json, show_secrets, source, name, full, rc = _parse_list_flags(args)
+    as_json, show_secrets, source, name, full, kind, rc = _parse_list_flags(args)
     if rc != 0:
         return rc
 
@@ -276,9 +313,11 @@ def _op_list(args: list[str], *, config_path: str | None = None) -> int:
 
     # Q5-A row 11.i: source filter is applied BEFORE the --name short-circuit
     # so `--name X --source Y` is a true intersection (empty result if X is
-    # not in source Y).
+    # not in source Y). The same applies to --kind (P18 Phase D).
     if source != "all":
         infos = [m for m in infos if m.source == source]
+    if kind is not None:
+        infos = [m for m in infos if m.kind == kind]
 
     if name is not None:
         match = next((m for m in infos if m.name == name), None)

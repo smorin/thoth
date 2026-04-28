@@ -24,11 +24,17 @@ def test_recoverable_failure_resume_reconnects_and_completes(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """RES-01: Recoverable failure → resume reconnects and completes."""
+    """RES-01: Recoverable failure (background-kind) → resume reconnects and completes.
+
+    P18: the recoverable-failure resume hint only fires for background-kind
+    runs (immediate-kind has no upstream job to reattach to). This test uses
+    `--mode deep_research` to exercise the resumable path that the hint
+    targets.
+    """
     monkeypatch.chdir(tmp_path)
 
     exit_code, stdout, stderr = run_thoth(
-        ["res01 first", "--provider", "mock"],
+        ["--mode", "deep_research", "res01 first", "--provider", "mock"],
         env_overrides={"THOTH_MOCK_BEHAVIOR": "flake:10", "THOTH_POLL_INTERVAL": "0.1"},
     )
     combined = stdout + stderr

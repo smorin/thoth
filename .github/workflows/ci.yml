@@ -49,11 +49,9 @@ jobs:
       - name: yamllint
         run: uvx yamllint -c .yamllint .
       - name: codespell
-        run: >
-          uvx codespell
-          --skip=".git,.venv,htmlcov,uv.lock,bun.lock,requirements.txt,archive,planning,research"
-          --ignore-words-list="thoth,perplexity,sonar,pplx,openai,hel"
-          .
+        # Config (skip + ignore-words-list) lives in pyproject.toml under
+        # [tool.codespell] — shared with lefthook so they can't drift.
+        run: uvx codespell .
       - name: bandit
         run: uvx bandit -r src/ -ll
       - name: editorconfig-checker

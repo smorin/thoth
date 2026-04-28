@@ -199,6 +199,7 @@ def _extract_fallback_options(args: list[str], opts: dict) -> tuple[list[str], d
         "-c": "config_path",
         "--timeout": "timeout",
         "-T": "timeout",
+        "--out": "out",
     }
 
     def _validate_provider(value: str) -> None:
@@ -234,6 +235,7 @@ def _extract_fallback_options(args: list[str], opts: dict) -> tuple[list[str], d
         "--clarify": "clarify",
         "--pick-model": "pick_model",
         "-M": "pick_model",
+        "--append": "append",
     }
 
     parsed = dict(opts)
@@ -251,7 +253,11 @@ def _extract_fallback_options(args: list[str], opts: dict) -> tuple[list[str], d
             value = args[i + 1]
             if key == "provider":
                 _validate_provider(value)
-            parsed[key] = _coerce_value(arg, key, value)
+            coerced = _coerce_value(arg, key, value)
+            if key == "out":
+                parsed[key] = (*tuple(parsed.get(key) or ()), coerced)
+            else:
+                parsed[key] = coerced
             i += 2
             continue
         if arg in flag_options:
@@ -265,7 +271,11 @@ def _extract_fallback_options(args: list[str], opts: dict) -> tuple[list[str], d
                 value = arg[len(prefix) :]
                 if key == "provider":
                     _validate_provider(value)
-                parsed[key] = _coerce_value(option, key, value)
+                coerced = _coerce_value(option, key, value)
+                if key == "out":
+                    parsed[key] = (*tuple(parsed.get(key) or ()), coerced)
+                else:
+                    parsed[key] = coerced
                 matched_equals = True
                 break
         if matched_equals:
@@ -281,10 +291,12 @@ def _pick_model_override(mode: str, config: ConfigManager) -> str:
     mode_cfg = config.get_mode_config(mode)
     raw_model = mode_cfg.get("model")
     model_name = raw_model if isinstance(raw_model, str) else None
-    if _thoth_config.is_background_model(model_name):
+    # P18: gate on declared `kind` first (mode_cfg in scope here); falls back
+    # through `mode_kind` to the substring heuristic for legacy user modes.
+    if _thoth_config.mode_kind(mode_cfg) == "background":
         raise click.BadParameter(
-            "--pick-model is only supported for quick (non-deep-research) modes. "
-            f"Mode '{mode}' uses {model_name}."
+            "--pick-model is only supported for modes with kind='immediate'. "
+            f"Mode '{mode}' uses {model_name} (kind='background')."
         )
 
     from thoth.interactive_picker import immediate_models_for_provider
@@ -382,6 +394,8 @@ def _dispatch_click_fallback(
         timeout_override=opts.get("timeout"),
         model_override=model_override,
         ctx_obj=None,
+        out=tuple(opts.get("out") or ()),
+        append=bool(opts.get("append")),
     )
 
 
@@ -421,11 +435,17 @@ def _run_research_default(
     timeout_override: float | None = None,
     model_override: str | None = None,
     ctx_obj=None,
+    out: tuple[str, ...] = (),
+    append: bool = False,
 ) -> None:
     """Execute a research run with the given mode and prompt.
 
     Extracted from the bare-prompt branch of the pre-refactor cli callback.
     Called by ThothGroup.invoke for both mode-positional and bare-prompt paths.
+
+    P18 Phase E: `out`/`append` are forwarded to `run_research` and only
+    consulted by the immediate-kind streaming path. Background runs ignore
+    them today (deferred to a future P18 follow-up).
     """
     app_ctx = _build_app_context(verbose) if ctx_obj is None else ctx_obj
     _result = _thoth_run.run_research(
@@ -445,6 +465,8 @@ def _run_research_default(
         timeout_override=timeout_override,
         ctx=app_ctx,
         model_override=model_override,
+        out_specs=tuple(out or ()),
+        append=append,
     )
     _run_maybe_async(_result)
 
@@ -478,6 +500,8 @@ def cli(
     quiet,
     no_metadata,
     timeout,
+    out,
+    append,
     interactive,
     clarify,
     pick_model,
@@ -512,6 +536,8 @@ def cli(
     ctx.obj["quiet"] = quiet
     ctx.obj["no_metadata"] = no_metadata
     ctx.obj["timeout"] = timeout
+    ctx.obj["out"] = out
+    ctx.obj["append"] = append
     ctx.obj["interactive"] = interactive
     ctx.obj["clarify"] = clarify
     ctx.obj["pick_model"] = pick_model
@@ -568,6 +594,10 @@ cli.add_command(_ask_mod.ask)
 from thoth.cli_subcommands import resume as _resume_mod  # noqa: E402
 
 cli.add_command(_resume_mod.resume)
+
+from thoth.cli_subcommands import cancel as _cancel_mod  # noqa: E402
+
+cli.add_command(_cancel_mod.cancel)
 
 from thoth.cli_subcommands import init as _init_mod  # noqa: E402
 

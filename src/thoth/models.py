@@ -5,6 +5,7 @@
 - InteractiveInitialSettings: CLI-arg → interactive-mode defaults bundle
 - ModelCache: per-provider disk cache for model-list responses
 - VALID_OPERATION_STATES / VALID_STATE_TRANSITIONS: state-machine constants
+- ModelSpec / KNOWN_MODELS: P18 registry derived from BUILTIN_MODES
 """
 
 from __future__ import annotations
@@ -14,9 +15,75 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import Enum
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal, NamedTuple, cast
 
 from thoth.paths import user_model_cache_dir
+
+
+class ModelSpec(NamedTuple):
+    """A (provider, model, kind) triple. The canonical "this model exists" record.
+
+    Built once at import time by `derive_known_models()` from `BUILTIN_MODES`.
+    Models referenced only by user-defined modes are not in `KNOWN_MODELS` —
+    user opted in, user owns kind correctness.
+    """
+
+    id: str
+    provider: str
+    kind: Literal["immediate", "background"]
+
+
+def derive_known_models(builtin_modes: dict[str, dict[str, Any]] | None = None) -> list[ModelSpec]:
+    """Build the canonical model registry from `BUILTIN_MODES`.
+
+    Every `(provider, model)` pair referenced by any non-alias builtin is a
+    "known" model. Cross-mode kind conflicts (same `(provider, model)` declared
+    with two different kinds across builtins) raise `ThothError` — that
+    indicates a thoth bug, not a user-config issue.
+
+    Alias stubs (entries carrying `_deprecated_alias_for`) are skipped because
+    they delegate to a real mode and don't carry provider/model/kind themselves.
+
+    Pass `builtin_modes` to test against a synthetic catalog; production code
+    calls with no argument to read the real `BUILTIN_MODES`.
+    """
+    # Lazy import to dodge the config.py ↔ models.py circular at module load.
+    from thoth.config import BUILTIN_MODES
+    from thoth.errors import ThothError
+
+    modes = builtin_modes if builtin_modes is not None else BUILTIN_MODES
+    seen: dict[tuple[str, str], ModelSpec] = {}
+    for mode_name, cfg in modes.items():
+        if "_deprecated_alias_for" in cfg:
+            continue
+        provider_raw = cfg.get("provider")
+        model_raw = cfg.get("model")
+        kind_raw = cfg.get("kind")
+        if (
+            not isinstance(provider_raw, str)
+            or not isinstance(model_raw, str)
+            or kind_raw not in ("immediate", "background")
+        ):
+            raise ThothError(
+                f"Builtin mode '{mode_name}' is missing one of provider/model/kind, "
+                f"or kind is not 'immediate'/'background'",
+                "This is a thoth bug — every non-alias builtin must declare all three fields.",
+            )
+        provider: str = provider_raw
+        model: str = model_raw
+        # ty cannot narrow `dict.get` returns through tuple-membership; the
+        # `not in (...)` guard above already excludes everything else.
+        kind = cast(Literal["immediate", "background"], kind_raw)
+        key = (provider, model)
+        if key in seen and seen[key].kind != kind:
+            raise ThothError(
+                f"Inconsistent kind for {provider}/{model}: "
+                f"declared as both '{seen[key].kind}' and '{kind}' across builtin modes "
+                f"(latest conflict at mode '{mode_name}')",
+                "Pick one kind for this (provider, model) pair and update the conflicting builtin.",
+            )
+        seen[key] = ModelSpec(id=model, provider=provider, kind=kind)
+    return list(seen.values())
 
 
 class InputMode(Enum):
@@ -196,3 +263,10 @@ class ModelCache:
             return datetime.now() - cached_at
         except (json.JSONDecodeError, ValueError, KeyError):
             return None
+
+
+# Module-level registry — built once at import. Sits at the end of the module
+# so `derive_known_models()` is fully defined before it runs. The function does
+# its own lazy import of `BUILTIN_MODES` so this top-level call is safe even if
+# models.py is imported before config.py finishes initializing in some path.
+KNOWN_MODELS: list[ModelSpec] = derive_known_models()
