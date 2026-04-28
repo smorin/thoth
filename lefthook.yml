@@ -72,11 +72,12 @@ pre-commit:
     gitleaks:
       run: ./scripts/check-gitleaks.sh staged
 
+    # Config (skip + ignore-words-list) lives in pyproject.toml under
+    # [tool.codespell] so lefthook + CI pick up the same list. Don't
+    # duplicate flags here.
     codespell:
       glob: "*.{py,md}"
-      run: |
-        uvx codespell --skip=".git,.venv,htmlcov,uv.lock,requirements.txt,archive,planning,research" \
-          --ignore-words-list="thoth,perplexity,sonar,pplx,openai,hel" {staged_files}
+      run: uvx codespell {staged_files}
 
     test:
       glob: "*.py"
@@ -98,13 +99,11 @@ pre-push:
     # at push time, not just staged files. Catches typos / YAML issues
     # introduced in commits where the affected file is not staged again
     # later (and survives LEFTHOOK=0 WIP commits that bypass pre-commit).
-    # Same flag set as .github/workflows/ci.yml's Hygiene job.
+    # codespell config is shared via pyproject.toml [tool.codespell];
+    # yamllint config is .yamllint. Both files are also consumed by
+    # .github/workflows/ci.yml's Hygiene job.
     codespell-full:
-      run: |
-        uvx codespell \
-          --skip=".git,.venv,htmlcov,uv.lock,bun.lock,requirements.txt,archive,planning,research,node_modules" \
-          --ignore-words-list="thoth,perplexity,sonar,pplx,openai,hel" \
-          .
+      run: uvx codespell .
 
     yamllint-full:
       run: uvx yamllint -c .yamllint .

@@ -104,3 +104,10 @@ quote-style = "double"
 indent-style = "space"
 line-ending = "auto"
 
+# Single source of truth for codespell skip + ignore lists. Both
+# lefthook (pre-commit + pre-push) and the CI Hygiene job pick this up
+# automatically by invoking `uvx codespell` with no flag overrides.
+[tool.codespell]
+skip = ".git,.venv,htmlcov,uv.lock,bun.lock,requirements.txt,archive,planning,research,node_modules"
+ignore-words-list = "thoth,perplexity,sonar,pplx,openai,hel"
+
