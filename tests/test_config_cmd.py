@@ -325,7 +325,11 @@ def test_thoth_config_list_json_subprocess(isolated_thoth_home: Path) -> None:
     """Regression: `thoth config list --json` must pass through click to the
     config dispatcher. Pre-P11 this was broken — click's root command rejected
     `--json` as an unknown option. P11's `ignore_unknown_options=True` fix
-    repaired it but there was no end-to-end test. Guard it here.
+    repaired it but there was no end-to-end test.
+
+    P16 PR3 T10 promotes `--json` to the canonical envelope contract
+    (`{"status": "ok", "data": {...}}`); the actual config tree now lives
+    under `data.config`.
     """
     import json
 
@@ -333,7 +337,9 @@ def test_thoth_config_list_json_subprocess(isolated_thoth_home: Path) -> None:
 
     rc, out, err = run_thoth(["config", "list", "--json"])
     assert rc == 0, f"stderr: {err}"
-    data = json.loads(out)
-    assert isinstance(data, dict)
-    assert "general" in data
-    assert data["general"]["default_mode"] == "default"
+    payload = json.loads(out)
+    assert isinstance(payload, dict)
+    assert payload["status"] == "ok"
+    config_tree = payload["data"]["config"]
+    assert "general" in config_tree
+    assert config_tree["general"]["default_mode"] == "default"

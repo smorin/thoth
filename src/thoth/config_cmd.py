@@ -21,8 +21,14 @@ _VALID_LAYERS = ("defaults", "user", "project", "env", "cli")
 _ROOT_KEYS_ALLOW_UNKNOWN = ("modes",)
 
 
-def _load_manager() -> ConfigManager:
-    cm = ConfigManager()
+def _normalize_config_path(config_path: str | Path | None) -> Path | None:
+    if config_path is None:
+        return None
+    return Path(config_path).expanduser().resolve()
+
+
+def _load_manager(config_path: str | Path | None = None) -> ConfigManager:
+    cm = ConfigManager(_normalize_config_path(config_path))
     cm.load_all_layers({})
     return cm
 
@@ -47,7 +53,61 @@ def _render_scalar(value: Any, as_json: bool) -> str:
     return str(value)
 
 
-def _op_get(args: list[str]) -> int:
+def get_config_get_data(
+    key: str,
+    *,
+    layer: str | None,
+    raw: bool,
+    show_secrets: bool,
+    config_path: str | Path | None = None,
+) -> dict:
+    """Pure data function for `thoth config get KEY`.
+
+    Returns a dict with keys: key, found, value, layer, masked. When
+    `layer` is invalid, includes `error="INVALID_LAYER"`. Per spec §7.2,
+    this function NEVER takes an `as_json` flag.
+    """
+    cm = _load_manager(config_path)
+
+    if layer is not None:
+        if layer not in _VALID_LAYERS:
+            return {
+                "key": key,
+                "found": False,
+                "value": None,
+                "layer": layer,
+                "masked": False,
+                "error": "INVALID_LAYER",
+            }
+        data = cm.layers.get(layer, {})
+    elif raw:
+        merged: dict[str, Any] = {}
+        for name in _VALID_LAYERS:
+            layer_data = cm.layers.get(name) or {}
+            merged = cm._deep_merge(merged, layer_data)
+        data = merged
+    else:
+        data = cm.data
+
+    found, value = _dotted_get(data, key)
+    if not found:
+        return {"key": key, "found": False, "value": None, "layer": layer, "masked": False}
+
+    masked = False
+    if _is_secret_key(key) and not show_secrets:
+        value = _mask_secret(value)
+        masked = True
+
+    return {
+        "key": key,
+        "found": True,
+        "value": value,
+        "layer": layer,
+        "masked": masked,
+    }
+
+
+def _op_get(args: list[str], *, config_path: str | Path | None = None) -> int:
     layer: str | None = None
     raw = False
     as_json = False
@@ -80,31 +140,18 @@ def _op_get(args: list[str]) -> int:
         return 2
     key = positional[0]
 
-    cm = _load_manager()
+    data = get_config_get_data(
+        key, layer=layer, raw=raw, show_secrets=show_secrets, config_path=config_path
+    )
 
-    if layer is not None:
-        if layer not in _VALID_LAYERS:
-            console.print(f"[red]Error:[/red] --layer must be one of {', '.join(_VALID_LAYERS)}")
-            return 2
-        data = cm.layers.get(layer, {})
-    elif raw:
-        merged: dict[str, Any] = {}
-        for name in _VALID_LAYERS:
-            layer_data = cm.layers.get(name) or {}
-            merged = cm._deep_merge(merged, layer_data)
-        data = merged
-    else:
-        data = cm.data
-
-    found, value = _dotted_get(data, key)
-    if not found:
+    if data.get("error") == "INVALID_LAYER":
+        console.print(f"[red]Error:[/red] --layer must be one of {', '.join(_VALID_LAYERS)}")
+        return 2
+    if not data["found"]:
         console.print(f"[red]Error:[/red] key not found: {key}")
         return 1
 
-    if _is_secret_key(key) and not show_secrets:
-        value = _mask_secret(value)
-
-    print(_render_scalar(value, as_json))
+    print(_render_scalar(data["value"], as_json))
     return 0
 
 
@@ -124,10 +171,20 @@ def _parse_value(raw: str, force_string: bool) -> Any:
         return raw
 
 
-def _target_path(project: bool) -> Path:
+def _target_path(project: bool, config_path: str | Path | None = None) -> Path:
     if project:
         return Path.cwd() / "thoth.toml"
+    custom = _normalize_config_path(config_path)
+    if custom is not None:
+        return custom
     return user_config_file()
+
+
+def _reject_config_project_conflict(project: bool, config_path: str | Path | None) -> bool:
+    if project and config_path is not None:
+        console.print("[red]Error:[/red] --config cannot be used with --project")
+        return True
+    return False
 
 
 def _load_toml_doc(path: Path) -> tomlkit.TOMLDocument:
@@ -176,7 +233,34 @@ def _set_in_doc(doc: tomlkit.TOMLDocument, key: str, value: Any) -> None:
     current[parts[-1]] = value
 
 
-def _op_set(args: list[str]) -> int:
+def get_config_set_data(
+    key: str,
+    raw_value: str,
+    *,
+    project: bool,
+    force_string: bool,
+    config_path: str | Path | None = None,
+) -> dict:
+    """Pure data function for `thoth config set KEY VALUE`."""
+    if project and config_path is not None:
+        return {
+            "key": key,
+            "value": None,
+            "wrote": False,
+            "path": None,
+            "error": "PROJECT_CONFIG_CONFLICT",
+        }
+
+    value = _parse_value(raw_value, force_string)
+    path = _target_path(project, config_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    doc = _load_toml_doc(path)
+    _set_in_doc(doc, key, value)
+    path.write_text(tomlkit.dumps(doc))
+    return {"key": key, "value": value, "wrote": True, "path": str(path)}
+
+
+def _op_set(args: list[str], *, config_path: str | Path | None = None) -> int:
     project = False
     force_string = False
     positional: list[str] = []
@@ -196,16 +280,18 @@ def _op_set(args: list[str]) -> int:
     if len(positional) != 2:
         console.print("[red]Error:[/red] config set takes KEY VALUE")
         return 2
+    if _reject_config_project_conflict(project, config_path):
+        return 2
     key, raw = positional
 
     value = _parse_value(raw, force_string)
     _warn_on_validation(key, value)
 
-    path = _target_path(project)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    doc = _load_toml_doc(path)
-    _set_in_doc(doc, key, value)
-    path.write_text(tomlkit.dumps(doc))
+    data = get_config_set_data(
+        key, raw, project=project, force_string=force_string, config_path=config_path
+    )
+    if data.get("error") == "PROJECT_CONFIG_CONFLICT":
+        return 2
     return 0
 
 
@@ -236,7 +322,32 @@ def _unset_in_doc(doc: tomlkit.TOMLDocument, key: str) -> bool:
     return True
 
 
-def _op_unset(args: list[str]) -> int:
+def get_config_unset_data(
+    key: str, *, project: bool, config_path: str | Path | None = None
+) -> dict:
+    """Pure data function for `thoth config unset KEY`."""
+    if project and config_path is not None:
+        return {
+            "key": key,
+            "removed": False,
+            "path": None,
+            "error": "PROJECT_CONFIG_CONFLICT",
+        }
+
+    path = _target_path(project, config_path)
+    if not path.exists():
+        return {"key": key, "removed": False, "path": str(path), "reason": "NO_FILE"}
+
+    doc = tomlkit.parse(path.read_text())
+    removed = _unset_in_doc(doc, key)
+    if not removed:
+        return {"key": key, "removed": False, "path": str(path), "reason": "NOT_FOUND"}
+
+    path.write_text(tomlkit.dumps(doc))
+    return {"key": key, "removed": True, "path": str(path)}
+
+
+def _op_unset(args: list[str], *, config_path: str | Path | None = None) -> int:
     project = False
     positional: list[str] = []
     i = 0
@@ -252,20 +363,19 @@ def _op_unset(args: list[str]) -> int:
     if len(positional) != 1:
         console.print("[red]Error:[/red] config unset takes KEY")
         return 2
+    if _reject_config_project_conflict(project, config_path):
+        return 2
     key = positional[0]
 
-    path = _target_path(project)
-    if not path.exists():
-        print(f"note: {path} does not exist; nothing to unset", file=sys.stderr)
+    data = get_config_unset_data(key, project=project, config_path=config_path)
+    if data.get("error") == "PROJECT_CONFIG_CONFLICT":
+        return 2
+    if data.get("reason") == "NO_FILE":
+        print(f"note: {data['path']} does not exist; nothing to unset", file=sys.stderr)
         return 0
-
-    doc = tomlkit.parse(path.read_text())
-    removed = _unset_in_doc(doc, key)
-    if not removed:
+    if data.get("reason") == "NOT_FOUND":
         print(f"note: key not found: {key}", file=sys.stderr)
         return 0
-
-    path.write_text(tomlkit.dumps(doc))
     return 0
 
 
@@ -290,7 +400,38 @@ def _to_plain(data: Any) -> Any:
     return data
 
 
-def _op_list(args: list[str]) -> int:
+def get_config_list_data(
+    *,
+    layer: str | None,
+    keys_only: bool,
+    show_secrets: bool,
+    config_path: str | Path | None = None,
+) -> dict:
+    """Pure data function for `thoth config list`."""
+    cm = _load_manager(config_path)
+
+    if layer is not None:
+        if layer not in _VALID_LAYERS:
+            return {
+                "config": None,
+                "keys": None,
+                "layer": layer,
+                "error": "INVALID_LAYER",
+            }
+        data: dict[str, Any] = cm.layers.get(layer) or {}
+    else:
+        data = cm.data
+
+    if keys_only:
+        return {"keys": sorted(_flatten_keys(data)), "layer": layer}
+
+    rendered = _to_plain(data)
+    if not show_secrets:
+        rendered = _mask_in_tree(rendered)
+    return {"config": rendered, "layer": layer}
+
+
+def _op_list(args: list[str], *, config_path: str | Path | None = None) -> int:
     layer: str | None = None
     keys_only = False
     as_json = False
@@ -323,7 +464,7 @@ def _op_list(args: list[str]) -> int:
             console.print(f"[red]Error:[/red] unknown arg: {a}")
             return 2
 
-    cm = _load_manager()
+    cm = _load_manager(config_path)
 
     if layer is not None:
         if layer not in _VALID_LAYERS:
@@ -350,27 +491,56 @@ def _op_list(args: list[str]) -> int:
     return 0
 
 
-def _op_path(args: list[str]) -> int:
-    project = "--project" in args
-    path = _target_path(project)
-    print(str(path))
+def _parse_project_only(args: list[str], op: str) -> tuple[bool, int]:
+    project = False
+    for arg in args:
+        if arg == "--project":
+            project = True
+        else:
+            console.print(f"[red]Error:[/red] unknown arg for config {op}: {arg}")
+            return project, 2
+    return project, 0
+
+
+def get_config_path_data(*, project: bool, config_path: str | Path | None = None) -> dict:
+    """Pure data function for `thoth config path`."""
+    if project and config_path is not None:
+        return {"path": None, "project": project, "error": "PROJECT_CONFIG_CONFLICT"}
+    return {"path": str(_target_path(project, config_path)), "project": project}
+
+
+def _op_path(args: list[str], *, config_path: str | Path | None = None) -> int:
+    project, rc = _parse_project_only(args, "path")
+    if rc != 0:
+        return rc
+    if _reject_config_project_conflict(project, config_path):
+        return 2
+    data = get_config_path_data(project=project, config_path=config_path)
+    print(data["path"])
     return 0
 
 
-def _op_help(args: list[str]) -> int:
+def _op_help(args: list[str], *, config_path: str | Path | None = None) -> int:
+    if args:
+        console.print(f"[red]Error:[/red] unknown arg for config help: {args[0]}")
+        return 2
     from thoth.help import show_config_help
 
     show_config_help()
     return 0
 
 
-def _op_edit(args: list[str]) -> int:
+def _op_edit(args: list[str], *, config_path: str | Path | None = None) -> int:
     import os
     import shutil
     import subprocess  # noqa: S404
 
-    project = "--project" in args
-    path = _target_path(project)
+    project, rc = _parse_project_only(args, "edit")
+    if rc != 0:
+        return rc
+    if _reject_config_project_conflict(project, config_path):
+        return 2
+    path = _target_path(project, config_path)
     path.parent.mkdir(parents=True, exist_ok=True)
     if not path.exists():
         doc = tomlkit.document()
@@ -381,7 +551,7 @@ def _op_edit(args: list[str]) -> int:
     return subprocess.call([editor, str(path)])  # noqa: S603
 
 
-def config_command(op: str, args: list[str]) -> int:
+def config_command(op: str, args: list[str], *, config_path: str | Path | None = None) -> int:
     """Dispatch `thoth config <op>`. Returns a process exit code."""
     ops = {
         "get": _op_get,
@@ -395,7 +565,14 @@ def config_command(op: str, args: list[str]) -> int:
     if op not in ops:
         console.print(f"[red]Error:[/red] unknown config op: {op}")
         return 2
-    return ops[op](args)
+    return ops[op](args, config_path=config_path)
 
 
-__all__ = ["config_command"]
+__all__ = [
+    "config_command",
+    "get_config_get_data",
+    "get_config_list_data",
+    "get_config_path_data",
+    "get_config_set_data",
+    "get_config_unset_data",
+]

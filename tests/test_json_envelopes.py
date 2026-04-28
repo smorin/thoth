@@ -24,8 +24,14 @@ JSON_COMMANDS: list[tuple[str, list[str], int]] = [
     # NOTE: `providers check` exits 0 with `data.complete=False` even when
     # keys missing — the JSON envelope decouples machine state from process
     # exit code.
-    # T10–T13 will append rows for config, modes, ask, resume per the spec
-    # §10 commit sequence.
+    ("config_get", ["config", "get", "paths.base_output_dir", "--json"], 0),
+    ("config_get_missing", ["config", "get", "nonexistent.key", "--json"], 1),
+    ("config_list", ["config", "list", "--json"], 0),
+    ("config_path", ["config", "path", "--json"], 0),
+    ("config_set", ["config", "set", "test.key", "value", "--json"], 0),
+    ("config_unset", ["config", "unset", "test.key", "--json"], 0),
+    # T11–T13 will append rows for config edit, modes, ask, resume per the
+    # spec §10 commit sequence.
 ]
 
 
