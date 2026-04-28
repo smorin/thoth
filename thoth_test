@@ -367,6 +367,45 @@ def _ensure_test_config_home() -> Path:
         return _TEST_CONFIG_HOME
 
 
+# Flags that cause `_prepare_test_isolation` to skip its --output-dir injection.
+# A TestCase using any of these is opting OUT of per-test tmpdir isolation, so
+# its output target must be unique across the suite or parallel runs will race.
+_OUTPUT_FLAGS = ("-o", "--output-dir")
+_PROJECT_FLAG = "--project"
+_OUTPUT_EQ_PREFIXES = ("-o=", "--output-dir=")
+_PROJECT_EQ_PREFIX = "--project="
+_CONFIG_FLAGS = ("-c", "--config")
+_CONFIG_EQ_PREFIXES = ("-c=", "--config=")
+
+
+def _has_output_opt_out(cmd: list[str]) -> bool:
+    return any(
+        arg in _OUTPUT_FLAGS
+        or arg == _PROJECT_FLAG
+        or any(arg.startswith(p) for p in _OUTPUT_EQ_PREFIXES)
+        or arg.startswith(_PROJECT_EQ_PREFIX)
+        for arg in cmd
+    )
+
+
+def _rewrite_config_arg_to_tmpdir(cmd: list[str], tmpdir: Path) -> tuple[list[str], Path]:
+    rewritten = list(cmd)
+    fallback = tmpdir / "test_config.toml"
+    for i, arg in enumerate(rewritten):
+        if arg in _CONFIG_FLAGS and i + 1 < len(rewritten):
+            config_path = tmpdir / (Path(rewritten[i + 1]).name or fallback.name)
+            rewritten[i + 1] = str(config_path)
+            return rewritten, config_path
+        for prefix in _CONFIG_EQ_PREFIXES:
+            if arg.startswith(prefix):
+                raw_path = arg[len(prefix) :]
+                config_path = tmpdir / (Path(raw_path).name or fallback.name)
+                rewritten[i] = f"{prefix}{config_path}"
+                return rewritten, config_path
+    rewritten.extend(["--config", str(fallback)])
+    return rewritten, fallback
+
+
 def _prepare_test_isolation(
     test_case: TestCase,
 ) -> tuple[Path, list[str], dict[str, str], Path | None]:
@@ -384,7 +423,7 @@ def _prepare_test_isolation(
     # consume --output-dir as the --mode value). Also skip if the test already
     # passes -o/--output-dir or uses --project (which routes output under
     # base_output_dir/<project>/ and is overridden by --output-dir).
-    if test_case.provider and not any(a in cmd for a in ("-o", "--output-dir", "--project")):
+    if test_case.provider and not _has_output_opt_out(cmd):
         cmd += ["--output-dir", str(tmpdir)]
         output_base = tmpdir
     env = dict(test_case.env)
@@ -398,53 +437,102 @@ def _prepare_test_isolation(
     return tmpdir, cmd, env, output_base
 
 
-# Flags that cause `_prepare_test_isolation` to skip its --output-dir injection.
-# A TestCase using any of these is opting OUT of per-test tmpdir isolation, so
-# its output target must be unique across the suite or parallel runs will race.
-_OUTPUT_FLAGS = ("-o", "--output-dir")
-_PROJECT_FLAG = "--project"
+def _resolve_output_target(cmd: list[str]) -> tuple[Path | None, str | None]:
+    """Return (resolved output Path, source flag) if ``cmd`` opts out of
+    tmpdir injection, else ``(None, None)``.
 
+    Handles both forms click accepts:
+      - space-separated: ``-o value`` / ``--output-dir value`` / ``--project value``
+      - equals-attached: ``-o=value`` / ``--output-dir=value`` / ``--project=value``
 
-def _resolve_output_target(cmd: list[str]) -> Path | None:
-    """Return the resolved output Path for ``cmd`` if it opts out of tmpdir
-    injection, else None.
-
-    Parses the first occurrence of -o/--output-dir/--project (matches click's
-    "last value wins" behavior is NOT used here; we use first-occurrence to
-    match how `_prepare_test_isolation` checks `any(a in cmd for a in (...))`).
-    Cross-flag collisions are detected because --project X resolves to the
-    same canonical path as -o research-outputs/X.
+    First textual occurrence wins (matches the runner's `any(a in cmd for a in
+    (...))` semantics in `_prepare_test_isolation`). Cross-flag collisions are
+    detected because ``--project X`` resolves to the same canonical path as
+    ``-o research-outputs/X``.
     """
     for i, arg in enumerate(cmd):
+        # =-attached form
+        for prefix in _OUTPUT_EQ_PREFIXES:
+            if arg.startswith(prefix):
+                value = arg[len(prefix) :]
+                return (Path.cwd() / Path(value).expanduser()).resolve(), prefix[:-1]
+        if arg.startswith(_PROJECT_EQ_PREFIX):
+            value = arg[len(_PROJECT_EQ_PREFIX) :]
+            return (Path.cwd() / "research-outputs" / value).resolve(), "--project"
+        # Space-separated form
         if arg in _OUTPUT_FLAGS and i + 1 < len(cmd):
-            return (Path.cwd() / Path(cmd[i + 1]).expanduser()).resolve()
+            return (Path.cwd() / Path(cmd[i + 1]).expanduser()).resolve(), arg
         if arg == _PROJECT_FLAG and i + 1 < len(cmd):
-            return (Path.cwd() / "research-outputs" / cmd[i + 1]).resolve()
-    return None
+            return (Path.cwd() / "research-outputs" / cmd[i + 1]).resolve(), arg
+    return None, None
+
+
+def _opt_out_flag_families(cmd: list[str]) -> set[str]:
+    """Return the set of opt-out flag families present in ``cmd``.
+
+    Two families exist:
+      - ``"output"`` — any of ``-o``/``--output-dir`` (space or =-attached)
+      - ``"project"`` — ``--project`` (space or =-attached)
+
+    A TestCase using both families is ambiguous: the runner skips its
+    --output-dir injection (because at least one opt-out flag is present),
+    but thoth's CLI then picks one of the two flags by its own precedence
+    rules — which the suite's parallel-safety guarantees should not depend on.
+    """
+    families: set[str] = set()
+    for arg in cmd:
+        if arg in _OUTPUT_FLAGS or any(arg.startswith(p) for p in _OUTPUT_EQ_PREFIXES):
+            families.add("output")
+        elif arg == _PROJECT_FLAG or arg.startswith(_PROJECT_EQ_PREFIX):
+            families.add("project")
+    return families
 
 
 def detect_parallel_hazards(tests: list["TestCase"]) -> list[str]:
-    """Return one human-readable error per duplicate output-path collision.
+    """Return one human-readable error per parallel-execution hazard.
 
-    A TestCase that passes -o/--output-dir/--project opts out of the runner's
-    --output-dir injection (see _prepare_test_isolation, line ~383). If two
-    such TestCases resolve to the same output path, parallel execution will
-    race on writes/cleanup. An empty list means the suite is parallel-safe.
+    Two hazard classes are detected:
+
+    1. **Duplicate output target.** Two TestCases that both opt out of
+       --output-dir injection (via -o/--output-dir/--project) and resolve to
+       the same canonical path. Parallel execution would race on writes and
+       cleanup.
+    2. **Ambiguous opt-out flags.** A single TestCase that uses both an output
+       flag (-o/--output-dir) AND --project. The runner skips tmpdir injection
+       because at least one is present; the actual output path then depends on
+       thoth's own flag precedence, which is fragile to depend on.
+
+    An empty list means the suite is parallel-safe. Per-class messages are
+    interleaved in stable order (sorted by canonical key) so output is
+    reproducible across runs.
     """
     by_path: dict[Path, list[str]] = {}
     flag_used: dict[Path, str] = {}
+    ambiguous: list[tuple[str, str]] = []  # (test_id, message)
+
     for tc in tests:
-        target = _resolve_output_target(tc.command)
+        if len(_opt_out_flag_families(tc.command)) > 1:
+            ambiguous.append(
+                (
+                    tc.test_id,
+                    f"Ambiguous opt-out flags: test {tc.test_id} uses both "
+                    f"-o/--output-dir AND --project. The runner skips tmpdir "
+                    f"injection on either, then thoth's CLI picks one by its "
+                    f"own precedence rules. Use exactly one opt-out flag per "
+                    f"test, or remove both so the runner can inject "
+                    f"--output-dir into a per-test tmpdir.",
+                )
+            )
+        target, flag = _resolve_output_target(tc.command)
         if target is None:
             continue
         by_path.setdefault(target, []).append(tc.test_id)
-        if target not in flag_used:
-            for arg in tc.command:
-                if arg in _OUTPUT_FLAGS or arg == _PROJECT_FLAG:
-                    flag_used[target] = arg
-                    break
+        if target not in flag_used and flag is not None:
+            flag_used[target] = flag
 
     hazards: list[str] = []
+    for _, msg in sorted(ambiguous):
+        hazards.append(msg)
     for target, ids in sorted(by_path.items()):
         if len(ids) <= 1:
             continue
@@ -1191,6 +1279,7 @@ class TestRunner:
 
             elif test_case.api_key_method == "config":
                 # Create a temporary config file with API key
+                test_command, config_path = _rewrite_config_arg_to_tmpdir(test_command, tmpdir)
                 config_content = f"""version = "2.0"
 
 [general]
@@ -1213,8 +1302,7 @@ timestamp_format = "%Y-%m-%d_%H%M%S"
 [providers.{test_case.provider}]
 api_key = "{api_key}"
 """
-                with open("test_config.toml", "w") as f:
-                    f.write(config_content)
+                config_path.write_text(config_content)
 
         # Create test prompt file if needed
         if "--prompt-file" in test_command:
