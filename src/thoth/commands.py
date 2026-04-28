@@ -292,6 +292,50 @@ def _print_status_hints(operation: OperationStatus) -> None:
             print_hint(f"thoth resume {op_id}", "Retry from checkpoint")
 
 
+async def get_list_data(show_all: bool) -> dict:
+    """Pure data function for `thoth list`.
+
+    Returns a dict with `count` and `operations` (list of dicts). Per spec
+    §7.2, this function NEVER takes an `as_json` flag — the JSON-vs-Rich
+    choice lives at the subcommand-wrapper layer.
+    """
+    config = get_config()
+    checkpoint_manager = CheckpointManager(config)
+
+    checkpoint_files = list(checkpoint_manager.checkpoint_dir.glob("*.json"))
+    operations = []
+    for checkpoint_file in checkpoint_files:
+        operation_id = checkpoint_file.stem
+        operation = await checkpoint_manager.load(operation_id)
+        if operation:
+            operations.append(operation)
+
+    operations.sort(key=lambda op: op.created_at, reverse=True)
+
+    if not show_all:
+        cutoff_time = datetime.now() - timedelta(hours=24)
+        operations = [
+            op
+            for op in operations
+            if op.status in ["running", "queued"] or op.created_at > cutoff_time
+        ]
+
+    return {
+        "count": len(operations),
+        "operations": [
+            {
+                "operation_id": op.id,
+                "prompt": op.prompt,
+                "mode": op.mode,
+                "status": op.status,
+                "created_at": op.created_at.isoformat(),
+                "project": op.project,
+            }
+            for op in operations
+        ],
+    }
+
+
 async def list_operations(show_all: bool):
     """List all operations"""
     config = get_config()
@@ -651,6 +695,7 @@ def providers_check(config: ConfigManager) -> int:
 __all__ = [
     "CommandHandler",
     "get_init_data",
+    "get_list_data",
     "get_status_data",
     "list_command",
     "list_operations",

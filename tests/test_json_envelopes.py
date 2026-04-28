@@ -16,7 +16,9 @@ JSON_COMMANDS: list[tuple[str, list[str], int]] = [
     # (label, argv-after-cli, expected_exit_code)
     ("init_non_interactive", ["init", "--json", "--non-interactive"], 0),
     ("status_missing_op", ["status", "research-MISSING", "--json"], 6),
-    # T08–T13 will append rows for list, providers, config, modes, ask,
+    ("list_empty", ["list", "--json"], 0),
+    ("list_all_empty", ["list", "--all", "--json"], 0),
+    # T09–T13 will append rows for providers, config, modes, ask,
     # resume per the spec §10 commit sequence.
 ]
 
