@@ -200,7 +200,7 @@ def test_config_list_invokes_handler(monkeypatch):
 
     called = {}
 
-    def fake_config_command(op, rest):
+    def fake_config_command(op, rest, **kwargs):
         called["op"] = op
         called["rest"] = rest
         return 0

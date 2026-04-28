@@ -10,9 +10,9 @@ from thoth.cli_subcommands._options import _RESEARCH_OPTIONS, _research_options
 
 def test_research_options_decorator_adds_all_research_flags():
     # Catches accidental additions/removals in _RESEARCH_OPTIONS.
-    # P18 Phase E added --out (repeatable) and --append; flag count is 23.
-    assert len(_RESEARCH_OPTIONS) == 23, (
-        f"expected 23 research-options entries (21 from PR2 + 2 from P18), "
+    # P18 Phase E added --out (repeatable) and --append; P21 added --profile.
+    assert len(_RESEARCH_OPTIONS) == 24, (
+        f"expected 24 research-options entries (21 from PR2 + 2 from P18 + 1 from P21), "
         f"got {len(_RESEARCH_OPTIONS)}"
     )
 

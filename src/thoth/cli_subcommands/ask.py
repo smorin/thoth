@@ -63,6 +63,7 @@ def ask(
     api_key_perplexity: str | None,
     api_key_mock: str | None,
     config_path: str | None,
+    profile: str | None,
     combined: bool,
     quiet: bool,
     no_metadata: bool,
