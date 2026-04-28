@@ -27,9 +27,16 @@ def _normalize_config_path(config_path: str | Path | None) -> Path | None:
     return Path(config_path).expanduser().resolve()
 
 
-def _load_manager(config_path: str | Path | None = None) -> ConfigManager:
+def _load_manager(
+    config_path: str | Path | None = None,
+    *,
+    profile: str | None = None,
+) -> ConfigManager:
     cm = ConfigManager(_normalize_config_path(config_path))
-    cm.load_all_layers({})
+    cli_args: dict[str, Any] = {}
+    if profile:
+        cli_args["_profile"] = profile
+    cm.load_all_layers(cli_args)
     return cm
 
 
@@ -60,6 +67,7 @@ def get_config_get_data(
     raw: bool,
     show_secrets: bool,
     config_path: str | Path | None = None,
+    profile: str | None = None,
 ) -> dict:
     """Pure data function for `thoth config get KEY`.
 
@@ -67,7 +75,7 @@ def get_config_get_data(
     `layer` is invalid, includes `error="INVALID_LAYER"`. Per spec §7.2,
     this function NEVER takes an `as_json` flag.
     """
-    cm = _load_manager(config_path)
+    cm = _load_manager(config_path, profile=profile)
 
     if layer is not None:
         if layer not in _VALID_LAYERS:
@@ -107,7 +115,12 @@ def get_config_get_data(
     }
 
 
-def _op_get(args: list[str], *, config_path: str | Path | None = None) -> int:
+def _op_get(
+    args: list[str],
+    *,
+    config_path: str | Path | None = None,
+    profile: str | None = None,
+) -> int:
     layer: str | None = None
     raw = False
     as_json = False
@@ -141,7 +154,12 @@ def _op_get(args: list[str], *, config_path: str | Path | None = None) -> int:
     key = positional[0]
 
     data = get_config_get_data(
-        key, layer=layer, raw=raw, show_secrets=show_secrets, config_path=config_path
+        key,
+        layer=layer,
+        raw=raw,
+        show_secrets=show_secrets,
+        config_path=config_path,
+        profile=profile,
     )
 
     if data.get("error") == "INVALID_LAYER":
@@ -406,9 +424,10 @@ def get_config_list_data(
     keys_only: bool,
     show_secrets: bool,
     config_path: str | Path | None = None,
+    profile: str | None = None,
 ) -> dict:
     """Pure data function for `thoth config list`."""
-    cm = _load_manager(config_path)
+    cm = _load_manager(config_path, profile=profile)
 
     if layer is not None:
         if layer not in _VALID_LAYERS:
@@ -431,7 +450,12 @@ def get_config_list_data(
     return {"config": rendered, "layer": layer}
 
 
-def _op_list(args: list[str], *, config_path: str | Path | None = None) -> int:
+def _op_list(
+    args: list[str],
+    *,
+    config_path: str | Path | None = None,
+    profile: str | None = None,
+) -> int:
     layer: str | None = None
     keys_only = False
     as_json = False
@@ -464,7 +488,7 @@ def _op_list(args: list[str], *, config_path: str | Path | None = None) -> int:
             console.print(f"[red]Error:[/red] unknown arg: {a}")
             return 2
 
-    cm = _load_manager(config_path)
+    cm = _load_manager(config_path, profile=profile)
 
     if layer is not None:
         if layer not in _VALID_LAYERS:
@@ -566,21 +590,31 @@ def _op_edit(args: list[str], *, config_path: str | Path | None = None) -> int:
     return int(data["editor_exit_code"])
 
 
-def config_command(op: str, args: list[str], *, config_path: str | Path | None = None) -> int:
+def config_command(
+    op: str,
+    args: list[str],
+    *,
+    config_path: str | Path | None = None,
+    profile: str | None = None,
+) -> int:
     """Dispatch `thoth config <op>`. Returns a process exit code."""
-    ops = {
-        "get": _op_get,
-        "set": _op_set,
-        "unset": _op_unset,
-        "list": _op_list,
-        "path": _op_path,
-        "edit": _op_edit,
-        "help": _op_help,
-    }
-    if op not in ops:
+    if op not in {"get", "set", "unset", "list", "path", "edit", "help"}:
         console.print(f"[red]Error:[/red] unknown config op: {op}")
         return 2
-    return ops[op](args, config_path=config_path)
+
+    if op == "get":
+        return _op_get(args, config_path=config_path, profile=profile)
+    if op == "list":
+        return _op_list(args, config_path=config_path, profile=profile)
+    if op == "set":
+        return _op_set(args, config_path=config_path)
+    if op == "unset":
+        return _op_unset(args, config_path=config_path)
+    if op == "path":
+        return _op_path(args, config_path=config_path)
+    if op == "edit":
+        return _op_edit(args, config_path=config_path)
+    return _op_help(args, config_path=config_path)
 
 
 __all__ = [

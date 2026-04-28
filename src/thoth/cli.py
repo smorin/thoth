@@ -111,6 +111,7 @@ def _version_conflicts(ctx: click.Context, opts: dict) -> list[str]:
         "api_key_perplexity": "--api-key-perplexity",
         "api_key_mock": "--api-key-mock",
         "config_path": "--config",
+        "profile": "--profile",
         "combined": "--combined",
         "quiet": "--quiet",
         "no_metadata": "--no-metadata",
@@ -197,6 +198,7 @@ def _extract_fallback_options(args: list[str], opts: dict) -> tuple[list[str], d
         "--api-key-mock": "api_key_mock",
         "--config": "config_path",
         "-c": "config_path",
+        "--profile": "profile",
         "--timeout": "timeout",
         "-T": "timeout",
         "--out": "out",
@@ -496,6 +498,7 @@ def cli(
     api_key_perplexity,
     api_key_mock,
     config_path,
+    profile,
     combined,
     quiet,
     no_metadata,
@@ -532,6 +535,7 @@ def cli(
     ctx.obj["api_key_perplexity"] = api_key_perplexity
     ctx.obj["api_key_mock"] = api_key_mock
     ctx.obj["config_path"] = config_path
+    ctx.obj["profile"] = profile
     ctx.obj["combined"] = combined
     ctx.obj["quiet"] = quiet
     ctx.obj["no_metadata"] = no_metadata

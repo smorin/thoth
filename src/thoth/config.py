@@ -569,8 +569,11 @@ class ConfigManager:
         return self.data
 
 
-def get_config() -> ConfigManager:
+def get_config(profile: str | None = None) -> ConfigManager:
     """Get a fully-loaded ConfigManager instance with custom path if provided"""
     manager = ConfigManager(_config_path) if _config_path else ConfigManager()
-    manager.load_all_layers()
+    cli_args: dict[str, Any] = {}
+    if profile:
+        cli_args["_profile"] = profile
+    manager.load_all_layers(cli_args)
     return manager

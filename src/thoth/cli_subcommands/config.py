@@ -38,13 +38,18 @@ def _dispatch(
     honored_options=DEFAULT_HONOR,
 ) -> None:
     from thoth.config_cmd import config_command
+    from thoth.errors import ConfigProfileError
 
     validate_inherited_options(ctx, f"config {op}", honored_options)
     config_path = inherited_value(ctx, "config_path")
-    if config_path is None:
-        rc = config_command(op, list(args))
-    else:
-        rc = config_command(op, list(args), config_path=config_path)
+    profile = inherited_value(ctx, "profile")
+    try:
+        rc = config_command(op, list(args), config_path=config_path, profile=profile)
+    except ConfigProfileError as exc:
+        click.echo(f"Error: {exc.message}")
+        if exc.suggestion:
+            click.echo(f"Suggestion: {exc.suggestion}")
+        sys.exit(exc.exit_code)
     sys.exit(rc)
 
 
@@ -85,8 +90,14 @@ def config_get(
         from thoth.config_cmd import get_config_get_data
         from thoth.json_output import emit_error, emit_json
 
+        profile = inherited_value(ctx, "profile")
         data = get_config_get_data(
-            key, layer=layer, raw=raw, show_secrets=show_secrets, config_path=config_path
+            key,
+            layer=layer,
+            raw=raw,
+            show_secrets=show_secrets,
+            config_path=config_path,
+            profile=profile,
         )
         if data.get("error") == "INVALID_LAYER":
             emit_error(
@@ -222,11 +233,13 @@ def config_list(ctx: click.Context, args: tuple[str, ...], as_json: bool) -> Non
                 i += 1
             else:
                 emit_error("USAGE_ERROR", f"unknown arg: {a}", exit_code=2)
+        profile = inherited_value(ctx, "profile")
         data = get_config_list_data(
             layer=layer,
             keys_only=keys_only,
             show_secrets=show_secrets,
             config_path=config_path,
+            profile=profile,
         )
         if data.get("error") == "INVALID_LAYER":
             emit_error(

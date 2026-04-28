@@ -37,7 +37,11 @@ def init(ctx: click.Context, as_json: bool, non_interactive: bool) -> None:
             )
         emit_json(get_init_data(non_interactive=True, config_path=config_path))
 
+    profile = ctx.obj.get("profile") if ctx.obj else None
     config_manager = ConfigManager()
-    config_manager.load_all_layers({"config_path": config_path})
+    cli_args: dict[str, object] = {"config_path": config_path}
+    if profile:
+        cli_args["_profile"] = profile
+    config_manager.load_all_layers(cli_args)
     handler = CommandHandler(config_manager)
     handler.init_command(config_path=config_path)

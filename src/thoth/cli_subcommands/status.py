@@ -49,7 +49,11 @@ def status(ctx: click.Context, operation_id: str | None, as_json: bool) -> None:
 
     # Default Rich path
     config_path = ctx.obj.get("config_path") if ctx.obj else None
+    profile = ctx.obj.get("profile") if ctx.obj else None
     config_manager = ConfigManager()
-    config_manager.load_all_layers({"config_path": config_path})
+    cli_args: dict[str, object] = {"config_path": config_path}
+    if profile:
+        cli_args["_profile"] = profile
+    config_manager.load_all_layers(cli_args)
     handler = CommandHandler(config_manager)
     handler.status_command(operation_id=operation_id)

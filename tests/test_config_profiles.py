@@ -269,3 +269,41 @@ def test_thoth_profile_is_not_a_per_setting_env_override() -> None:
         "THOTH_PROFILE belongs to Stage 1 selection (read by resolve_profile_selection), "
         "not Stage 2 per-setting overrides. See CPP REQ-CPP-004."
     )
+
+
+from click.testing import CliRunner
+
+from thoth.cli import cli
+
+
+def test_root_profile_reaches_config_get(isolated_thoth_home: Path) -> None:
+    from thoth.paths import user_config_file
+
+    _write(
+        user_config_file(),
+        """
+version = "2.0"
+
+[profiles.fast.general]
+default_mode = "thinking"
+""".strip()
+        + "\n",
+    )
+
+    result = CliRunner().invoke(
+        cli,
+        ["--profile", "fast", "config", "get", "general.default_mode"],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert result.output.strip().splitlines()[-1] == "thinking"
+
+
+def test_unknown_root_profile_errors_before_config_get(isolated_thoth_home: Path) -> None:
+    result = CliRunner().invoke(
+        cli,
+        ["--profile", "missing", "config", "get", "general.default_mode"],
+    )
+
+    assert result.exit_code == 1
+    assert "Profile 'missing' not found" in result.output

@@ -22,8 +22,12 @@ def list_cmd(ctx: click.Context, show_all: bool, as_json: bool) -> None:
     validate_inherited_options(ctx, "list", DEFAULT_HONOR)
 
     config_path = ctx.obj.get("config_path") if ctx.obj else None
+    profile = ctx.obj.get("profile") if ctx.obj else None
     config_manager = ConfigManager()
-    config_manager.load_all_layers({"config_path": config_path})
+    cli_args: dict[str, object] = {"config_path": config_path}
+    if profile:
+        cli_args["_profile"] = profile
+    config_manager.load_all_layers(cli_args)
 
     if as_json:
         emit_json(asyncio.run(get_list_data(show_all=show_all)))
