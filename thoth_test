@@ -367,6 +367,45 @@ def _ensure_test_config_home() -> Path:
         return _TEST_CONFIG_HOME
 
 
+# Flags that cause `_prepare_test_isolation` to skip its --output-dir injection.
+# A TestCase using any of these is opting OUT of per-test tmpdir isolation, so
+# its output target must be unique across the suite or parallel runs will race.
+_OUTPUT_FLAGS = ("-o", "--output-dir")
+_PROJECT_FLAG = "--project"
+_OUTPUT_EQ_PREFIXES = ("-o=", "--output-dir=")
+_PROJECT_EQ_PREFIX = "--project="
+_CONFIG_FLAGS = ("-c", "--config")
+_CONFIG_EQ_PREFIXES = ("-c=", "--config=")
+
+
+def _has_output_opt_out(cmd: list[str]) -> bool:
+    return any(
+        arg in _OUTPUT_FLAGS
+        or arg == _PROJECT_FLAG
+        or any(arg.startswith(p) for p in _OUTPUT_EQ_PREFIXES)
+        or arg.startswith(_PROJECT_EQ_PREFIX)
+        for arg in cmd
+    )
+
+
+def _rewrite_config_arg_to_tmpdir(cmd: list[str], tmpdir: Path) -> tuple[list[str], Path]:
+    rewritten = list(cmd)
+    fallback = tmpdir / "test_config.toml"
+    for i, arg in enumerate(rewritten):
+        if arg in _CONFIG_FLAGS and i + 1 < len(rewritten):
+            config_path = tmpdir / (Path(rewritten[i + 1]).name or fallback.name)
+            rewritten[i + 1] = str(config_path)
+            return rewritten, config_path
+        for prefix in _CONFIG_EQ_PREFIXES:
+            if arg.startswith(prefix):
+                raw_path = arg[len(prefix) :]
+                config_path = tmpdir / (Path(raw_path).name or fallback.name)
+                rewritten[i] = f"{prefix}{config_path}"
+                return rewritten, config_path
+    rewritten.extend(["--config", str(fallback)])
+    return rewritten, fallback
+
+
 def _prepare_test_isolation(
     test_case: TestCase,
 ) -> tuple[Path, list[str], dict[str, str], Path | None]:
@@ -384,7 +423,7 @@ def _prepare_test_isolation(
     # consume --output-dir as the --mode value). Also skip if the test already
     # passes -o/--output-dir or uses --project (which routes output under
     # base_output_dir/<project>/ and is overridden by --output-dir).
-    if test_case.provider and not any(a in cmd for a in ("-o", "--output-dir", "--project")):
+    if test_case.provider and not _has_output_opt_out(cmd):
         cmd += ["--output-dir", str(tmpdir)]
         output_base = tmpdir
     env = dict(test_case.env)
@@ -396,15 +435,6 @@ def _prepare_test_isolation(
     # (and break T-SIG-01's 1.5s SIGINT timing). Keep uv on the shared cache.
     env.setdefault("UV_CACHE_DIR", str(Path.home() / ".cache" / "uv"))
     return tmpdir, cmd, env, output_base
-
-
-# Flags that cause `_prepare_test_isolation` to skip its --output-dir injection.
-# A TestCase using any of these is opting OUT of per-test tmpdir isolation, so
-# its output target must be unique across the suite or parallel runs will race.
-_OUTPUT_FLAGS = ("-o", "--output-dir")
-_PROJECT_FLAG = "--project"
-_OUTPUT_EQ_PREFIXES = ("-o=", "--output-dir=")
-_PROJECT_EQ_PREFIX = "--project="
 
 
 def _resolve_output_target(cmd: list[str]) -> tuple[Path | None, str | None]:
@@ -1249,6 +1279,7 @@ class TestRunner:
 
             elif test_case.api_key_method == "config":
                 # Create a temporary config file with API key
+                test_command, config_path = _rewrite_config_arg_to_tmpdir(test_command, tmpdir)
                 config_content = f"""version = "2.0"
 
 [general]
@@ -1271,8 +1302,7 @@ timestamp_format = "%Y-%m-%d_%H%M%S"
 [providers.{test_case.provider}]
 api_key = "{api_key}"
 """
-                with open("test_config.toml", "w") as f:
-                    f.write(config_content)
+                config_path.write_text(config_content)
 
         # Create test prompt file if needed
         if "--prompt-file" in test_command:

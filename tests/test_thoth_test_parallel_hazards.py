@@ -9,9 +9,12 @@ none of the decorated commands fire at import time.
 from __future__ import annotations
 
 import importlib.util
+import shutil
 from importlib.machinery import SourceFileLoader
 from pathlib import Path
 from types import ModuleType
+
+import pytest
 
 THOTH_TEST_PATH = Path(__file__).resolve().parent.parent / "thoth_test"
 
@@ -42,6 +45,65 @@ def _tc(test_id: str, *args: str):
         description=f"hazard probe {test_id}",
         command=["./thoth", "prompt", *args],
     )
+
+
+def _provider_tc(test_id: str, *args: str, api_key_method: str = "env"):
+    return _MOD.TestCase(
+        test_id=test_id,
+        description=f"provider probe {test_id}",
+        command=["./thoth", "prompt", "--provider", "mock", *args],
+        provider="mock",
+        api_key_method=api_key_method,
+    )
+
+
+@pytest.mark.parametrize(
+    "flag_arg",
+    [
+        "-o=out",
+        "--output-dir=out",
+        "--project=p",
+    ],
+)
+def test_prepare_isolation_treats_equals_attached_output_flags_as_opt_out(flag_arg: str):
+    case = _provider_tc("EQ", flag_arg)
+    tmpdir, cmd, _, output_base = _MOD._prepare_test_isolation(case)
+    try:
+        assert cmd == case.command
+        assert output_base is None
+    finally:
+        shutil.rmtree(tmpdir, ignore_errors=True)
+
+
+def test_config_api_key_method_uses_per_test_tmpdir_config_file(monkeypatch, tmp_path):
+    captured = {}
+
+    def fake_run_command(command, **kwargs):
+        captured["command"] = command
+        return 0, "Research completed", ""
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(_MOD, "run_command", fake_run_command)
+
+    case = _provider_tc(
+        "CFG",
+        "--config",
+        "./test_config.toml",
+        api_key_method="config",
+    )
+    runner = _MOD.TestRunner()
+    tmpdir, cmd, env, output_base = _MOD._prepare_test_isolation(case)
+    try:
+        result = runner._run_subprocess_case(case, tmpdir, cmd, env, output_base)
+        assert result.passed
+        config_idx = captured["command"].index("--config") + 1
+        config_path = Path(captured["command"][config_idx])
+        assert config_path.parent == tmpdir
+        assert config_path.name == "test_config.toml"
+        assert config_path.exists()
+        assert not (tmp_path / "test_config.toml").exists()
+    finally:
+        shutil.rmtree(tmpdir, ignore_errors=True)
 
 
 def test_disjoint_o_paths_clean():
