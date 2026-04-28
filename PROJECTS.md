@@ -1,3 +1,167 @@
+## [ ] Project P21: Configuration Profiles
+**Goal**: Add named configuration profiles that let users set defaults and switch between them.
+
+**Status**: Placeholder — requirements still need to be fleshed out before this can be worked on.
+
+### Tests & Tasks
+- [ ] [P21-TS01] Design tests for profile selection, default application, and config-file persistence before implementation.
+- [ ] [P21-T01] Flesh out requirements for configuration profiles.
+- [ ] [P21-T02] Implement profiles that set defaults applied to subsequent commands.
+- [ ] [P21-T03] Store and load profiles from the configuration file.
+
+---
+
+## [ ] Project P22: OpenAI — Immediate (Synchronous) Calls
+**Goal**: Add standard, single-shot synchronous LLM completion calls via OpenAI.
+
+**Status**: Placeholder — requirements still need to be fleshed out before this can be worked on.
+
+### Tests & Tasks
+- [ ] [P22-TS01] Design tests for OpenAI immediate-call behavior, cassette replay, and live-test gating before implementation.
+- [ ] [P22-T01] Flesh out requirements for OpenAI immediate calls.
+- [ ] [P22-T02] Implement normal synchronous LLM completion calls.
+- [ ] [P22-T03] Add VCR recording/replay coverage for local testing.
+- [ ] [P22-T04] Add live testing capability disabled by default.
+
+---
+
+## [ ] Project P23: Perplexity — Immediate (Synchronous) Calls
+**Goal**: Add standard, single-shot synchronous LLM completion calls via Perplexity.
+
+**Status**: Placeholder — requirements still need to be fleshed out before this can be worked on.
+
+### Tests & Tasks
+- [ ] [P23-TS01] Design tests for Perplexity immediate-call behavior, cassette replay, and live-test gating before implementation.
+- [ ] [P23-T01] Flesh out requirements for Perplexity immediate calls.
+- [ ] [P23-T02] Implement normal synchronous LLM completion calls.
+- [ ] [P23-T03] Add VCR recording/replay coverage for local testing.
+- [ ] [P23-T04] Add live testing capability disabled by default.
+
+---
+
+## [ ] Project P24: Gemini — Immediate (Synchronous) Calls
+**Goal**: Add standard, single-shot synchronous LLM completion calls via Gemini.
+
+**Status**: Placeholder — requirements still need to be fleshed out before this can be worked on.
+
+### Tests & Tasks
+- [ ] [P24-TS01] Design tests for Gemini immediate-call behavior, cassette replay, and live-test gating before implementation.
+- [ ] [P24-T01] Flesh out requirements for Gemini immediate calls.
+- [ ] [P24-T02] Implement normal synchronous LLM completion calls.
+- [ ] [P24-T03] Add VCR recording/replay coverage for local testing.
+- [ ] [P24-T04] Add live testing capability disabled by default.
+
+---
+
+## [ ] Project P25: Architecture Review & Cleanup — Immediate Providers
+**Goal**: Conduct a cross-provider architecture review across the three immediate-call providers once all three are in place.
+
+**Status**: Placeholder — requirements still need to be fleshed out before this can be worked on.
+
+### Tests & Tasks
+- [ ] [P25-TS01] Define review criteria and any regression tests needed before architecture changes are proposed.
+- [ ] [P25-T01] Flesh out requirements for the immediate-provider architecture review.
+- [ ] [P25-T02] Analyze whether shared infrastructure is feasible across the three immediate providers.
+- [ ] [P25-T03] Document if no shared abstraction is warranted.
+- [ ] [P25-T04] If applicable, recommend architecture enhancements that reduce duplication and improve stability, uniformity, and maintainability.
+
+---
+
+## [ ] Project P26: OpenAI — Background Deep Research
+**Goal**: Add long-running deep research operations via OpenAI, submitted and polled to completion.
+
+**Status**: Placeholder — requirements still need to be fleshed out before this can be worked on.
+
+### Tests & Tasks
+- [ ] [P26-TS01] Design tests for OpenAI background submission, polling, cassette replay, and live-test gating before implementation.
+- [ ] [P26-T01] Flesh out requirements for OpenAI background deep research.
+- [ ] [P26-T02] Implement async deep research submission and polling.
+- [ ] [P26-T03] Add VCR recording/replay coverage for local testing.
+- [ ] [P26-T04] Add live testing capability disabled by default.
+
+---
+
+## [ ] Project P27: Perplexity — Background Deep Research
+**Goal**: Add long-running deep research operations via Perplexity, submitted and polled to completion.
+
+**Status**: Placeholder — requirements still need to be fleshed out before this can be worked on.
+
+### Tests & Tasks
+- [ ] [P27-TS01] Design tests for Perplexity background submission, polling, cassette replay, and live-test gating before implementation.
+- [ ] [P27-T01] Flesh out requirements for Perplexity background deep research.
+- [ ] [P27-T02] Implement async deep research submission and polling.
+- [ ] [P27-T03] Add VCR recording/replay coverage for local testing.
+- [ ] [P27-T04] Add live testing capability disabled by default.
+
+---
+
+## [ ] Project P28: Gemini — Background Deep Research
+**Goal**: Add long-running deep research operations via Gemini, submitted and polled to completion.
+
+**Status**: Placeholder — requirements still need to be fleshed out before this can be worked on.
+
+### Tests & Tasks
+- [ ] [P28-TS01] Design tests for Gemini background submission, polling, cassette replay, and live-test gating before implementation.
+- [ ] [P28-T01] Flesh out requirements for Gemini background deep research.
+- [ ] [P28-T02] Implement async deep research submission and polling.
+- [ ] [P28-T03] Add VCR recording/replay coverage for local testing.
+- [ ] [P28-T04] Add live testing capability disabled by default.
+
+---
+
+## [ ] Project P29: Architecture Review & Cleanup — Background Deep Research Providers
+**Goal**: Conduct a cross-provider architecture review across the three background deep research providers once all three are in place.
+
+**Status**: Placeholder — requirements still need to be fleshed out before this can be worked on.
+
+### Tests & Tasks
+- [ ] [P29-TS01] Define review criteria and any regression tests needed before architecture changes are proposed.
+- [ ] [P29-T01] Flesh out requirements for the background-provider architecture review.
+- [ ] [P29-T02] Analyze whether shared infrastructure is feasible across the three background deep research providers.
+- [ ] [P29-T03] Document if no shared abstraction is warranted.
+- [ ] [P29-T04] If applicable, recommend architecture enhancements that reduce duplication and improve stability, uniformity, and maintainability.
+
+---
+
+## [ ] Project P30: Claude Code Skills Support
+**Goal**: Add support for Claude Code skills, similar to what Codex provides.
+
+**Reference**: https://github.com/openai/codex-plugin-cc
+
+**Status**: Placeholder — requirements still need to be fleshed out before this can be worked on.
+
+### Tests & Tasks
+- [ ] [P30-TS01] Design tests for Claude Code skill discovery, loading, and execution before implementation.
+- [ ] [P30-T01] Flesh out requirements for Claude Code skills support.
+- [ ] [P30-T02] Implement Claude Code skills support using the reference plugin as input.
+
+---
+
+## [ ] Project P31: Interactive Init Command
+**Goal**: Add an interactive `init` command.
+
+**Status**: Placeholder — requirements still need to be fleshed out before this can be worked on.
+
+### Tests & Tasks
+- [ ] [P31-TS01] Design tests for the interactive `init` flow before implementation.
+- [ ] [P31-T01] Flesh out requirements for the interactive `init` command.
+- [ ] [P31-T02] Implement the interactive `init` command.
+
+---
+
+## [ ] Project P32: Interactive Prompt Refiner
+**Goal**: Add a fast, interactive prompt-refinement workflow before research submission.
+
+**Status**: Placeholder — requirements still need to be fleshed out before this can be worked on.
+
+### Tests & Tasks
+- [ ] [P32-TS01] Design tests for the prompt-refinement workflow before implementation.
+- [ ] [P32-T01] Flesh out requirements for the interactive prompt refiner.
+- [ ] [P32-T02] Implement an interactive workflow that refines a research prompt before submission.
+- [ ] [P32-T03] Keep the refiner fast and avoid full deep research during refinement.
+
+---
+
 ## [ ] Project P20: Extended Real-API Workflow Coverage — Mirror Mock Contracts
 
 **Goal**: Expand the `@pytest.mark.extended` real-API suite from model-kind smoke checks into periodic workflow coverage that mirrors the important mock/thoth_test contracts. These tests stay out of default pytest, run manually or nightly, and answer: "Does the real OpenAI runtime still honor the immediate/background split, output sinks, file output semantics, status/cancel behavior, and option forwarding?"
