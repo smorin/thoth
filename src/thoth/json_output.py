@@ -25,8 +25,16 @@ from typing import Any, NoReturn
 def emit_json(data: dict[str, Any], *, exit_code: int = 0) -> NoReturn:
     """Emit a success envelope and exit.
 
+    Security boundary: this function is the framework-free envelope
+    writer; secret masking is the caller's responsibility (see the
+    ``get_*_data`` functions in ``commands.py`` / ``config_cmd.py`` /
+    ``modes_cmd.py``). The CI lint test in ``tests/test_ci_lint_rules.py``
+    enforces that handlers expose ``data["masked"]`` flags so callers can
+    verify masking was applied before invoking ``emit_json``.
+
     Args:
-        data: The dict to wrap as `data` inside the envelope.
+        data: The dict to wrap as `data` inside the envelope. Caller
+            MUST have masked any secret-bearing fields per the spec.
         exit_code: Process exit code. Defaults to 0; use 130 for SIGINT
             recovery paths.
     """
