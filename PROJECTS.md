@@ -1,13 +1,183 @@
-## [ ] Project P21: Configuration Profiles
-**Goal**: Add named configuration profiles that let users set defaults and switch between them.
+# Project Tracker Conventions
 
-**Status**: Placeholder — requirements still need to be fleshed out before this can be worked on.
+This file tracks planned, active, and completed Thoth work. New projects are added near the top in descending project-number order unless the user gives a specific ordering. Each project should keep test/design tasks (`TS`) ahead of implementation tasks (`T`) so work stays test-driven.
+
+## Status Key
+
+- `[ ]` Not started
+- `[~]` In progress
+- `[x]` Completed
+- `[-]` Dropped, superseded, or won't fix
+- `[>]` Proceeded to a successor project, follow-up, or later phase
+
+## Project Summary
+
+Keep this summary list updated whenever a project is added, renamed, completed, dropped, or proceeded to a successor. The detailed project entry remains the source of truth; this summary is a quick navigation index.
+
+- [ ] P21 — Configuration Profile Resolution & Overlay
+- [ ] P21b — Configuration Profile CRUD Commands (depends on P21)
+- [ ] P22 — OpenAI — Immediate (Synchronous) Calls
+- [ ] P23 — Perplexity — Immediate (Synchronous) Calls
+- [ ] P24 — Gemini — Immediate (Synchronous) Calls
+- [ ] P25 — Architecture Review & Cleanup — Immediate Providers
+- [ ] P26 — OpenAI — Background Deep Research
+- [ ] P27 — Perplexity — Background Deep Research
+- [ ] P28 — Gemini — Background Deep Research
+- [ ] P29 — Architecture Review & Cleanup — Background Deep Research Providers
+- [ ] P30 — Claude Code Skills Support
+- [ ] P31 — Interactive Init Command
+- [ ] P32 — Interactive Prompt Refiner
+- [ ] P20 — Extended Real-API Workflow Coverage — Mirror Mock Contracts
+- [ ] P18 — Immediate vs Background — Explicit `kind`, Runtime Mismatch, Path Split, Streaming, Cancel
+- [ ] P17 — thoth-ergonomics-v1 Spec Round-Trip — Annotate Implementation Status
+- [x] P16 PR2 — Remove Legacy Shims, Add resume + ask Subcommands
+- [x] P16 PR3 — Automation Polish — `completion` subcommand + universal `--json`
+- [x] P16 PR1 — Click-Native CLI Refactor — Subcommand Migration & Parity Gate
+- [x] P15 — P14 Bug Fixes — pick-model gating, spinner-progress conflict, prompt-file caps
+- [x] P14 — Thoth CLI Ergonomics v1
+- [x] P13 — P11 Follow-up — is_background_model overload + shared secrets + regression tests
+- [ ] P12 — CLI Mode Editing — `thoth modes set` / `thoth modes add`
+- [x] P11 — `thoth modes` Discovery Command
+- [x] P10 — Config Subcommand + XDG Layout
+- [x] P09 — Decompose __main__.py + AppContext DI + Provider Registry
+- [-] P08 — Typed Exceptions, Unified API Key Resolution, Drop Legacy Config Shim
+- [x] P06 — Hybrid Transient/Permanent Error Handling with Resumable Recovery
+- [x] P05 — VCR Cassette Replay Tests
+- [x] P03 — Fix BUG-03 OpenAI Poll Interval Scheduling
+- [x] P02 — Fix BUG-01 OpenAI Background Status Handling
+- [x] P04 — GAP-01 — max_tool_calls safeguard and tool-selection config
+- [ ] P01 — Developer Tooling & Automation
+
+## Project References
+
+Every project that has supporting material must list those references near the beginning of its project entry, before scope and tasks. References can include Superpowers specs/plans, planning docs, research docs, audits, external documentation, or any other source document used to define the work.
+
+Use this shape:
+
+```markdown
+**References**
+- **Spec:** `docs/superpowers/specs/...`
+- **Plan:** `docs/superpowers/plans/...`
+- **Research:** `research/...`
+- **Audit:** `planning/...`
+- **External:** https://...
+```
+
+Existing projects may use older labels such as `**Primary spec**`, `**Plan**`, or `**Research basis**`; when editing those entries, prefer normalizing them to the `**References**` block.
+
+## Task ID Key
+
+- `P##` — Project number, for example `P21`
+- `P##-TS##` — Test/design task for that project
+- `P##-T##` — Implementation, documentation, or verification task for that project
+- Suffix letters such as `P21-T09a` — inserted follow-up task that preserves existing numbering
+
+## Usage Rules
+
+- Keep each project entry self-contained: goal, references, scope, tasks, and verification.
+- Planning tasks may be checked when the plan/spec exists; implementation tasks stay unchecked until the code or docs they describe have actually landed.
+- Mark checkboxes as work lands.
+- When adding a new project, preserve the order requested by the user, then adapt numbering to the current file.
+
+---
+
+## [ ] Project P21: Configuration Profile Resolution & Overlay
+**Goal**: Add CPP-style named configuration profile *resolution* — Thoth honors `--profile NAME`, `THOTH_PROFILE`, and `general.default_profile`, applies the selected `[profiles.<name>]` overlay between project config and env/CLI overrides, and hard-errors on missing profiles. Users manage profiles by hand-editing TOML in this project; CRUD commands ship in P21b.
+
+**References**
+- **Spec:** `docs/superpowers/specs/2026-04-28-p21-configuration-profiles-design.md`
+- **Plan:** `docs/superpowers/plans/2026-04-28-p21-configuration-profiles.md`
+- **Research:** `research/configuration_profile_pattern.v1.md`
+
+**Status**: Planned — requirements scoped; implementation tasks unchecked.
+
+**Scope**
+- Add profile sections under `[profiles.<name>]`, where nested profile keys mirror normal config paths.
+- Resolve profile selection as `--profile NAME` → `THOTH_PROFILE` → `general.default_profile` → no profile.
+- Apply the active profile as a `profile` config layer after project config and before environment/CLI per-setting overrides.
+- Use per-key replace semantics only; no deep merge inside profile values.
+- Hard-error when a selected profile is missing, with the error naming whether the source was flag, env, or config (load-time per REQ-CPP-103).
+- Thread the new root `--profile` option through every existing config-loading call site so commands like `thoth config get` honor it.
+
+**Out of Scope**
+- `thoth config profiles ...` CRUD commands (deferred to P21b).
+- Profile inheritance or `source_profile`-style chains.
+- Multiple active profiles.
+- Deep-merge behavior inside a profile key.
+- Interactive profile selection prompts.
+- Runtime profile switching after config is loaded.
+- A new top-level `thoth profiles` command group.
+- Provider-specific credential chains beyond normal config values.
 
 ### Tests & Tasks
-- [ ] [P21-TS01] Design tests for profile selection, default application, and config-file persistence before implementation.
-- [ ] [P21-T01] Flesh out requirements for configuration profiles.
-- [ ] [P21-T02] Implement profiles that set defaults applied to subsequent commands.
-- [ ] [P21-T03] Store and load profiles from the configuration file.
+- [x] [P21-TS01] Specify the resolver/overlay test suite (resolver, `ConfigManager` overlay, root-flag plumbing) before implementation.
+- [x] [P21-T01] Flesh out requirements for configuration profile resolution using `research/configuration_profile_pattern.v1.md`.
+- [ ] [P21-TS02] `tests/test_config_profiles.py`: `resolve_profile_selection` uses `--profile` before `THOTH_PROFILE`, `THOTH_PROFILE` before `general.default_profile`, and no profile when all are absent.
+- [ ] [P21-TS03] `tests/test_config_profiles.py`: project profile shadows user profile of the same name wholesale; same-named profile tables are not merged.
+- [ ] [P21-TS04] `tests/test_config_profiles.py`: missing selected profile raises `ConfigProfileError` and names the selection source for each of `--profile` flag, `THOTH_PROFILE`, and `general.default_profile` pointer (load-time error per REQ-CPP-103).
+- [ ] [P21-T02] Add `src/thoth/config_profiles.py` with `ProfileSelection`, `ProfileLayer`, profile catalog collection, selection resolution, profile layer resolution, and profile stripping helpers.
+- [ ] [P21-T03] Add `ConfigProfileError` to `src/thoth/errors.py`.
+- [ ] [P21-TS05] `tests/test_config_profiles.py`: `ConfigManager` leaves behavior unchanged when no profile is active, applies active profile values, lets env/CLI per-setting values beat profile values, records the actual project config path (`./thoth.toml` or `./.thoth/config.toml`) used by `_load_project_config`, preserves `general.default_profile` after profile splitting, and `THOTH_PROFILE` is NOT in `_get_env_overrides` (regression guard).
+- [ ] [P21-T04] Update `ConfigManager.load_all_layers` to record the actual project config path used by `_load_project_config`, load raw user/project profiles, resolve the active profile, expose `profile_selection`/`active_profile`/`profile_catalog`, and merge a `profile` layer between project and env.
+- [ ] [P21-TS06] `tests/test_config_profiles.py`: root `--profile` reaches `thoth config get` and `thoth config list` (via `config_cmd._load_manager`); unknown root profile errors before command output; runtime `--profile`/`THOTH_PROFILE` does NOT mutate the persisted `general.default_profile` (B20: persisted `fast` + `--profile bar` → `config get` returns `fast`, and `cm.profile_selection.name == "bar"` from source `flag`).
+- [ ] [P21-T05] Add root `--profile` to `_RESEARCH_OPTIONS`, inherited-option policy (`DEFAULT_HONOR` includes `"profile"`), root fallback parsing in `_extract_fallback_options`, and **every** existing config-loading call site, including `src/thoth/config_cmd.py` (`_load_manager` and each `get_config_*_data` entry that reads merged config) and `src/thoth/cli_subcommands/config.py` leaves that forward inherited profile.
+- [ ] [P21-T06] Update `README.md`, `manual_testing_instructions.md`, and `src/thoth/help.py` with hand-edit profile examples (TOML structure, selection precedence, worked invocations). Documentation examples must show profiles that change the default mode/project, run all available deep-research providers (`["openai", "perplexity"]` today, with a "future-ready" callout pointing at gemini), force one deep-research provider, default to an immediate mode, and store a future-ready interactive default profile. README explains that `--profile`/`THOTH_PROFILE` are read-only runtime inputs and never mutate `general.default_profile`.
+- [ ] [P21-T07] Update `PROJECTS.md` as implementation tasks land.
+
+### Automated Verification
+- `uv run pytest tests/test_config_profiles.py tests/test_config_cmd.py -v` passes.
+- `just check` passes.
+- `./thoth_test -r --skip-interactive -q` passes.
+- `just test-lint` passes.
+- `just test-typecheck` passes.
+- `git diff --check` passes.
+
+---
+
+## [ ] Project P21b: Configuration Profile CRUD Commands
+**Goal**: Add `thoth config profiles list/show/current/use/clear/add/set/unset/remove` so users can manage profiles from the CLI without hand-editing TOML. Depends on P21 (uses `cm.profile_catalog`, `cm.profile_selection`, and the threaded `--profile` plumbing).
+
+**References**
+- **Spec:** `docs/superpowers/specs/2026-04-28-p21b-configuration-profiles-crud-design.md`
+- **Plan:** `docs/superpowers/plans/2026-04-28-p21b-configuration-profiles-crud.md`
+- **Depends on:** P21 (Configuration Profile Resolution & Overlay)
+- **Research:** `research/configuration_profile_pattern.v1.md`
+
+**Status**: Planned — requirements scoped; implementation tasks unchecked. Do not start until P21 has merged.
+
+**Scope**
+- Add nine `get_config_profile_*_data` functions in `config_cmd.py` using `tomlkit`: `list`, `show`, `current`, `use`, `clear`, `add`, `set`, `unset`, `remove`. Singular naming throughout.
+- Add a `config profiles` Click subgroup with corresponding leaves; preserve TOML comments through `tomlkit`.
+- Read-only leaves (`list`, `show`, `current`) honor inherited `--profile`; mutator leaves (`add`/`set`/`unset`/`remove`/`use`/`clear`) reject it.
+- `use NAME` validates `NAME` against the resolved catalog (user + project tiers) before persisting `general.default_profile`.
+- `unset KEY` removes only the named leaf; empty parent tables are left in place. `remove NAME` deletes the whole `[profiles.<name>]` block.
+- `--config PATH` and `--project` remain mutually exclusive.
+
+**Out of Scope**
+- Anything in P21's out-of-scope list (still applies).
+- Top-level `thoth profiles` command group (commands live under `thoth config profiles`).
+- Profile-name validation beyond what TOML's bare-key syntax enforces.
+
+### Tests & Tasks
+- [ ] [P21b-TS01] Specify CRUD test suite (data functions, Click leaves, JSON envelopes, comment preservation, depth-4 paths) before implementation.
+- [ ] [P21b-TS02] `tests/test_config_profiles_cmd.py`: profile data functions add, set, show, unset, remove, use, clear, current, list — round-trip and metadata.
+- [ ] [P21b-TS03] `tests/test_config_profiles_cmd.py`: deep-path coverage (`profiles.fast.general.default_mode` 4-level set/unset writes/removes only the leaf and leaves the now-empty `[profiles.fast.general]` parent in place).
+- [ ] [P21b-TS04] `tests/test_config_profiles_cmd.py`: tomlkit comment preservation — comments around `[profiles.fast]` and on individual lines survive `set` then `unset`.
+- [ ] [P21b-TS05] `tests/test_config_profiles_cmd.py`: `use NAME` rejects names absent from the resolved catalog with `ConfigProfileError`; cross-tier resolution allows `use NAME` when `NAME` lives only in the project tier.
+- [ ] [P21b-TS06] `tests/test_config_profiles_cmd.py`: mutator leaves (`add`/`set`/`unset`/`remove`/`use`/`clear`) reject root `--profile`; read-only leaves (`list`/`show`/`current`) honor it. End-to-end: persisted `fast` + `--profile bar` → `current` returns `bar` from `flag`, `config get general.default_profile` still returns `fast`.
+- [ ] [P21b-T01] Add the nine `get_config_profile_*_data` functions to `config_cmd.py` using existing helpers (`_target_path`, `_reject_config_project_conflict`, `_load_toml_doc`, `_parse_value`, `_unset_in_doc`, `_mask_in_tree`, `_to_plain`). `unset` removes only the named leaf; `use NAME` validates against the resolved catalog.
+- [ ] [P21b-T02] Add `config profiles` Click subgroup to `src/thoth/cli_subcommands/config.py` with leaves for `list`, `show`, `current`, `use`, `clear`, `add`, `set`, `unset`, `remove`. Mutator leaves omit `"profile"` from `honored_options`; read-only leaves include it. JSON output via existing envelope helpers.
+- [ ] [P21b-T03] Update `tests/test_json_envelopes.py` and `tests/test_ci_lint_rules.py` for new JSON-capable profile commands.
+- [ ] [P21b-T04] Update `README.md`, `manual_testing_instructions.md`, and `src/thoth/help.py` with command examples (`thoth config profiles ...` invocations) and the `config get general.default_profile` vs `config profiles current` distinction.
+- [ ] [P21b-T05] Update `PROJECTS.md` as implementation tasks land.
+
+### Automated Verification
+- `uv run pytest tests/test_config_profiles_cmd.py tests/test_json_envelopes.py tests/test_ci_lint_rules.py -v` passes.
+- `just check` passes.
+- `./thoth_test -r --skip-interactive -q` passes.
+- `just test-lint` passes.
+- `just test-typecheck` passes.
+- `git diff --check` passes.
 
 ---
 
