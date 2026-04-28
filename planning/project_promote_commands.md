@@ -16,7 +16,7 @@ CLI surface ambiguous and forces awkward separators like
 After this project, the split is unambiguous:
 
 - **Administrative subcommands** (dispatched by Click group): `init`,
-  `status`, `list`, `providers`, `config`, `workflow`, `help`
+  `status`, `list`, `providers`, `config`, `modes`, `help`
 - **Research modes** (positional first argument): `default`, `clarification`,
   `exploration`, `deep_dive`, `tutorial`, `solution`, `prd`, `tdd`,
   `thinking`, `deep_research`, `mini_research`, `comparison`
@@ -73,8 +73,11 @@ deprecation window.
 
 1. Does `thoth --resume OP_ID` stay as a global flag, become
    `thoth resume OP_ID`, or both?
-2. Do we want nested subcommand groups (e.g., `thoth config get/set/edit`,
-   `thoth providers list/models/check`) or flat subcommands?
+2. ~~Do we want nested subcommand groups (e.g., `thoth config get/set/edit`,
+   `thoth providers list/models/check`) or flat subcommands?~~
+   **Resolved 2026-04-25:** Flat subcommands, matching the existing
+   `config`/`modes` positional-op precedent in `config_cmd.py` and
+   `modes_cmd.py`. No nested groups.
 3. Shell-completion story for the new surface — does Click's built-in
    `_THOTH_COMPLETE` work once we have a group?
 

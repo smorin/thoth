@@ -1,194 +1,249 @@
- Please run the following tests to verify the response storage fix:
+# Manual Testing Guide
 
-  # First, source the API key
-  source openai.env
+> Updated for P14 (Thoth CLI Ergonomics v1) — the most recent batch of CLI changes. Earlier sections covering response-storage and per-config timeouts have been archived.
 
-  # Test 1: Basic prompt
-  ./thoth "What is Python?" --provider openai -v
+## Prerequisites
 
-  # Test 2: Verify file creation
-  ls -la *_openai_*.md
+```bash
+# 1. Bootstrap environment (one-time)
+make env-check                  # Confirms uv, python3, just, bun present
 
-  # Test 3: Check file content has response
-  cat *_openai_*.md
+# 2. Install dependencies
+just install                    # Or: just install-dev (also installs git hooks)
 
-  # Test 4: Multiple prompts (simulating concurrent operations)
-  ./thoth "Prompt 1: What is REST API?" --provider openai
-  ./thoth "Prompt 2: What is GraphQL?" --provider openai
+# 3. Ensure API keys (env-vars are recommended)
+export OPENAI_API_KEY=sk-...
+# Optional: source openai.env if you keep it in a file
+```
 
-  # Check both files have different content
-  ls -la *_openai_*.md
+---
 
-  Manual Testing Instructions for Phase 2
+## Smoke Tests (run first)
 
-  Please run the following tests to verify timeout functionality:
+```bash
+# 1. Help text renders the new structure
+uv run thoth --help | head -60
+# Expected: top "Commands:" section, "Research Modes:" with the workflow chain
+#           line "clarification → exploration → deep_dive → tutorial → solution → prd → tdd"
+#           and Examples: a quick prompt, a chained --auto run, --resume, and a -v debug example.
 
-  Part A: Config-based Timeout Tests
+# 2. Version
+uv run thoth --version
+# Expected: v2.5.0 (or current)
 
-  # Test 1: Normal prompt (should complete with default 30s timeout)
-  source openai.env
-  ./thoth "Brief answer: What is 2+2?" --provider openai
+# 3. Authentication help (P14 feature)
+uv run thoth --help auth
+# Expected: 3-section block: Environment variables → Config file (with [providers.openai] visible) → CLI flags.
 
-  # Test 2: Test with very short timeout in config (should fail)
-  cat > test_timeout_config.toml << EOF
-  version = "1.0"
-  [providers.openai]
-  api_key = "\${OPENAI_API_KEY}"
-  timeout = 0.1
-  EOF
+# 4. The other in-CLI help topic still works
+uv run thoth help modes
+# Expected: per-mode listing with provider/model/kind columns.
 
-  ./thoth "Explain quantum computing in detail" --provider openai --config
-  test_timeout_config.toml
+# 5. End-to-end mock run (no real API calls)
+uv run thoth "smoke test prompt" --provider mock
+# Expected: writes a file like 2026-04-25_HHMMSS_default_mock_*.md in the cwd.
+```
 
-  # Test 3: Test with reasonable longer timeout in config
-  cat > test_timeout_config2.toml << EOF
-  version = "1.0"
-  [providers.openai]
-  api_key = "\${OPENAI_API_KEY}"
-  timeout = 60
-  model = "gpt-4o"
-  EOF
+---
 
-  ./thoth "Explain how DNS works" --provider openai --config
-  test_timeout_config2.toml -v
+## P14 Feature Tests
 
-  # Clean up
-  rm -f test_timeout_config*.toml *_openai_*.md
+### A. `thoth providers` subcommand group
 
-  Part B: CLI Timeout Override Tests
+```bash
+# A1. New `list` subcommand
+uv run thoth providers list
+# Expected: "Configured providers:" then "openai", "perplexity" with "key set" or "no key"
+#           depending on whether $OPENAI_API_KEY / $PERPLEXITY_API_KEY are exported.
 
-  # Test 4: CLI override with short timeout (should override default)
-  source openai.env
-  ./thoth "Explain the theory of relativity" --provider openai --timeout 0.1
+# A2. New `models` subcommand
+uv run thoth providers models
+# Expected: per-provider sections listing the models referenced in BUILTIN_MODES.
 
-  # Test 5: CLI override with long timeout (verbose to see timeout)
-  ./thoth "What is 2+2?" --provider openai --timeout 60 -v
+# A3. New `check` subcommand
+uv run thoth providers check
+# Expected: exit 0 + "All providers have keys set" if both env vars are set,
+#           OR exit 2 + "Missing keys for: <names>" if any are missing.
+echo "exit=$?"
 
-  # Test 6: CLI override should take precedence over config
-  cat > test_timeout_config3.toml << EOF
-  version = "1.0"
-  [providers.openai]
-  api_key = "\${OPENAI_API_KEY}"
-  timeout = 0.1
-  EOF
+# A4. Deprecation shim — old form still works with a warning
+uv run thoth providers -- --list 2>&1 | head -5
+# Expected: first line on stderr is
+#   warning: 'thoth providers -- ...' is deprecated; use 'thoth providers list|models|check'
+# followed by the legacy provider table.
+```
 
-  # This should succeed because CLI timeout=30 overrides config timeout=0.1
-  ./thoth "Simple question: What is Python?" --provider openai --config
-  test_timeout_config3.toml --timeout 30
+### B. Workflow chain + worked examples in `--help`
 
-  # Test 7: Verify -T short form works
-  ./thoth "What is 2+2?" --provider openai -T 15 -v
+```bash
+# B1. Verify the workflow chain line appears
+uv run thoth --help | grep -F "clarification → exploration → deep_dive"
 
-  # Clean up
-  rm -f test_timeout_config*.toml *_openai_*.md
+# B2. Verify the chained-with-async example appears
+uv run thoth --help | grep -F 'thoth deep_research --auto --project k8s --async'
 
-  Expected Results:
+# B3. Verify the resume example appears
+uv run thoth --help | grep -F 'thoth --resume op_abc123'
 
-  - Test 1: Should complete successfully
-  - Test 2: Should fail with "Request timed out. Try increasing timeout in config."
-  - Test 3: Should complete, verbose shows "openai Timeout: 60s"
-  - Test 4: Should fail with timeout error
-  - Test 5: Should complete, verbose shows "openai Timeout: 60.0s"
-  - Test 6: Should succeed (CLI overrides config)
-  - Test 7: Should work with -T, verbose shows "openai Timeout: 15.0s"
+# B4. Verify the -v debug example appears
+uv run thoth --help | grep -F 'Debug API issues'
+```
 
-  Once you've verified Phase 2 works correctly, we can proceed to Phase 3 (Enhanced
-  Error Handling).
+### C. `--input-file` / `--auto` clearer help
 
+```bash
+# C1. --auto mentions "happy path"
+uv run thoth --help | grep -F "happy path for chaining modes"
 
+# C2. --input-file mentions "non-thoth document"
+uv run thoth --help | grep -F "non-thoth document"
+```
 
-  Phase 3 Complete: Enhanced Error Handling
+### D. API-key documentation pass
 
-  I've successfully implemented comprehensive error handling for the OpenAI provider:
+```bash
+# D1. CLI-flag help is softened (now says "not recommended")
+uv run thoth --help | grep -F "not recommended"
+# Expected: at least three matches (--api-key-openai, --api-key-perplexity, --api-key-mock).
 
-  Enhancements Added:
+# D2. README authentication section
+sed -n '/^## Authentication/,/^## /p' README.md | head -25
+# Expected: 3-step ranked list (env vars > config file > CLI flags last) plus a
+#           pointer to `thoth help auth`.
 
-  1. Specific Error Types:
-    - httpx.TimeoutException - Request timeout
-    - httpx.ConnectError - Connection failures
-    - 401 errors - Authentication/API key issues
-    - 429 errors - Rate limit exceeded
-    - 404 errors - Model not found
-    - Quota exceeded errors
-    - 400 errors - Invalid requests
-  2. Retry Logic:
-    - Added @retry decorator using tenacity
-    - Retries up to 3 times with exponential backoff
-    - Only retries on transient errors (timeout, connection)
-  3. Configuration Improvements:
-    - Made temperature configurable (default: 0.7)
-    - Made max_tokens configurable (default: 4000)
+# D3. `thoth help auth` matches `thoth --help auth`
+diff <(uv run thoth help auth) <(uv run thoth --help auth)
+# Expected: no diff — both routes produce the same output.
+```
 
-  Manual Testing Instructions for Phase 3
+### E. `APIKeyError` surfaces config path
 
-  Please run the following tests to verify error handling:
+```bash
+# E1. Trigger a missing-key error (unset OPENAI_API_KEY for this test)
+unset OPENAI_API_KEY
+uv run thoth "test" --provider openai 2>&1 | head -10
+# Expected: error message mentions
+#   - "openai API key not found"
+#   - "Set OPENAI_API_KEY (or edit /Users/<you>/.thoth/config.toml)"
+#   - "Config file: /Users/<you>/.thoth/config.toml  (does not exist|exists)"
+#   - "Env checked: OPENAI_API_KEY (unset)"
+echo "exit=$?"
+# Expected exit: 2
 
-  # Test 1: Invalid API key
-  OPENAI_API_KEY="sk-invalid-key-12345" ./thoth "test" --provider openai
+# Restore for later tests
+export OPENAI_API_KEY=sk-...
+```
 
-  # Test 2: Empty API key
-  OPENAI_API_KEY="" ./thoth "test" --provider openai
+### F. Progress spinner (sync background-mode runs)
 
-  # Test 3: Invalid model
-  cat > test_bad_model.toml << EOF
-  version = "1.0"
-  [providers.openai]
-  api_key = "\${OPENAI_API_KEY}"
-  model = "gpt-5-does-not-exist"
-  EOF
+> Requires a real OpenAI key. The spinner is gated to TTY + sync + non-verbose + background model.
 
-  source openai.env
-  ./thoth "test" --provider openai --config test_bad_model.toml
+```bash
+# F1. Spinner shows during sync deep-research (interactive terminal)
+uv run thoth deep_research "explain DNS in 50 words" --provider openai
+# Expected: live spinner reading
+#   "<label> · ~20 min expected · Ctrl-C to background"
+# completes when the result is written, then "Deep research running complete".
 
-  # Test 4: Test retry on timeout (use very short timeout)
-  ./thoth "Explain quantum computing in extreme detail" --provider openai --timeout
-  0.5 -v
-  # Should see retry attempts in output
+# F2. Spinner suppressed in --async mode
+uv run thoth deep_research "explain TLS in 50 words" --provider openai --async
+# Expected: prints an operation ID immediately, no spinner.
 
-  # Test 5: Test configuration of temperature and max_tokens
-  cat > test_params.toml << EOF
-  version = "1.0"
-  [providers.openai]
-  api_key = "\${OPENAI_API_KEY}"
-  model = "gpt-4o"
-  temperature = 0.2
-  max_tokens = 100
-  EOF
+# F3. Spinner suppressed in -v verbose mode
+uv run thoth deep_research "explain HTTPS" --provider openai -v 2>&1 | head -5
+# Expected: raw [thoth] log lines, no spinner.
 
-  source openai.env
-  ./thoth "Write a very long essay about AI" --provider openai --config
-  test_params.toml
-  # Should get a short response due to max_tokens=100
+# F4. Spinner suppressed for non-TTY (piped output)
+uv run thoth deep_research "x" --provider openai | head -5
+# Expected: completes without ANSI cursor noise; just plain output.
 
-  # Test 6: Test network disconnection (manual)
-  # 1. Start a query
-  # 2. Disconnect network
-  # 3. Should see connection error with retry attempts
+# F5. Spinner suppressed for quick (non-background) modes
+uv run thoth "quick test" --provider openai
+# Expected: default mode is o3 (immediate); no spinner appears.
+```
 
-  # Clean up
-  rm -f test_*.toml *_openai_*.md
+### G. SIGINT "Resume later" hint
 
-  Expected Results:
+```bash
+# G1. Start a slow run and Ctrl-C it
+uv run thoth deep_research "long topic" --provider openai
+# Press Ctrl-C after a few seconds.
+# Expected output lines:
+#   - "Checkpoint saved. Resume with: thoth --resume op_<id>"   (existing, Rich green ✓)
+#   - "Resume later: thoth --resume op_<id>"                    (new in P14)
 
-  - Test 1: "Invalid OpenAI API key" with link to check API keys
-  - Test 2: "openai API key not found" with suggestion to set OPENAI_API_KEY
-  - Test 3: "Model 'gpt-5-does-not-exist' not found" with suggestion to check
-  available models
-  - Test 4: Should retry on timeout (see multiple attempts in verbose output)
-  - Test 5: Response should be truncated at ~100 tokens
-  - Test 6: "Failed to connect to OpenAI API" after retry attempts
+# G2. Resume the cancelled job
+uv run thoth --resume op_<id>
+# Expected: picks up where it left off and finishes.
+```
 
-  Error Messages Added:
+### H. `--pick-model` / `-M` flag
 
-  1. Invalid API Key: "Invalid OpenAI API key. Please check your API key at
-  https://platform.openai.com/account/api-keys"
-  2. Rate Limit: "Rate limit exceeded. Please wait a moment and try again."
-  3. Model Not Found: "Model 'X' not found. Please check available models with 'thoth
-   providers -- --models --provider openai'"
-  4. Quota Exceeded: "API quota exceeded. Please check your OpenAI account billing."
-  5. Connection Error: "Failed to connect to OpenAI API. Check your internet
-  connection."
-  6. Timeout: "Request timed out. Try increasing timeout in config."
+> Picker is gated to immediate (non-background) modes only.
 
-  Once you've verified Phase 3 error handling works correctly, we can proceed to
-  Phase 4 (Add M8T test cases).
+```bash
+# H1. Rejected on background-mode modes
+uv run thoth --pick-model deep_research "test" 2>&1 | head -6
+echo "exit=$?"
+# Expected: 5-line error mentioning "only supported for quick (non-deep-research)",
+#           the offending model name, and the config-file remediation hint.
+# Expected exit: 2
+
+# H2. Rejected on exploration mode (also background)
+uv run thoth -M exploration "test" 2>&1 | head -3
+echo "exit=$?"
+# Expected exit: 2
+
+# H3. Picker shown for default (immediate) mode
+uv run thoth --pick-model default "smoke test"
+# Expected: numbered list of OpenAI immediate models (o3, gpt-4o, gpt-4o-mini, …),
+#           prompt "Pick a model", and after you type a number, the run proceeds
+#           with that model overriding the mode default.
+
+# H4. Auto-pick via stdin (non-interactive)
+echo 1 | uv run thoth --pick-model default "noninteractive smoke" --provider mock
+# Expected: picks the first listed model and runs against mock provider.
+```
+
+---
+
+## Recent Changes — Targeted Tests
+
+Files changed in the last 14 commits and the P14 feature each one covers. Use the matching feature section above to exercise them.
+
+| Changed file | P14 feature | Test section |
+|---|---|---|
+| `src/thoth/errors.py` | `format_config_context` + APIKeyError enrichment | E |
+| `src/thoth/cli.py` | `--input-file`/`--auto` help, `--api-key-*` softening, `--pick-model`, `providers` subgroup, `auth` help routing | A, C, D, H |
+| `src/thoth/help.py` | epilog, workflow chain, `render_auth_help`, deprecation banner | B, D |
+| `src/thoth/commands.py` | `providers_list`/`_models`/`_check` | A |
+| `src/thoth/run.py` | spinner gate around poll loop, `model_override` plumbing | F, H |
+| `src/thoth/progress.py` (new) | `should_show_spinner`, `run_with_spinner` | F |
+| `src/thoth/interactive_picker.py` (new) | `pick_model`, `immediate_models_for_provider` | H |
+| `src/thoth/signals.py` | resume-later hint on SIGINT | G |
+| `pyproject.toml` / `uv.lock` | `thothspinner` dependency | F |
+| `README.md` | Authentication section | D |
+| `CHANGELOG.md` / `PROJECTS.md` | release tracking | (docs only) |
+
+---
+
+## Automated Verification
+
+Run before considering manual testing complete:
+
+```bash
+just all              # format + lint + typecheck + tests (full gate)
+./thoth_test -r       # full thoth_test integration suite (~50s with mock provider)
+```
+
+Expected:
+- `just all` → all green
+- `./thoth_test -r` → 63 passed, 1 skipped, 0 failed (the 1 skipped is pre-existing, not P14)
+
+---
+
+## Known Behaviors / Caveats
+
+- Two resume hints print on Ctrl-C (the older Rich-formatted line + the new "Resume later:"). Functional but redundant; tracked as a follow-up nit.
+- `thoth providers help` (without subcommand) currently shows the legacy provider help — examples there still mention `--list` / `--models` flags rather than the new subcommands. Will be cleaned up when the deprecation shim is removed in N+1.
+- `--pick-model` over a non-TTY input (e.g. CI without `echo N |`) will hang on the prompt. Pipe a number in or skip the flag.

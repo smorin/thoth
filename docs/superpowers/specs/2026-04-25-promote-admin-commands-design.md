@@ -1,18 +1,21 @@
 # Design — Promote Admin Commands to Click Subcommands (P16)
 
-**Status:** Draft, awaiting user review
+**Status:** PR1 and PR2 shipped; PR3 automation polish remains
 **Created:** 2026-04-25
 **Project ID:** P16
 **Target version:** v3.0.0 (MAJOR — contains breaking changes)
 **Predecessors:** Defers from `planning/project_promote_commands.md`; supersedes that file's task draft
-**Related:** P12 (CLI Mode Editing) lands `add/set/unset` *inside* this project's `modes` subgroup
+**Related:**
+- P12 (CLI Mode Editing) lands `add/set/unset` *inside* this project's `modes` subgroup
+- **P18** (`docs/superpowers/specs/2026-04-26-p18-immediate-vs-background-design.md`, target v2.16.0) — splits execution into immediate (streaming) and background (polling) paths. Once P18 lands, `thoth ask "..." --mode <immediate-mode>` (e.g., `--mode thinking`, `--mode default`) **automatically streams to stdout** and emits no operation ID or resume hint. PR2's `ask` subcommand inherits this behavior at the dispatch layer below — no PR2-side change required. Merge-order independent: either project can land first; the other realizes the combined UX on its own merge.
+
 **Closes:** PRD F-70 (`shell completion support`), Plan M21-07 (same)
 
 ---
 
 ## 1. Goal
 
-Refactor `thoth`'s CLI from a single `@click.command()` with positional pseudo-dispatch into a real `@click.group()` with first-class subcommands, deliver shell completion as a built-in surface, and grow `--json` coverage to every admin command — landing as v3.0.0.
+Refactor `thoth`'s CLI from a single `@click.command()` with positional pseudo-dispatch into a real `@click.group()` with first-class subcommands, deliver shell completion as a built-in surface, and grow `--json` coverage to every data/action admin command — landing as v3.0.0.
 
 ## 2. Motivation
 
@@ -37,16 +40,16 @@ Refactor `thoth`'s CLI from a single `@click.command()` with positional pseudo-d
 | Q2 | What about `thoth "bare prompt"`? | **D — keep bare-prompt indefinitely + add `thoth ask PROMPT` as the canonical scripted form**. `ask` is a positional-argument equivalent to the existing top-level `-q/--prompt` flag; both forms continue to work. The bare form (`thoth "..."`) also keeps working. |
 | Q3 | What about `--resume OP_ID`? | **D — subcommand-only.** `thoth resume OP_ID` is the only form. `--resume` flag is REMOVED in this release. Breaking change → MAJOR bump. |
 | Q4 | Shell completion scope | **C — `thoth completion bash\|zsh\|fish` subcommand + dynamic completers**, with shared-data-source design constraint: completer data sources live in `completion/sources.py`, importable by both shell completers and the existing interactive REPL `SlashCommandCompleter`. |
-| Q5 | `--json` coverage | **C — full coverage.** Every admin command grows `--json`. `init --json` requires `--non-interactive` (errors clearly if missing). `config edit --json` emits success envelope after editor closes. |
+| Q5 | `--json` coverage | **C — full data/action coverage.** Every data/action admin command grows `--json`; `help` stays human-only and completion scripts stay raw shell output on success. `init --json` requires `--non-interactive` (errors clearly if missing). `config edit --json` emits success envelope after editor closes. |
 | Q6 | Help section structure | **D — two sections + labeled epilog.** "Run research" cluster (`ask`, `resume`, `status`, `list`) + "Manage thoth" cluster (`init`, `config`, `modes`, `providers`, `completion`, `help`) + "Modes (positional)" epilog block + worked examples. |
-| Q7 | Rollout shape | **B — three-PR sequence into single v3.0.0 release.** PR1 refactor only (no behavior change), PR2 breakage + new verbs (`ask`, `resume`, removals), PR3 automation polish (`completion` + `--json` everywhere). |
+| Q7 | Rollout shape | **B — three-PR sequence into single v3.0.0 release.** PR1 refactor only (no behavior change), PR2 breakage + new verbs (`ask`, `resume`, removals), PR3 automation polish (`completion` + data/action `--json` coverage). |
 
 **Follow-up clarifications:**
 
 - **Legacy removal is aggressive.** No backward-compat shims for any removed surface. `--resume` flag → gone. `thoth providers -- --list` shim → gone (folded in from the original proposal's `[P##-T08]` "remove deprecation shim" task; cheapest moment is now since we're already breaking). `COMMAND_NAMES` frozenset, `ThothCommand` class, `nargs=-1` top-level `args`, `ignore_unknown_options=True` group flag — all gone.
-- **`thoth help [TOPIC]`** — kept as thin alias forwarding to `thoth [TOPIC] --help`. The `auth` topic is preserved because there is no `auth` subcommand to forward to (auth lives in env vars + `config set`).
+- **`thoth help [TOPIC]`** — kept as thin alias forwarding to `thoth [TOPIC] --help` for real subcommands. PR2 removed the parse-time `thoth --help <topic>` hijack and the virtual `auth` topic; `render_auth_help()` stays internal for docs/future command reuse.
 - **Exit codes** — keep today's 0/1/2 scheme. JSON envelopes expose granular `error.code` strings as advisory metadata, but the OS exit code stays coarse. No new 3/4 codes.
-- **JSON-vs-handler seam** — Option **B-deferred-to-PR3**: handlers stay 100% untouched in PR1+PR2; each one gets a `get_*_data() -> dict` extraction at the moment its `--json` lands in PR3. No `as_json` flag ever exists in the codebase.
+- **JSON-vs-handler seam** — Option **B-deferred-to-PR3**: handlers stay 100% untouched in PR1+PR2; each one gets a `get_*_data() -> dict` extraction at the moment its `--json` lands in PR3. Existing handler-level `as_json` branches in `config_cmd.py`/`modes_cmd.py` are migrated out by PR3, and no handler-level JSON flag remains in the end state.
 - **Surprising parses** — `thoth init` (subcommand) vs `thoth "init the database"` (bare-prompt) disambiguated by Click's argv parsing. Documented in `--help` epilog and CHANGELOG; no runtime warning.
 
 ## 5. Architecture
@@ -66,7 +69,7 @@ Refactor `thoth`'s CLI from a single `@click.command()` with positional pseudo-d
 | File | State | Responsibility |
 |---|---|---|
 | `src/thoth/cli.py` | shrinks ~280 lines | `@click.group(cls=ThothGroup)` + bare-prompt/mode-fallback callback + explicit `cli.add_command(...)` registrations |
-| `src/thoth/help.py` | shrinks ~200 lines | `ThothGroup` class + two-section help renderer + `show_auth_help()` (sole `show_*_help` survivor) |
+| `src/thoth/help.py` | shrinks ~200 lines | `ThothGroup` class + two-section help renderer + retained rich help helpers (`show_config_help()`, `render_auth_help()` / `show_auth_help()`) |
 | `src/thoth/cli_subcommands/` | NEW directory | One module per subcommand cluster; each defines `@click.command()` decorated function(s) delegating to existing handlers |
 | `src/thoth/completion/` | NEW directory | `script.py` (shell init script generation) + `sources.py` (dynamic completer data: op-ids, mode names, config keys, provider names) |
 | `src/thoth/json_output.py` | NEW file | Uniform JSON envelope contract: `emit_json(data)` and `emit_error(code, message, details)` |
@@ -77,9 +80,9 @@ Refactor `thoth`'s CLI from a single `@click.command()` with positional pseudo-d
 
 ### 5.3 What gets removed
 
-**PR1:** `if args[0] in COMMAND_NAMES` block (`cli.py:292-421`) · `nargs=-1` positional `args` on top-level command · `ThothCommand` class entirely · `parse_args` `--help SUBCOMMAND` interceptor (`help.py:34-90ish`) · `COMMAND_NAMES` frozenset · `show_init_help()`, `show_status_help()`, `show_list_help()`, `show_providers_help()`, `show_config_help()`, `show_modes_help()`, `HELP_TOPICS` tuple · help-string examples in `cli.py:184-188` rewritten from `thoth help X` to `thoth X --help`.
+**PR1:** `if args[0] in COMMAND_NAMES` block (`cli.py:292-421`) · `nargs=-1` positional `args` on top-level command · `ThothCommand` class entirely · `COMMAND_NAMES` frozenset · most legacy `show_*_help()` helpers · help-string examples in `cli.py:184-188` rewritten from `thoth help X` to `thoth X --help`.
 
-**PR2:** `--resume` global option declaration (`cli.py:97`) · `providers -- --` legacy shim (`cli.py:327-370`, ~45 lines) · `ctx.args` plumbing (verify all uses; remove if safe) · `ignore_unknown_options=True` on top-level group (no longer needed once shim is gone — Click reverts to strict option parsing, catching script typos).
+**PR2:** `--resume` global option declaration (`cli.py:97`) · `providers -- --` and in-group provider flag shims · `modes --json/--show-secrets/--full/--name/--source` legacy shims and bare-`modes` shortcut · parse-time `thoth --help <topic>` hijack and `auth` virtual help topic · `ctx.args` plumbing (verify all uses; remove if safe) · `ignore_unknown_options=True` on top-level group (no longer needed once shim is gone — Click reverts to strict option parsing, catching script typos).
 
 **PR3:** Nothing removed; pure addition.
 
@@ -87,7 +90,7 @@ Refactor `thoth`'s CLI from a single `@click.command()` with positional pseudo-d
 
 ### 5.4 What stays the same (user-visible)
 
-All current invocation strings except `thoth --resume OP_ID` and `thoth providers -- --list` continue to work bit-identically: `thoth init`, `thoth status OP_ID`, `thoth list`, `thoth deep_research "topic"`, `thoth "bare prompt"`, `thoth -i`, `thoth -m deep_research -q "..."`, `thoth providers list`, `thoth config list`, `thoth modes`, `thoth -V`, `thoth --version`. All non-removed global flags (`--project`, `--async`, `--auto`, `--input-file`, `--verbose`, `--quiet`, `--config`, `--output-dir`, etc.) stay on the top-level group.
+All current invocation strings except the PR2 removals continue to work bit-identically: `thoth init`, `thoth status OP_ID`, `thoth list`, `thoth deep_research "topic"`, `thoth "bare prompt"`, `thoth -i`, `thoth -m deep_research -q "..."`, `thoth providers list`, `thoth config list`, `thoth modes list`, `thoth -V`, `thoth --version`. Removed forms are `thoth --resume OP_ID`, `thoth providers -- --...`, in-group provider flag shims (`thoth providers --list`, etc.), bare `thoth providers`, bare `thoth modes`, `thoth modes --json/--name/--source/...`, and the parse-time `thoth --help <topic>` hijack. All non-removed global flags (`--project`, `--async`, `--auto`, `--input-file`, `--verbose`, `--quiet`, `--config`, `--output-dir`, etc.) stay on the top-level group.
 
 ## 6. Components
 
@@ -109,8 +112,8 @@ All current invocation strings except `thoth --resume OP_ID` and `thoth provider
 | `modes.py` | Click subgroup with leaves `list` (P16); `add`, `set`, `unset` slot in via P12 |
 | `ask.py` | `thoth ask PROMPT [--mode] [--async] [--auto] [--input-file] [--json] ...` (full inheriting flag set) |
 | `resume.py` | `thoth resume OP_ID [--json]` (OP_ID has dynamic completer) |
-| `completion.py` | `thoth completion {bash,zsh,fish} [--install]` |
-| `help_cmd.py` | `thoth help [TOPIC]` — thin forwarder |
+| `completion.py` | `thoth completion {bash,zsh,fish} [--install] [--force] [--json]`; validate `shell` inside the command body so invalid-shell errors can emit `UNSUPPORTED_SHELL` JSON |
+| `help_cmd.py` | `thoth help [TOPIC]` — thin forwarder for real subcommands only |
 
 Registered explicitly in `cli.py` via `cli.add_command(...)` — no auto-discovery (explicit beats magic; the surface is visible at one place).
 
@@ -121,7 +124,7 @@ Registered explicitly in `cli.py` via `cli.add_command(...)` — no auto-discove
   - `mode_names(ctx, param, incomplete)` — filters `BUILTIN_MODES`
   - `config_keys(ctx, param, incomplete)` — flattens TOML keys from current resolved config
   - `provider_names(ctx, param, incomplete)` — reads from the same source as the `--provider` Click choice (`["openai", "perplexity", "mock"]` today, sourced from `cli.py:103`'s `click.Choice`). If the provider list moves to a registry in the future, this function follows.
-- **`script.py`** — wraps Click's `_THOTH_COMPLETE=<shell>_source thoth` machinery with friendlier UX (better error messages, `--install` writes to conventional shell rc location with prompt-before-overwrite in tty, refusal in non-tty unless `--force`).
+- **`script.py`** — wraps Click's `_THOTH_COMPLETE=<shell>_source thoth` machinery with friendlier UX (better error messages, `completion <shell> --install` writes to conventional shell rc location with prompt-before-overwrite in tty, refusal in non-tty unless `--force`).
 - **Shared with `interactive.py`** — `SlashCommandCompleter` MAY migrate to importing `mode_names`. Polish, not blocker.
 
 ### 6.4 `json_output.py`
@@ -143,11 +146,11 @@ Registered explicitly in `cli.py` via `cli.add_command(...)` — no auto-discove
 2. **Mode positional**: `thoth deep_research "topic"` → `resolve_command` returns None → `invoke` detects `args[0] ∈ BUILTIN_MODES` → packages and calls `_run_research_default(mode, prompt, **opts)`.
 3. **Bare-prompt fallback**: `thoth "explain X"` → same as path 2 with `mode=DEFAULT_MODE`, `prompt=" ".join(args)`.
 4. **Completion** (install + runtime): `eval "$(thoth completion zsh)"` registers shell handler; subsequent TAB invocations re-call `thoth` with `COMP_WORDS` env, Click matches command + arg position, looks up the registered `shell_complete` callback in `completion/sources.py`.
-5. **`thoth help [TOPIC]` alias**: dispatches to `cli_subcommands/help_cmd.py` → looks up target subcommand → `ctx.invoke(target_cmd, ['--help'])` (or `show_auth_help()` for `auth` special case).
+5. **`thoth help [TOPIC]` alias**: dispatches to `cli_subcommands/help_cmd.py` → looks up target subcommand → renders that command's Click help. Unknown topics, including `auth`, exit 2.
 
 ### 7.2 The critical invariant
 
-**The subcommand wrapper is the only place that knows about `--json`.** Handlers below never see the flag. This is what makes B-deferred work; if a handler ever started branching on a JSON flag, the architecture would degrade. CI lint rule recommended: `! grep -rn "as_json\|.json:" src/thoth/commands.py src/thoth/config_cmd.py src/thoth/modes_cmd.py`.
+**The subcommand wrapper is the only place that knows about `--json`.** Handlers below never see the flag. This is what makes B-deferred work; if a handler ever started branching on a JSON flag, the architecture would degrade. CI lint rule recommended for the PR3 end state: `! grep -rnE "as_json" src/thoth/commands.py src/thoth/config_cmd.py src/thoth/modes_cmd.py`.
 
 ## 8. Error handling
 
@@ -163,7 +166,7 @@ Unknown subcommand · bad option type · missing required argument · `--help` r
 | `thoth config edit --json` | Success: `{"status":"ok","data":{"config_path":"...","editor":"vim","editor_exit_code":0}}`. Editor failure: `emit_error("EDITOR_FAILED", ..., {"exit_code": N})`. |
 | `thoth resume INVALID_ID --json` | `emit_error("OPERATION_NOT_FOUND", ...)`. Exit 1. |
 | `thoth completion <unsupported>` | `emit_error("UNSUPPORTED_SHELL", ...)`. Exit 2. |
-| `thoth completion install` overwrite | Detect existing `_thoth_completion` block; preview + prompt y/n in tty; refuse silently in non-tty unless `--force`. |
+| `thoth completion <shell> --install` overwrite | Detect existing `_thoth_completion` block; preview + prompt y/n in tty; refuse in non-tty unless `--force`. |
 | Bare-prompt with first word matching a subcommand | NOT an error; subcommand wins. Disambiguation via quoting documented in `--help` epilog. |
 
 ### 8.3 Backward compat for exit codes
@@ -185,8 +188,8 @@ Today's exit codes (0=success, 1=runtime, 2=usage) preserved for non-`--json` in
 | C | **Dispatch parity** (PR1 gate) | Pre-refactor baselines captured; CI compares post-refactor exit + stdout for every existing invocation pattern |
 | D | `ThothGroup` unit tests | `resolve_command`, `invoke` mode-routing, `invoke` bare-prompt routing, `format_commands` two-section structure |
 | E | Surprising parses | `thoth init` vs `thoth "init the database"`, `thoth deep_research` (no prompt), `thoth ask` (no arg) |
-| F | **Breakage** (PR2 gate) | `thoth --resume OP_ID` exits 2 with helpful suggestion; `thoth providers -- --list` exits 2 directing to new form |
-| G | JSON envelope contract | Parametrized over every `--json` command: top-level object, has `status`, parses cleanly |
+| F | **Breakage** (PR2 gate) | Removed PR2 forms exit 2 with helpful suggestions, including `thoth --resume OP_ID`, `thoth providers -- --list`, in-group provider flags, and legacy `thoth modes --...` forms |
+| G | JSON envelope contract | Parametrized over every data/action `--json` success-envelope command: top-level object, has `status`, parses cleanly. Completion `--json` error/install paths are covered under H. |
 | H | Completion | `sources.py` unit tests + script-output snapshots + `install` integration test (writes safely, doesn't clobber) |
 | I | `thoth_test` integration | One-time sweep of cases using `thoth --resume` → migrate to `thoth resume`; new cases for `ask`/`resume`/`completion` |
 | J | Regression | Every pre-existing pytest + thoth_test case continues to pass after each PR |
@@ -231,7 +234,7 @@ Click group · `ThothGroup` · `cli_subcommands/*` (delegating to existing handl
 
 ### PR3 — automation polish
 
-`completion` subcommand + `sources.py` + `script.py` · `--json` for every admin command (per-handler `get_*_data()` extraction as needed) · `json_output.py` contract module · CI lint rule for JSON-flag-not-in-handlers · CI lint rule for `JSON_COMMANDS` parametrize-list completeness.
+`completion` subcommand + `sources.py` + `script.py` · `--json` for every data/action admin command (per-handler `get_*_data()` extraction as needed) · `json_output.py` contract module · CI lint rule for JSON-flag-not-in-handlers · CI lint rule for `JSON_COMMANDS` parametrize-list completeness.
 
 **Test gate:** All above + A, B, G, H.
 
@@ -247,14 +250,15 @@ All three PRs merge to `main` consecutively. release-please observes the breakin
 
 - [ ] `thoth --help` shows two clearly-labeled sections ("Run research" / "Manage thoth") + "Modes (positional)" epilog block + worked examples
 - [ ] Every admin command is a real Click subcommand (verified by `cli.commands` keys)
-- [ ] `thoth init`, `thoth status OP_ID`, `thoth list`, `thoth providers list`, `thoth config list`, `thoth modes`, `thoth deep_research "topic"`, `thoth "bare prompt"`, `thoth -i`, `thoth -m X -q Y` — all work bit-identically to pre-refactor
+- [ ] `thoth init`, `thoth status OP_ID`, `thoth list`, `thoth providers list`, `thoth config list`, `thoth modes list`, `thoth deep_research "topic"`, `thoth "bare prompt"`, `thoth -i`, `thoth -m X -q Y` — all work bit-identically except for PR2's intentional removal of bare `thoth modes`
 - [ ] `thoth ask "prompt"` runs default-mode research (canonical scripted form)
 - [ ] `thoth resume OP_ID` resumes operations; `thoth --resume OP_ID` exits 2 with suggestion
 - [ ] `thoth providers -- --list` exits 2 with suggestion
+- [ ] `thoth modes --json` exits 2 with suggestion to use `thoth modes list --json`
 - [ ] `thoth completion bash` and `thoth completion zsh` emit working init scripts (required for v3.0.0)
-- [ ] `thoth completion fish` emits a working init script if Click ≥ 8.x is already pinned in `pyproject.toml`; otherwise fish support defers to a follow-up (see §13)
+- [ ] `thoth completion fish` emits a working init script (`pyproject.toml` already pins `click>=8.0`; `uv.lock` currently resolves Click 8.3.1)
 - [ ] `thoth resume <TAB>`, `thoth status <TAB>`, `thoth config get <TAB>` complete with live data
-- [ ] Every admin command supports `--json`; output is a valid top-level JSON object with `status` field
+- [ ] Every data/action admin command supports `--json`; output is a valid top-level JSON object with `status` field. `completion` keeps raw shell-script stdout on success and supports JSON envelopes for structured errors/install metadata; `help` stays human-only.
 - [ ] `thoth init --json --non-interactive` works end-to-end without prompting
 - [ ] `thoth init --json` (no `--non-interactive`) errors clearly with code 2
 - [ ] CHANGELOG documents v3.0.0 with the breaking changes and migration paths
@@ -273,7 +277,7 @@ All three PRs merge to `main` consecutively. release-please observes the breakin
 ## 13. Open items / risks
 
 - **Per-handler refactor scope in PR3.** B-deferred means each handler's `get_*_data()` extraction is a per-handler unknown. Worst-case: a handler is so intertwined with Rich that we end up doing C (full inversion) for that one. Bounded — only affects that command's `--json` ship date, not the whole project.
-- **Click version pinning.** `thoth completion fish` requires Click ≥ 8.x. Verify current pin in `pyproject.toml` and bump if needed; if bump is non-trivial, fish support can defer to a follow-up (bash + zsh ship in v3.0).
+- **Click version pinning.** Resolved for PR3 planning: `pyproject.toml` pins `click>=8.0`, and `uv.lock` currently resolves Click 8.3.1. Fish support stays in scope unless implementation discovers a concrete Click regression.
 - **Discipline risk on three-PR sequence.** If team stalls between PR1 and PR2, codebase carries un-shipped breakage intentions. Mitigation in §10.
 - **`syrupy` snapshot library** — verify it's a project dependency before relying on it for category A; if not, hand-rolled fixtures in `tests/snapshots/` are fine. Decide in plan phase.
 - **Stale PRD line** at `planning/thoth.prd.v24.md:96` ("Added shell completion support") needs correction as part of PR3's documentation pass.
