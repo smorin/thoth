@@ -84,3 +84,13 @@ class CheckpointManager:
             "operation_fail",
         ]
         return event in checkpoint_events
+
+    def list_operation_ids(self) -> list[str]:
+        """Return all operation IDs known to the checkpoint store.
+
+        Used by `completion/sources.py::operation_ids` and (transitively)
+        by future `thoth list --json` callers that want to enumerate
+        without loading every operation. Synchronous on purpose — this is
+        a metadata-only filesystem listing.
+        """
+        return sorted(p.stem for p in self.checkpoint_dir.glob("*.json"))

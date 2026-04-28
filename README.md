@@ -78,7 +78,7 @@ Authentication — recommended order:
    thoth --api-key-openai sk-... deep_research "..."
    ```
 
-Run `thoth help auth` for the in-CLI version of this guide.
+For related command help, run `thoth config --help`.
 
 ## Quick Start
 
@@ -577,6 +577,38 @@ API keys are resolved in the following order (highest to lowest priority):
 ## Version History
 
 See [CHANGELOG.md](CHANGELOG.md) for the full version history.
+
+## Shell completion
+
+Generate an `eval`-able script:
+
+```bash
+eval "$(thoth completion bash)"   # or: zsh, fish
+```
+
+Persistent install (writes a fenced block to your shell's rc file):
+
+```bash
+thoth completion bash --install         # interactive: detect + prompt before overwrite
+thoth completion bash --install --force # CI-friendly: write/overwrite silently
+thoth completion bash --install --manual # print block + instructions; never write
+```
+
+After install, `thoth resume <TAB>`, `thoth status <TAB>`, `thoth config get <TAB>`,
+`thoth modes list --name <TAB>`, and `thoth providers list --provider <TAB>` complete
+with live data.
+
+## JSON output
+
+Every data/action admin command supports `--json`:
+
+```bash
+thoth status OP_ID --json | jq '.data.status'
+thoth providers list --json | jq '.data.providers[].name'
+thoth list --json | jq '.data.operations[]'
+```
+
+See `docs/json-output.md` for the envelope contract and per-command schemas.
 
 ## License
 

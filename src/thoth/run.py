@@ -700,6 +700,61 @@ async def _execute_research(
     return operation.id
 
 
+def get_resume_snapshot_data(operation_id: str) -> dict | None:
+    """Pure data function for ``thoth resume OP_ID --json``.
+
+    Reads the checkpoint and returns a snapshot dict. Per spec §6.8 +
+    §8.5, this function NEVER advances state (no provider polling, no
+    retries) and maps the on-disk status field as follows:
+
+      status="failed", failure_type="permanent"  -> "failed_permanent"
+      status="failed", failure_type!=permanent  -> "recoverable_failure"
+      otherwise                                  -> status verbatim
+
+    Synchronous on purpose — completion-style "snapshot" semantics demand
+    sub-second response time. Uses an in-line synchronous read of the
+    checkpoint JSON rather than CheckpointManager.load (which is async).
+    """
+    import json as _json
+    from pathlib import Path as _Path
+
+    from thoth.config import get_config
+
+    config = get_config()
+    checkpoint_dir = _Path(config.data["paths"]["checkpoint_dir"])
+    checkpoint_file = checkpoint_dir / f"{operation_id}.json"
+    if not checkpoint_file.exists():
+        return None
+
+    try:
+        raw = _json.loads(checkpoint_file.read_text())
+    except (_json.JSONDecodeError, OSError):
+        return None
+
+    raw_status = raw.get("status")
+    failure_type = raw.get("failure_type")
+
+    if raw_status == "failed":
+        snapshot_status = (
+            "failed_permanent" if failure_type == "permanent" else "recoverable_failure"
+        )
+    else:
+        snapshot_status = raw_status
+
+    return {
+        "operation_id": raw.get("id", operation_id),
+        "status": snapshot_status,
+        "mode": raw.get("mode"),
+        "prompt": raw.get("prompt"),
+        "created_at": raw.get("created_at"),
+        "updated_at": raw.get("updated_at"),
+        "providers": raw.get("providers", {}),
+        "last_error": raw.get("error"),
+        "failure_type": failure_type,
+        "retry_count": raw.get("retry_count", 0),
+    }
+
+
 async def resume_operation(
     operation_id: str,
     verbose: bool = False,
@@ -737,20 +792,23 @@ async def resume_operation(
         console.print(f"[red]Error:[/red] Operation {operation_id} not found")
         sys.exit(6)
 
-    console.print(f"[yellow]Resuming operation {operation_id}...[/yellow]")
-    console.print(f"Prompt: {operation.prompt}")
-    console.print(f"Mode: {operation.mode}")
-    console.print(f"Status: {operation.status}")
+    if not quiet:
+        console.print(f"[yellow]Resuming operation {operation_id}...[/yellow]")
+        console.print(f"Prompt: {operation.prompt}")
+        console.print(f"Mode: {operation.mode}")
+        console.print(f"Status: {operation.status}")
 
     if operation.status == "completed":
-        console.print(f"[green]Operation {operation_id} already completed.[/green]")
+        if not quiet:
+            console.print(f"[green]Operation {operation_id} already completed.[/green]")
         return
     if operation.status == "cancelled" and not any(
         p.get("status") != "completed" for p in operation.providers.values()
     ):
-        console.print(
-            f"[yellow]Operation {operation_id} was cancelled with no pending work.[/yellow]"
-        )
+        if not quiet:
+            console.print(
+                f"[yellow]Operation {operation_id} was cancelled with no pending work.[/yellow]"
+            )
         return
     if operation.status == "failed" and getattr(operation, "failure_type", None) == "permanent":
         console.print(
@@ -790,7 +848,8 @@ async def resume_operation(
         provider_instances[provider_name] = provider
 
     if not provider_instances:
-        console.print("[yellow]No providers to resume.[/yellow]")
+        if not quiet:
+            console.print("[yellow]No providers to resume.[/yellow]")
         return
 
     if operation.status in ("failed", "cancelled"):
@@ -882,9 +941,10 @@ async def resume_operation(
     operation.transition_to("completed")
     await checkpoint_manager.save(operation)
 
-    console.print("\n[green]✓[/green] Research completed!")
-    for provider_name, path in operation.output_paths.items():
-        console.print(f"  • {path.name}")
+    if not quiet:
+        console.print("\n[green]✓[/green] Research completed!")
+        for provider_name, path in operation.output_paths.items():
+            console.print(f"  • {path.name}")
 
     ctx.checkpoint_manager = None
     ctx.current_operation = None
@@ -898,6 +958,7 @@ __all__ = [
     "_run_polling_loop",
     "find_latest_outputs",
     "get_estimated_duration",
+    "get_resume_snapshot_data",
     "resume_operation",
     "run_research",
 ]

@@ -17,6 +17,14 @@ import sys
 
 import click
 
+from thoth.cli_subcommands._option_policy import (
+    DEFAULT_HONOR,
+    NO_INHERITED_OPTIONS,
+    inherited_value,
+    validate_inherited_options,
+)
+from thoth.completion.sources import mode_names as _mode_names_completer
+
 _PASSTHROUGH_CONTEXT = {"ignore_unknown_options": True, "allow_extra_args": True}
 
 _LEGACY_FLAG_TO_NEW_FORM: dict[str, str] = {
@@ -38,6 +46,7 @@ def modes(ctx: click.Context) -> None:
     """List research modes with provider/model/kind."""
     if ctx.invoked_subcommand is not None:
         return
+    validate_inherited_options(ctx, "modes", NO_INHERITED_OPTIONS)
     # Q5-A row 5: bare `thoth modes` exits 2 (no leaf default).
     click.echo(ctx.get_help())
     ctx.exit(2)
@@ -63,11 +72,59 @@ for _flag, _new_form in _LEGACY_FLAG_TO_NEW_FORM.items():
 
 @modes.command(name="list", context_settings=_PASSTHROUGH_CONTEXT)
 @click.argument("args", nargs=-1, type=click.UNPROCESSED)
-def modes_list(args: tuple[str, ...]) -> None:
+@click.option(
+    "--name",
+    "name",
+    default=None,
+    help="Show detail for a single mode",
+    shell_complete=_mode_names_completer,
+)
+@click.option("--json", "as_json", is_flag=True, help="Emit JSON envelope")
+@click.option("--source", "source", default="all", help="Filter by source")
+@click.option("--show-secrets", "show_secrets", is_flag=True, help="Reveal masked secrets")
+@click.pass_context
+def modes_list(
+    ctx: click.Context,
+    args: tuple[str, ...],
+    name: str | None,
+    as_json: bool,
+    source: str,
+    show_secrets: bool,
+) -> None:
     """List research modes."""
+    validate_inherited_options(ctx, "modes list", DEFAULT_HONOR)
+
+    config_path = inherited_value(ctx, "config_path")
+
+    if as_json:
+        from thoth.json_output import emit_json
+        from thoth.modes_cmd import get_modes_list_data
+
+        emit_json(
+            get_modes_list_data(
+                name=name,
+                source=source,
+                show_secrets=show_secrets,
+                config_path=config_path,
+            )
+        )
+
     from thoth.modes_cmd import modes_command
 
-    rc = modes_command("list", list(args))
+    # Re-emit typed options back into the passthrough args so modes_command
+    # parses them via its inline flag parser (Rich-rendering path).
+    rebuilt = list(args)
+    if name is not None:
+        rebuilt.extend(["--name", name])
+    if source != "all":
+        rebuilt.extend(["--source", source])
+    if show_secrets:
+        rebuilt.append("--show-secrets")
+
+    if config_path is None:
+        rc = modes_command("list", rebuilt)
+    else:
+        rc = modes_command("list", rebuilt, config_path=config_path)
     sys.exit(rc)
 
 

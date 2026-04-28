@@ -93,7 +93,7 @@
 - Added --auto flag for mode chaining
 - Added adaptive polling intervals
 - Added operation lifecycle management
-- Added shell completion support
+- Shell completion shipped (`thoth completion bash|zsh|fish`) per P16 PR3.
 - All features from implementation plan v4.0 incorporated
 
 ---

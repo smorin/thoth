@@ -11,6 +11,8 @@ to verify the honored kwargs are actually threaded into
 from __future__ import annotations
 
 import asyncio
+from contextlib import contextmanager
+from pathlib import Path
 
 import pytest
 from click.testing import CliRunner
@@ -143,7 +145,7 @@ def test_resume_rejects_undeclared_option(monkeypatch, rejected_arg):
 
 
 def test_resume_operation_threads_honored_kwargs_to_downstream(monkeypatch):
-    """P16-PR2-C1: resume_operation passes quiet/no_metadata/timeout_override/cli_api_keys downstream."""
+    """P16-PR2-C1: resume_operation passes no_metadata/timeout_override/cli_api_keys downstream."""
     from datetime import datetime
 
     from thoth import run as run_mod
@@ -216,3 +218,81 @@ def test_resume_operation_threads_honored_kwargs_to_downstream(monkeypatch):
         "create_provider did not receive timeout_override"
     )
     assert captured["cp_provider_name"] == "mock"
+
+
+def test_resume_operation_honors_quiet_downstream_and_output(monkeypatch, capsys):
+    """P16-PR2-C1: quiet reaches _poll_display and suppresses resume success chatter."""
+    from datetime import datetime
+
+    from thoth import run as run_mod
+    from thoth.models import OperationStatus
+
+    captured: dict[str, object] = {}
+
+    class FakeOutputManager:
+        def __init__(self, config, no_metadata=False):
+            captured["om_no_metadata"] = no_metadata
+
+    class FakeProvider:
+        async def reconnect(self, job_id):
+            captured["reconnect_job_id"] = job_id
+
+    def fake_create_provider(provider_name, config, **kwargs):
+        captured["cp_provider_name"] = provider_name
+        return FakeProvider()
+
+    @contextmanager
+    def fake_poll_display(**kwargs):
+        captured["poll_quiet"] = kwargs.get("quiet")
+        yield None
+
+    async def fake_polling_loop(
+        operation,
+        jobs,
+        progress,
+        checkpoint_manager,
+        output_manager,
+        config,
+        mode_config,
+        output_dir,
+        verbose,
+        ctx=None,
+    ):
+        captured["poll_jobs"] = sorted(jobs)
+        operation.output_paths["mock"] = Path("result.md")
+        return {"mock"}, set()
+
+    now = datetime.now()
+    op = OperationStatus(
+        id="research-20260101-000000-deadbeefdeadbeef",
+        prompt="test quiet resume",
+        mode="default",
+        status="running",
+        created_at=now,
+        updated_at=now,
+        providers={"mock": {"status": "running", "job_id": "job-quiet"}},
+    )
+
+    async def fake_load(self, operation_id):
+        return op
+
+    async def fake_save(self, operation):
+        return None
+
+    monkeypatch.setattr(run_mod.CheckpointManager, "load", fake_load)
+    monkeypatch.setattr(run_mod.CheckpointManager, "save", fake_save)
+    monkeypatch.setattr(run_mod, "OutputManager", FakeOutputManager)
+    monkeypatch.setattr(run_mod, "create_provider", fake_create_provider)
+    monkeypatch.setattr(run_mod, "_poll_display", fake_poll_display)
+    monkeypatch.setattr(run_mod, "_run_polling_loop", fake_polling_loop)
+
+    asyncio.run(run_mod.resume_operation(op.id, quiet=True, no_metadata=True))
+
+    output = capsys.readouterr().out
+    assert captured["poll_quiet"] is True
+    assert captured["om_no_metadata"] is True
+    assert captured["reconnect_job_id"] == "job-quiet"
+    assert captured["poll_jobs"] == ["mock"]
+    assert "Resuming operation" not in output
+    assert "Research completed" not in output
+    assert "result.md" not in output

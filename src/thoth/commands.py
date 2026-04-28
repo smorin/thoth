@@ -25,7 +25,7 @@ from thoth.errors import APIKeyError, ThothError
 from thoth.hints import print_hint
 from thoth.models import ModelCache, OperationStatus
 from thoth.paths import user_config_file
-from thoth.providers import create_provider
+from thoth.providers import create_provider, resolve_api_key
 from thoth.run import run_research
 
 console = Console()
@@ -154,6 +154,28 @@ class CommandHandler:
         return _cfg(op, rest or [])
 
 
+def get_init_data(*, non_interactive: bool, config_path: str | None) -> dict:
+    """Pure data function for `thoth init`.
+
+    Returns a dict describing the init outcome (config path, whether the
+    file was newly created, and the version). Does NOT print Rich output.
+    The legacy `init_command` continues to handle the human-readable path.
+    """
+    from thoth.config import THOTH_VERSION
+
+    target = Path(config_path).expanduser().resolve() if config_path else user_config_file()
+    created = not target.exists()
+    if created:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text('version = "2.0"\n')
+    return {
+        "config_path": str(target),
+        "created": created,
+        "thoth_version": THOTH_VERSION,
+        "non_interactive": non_interactive,
+    }
+
+
 def status_command(operation_id):
     """Check status of a research operation"""
     return show_status(operation_id)
@@ -164,50 +186,82 @@ def list_command(show_all):
     return list_operations(show_all=show_all)
 
 
-async def show_status(operation_id: str):
-    """Show status of a specific operation"""
+async def get_status_data(operation_id: str) -> dict | None:
+    """Pure data function for `thoth status OP_ID`.
+
+    Returns a dict describing the operation, or None if not found.
+    Per spec §7.2, this function NEVER takes an `as_json` flag — the
+    JSON-vs-Rich choice lives at the subcommand-wrapper layer.
+    """
     config = get_config()
     checkpoint_manager = CheckpointManager(config)
 
     operation = await checkpoint_manager.load(operation_id)
-    if not operation:
+    if operation is None:
+        return None
+
+    return {
+        "operation_id": operation.id,
+        "prompt": operation.prompt,
+        "mode": operation.mode,
+        "status": operation.status,
+        "created_at": operation.created_at.isoformat(),
+        "updated_at": operation.updated_at.isoformat(),
+        "project": operation.project,
+        "providers": dict(operation.providers),
+        "output_paths": {k: str(v) for k, v in operation.output_paths.items()},
+        "failure_type": getattr(operation, "failure_type", None),
+        "error": operation.error,
+    }
+
+
+async def show_status(operation_id: str):
+    """Show status of a specific operation (Rich rendering)."""
+    data = await get_status_data(operation_id)
+    if data is None:
         console.print(f"[red]Error:[/red] Operation {operation_id} not found")
         sys.exit(6)
 
+    # Re-load for the existing Rich rendering helpers (_print_status_hints).
+    config = get_config()
+    checkpoint_manager = CheckpointManager(config)
+    operation = await checkpoint_manager.load(operation_id)  # already known to exist
+    assert operation is not None  # data was non-None above
+
     console.print("\nOperation Details:")
     console.print("─────────────────")
-    console.print(f"ID:        {operation.id}")
-    console.print(f"Prompt:    {operation.prompt}")
-    console.print(f"Mode:      {operation.mode}")
-    console.print(f"Status:    {operation.status}")
+    console.print(f"ID:        {data['operation_id']}")
+    console.print(f"Prompt:    {data['prompt']}")
+    console.print(f"Mode:      {data['mode']}")
+    console.print(f"Status:    {data['status']}")
     console.print(f"Started:   {operation.created_at.strftime('%Y-%m-%d %H:%M:%S')}")
 
-    if operation.status in ["running", "completed"]:
+    if data["status"] in ["running", "completed"]:
         elapsed = datetime.now() - operation.created_at
         minutes = int(elapsed.total_seconds() / 60)
         console.print(f"Elapsed:   {minutes} minutes")
 
-    if operation.project:
-        console.print(f"Project:   {operation.project}")
+    if data["project"]:
+        console.print(f"Project:   {data['project']}")
 
-    if operation.providers:
+    if data["providers"]:
         console.print("\nProvider Status:")
         console.print("───────────────")
-        for provider_name, provider_info in operation.providers.items():
+        for provider_name, provider_info in data["providers"].items():
             status_icon = "✓" if provider_info.get("status") == "completed" else "▶"
             status_text = provider_info.get("status", "unknown").title()
             console.print(f"{provider_name.title()}:  {status_icon} {status_text}")
 
-    if operation.output_paths:
+    if data["output_paths"]:
         console.print("\nOutput Files:")
         console.print("────────────")
-        if operation.project:
-            base_dir = Path(config.data["paths"]["base_output_dir"]) / operation.project
+        if data["project"]:
+            base_dir = Path(config.data["paths"]["base_output_dir"]) / data["project"]
             console.print(f"{base_dir}/")
         else:
             console.print("./")
 
-        for provider_name, path in operation.output_paths.items():
+        for _provider_name, path in data["output_paths"].items():
             console.print(f"  ├── {Path(path).name}")
 
     _print_status_hints(operation)
@@ -236,6 +290,50 @@ def _print_status_hints(operation: OperationStatus) -> None:
                 )
         else:
             print_hint(f"thoth resume {op_id}", "Retry from checkpoint")
+
+
+async def get_list_data(show_all: bool) -> dict:
+    """Pure data function for `thoth list`.
+
+    Returns a dict with `count` and `operations` (list of dicts). Per spec
+    §7.2, this function NEVER takes an `as_json` flag — the JSON-vs-Rich
+    choice lives at the subcommand-wrapper layer.
+    """
+    config = get_config()
+    checkpoint_manager = CheckpointManager(config)
+
+    checkpoint_files = list(checkpoint_manager.checkpoint_dir.glob("*.json"))
+    operations = []
+    for checkpoint_file in checkpoint_files:
+        operation_id = checkpoint_file.stem
+        operation = await checkpoint_manager.load(operation_id)
+        if operation:
+            operations.append(operation)
+
+    operations.sort(key=lambda op: op.created_at, reverse=True)
+
+    if not show_all:
+        cutoff_time = datetime.now() - timedelta(hours=24)
+        operations = [
+            op
+            for op in operations
+            if op.status in ["running", "queued"] or op.created_at > cutoff_time
+        ]
+
+    return {
+        "count": len(operations),
+        "operations": [
+            {
+                "operation_id": op.id,
+                "prompt": op.prompt,
+                "mode": op.mode,
+                "status": op.status,
+                "created_at": op.created_at.isoformat(),
+                "project": op.project,
+            }
+            for op in operations
+        ],
+    }
 
 
 async def list_operations(show_all: bool):
@@ -315,6 +413,8 @@ async def providers_command(
     filter_provider: str | None = None,
     refresh_cache: bool = False,
     no_cache: bool = False,
+    cli_api_keys: dict[str, str | None] | None = None,
+    timeout_override: float | None = None,
 ):
     """Show provider information and available models"""
     if not show_models and not show_list and not show_keys:
@@ -344,6 +444,7 @@ async def providers_command(
         return
 
     config = get_config()
+    cli_api_keys = cli_api_keys or {}
 
     all_providers = ["openai", "perplexity", "mock"]
     selected_providers = all_providers
@@ -369,7 +470,11 @@ async def providers_command(
 
         for provider_name in selected_providers:
             try:
-                provider = create_provider(provider_name, config)
+                provider = create_provider(
+                    provider_name,
+                    config,
+                    cli_api_key=cli_api_keys.get(provider_name),
+                )
                 status = "[green]✓ Ready[/green]"
 
                 cache_info = "N/A"
@@ -421,23 +526,37 @@ async def providers_command(
         table.add_column("Provider", style="cyan", width=13)
         table.add_column("Environment Variable", style="green", width=22)
         table.add_column("CLI Argument", style="yellow", width=22)
+        table.add_column("Status", width=12)
 
+        missing: list[str] = []
         for provider_name in selected_providers:
             env_var = env_vars.get(provider_name, f"{provider_name.upper()}_API_KEY")
             cli_arg = f"--api-key-{provider_name}"
-            table.add_row(provider_name, env_var, cli_arg)
+            provider_config = config.data["providers"].get(provider_name, {})
+            try:
+                resolved = resolve_api_key(
+                    provider_name,
+                    cli_api_keys.get(provider_name),
+                    provider_config,
+                    env_var_name=env_var,
+                )
+                if provider_name == "mock" and resolved == "invalid":
+                    raise ThothError(
+                        "Invalid mock API key format",
+                        "Mock API key should not be 'invalid'",
+                    )
+                status = "[green]set[/green]"
+            except ThothError:
+                missing.append(provider_name)
+                status = "[red]missing[/red]"
+            table.add_row(provider_name, env_var, cli_arg, status)
 
         console.print(table)
-        console.print("\nExamples:")
-        console.print("  # Set via environment variable")
-        console.print('  $ export OPENAI_API_KEY="your-key-here"')
-        console.print("\n  # Set via command line for single provider")
-        console.print('  $ thoth "prompt" --api-key-openai "your-key-here" --provider openai')
-        console.print("\n  # Set multiple API keys for multi-provider modes")
-        console.print(
-            '  $ thoth deep_research "prompt" --api-key-openai "sk-..." --api-key-perplexity "pplx-..."'
-        )
-        return
+        if missing:
+            console.print(f"\n[red]Missing keys for:[/red] {', '.join(missing)}")
+            return 2
+        console.print("\n[green]All selected providers have keys set[/green]")
+        return 0
 
     providers = selected_providers
 
@@ -448,7 +567,12 @@ async def providers_command(
 
     for provider_name in providers:
         try:
-            provider = create_provider(provider_name, config)
+            provider = create_provider(
+                provider_name,
+                config,
+                cli_api_key=cli_api_keys.get(provider_name),
+                timeout_override=timeout_override,
+            )
 
             if hasattr(provider, "list_models_cached"):
                 models = await provider.list_models_cached(
@@ -496,35 +620,34 @@ async def providers_command(
             console.print()
 
 
-def providers_list(config: ConfigManager, filter_provider: str | None = None) -> int:
-    """List configured providers and whether each has a usable key."""
+def get_providers_list_data(config: ConfigManager, filter_provider: str | None = None) -> dict:
+    """Pure data function for `thoth providers list`.
+
+    Returns:
+        {"providers": [{"name": str, "key_set": bool}, ...]} on success.
+        {"providers": [], "filter_provider": ..., "unknown": True} when
+        `filter_provider` is unknown.
+    """
     import os
     import re
 
-    from rich.console import Console as _Console
-
     providers = sorted(config.data["providers"].keys())
+    if filter_provider and filter_provider not in providers:
+        return {"providers": [], "filter_provider": filter_provider, "unknown": True}
     if filter_provider:
-        if filter_provider not in providers:
-            print(f"Error: Unknown provider: {filter_provider}", file=sys.stderr)
-            print(f"Available providers: {', '.join(providers)}", file=sys.stderr)
-            return 1
         providers = [filter_provider]
 
-    _console = _Console()
-    _console.print("Configured providers:")
+    out = []
     for name in providers:
         raw = config.data["providers"][name].get("api_key", "")
         m = re.match(r"\$\{(\w+)\}", raw or "")
         resolved = os.environ.get(m.group(1)) if m else (raw or None)
-        _console.print(f"  {name:<12} {'key set' if resolved else 'no key'}")
-    return 0
+        out.append({"name": name, "key_set": bool(resolved)})
+    return {"providers": out}
 
 
-def providers_models(config: ConfigManager, filter_provider: str | None = None) -> int:
-    """List models known per provider, derived from BUILTIN_MODES."""
-    from rich.console import Console as _Console
-
+def get_providers_models_data(config: ConfigManager, filter_provider: str | None = None) -> dict:
+    """Pure data function for `thoth providers models`."""
     from thoth.config import BUILTIN_MODES
 
     seen: dict[str, set[str]] = {}
@@ -532,26 +655,21 @@ def providers_models(config: ConfigManager, filter_provider: str | None = None) 
         p = str(cfg["provider"])
         if filter_provider and p != filter_provider:
             continue
-        if p not in seen:
-            seen[p] = set()
-        seen[p].add(str(cfg["model"]))
-    _console = _Console()
-    if filter_provider and not seen:
-        _console.print(f"[red]No models found for provider:[/] {filter_provider}")
-        return 1
-    for provider, models in sorted(seen.items()):
-        _console.print(f"{provider}:")
-        for m in sorted(models):
-            _console.print(f"  {m}")
-    return 0
+        seen.setdefault(p, set()).add(str(cfg["model"]))
+
+    return {
+        "providers": [
+            {"name": provider, "models": sorted(models)}
+            for provider, models in sorted(seen.items())
+        ],
+        "filter_provider": filter_provider,
+    }
 
 
-def providers_check(config: ConfigManager) -> int:
-    """Exit 0 if every configured provider has a usable key; else 2."""
+def get_providers_check_data(config: ConfigManager) -> dict:
+    """Pure data function for `thoth providers check`."""
     import os
     import re
-
-    from rich.console import Console as _Console
 
     missing = []
     for name, p in config.data["providers"].items():
@@ -560,9 +678,52 @@ def providers_check(config: ConfigManager) -> int:
         resolved = os.environ.get(m.group(1)) if m else (raw or None)
         if not resolved:
             missing.append(name)
+    return {"missing": missing, "complete": not missing}
+
+
+def providers_list(config: ConfigManager, filter_provider: str | None = None) -> int:
+    """List configured providers and whether each has a usable key (Rich)."""
+    from rich.console import Console as _Console
+
+    data = get_providers_list_data(config, filter_provider=filter_provider)
+    if data.get("unknown"):
+        all_providers = sorted(config.data["providers"].keys())
+        print(f"Error: Unknown provider: {filter_provider}", file=sys.stderr)
+        print(f"Available providers: {', '.join(all_providers)}", file=sys.stderr)
+        return 1
+
     _console = _Console()
-    if missing:
-        _console.print(f"[red]Missing keys for:[/] {', '.join(missing)}")
+    _console.print("Configured providers:")
+    for entry in data["providers"]:
+        label = "key set" if entry["key_set"] else "no key"
+        _console.print(f"  {entry['name']:<12} {label}")
+    return 0
+
+
+def providers_models(config: ConfigManager, filter_provider: str | None = None) -> int:
+    """List models known per provider, derived from BUILTIN_MODES (Rich)."""
+    from rich.console import Console as _Console
+
+    data = get_providers_models_data(config, filter_provider=filter_provider)
+    _console = _Console()
+    if filter_provider and not data["providers"]:
+        _console.print(f"[red]No models found for provider:[/] {filter_provider}")
+        return 1
+    for entry in data["providers"]:
+        _console.print(f"{entry['name']}:")
+        for m in entry["models"]:
+            _console.print(f"  {m}")
+    return 0
+
+
+def providers_check(config: ConfigManager) -> int:
+    """Exit 0 if every configured provider has a usable key; else 2 (Rich)."""
+    from rich.console import Console as _Console
+
+    data = get_providers_check_data(config)
+    _console = _Console()
+    if not data["complete"]:
+        _console.print(f"[red]Missing keys for:[/] {', '.join(data['missing'])}")
         return 2
     _console.print("[green]All providers have keys set[/]")
     return 0
@@ -570,6 +731,12 @@ def providers_check(config: ConfigManager) -> int:
 
 __all__ = [
     "CommandHandler",
+    "get_init_data",
+    "get_list_data",
+    "get_providers_check_data",
+    "get_providers_list_data",
+    "get_providers_models_data",
+    "get_status_data",
     "list_command",
     "list_operations",
     "providers_check",

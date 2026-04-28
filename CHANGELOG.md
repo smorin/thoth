@@ -18,6 +18,11 @@ All notable changes to Thoth are documented here.
 
 - `thoth ask "PROMPT"` — canonical scripted research entry point. Accepts the full research-options stack (per Q3-PR2-C, applied identically to the cli group).
 - `thoth resume OP_ID` — canonical resume entry point. Honors `--verbose`, `--config`, `--quiet`, `--no-metadata`, `--timeout`, `--api-key-{openai,perplexity,mock}` per Q1-PR2-C.
+- `thoth completion {bash,zsh,fish}` — emit eval-able shell init scripts. Supports `--install` (TTY-detect + prompt-before-overwrite), `--install --force` (CI-friendly silent overwrite), `--install --manual` (print block + instructions; never write), and `--json` (structured success/error envelopes for install metadata or shell-validation errors). Closes PRD F-70.
+- TAB completion of operation IDs (`resume`, `status`), mode names (`modes list --name`), config keys (`config get`), and provider names (`providers list/models/check --provider`).
+- `--json` flag on every data/action admin command: `init`, `status`, `list`, `providers list/models/check`, `config get/set/unset/list/path/edit`, `modes list`, `ask`, `resume`. Envelope contract documented in `docs/json-output.md`.
+- `ask --json` immediate-mode returns full result inline; background-mode auto-asyncs and returns an op-id submit envelope.
+- `resume --json` is a pure snapshot — never advances state, never polls. Use without `--json` to retry.
 
 ### Changed (BREAKING)
 

@@ -597,6 +597,10 @@ from thoth.cli_subcommands import help_cmd as _help_mod  # noqa: E402
 
 cli.add_command(_help_mod.help_cmd)
 
+from thoth.cli_subcommands import completion as _completion_mod  # noqa: E402
+
+cli.add_command(_completion_mod.completion)
+
 
 def main():
     signal.signal(signal.SIGINT, handle_sigint)
