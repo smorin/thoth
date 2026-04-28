@@ -17,6 +17,7 @@ ADMIN_COMMANDS: tuple[str, ...] = (
     "config",
     "modes",
     "providers",
+    "completion",
     "help",
 )
 
