@@ -17,7 +17,7 @@ from rich.console import Console
 from rich.table import Table
 
 from thoth._secrets import _mask_tree
-from thoth.config import BUILTIN_MODES, ConfigManager, is_background_mode
+from thoth.config import BUILTIN_MODES, ConfigManager, mode_kind
 
 Source = Literal["builtin", "user", "overridden"]
 Kind = Literal["immediate", "background", "unknown"]
@@ -45,10 +45,26 @@ def _normalize_providers(cfg: dict[str, Any]) -> list[str]:
 
 
 def _derive_kind(cfg: dict[str, Any], warnings: list[str]) -> Kind:
-    if not cfg.get("model") and "async" not in cfg:
-        warnings.append("missing `model` and no explicit `async` — kind unknown")
+    """Resolve a mode's display kind for the `thoth modes` table.
+
+    P18: prefer the declared `kind` field; fall back to `mode_kind` (which
+    handles the legacy `async` key + substring sniff). Missing model AND no
+    declared kind AND no async → kind=unknown with a warning.
+    """
+    if "kind" in cfg:
+        kind_raw = cfg["kind"]
+        if kind_raw == "immediate":
+            return "immediate"
+        if kind_raw == "background":
+            return "background"
+        warnings.append(f"invalid `kind` value {kind_raw!r} — must be 'immediate' or 'background'")
         return "unknown"
-    return "background" if is_background_mode(cfg) else "immediate"
+    if not cfg.get("model") and "async" not in cfg:
+        warnings.append("missing `model` and no explicit `kind`/`async` — kind unknown")
+        return "unknown"
+    # Legacy fallback path; mode_kind() emits its own DeprecationWarning if `async` is set.
+    resolved = mode_kind(cfg)
+    return "background" if resolved == "background" else "immediate"
 
 
 def _compute_overrides(builtin: dict[str, Any], user: dict[str, Any]) -> dict[str, dict[str, Any]]:

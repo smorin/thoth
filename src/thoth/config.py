@@ -41,28 +41,32 @@ _config_path: Path | None = None
 BUILTIN_MODES = {
     "default": {
         "provider": "openai",
-        "model": "o3",  # Use standard o3 for default
-        "system_prompt": None,  # No system prompt - pass prompt directly
+        "model": "o3",
+        "kind": "immediate",
+        "system_prompt": None,
         "description": "Default mode - passes prompt directly to LLM without any system prompt",
         "auto_input": False,
     },
     "clarification": {
         "provider": "openai",
-        "model": "o3",  # Use standard o3 for clarification
+        "model": "o3",
+        "kind": "immediate",
         "system_prompt": """I don't want you to follow the above question and instructions; I want you to tell me the ways this is unclear, point out any ambiguities or anything you don't understand. Follow that by asking questions to help clarify the ambiguous points. Once there are no more unclear, ambiguous or not understood portions, help me draft a clear version of the question/instruction.""",
         "description": "Clarifying takes the prompt to get. Ask clarifying questions to get rid of anything that's ambiguous, unclear, and also make suggestions on what would be a better question.",
         "next": "exploration",
     },
-    "mini_research": {  # NEW MODE for quick research
+    "mini_research": {
         "provider": "openai",
         "model": "o4-mini-deep-research",
+        "kind": "background",
         "system_prompt": "Conduct quick, focused research with key findings and essential information. Be concise but thorough.",
         "description": "Fast, lightweight research mode for quick answers using o4-mini-deep-research.",
         "auto_input": False,
     },
     "exploration": {
         "provider": "openai",
-        "model": "o3-deep-research",  # Use deep research for exploration
+        "model": "o3-deep-research",
+        "kind": "background",
         "system_prompt": "Explore the topic at hand, looking at options, alternatives, different trade-offs, and make recommendations based on the use case or alternative/related technologies.",
         "description": "Exploration looks at the topic at hand and explores some options and alternatives, different trade-offs, and makes recommendations based on the use case or just alternative and related technologies.",
         "previous": "clarification",
@@ -70,7 +74,8 @@ BUILTIN_MODES = {
     },
     "deep_dive": {
         "provider": "openai",
-        "model": "o3-deep-research",  # Use deep research for deep dive
+        "model": "o3-deep-research",
+        "kind": "background",
         "system_prompt": "Deep dive into the specific technology, giving an overview, going deep on it, discussing it, and exploring it. For APIs, cover what the API is, how it works, assumptions, dependencies, if it's deprecated, common pitfalls. For other technologies, cover what the technology is and how it's used.",
         "description": "This deep dives into a specific technology, giving an overview of it, going deep on it, discussing it, and exploring it.",
         "previous": "exploration",
@@ -78,7 +83,8 @@ BUILTIN_MODES = {
     },
     "tutorial": {
         "provider": "openai",
-        "model": "o3-deep-research",  # Use deep research for tutorial
+        "model": "o3-deep-research",
+        "kind": "background",
         "system_prompt": "Create a detailed tutorial with examples of how the technologies are used in common scenarios to get started, along with code samples, command-line execution process, and other useful information.",
         "description": "The tutorial goes into a detailed explanation with examples of how the technologies are used in common scenarios to get started.",
         "previous": "deep_dive",
@@ -86,7 +92,8 @@ BUILTIN_MODES = {
     },
     "solution": {
         "provider": "openai",
-        "model": "o3-deep-research",  # Use deep research for solution
+        "model": "o3-deep-research",
+        "kind": "background",
         "system_prompt": "Design a specific solution to solve the given problem using appropriate technology. Focus on practical implementation.",
         "description": "A solution generally goes into a specific solution to solve a specific problem using technology.",
         "previous": "tutorial",
@@ -94,7 +101,8 @@ BUILTIN_MODES = {
     },
     "prd": {
         "provider": "openai",
-        "model": "o3-deep-research",  # Use deep research for PRD
+        "model": "o3-deep-research",
+        "kind": "background",
         "system_prompt": "Create a Product Requirements Document based on prior research. Use previous research on solutions and technologies to create a comprehensive requirements document.",
         "description": "Product Requirements Document based on prior research, we'll create the PRD looking at previous research on solutions to technologies.",
         "previous": "solution",
@@ -102,7 +110,8 @@ BUILTIN_MODES = {
     },
     "tdd": {
         "provider": "openai",
-        "model": "o3-deep-research",  # Use deep research for TDD
+        "model": "o3-deep-research",
+        "kind": "background",
         "system_prompt": "Create a Technical Design Document based on the PRD and prior research. Consider best practices on architecture and good abstractions to make things maintainable and well-structured in code.",
         "description": "The Technical Design Document based on the PRD and prior research puts together a technical design document.",
         "previous": "prd",
@@ -110,13 +119,15 @@ BUILTIN_MODES = {
     "thinking": {
         "provider": "openai",
         "model": "o3",
+        "kind": "immediate",
         "temperature": 0.4,
         "system_prompt": "You are a helpful assistant for quick analysis.",
         "description": "Quick thinking and analysis mode for simple questions.",
     },
     "deep_research": {
         "provider": "openai",
-        "model": "o3-deep-research",  # Explicit deep research model
+        "model": "o3-deep-research",
+        "kind": "background",
         "providers": ["openai"],
         "parallel": True,
         "system_prompt": "Conduct comprehensive research with citations and multiple perspectives.\nOrganize findings clearly and highlight key insights.",
@@ -124,9 +135,10 @@ BUILTIN_MODES = {
         "previous": "exploration",
         "auto_input": True,
     },
-    "comparison": {  # Add comparison mode with deep research
+    "comparison": {
         "provider": "openai",
         "model": "o3-deep-research",
+        "kind": "background",
         "system_prompt": "Compare and contrast the given options, technologies, or approaches. Provide a detailed analysis of pros, cons, and recommendations.",
         "description": "Comparative analysis mode for evaluating multiple options.",
     },
@@ -139,20 +151,53 @@ def is_background_model(model: str | None) -> bool:
     Rule: any model name containing the substring "deep-research" is treated
     as background. Case-sensitive by design (OpenAI model IDs are lowercase).
     `None` and empty string return False.
+
+    P18 keeps this helper as the model-level source of truth for "what does
+    *this provider* require for *this model*?" — used inside the OpenAI
+    runtime mismatch check (`OpenAIProvider._validate_kind_for_model`) and
+    inside `progress.py:should_show_spinner`. Resolution-path callers should
+    use `mode_kind(cfg)` instead.
     """
     return "deep-research" in (model or "")
+
+
+def mode_kind(mode_config: dict[str, Any]) -> str:
+    """Canonical resolver for a mode's execution kind.
+
+    Returns "immediate" or "background". Precedence (highest first):
+
+    1. Explicit `kind` field — the canonical declaration.
+    2. Legacy `async: bool` field — emits a one-time DeprecationWarning per
+       process; truthy → background, falsy → immediate. Removed in v4.0.0.
+    3. Substring fallback via `is_background_model(model)` — emits a one-time
+       warning per (mode_id) the first time it's used. User modes missing
+       `kind` hit this path; builtins must declare `kind` explicitly (enforced
+       by `tests/test_builtin_modes_have_kind.py`).
+    """
+    if "kind" in mode_config:
+        return mode_config["kind"]
+    if "async" in mode_config:
+        import warnings
+
+        warnings.warn(
+            "Mode config field 'async' is deprecated; use 'kind' = 'immediate' or "
+            "'background' instead. The 'async' field will be removed in v4.0.0.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return "background" if mode_config["async"] else "immediate"
+    # Substring fallback — only user modes should reach this path.
+    return "background" if is_background_model(mode_config.get("model")) else "immediate"
 
 
 def is_background_mode(mode_config: dict[str, Any]) -> bool:
     """Return True if a mode submits as a long-running background job.
 
-    Precedence: explicit `async` key wins (truthy → background, falsy →
-    immediate); otherwise delegate to `is_background_model` using the model
-    name.
+    Thin wrapper over `mode_kind(cfg)` kept for backwards-compatibility with
+    code paths that pre-date P18. New code should call `mode_kind(cfg)`
+    directly. Removed in v4.0.0 (see future P19).
     """
-    if "async" in mode_config:
-        return bool(mode_config["async"])
-    return is_background_model(mode_config.get("model"))
+    return mode_kind(mode_config) == "background"
 
 
 class ConfigSchema:
