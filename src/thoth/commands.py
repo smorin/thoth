@@ -186,50 +186,82 @@ def list_command(show_all):
     return list_operations(show_all=show_all)
 
 
-async def show_status(operation_id: str):
-    """Show status of a specific operation"""
+async def get_status_data(operation_id: str) -> dict | None:
+    """Pure data function for `thoth status OP_ID`.
+
+    Returns a dict describing the operation, or None if not found.
+    Per spec §7.2, this function NEVER takes an `as_json` flag — the
+    JSON-vs-Rich choice lives at the subcommand-wrapper layer.
+    """
     config = get_config()
     checkpoint_manager = CheckpointManager(config)
 
     operation = await checkpoint_manager.load(operation_id)
-    if not operation:
+    if operation is None:
+        return None
+
+    return {
+        "operation_id": operation.id,
+        "prompt": operation.prompt,
+        "mode": operation.mode,
+        "status": operation.status,
+        "created_at": operation.created_at.isoformat(),
+        "updated_at": operation.updated_at.isoformat(),
+        "project": operation.project,
+        "providers": dict(operation.providers),
+        "output_paths": {k: str(v) for k, v in operation.output_paths.items()},
+        "failure_type": getattr(operation, "failure_type", None),
+        "error": operation.error,
+    }
+
+
+async def show_status(operation_id: str):
+    """Show status of a specific operation (Rich rendering)."""
+    data = await get_status_data(operation_id)
+    if data is None:
         console.print(f"[red]Error:[/red] Operation {operation_id} not found")
         sys.exit(6)
 
+    # Re-load for the existing Rich rendering helpers (_print_status_hints).
+    config = get_config()
+    checkpoint_manager = CheckpointManager(config)
+    operation = await checkpoint_manager.load(operation_id)  # already known to exist
+    assert operation is not None  # data was non-None above
+
     console.print("\nOperation Details:")
     console.print("─────────────────")
-    console.print(f"ID:        {operation.id}")
-    console.print(f"Prompt:    {operation.prompt}")
-    console.print(f"Mode:      {operation.mode}")
-    console.print(f"Status:    {operation.status}")
+    console.print(f"ID:        {data['operation_id']}")
+    console.print(f"Prompt:    {data['prompt']}")
+    console.print(f"Mode:      {data['mode']}")
+    console.print(f"Status:    {data['status']}")
     console.print(f"Started:   {operation.created_at.strftime('%Y-%m-%d %H:%M:%S')}")
 
-    if operation.status in ["running", "completed"]:
+    if data["status"] in ["running", "completed"]:
         elapsed = datetime.now() - operation.created_at
         minutes = int(elapsed.total_seconds() / 60)
         console.print(f"Elapsed:   {minutes} minutes")
 
-    if operation.project:
-        console.print(f"Project:   {operation.project}")
+    if data["project"]:
+        console.print(f"Project:   {data['project']}")
 
-    if operation.providers:
+    if data["providers"]:
         console.print("\nProvider Status:")
         console.print("───────────────")
-        for provider_name, provider_info in operation.providers.items():
+        for provider_name, provider_info in data["providers"].items():
             status_icon = "✓" if provider_info.get("status") == "completed" else "▶"
             status_text = provider_info.get("status", "unknown").title()
             console.print(f"{provider_name.title()}:  {status_icon} {status_text}")
 
-    if operation.output_paths:
+    if data["output_paths"]:
         console.print("\nOutput Files:")
         console.print("────────────")
-        if operation.project:
-            base_dir = Path(config.data["paths"]["base_output_dir"]) / operation.project
+        if data["project"]:
+            base_dir = Path(config.data["paths"]["base_output_dir"]) / data["project"]
             console.print(f"{base_dir}/")
         else:
             console.print("./")
 
-        for provider_name, path in operation.output_paths.items():
+        for _provider_name, path in data["output_paths"].items():
             console.print(f"  ├── {Path(path).name}")
 
     _print_status_hints(operation)
@@ -619,6 +651,7 @@ def providers_check(config: ConfigManager) -> int:
 __all__ = [
     "CommandHandler",
     "get_init_data",
+    "get_status_data",
     "list_command",
     "list_operations",
     "providers_check",

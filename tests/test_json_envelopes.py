@@ -15,8 +15,9 @@ from click.testing import CliRunner
 JSON_COMMANDS: list[tuple[str, list[str], int]] = [
     # (label, argv-after-cli, expected_exit_code)
     ("init_non_interactive", ["init", "--json", "--non-interactive"], 0),
-    # T07–T13 will append rows for status, list, providers, config, modes,
-    # ask, resume per the spec §10 commit sequence.
+    ("status_missing_op", ["status", "research-MISSING", "--json"], 6),
+    # T08–T13 will append rows for list, providers, config, modes, ask,
+    # resume per the spec §10 commit sequence.
 ]
 
 
@@ -55,3 +56,13 @@ def test_init_json_without_non_interactive_emits_JSON_REQUIRES_NONINTERACTIVE(
     payload = json.loads(result.output)
     assert payload["status"] == "error"
     assert payload["error"]["code"] == "JSON_REQUIRES_NONINTERACTIVE"
+
+
+def test_status_json_missing_op_emits_OPERATION_NOT_FOUND(cli, isolated_thoth_home):
+    runner = CliRunner()
+    result = runner.invoke(cli, ["status", "research-MISSING", "--json"], catch_exceptions=False)
+
+    assert result.exit_code == 6
+    payload = json.loads(result.output)
+    assert payload["status"] == "error"
+    assert payload["error"]["code"] == "OPERATION_NOT_FOUND"
