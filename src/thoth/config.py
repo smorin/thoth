@@ -55,13 +55,19 @@ BUILTIN_MODES = {
         "description": "Clarifying takes the prompt to get. Ask clarifying questions to get rid of anything that's ambiguous, unclear, and also make suggestions on what would be a better question.",
         "next": "exploration",
     },
-    "mini_research": {
+    "quick_research": {
         "provider": "openai",
         "model": "o4-mini-deep-research",
         "kind": "background",
         "system_prompt": "Conduct quick, focused research with key findings and essential information. Be concise but thorough.",
-        "description": "Fast, lightweight research mode for quick answers using o4-mini-deep-research.",
+        "description": "Lightweight background research with o4-mini-deep-research — faster wall-clock than deep_research, still async.",
         "auto_input": False,
+    },
+    "mini_research": {
+        # P18 rename: `mini_research` → `quick_research`. Stub kept for one
+        # minor with deprecation warning at resolution. Removed in v4.0.0
+        # (future P19).
+        "_deprecated_alias_for": "quick_research",
     },
     "exploration": {
         "provider": "openai",
@@ -442,14 +448,34 @@ class ConfigManager:
         return current
 
     def get_mode_config(self, mode: str) -> dict[str, Any]:
-        """Get mode configuration, merging built-in with user config"""
-        # Start with built-in mode if it exists
-        mode_config = BUILTIN_MODES.get(mode, {}).copy()
+        """Get mode configuration, merging built-in with user config.
 
-        # Override with user config if present
+        P18: resolves `_deprecated_alias_for` stubs with a one-time
+        DeprecationWarning per process. Aliases are removed in v4.0.0.
+        """
+        # Resolve P18 alias stubs (e.g., `mini_research` → `quick_research`).
+        builtin = BUILTIN_MODES.get(mode, {})
+        target_name = builtin.get("_deprecated_alias_for")
+        if target_name:
+            import warnings as _warnings
+
+            _warnings.warn(
+                f"Mode '{mode}' is a deprecated alias for '{target_name}'; "
+                f"update your invocation to use '{target_name}' directly. "
+                f"The alias will be removed in v4.0.0.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            target_str = str(target_name)
+            mode_config = (BUILTIN_MODES.get(target_str) or {}).copy()
+            # User config overlay still keyed on the original name.
+            user_mode = self.data.get("modes", {}).get(mode, {})
+            mode_config.update(user_mode)
+            return mode_config
+
+        mode_config = builtin.copy()
         user_mode = self.data.get("modes", {}).get(mode, {})
         mode_config.update(user_mode)
-
         return mode_config
 
     def get_effective_config(self) -> dict[str, Any]:

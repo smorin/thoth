@@ -5,8 +5,7 @@ returns a `list[str]` of candidate completions filtered by `incomplete`
 prefix. The functions are pure (no side effects) so they can also be
 imported by `interactive.py::SlashCommandCompleter` in a future PR.
 
-Per spec §6.4: `mode_kind` is committed as dead code (~5 LOC) for P18
-forward-compat — P18 will wire `--kind` later.
+P18 wired `mode_kind` into `cli_subcommands/modes.py:modes_list` (`--kind`).
 """
 
 from __future__ import annotations

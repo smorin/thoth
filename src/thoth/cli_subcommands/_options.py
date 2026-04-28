@@ -91,7 +91,7 @@ _RESEARCH_OPTIONS: list[tuple[tuple, dict]] = [
         ("--pick-model", "-M", "pick_model"),
         {
             "is_flag": True,
-            "help": "Interactively pick a model (immediate modes only)",
+            "help": "Interactively pick a model (only for modes with kind='immediate')",
         },
     ),
 ]

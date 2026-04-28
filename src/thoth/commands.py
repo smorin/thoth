@@ -652,6 +652,9 @@ def get_providers_models_data(config: ConfigManager, filter_provider: str | None
 
     seen: dict[str, set[str]] = {}
     for cfg in BUILTIN_MODES.values():
+        # P18: alias stubs (`_deprecated_alias_for`) don't carry provider/model.
+        if "_deprecated_alias_for" in cfg:
+            continue
         p = str(cfg["provider"])
         if filter_provider and p != filter_provider:
             continue

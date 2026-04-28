@@ -23,6 +23,7 @@ from thoth.cli_subcommands._option_policy import (
     inherited_value,
     validate_inherited_options,
 )
+from thoth.completion.sources import mode_kind as _mode_kind_completer
 from thoth.completion.sources import mode_names as _mode_names_completer
 
 _PASSTHROUGH_CONTEXT = {"ignore_unknown_options": True, "allow_extra_args": True}
@@ -81,6 +82,14 @@ for _flag, _new_form in _LEGACY_FLAG_TO_NEW_FORM.items():
 )
 @click.option("--json", "as_json", is_flag=True, help="Emit JSON envelope")
 @click.option("--source", "source", default="all", help="Filter by source")
+@click.option(
+    "--kind",
+    "kind",
+    type=click.Choice(["immediate", "background"]),
+    default=None,
+    help="Filter by execution kind (P18)",
+    shell_complete=_mode_kind_completer,
+)
 @click.option("--show-secrets", "show_secrets", is_flag=True, help="Reveal masked secrets")
 @click.pass_context
 def modes_list(
@@ -89,6 +98,7 @@ def modes_list(
     name: str | None,
     as_json: bool,
     source: str,
+    kind: str | None,
     show_secrets: bool,
 ) -> None:
     """List research modes."""
@@ -106,6 +116,7 @@ def modes_list(
                 source=source,
                 show_secrets=show_secrets,
                 config_path=config_path,
+                kind=kind,
             )
         )
 
@@ -118,6 +129,8 @@ def modes_list(
         rebuilt.extend(["--name", name])
     if source != "all":
         rebuilt.extend(["--source", source])
+    if kind is not None:
+        rebuilt.extend(["--kind", kind])
     if show_secrets:
         rebuilt.append("--show-secrets")
 
