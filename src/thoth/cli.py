@@ -199,6 +199,7 @@ def _extract_fallback_options(args: list[str], opts: dict) -> tuple[list[str], d
         "-c": "config_path",
         "--timeout": "timeout",
         "-T": "timeout",
+        "--out": "out",
     }
 
     def _validate_provider(value: str) -> None:
@@ -234,6 +235,7 @@ def _extract_fallback_options(args: list[str], opts: dict) -> tuple[list[str], d
         "--clarify": "clarify",
         "--pick-model": "pick_model",
         "-M": "pick_model",
+        "--append": "append",
     }
 
     parsed = dict(opts)
@@ -251,7 +253,11 @@ def _extract_fallback_options(args: list[str], opts: dict) -> tuple[list[str], d
             value = args[i + 1]
             if key == "provider":
                 _validate_provider(value)
-            parsed[key] = _coerce_value(arg, key, value)
+            coerced = _coerce_value(arg, key, value)
+            if key == "out":
+                parsed[key] = (*tuple(parsed.get(key) or ()), coerced)
+            else:
+                parsed[key] = coerced
             i += 2
             continue
         if arg in flag_options:
@@ -265,7 +271,11 @@ def _extract_fallback_options(args: list[str], opts: dict) -> tuple[list[str], d
                 value = arg[len(prefix) :]
                 if key == "provider":
                     _validate_provider(value)
-                parsed[key] = _coerce_value(option, key, value)
+                coerced = _coerce_value(option, key, value)
+                if key == "out":
+                    parsed[key] = (*tuple(parsed.get(key) or ()), coerced)
+                else:
+                    parsed[key] = coerced
                 matched_equals = True
                 break
         if matched_equals:
@@ -384,6 +394,8 @@ def _dispatch_click_fallback(
         timeout_override=opts.get("timeout"),
         model_override=model_override,
         ctx_obj=None,
+        out=tuple(opts.get("out") or ()),
+        append=bool(opts.get("append")),
     )
 
 

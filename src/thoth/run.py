@@ -243,6 +243,7 @@ async def run_research(
         created_at=datetime.now(),
         updated_at=datetime.now(),
         project=project,
+        input_files=input_files,
     )
 
     checkpoint_manager = CheckpointManager(config)
@@ -402,8 +403,9 @@ async def run_research(
             await checkpoint_manager.save(operation)
         raise
     except Exception as e:
-        operation.transition_to("failed", error=str(e))
-        await checkpoint_manager.save(operation)
+        if operation.status not in ("cancelled", "failed", "completed"):
+            operation.transition_to("failed", error=str(e))
+            await checkpoint_manager.save(operation)
         raise
 
     if operation.status == "failed":
@@ -481,10 +483,16 @@ async def _execute_immediate(
         except Exception as e:
             # Streaming runs treat any exception as a permanent failure —
             # immediate-kind ops have no upstream job to retry/resume against.
+            target_console.print(
+                f"\n[red]✗[/red] {provider_name.title()} permanent failure: {str(e)}"
+            )
+            operation.providers[provider_name]["status"] = "failed"
+            operation.providers[provider_name]["failure_type"] = "permanent"
+            operation.providers[provider_name]["error"] = str(e)
             operation.transition_to("failed", error=str(e))
             operation.failure_type = "permanent"
             await checkpoint_manager.save(operation)
-            raise
+            return
     finally:
         sink.close()
 

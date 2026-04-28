@@ -15,11 +15,17 @@ arrives in Phase E alongside `provider.stream()`. Phase C ships the UX gates.
 
 from __future__ import annotations
 
+import asyncio
+from pathlib import Path
 from unittest.mock import patch
 
+import pytest
 from rich.console import Console
 
-from thoth.run import _poll_display
+from tests._fixture_helpers import run_thoth
+from tests.conftest import make_operation
+from thoth.context import AppContext
+from thoth.run import _execute_immediate, _poll_display
 
 
 def test_poll_display_yields_none_for_immediate_kind() -> None:
@@ -110,3 +116,91 @@ def test_should_show_spinner_short_circuits_for_immediate() -> None:
     # The spinner gate should NOT have been called for immediate runs — the
     # short-circuit happens above it.
     assert not mock_gate.called
+
+
+def test_immediate_stream_failure_does_not_double_fail_operation(
+    isolated_thoth_home: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A stream failure already marked failed must not be failed a second time."""
+    monkeypatch.chdir(tmp_path)
+
+    exit_code, stdout, stderr = run_thoth(
+        ["permanent stream fail", "--provider", "mock"],
+        env_overrides={"THOTH_MOCK_BEHAVIOR": "permanent"},
+    )
+    combined = stdout + stderr
+
+    assert exit_code == 1, combined
+    assert "Mock permanent failure" in combined
+    assert "Invalid state transition" not in combined
+
+
+def test_immediate_falls_back_to_submit_get_result_when_stream_not_implemented(
+    stub_config,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    class CheckpointStub:
+        def __init__(self) -> None:
+            self.saved_statuses: list[str] = []
+
+        async def save(self, operation) -> None:
+            self.saved_statuses.append(operation.status)
+
+    class OutputStub:
+        async def save_result(self, *args, **kwargs):
+            raise AssertionError("project-less immediate fallback must not save result files")
+
+    class FallbackProvider:
+        model = "fallback-model"
+
+        def __init__(self) -> None:
+            self.submitted: tuple[str, str, str | None] | None = None
+
+        async def stream(self, prompt, mode, system_prompt=None, verbose=False):
+            if False:
+                yield None
+            raise NotImplementedError("stream unavailable")
+
+        async def submit(self, prompt, mode, system_prompt=None, verbose=False):
+            self.submitted = (prompt, mode, system_prompt)
+            return "job-1"
+
+        async def get_result(self, job_id, verbose=False):
+            assert job_id == "job-1"
+            return "fallback content"
+
+    checkpoint = CheckpointStub()
+    provider = FallbackProvider()
+    operation = make_operation("research-fallback")
+
+    # ty doesn't honor structural typing for stub doubles; the runtime contract
+    # is duck-typed and explicit `cast` would just hide the same delta. Suppress
+    # arg-type for the call itself.
+    asyncio.run(
+        _execute_immediate(
+            operation=operation,
+            checkpoint_manager=checkpoint,  # ty: ignore[invalid-argument-type]
+            output_manager=OutputStub(),  # ty: ignore[invalid-argument-type]
+            config=stub_config,
+            mode_config={"system_prompt": "system text"},
+            providers={"mock": provider},
+            quiet=False,
+            verbose=False,
+            output_dir=None,
+            project=None,
+            mode="default",
+            prompt="fallback prompt",
+            out_specs=(),
+            append=False,
+            ctx=AppContext(config=stub_config),
+        )
+    )
+
+    assert capsys.readouterr().out == "fallback content"
+    assert provider.submitted == ("fallback prompt", "default", "system text")
+    assert operation.status == "completed"
+    assert operation.providers["mock"]["job_id"] == "job-1"
+    assert operation.output_paths == {}
+    assert checkpoint.saved_statuses == ["running", "completed"]

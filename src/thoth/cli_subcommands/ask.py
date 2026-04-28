@@ -252,6 +252,8 @@ def ask(
         no_metadata=effective_no_metadata,
         timeout_override=effective_timeout,
         model_override=None,
+        out=out,
+        append=append,
     )
 
 

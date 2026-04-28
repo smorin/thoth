@@ -167,7 +167,7 @@ thoth "prompt" --quiet
 
 Immediate-kind modes (`default`, `thinking`, `clarification`) stream tokens
 to stdout as they arrive — no progress bar, no operation-ID echo, no
-resume hint. Use `--out` to redirect or tee:
+resume hint, and no default result file. Use `--out` to redirect or tee:
 
 ```bash
 # Stream to stdout (default)
@@ -175,6 +175,7 @@ thoth ask "what is X" --mode thinking
 
 # Write to a file (truncate)
 thoth ask "what is X" --mode thinking --out answer.md
+thoth --out answer.md --provider mock "what is X"
 
 # Tee to stdout AND a file
 thoth ask "what is X" --mode thinking --out -,answer.md
