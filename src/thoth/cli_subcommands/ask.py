@@ -36,6 +36,8 @@ _ASK_HONOR = DEFAULT_HONOR | {
     "quiet",
     "no_metadata",
     "timeout",
+    "out",
+    "append",
 }
 
 
@@ -65,6 +67,8 @@ def ask(
     quiet: bool,
     no_metadata: bool,
     timeout: float | None,
+    out: tuple[str, ...],
+    append: bool,
     interactive: bool,
     clarify: bool,
     pick_model: bool,

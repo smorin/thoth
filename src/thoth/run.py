@@ -185,6 +185,8 @@ async def run_research(
     timeout_override: float | None = None,
     ctx: AppContext | None = None,
     model_override: str | None = None,
+    out_specs: tuple[str, ...] = (),
+    append: bool = False,
 ):
     """Execute research operation.
 
@@ -347,23 +349,53 @@ async def run_research(
             print_saved_not_submitted(operation_id)
             raise click.Abort()
 
+    # P18 Phase E: dispatch on mode_kind. Immediate-kind runs route to
+    # `_execute_immediate` which streams via `provider.stream()` to a
+    # MultiSink (stdout / file / tee) and falls back to submit + get_result
+    # if the provider doesn't implement streaming. Background runs continue
+    # through the existing polling-loop path. The `--out`/`--append` flags
+    # are honored only on the immediate path; background runs ignore them
+    # (deferred per spec §3 / §10).
+    from thoth.config import mode_kind as _mode_kind_local
+
+    is_immediate = _mode_kind_local(mode_config) == "immediate"
+
     try:
-        await _execute_research(
-            operation,
-            checkpoint_manager,
-            output_manager,
-            config,
-            mode_config,
-            providers,
-            quiet,
-            verbose,
-            output_dir,
-            combined,
-            project,
-            mode,
-            prompt,
-            ctx=ctx,
-        )
+        if is_immediate and not async_mode:
+            await _execute_immediate(
+                operation,
+                checkpoint_manager,
+                output_manager,
+                config,
+                mode_config,
+                providers,
+                quiet,
+                verbose,
+                output_dir,
+                project,
+                mode,
+                prompt,
+                out_specs,
+                append,
+                ctx=ctx,
+            )
+        else:
+            await _execute_research(
+                operation,
+                checkpoint_manager,
+                output_manager,
+                config,
+                mode_config,
+                providers,
+                quiet,
+                verbose,
+                output_dir,
+                combined,
+                project,
+                mode,
+                prompt,
+                ctx=ctx,
+            )
     except (click.Abort, KeyboardInterrupt):
         if operation.status not in ("cancelled", "failed", "completed"):
             operation.transition_to("cancelled")
@@ -376,6 +408,110 @@ async def run_research(
 
     if operation.status == "failed":
         raise click.Abort()
+
+
+async def _execute_immediate(
+    operation: OperationStatus,
+    checkpoint_manager: CheckpointManager,
+    output_manager: OutputManager,
+    config: ConfigManager,
+    mode_config: dict,
+    providers: dict,
+    quiet: bool,
+    verbose: bool,
+    output_dir: str | None,
+    project: str | None,
+    mode: str,
+    prompt: str,
+    out_specs: tuple[str, ...],
+    append: bool,
+    ctx: AppContext | None = None,
+) -> None:
+    """P18 Phase E: streaming execution path for immediate-kind runs.
+
+    Uses `provider.stream()` to deliver tokens to a `MultiSink` (stdout /
+    file / tee). Falls back to `submit() + get_result()` for providers that
+    don't implement streaming yet (e.g., Mock pre-Phase E, or future
+    providers). Saves the aggregated result via `output_manager.save_result`
+    only if `--project` is set (matching pre-P18 background behavior of
+    only writing checkpoints when persistence is requested).
+
+    Skips the polling loop entirely — single provider, single stream call,
+    no Progress bar, no operation-ID echo, no resume hint.
+    """
+    if ctx is None:
+        ctx = AppContext(config=config, verbose=verbose)
+    target_console = ctx.console  # noqa: F811
+
+    from thoth.sinks import MultiSink
+
+    # Single-provider immediate runs are the norm. Pick the first one.
+    provider_name, provider_instance = next(iter(providers.items()))
+    operation.providers[provider_name] = {"status": "running", "job_id": "<streaming>"}
+    operation.transition_to("running")
+    # Always save checkpoint — `thoth list` / `thoth status` / `thoth resume`
+    # need it, and the global checkpoint dir lives outside the project dir
+    # anyway. `--project` only governs whether we ALSO save the result file.
+    await checkpoint_manager.save(operation)
+
+    system_prompt = mode_config.get("system_prompt") or ""
+    aggregated: list[str] = []
+
+    sink = MultiSink.from_specs(list(out_specs), append=append)
+    try:
+        try:
+            try:
+                async for event in provider_instance.stream(
+                    prompt, mode, system_prompt, verbose=verbose
+                ):
+                    if event.kind == "text":
+                        sink.write(event.text)
+                        aggregated.append(event.text)
+                    elif event.kind == "done":
+                        break
+            except NotImplementedError:
+                # Fallback for providers that haven't implemented stream yet.
+                job_id = await provider_instance.submit(
+                    prompt, mode, system_prompt, verbose=verbose
+                )
+                operation.providers[provider_name]["job_id"] = job_id
+                content = await provider_instance.get_result(job_id, verbose=verbose)
+                sink.write(content)
+                aggregated.append(content)
+        except Exception as e:
+            # Streaming runs treat any exception as a permanent failure —
+            # immediate-kind ops have no upstream job to retry/resume against.
+            operation.transition_to("failed", error=str(e))
+            operation.failure_type = "permanent"
+            await checkpoint_manager.save(operation)
+            raise
+    finally:
+        sink.close()
+
+    final_text = "".join(aggregated)
+    operation.providers[provider_name]["status"] = "completed"
+
+    # Persist via output_manager only when the user asked for it via
+    # --project. Otherwise the streamed output is the user-visible result.
+    if project:
+        provider_model = getattr(provider_instance, "model", None)
+        output_path = await output_manager.save_result(
+            operation,
+            provider_name,
+            final_text,
+            output_dir,
+            model=provider_model,
+            system_prompt=system_prompt,
+        )
+        operation.output_paths[provider_name] = output_path
+
+    operation.transition_to("completed")
+    await checkpoint_manager.save(operation)
+
+    if not quiet and project:
+        target_console.print(
+            f"\n[green]✓[/green] Saved to: [dim]{output_dir or 'current directory'}/{project}/[/dim]"
+        )
 
 
 async def _run_polling_loop(

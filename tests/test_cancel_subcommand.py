@@ -11,8 +11,8 @@ from pathlib import Path
 
 import pytest
 
-from thoth.cli import cli
 from tests._fixture_helpers import run_thoth
+from thoth.cli import cli
 
 
 def test_cancel_subcommand_registered() -> None:

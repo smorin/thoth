@@ -137,10 +137,20 @@ This mock provider successfully completed the research task.
     ) -> AsyncIterator[StreamEvent]:
         """Yield deterministic chunks for hermetic test coverage of streaming.
 
-        The chunked output is structured so callers can verify:
+        Honors THOTH_MOCK_BEHAVIOR for parity with the polling-loop path:
+        `permanent` and `flake:N` raise so the immediate path's failure
+        handling matches what background-mode tests expect.
+
+        The happy-path chunked output is structured so callers can verify:
           * the prompt round-trips into the streamed text
           * the final event is `done`
         """
+        if self._behavior == "permanent":
+            raise RuntimeError("Mock permanent failure")
+        if self._behavior.startswith("flake:"):
+            # Stream path doesn't model retry; permanent-fail when flake is set.
+            raise RuntimeError(f"Mock streaming failure (behavior={self._behavior})")
+
         chunks = [
             f"# Mock streaming response (mode={mode})\n\n",
             "Echo: ",

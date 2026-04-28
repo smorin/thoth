@@ -58,8 +58,8 @@ def test_model_kind_matches_runtime_behavior(spec) -> None:
         # PerplexityProvider.submit raises NotImplementedError as of P18.
         pytest.skip("perplexity provider is not yet operational")
 
-    from thoth.providers import create_provider
     from thoth.config import ConfigManager
+    from thoth.providers import create_provider
 
     cm = ConfigManager()
     cm.load_all_layers({})
@@ -74,10 +74,7 @@ def test_model_kind_matches_runtime_behavior(spec) -> None:
     async def _exercise() -> dict:
         job_id = await provider.submit("ping", mode="_runtime_check_")
         status = await provider.check_status(job_id)
-        if (
-            spec.kind == "background"
-            and status.get("status") in ("running", "queued")
-        ):
+        if spec.kind == "background" and status.get("status") in ("running", "queued"):
             # Cancel before the deep-research job actually runs to completion
             # — the test only needed to confirm submission was async.
             try:

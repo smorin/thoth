@@ -423,11 +423,17 @@ def _run_research_default(
     timeout_override: float | None = None,
     model_override: str | None = None,
     ctx_obj=None,
+    out: tuple[str, ...] = (),
+    append: bool = False,
 ) -> None:
     """Execute a research run with the given mode and prompt.
 
     Extracted from the bare-prompt branch of the pre-refactor cli callback.
     Called by ThothGroup.invoke for both mode-positional and bare-prompt paths.
+
+    P18 Phase E: `out`/`append` are forwarded to `run_research` and only
+    consulted by the immediate-kind streaming path. Background runs ignore
+    them today (deferred to a future P18 follow-up).
     """
     app_ctx = _build_app_context(verbose) if ctx_obj is None else ctx_obj
     _result = _thoth_run.run_research(
@@ -447,6 +453,8 @@ def _run_research_default(
         timeout_override=timeout_override,
         ctx=app_ctx,
         model_override=model_override,
+        out_specs=tuple(out or ()),
+        append=append,
     )
     _run_maybe_async(_result)
 
@@ -480,6 +488,8 @@ def cli(
     quiet,
     no_metadata,
     timeout,
+    out,
+    append,
     interactive,
     clarify,
     pick_model,
@@ -514,6 +524,8 @@ def cli(
     ctx.obj["quiet"] = quiet
     ctx.obj["no_metadata"] = no_metadata
     ctx.obj["timeout"] = timeout
+    ctx.obj["out"] = out
+    ctx.obj["append"] = append
     ctx.obj["interactive"] = interactive
     ctx.obj["clarify"] = clarify
     ctx.obj["pick_model"] = pick_model

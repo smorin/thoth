@@ -82,6 +82,24 @@ _RESEARCH_OPTIONS: list[tuple[tuple, dict]] = [
         },
     ),
     (("--timeout", "-T"), {"type": float, "help": "Override request timeout in seconds"}),
+    (
+        ("--out",),
+        {
+            "multiple": True,
+            "help": (
+                "P18: output sink for immediate-mode runs. '-' for stdout (default), "
+                "PATH for file. Repeatable; comma-list also accepted. "
+                "Background modes still use --output-dir / --project."
+            ),
+        },
+    ),
+    (
+        ("--append",),
+        {
+            "is_flag": True,
+            "help": "P18: open --out file in append mode instead of truncating",
+        },
+    ),
     (("--interactive", "-i"), {"is_flag": True, "help": "Enter interactive prompt mode"}),
     (
         ("--clarify",),

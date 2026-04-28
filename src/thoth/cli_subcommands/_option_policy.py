@@ -33,6 +33,8 @@ ROOT_OPTION_LABELS: dict[str, str] = {
     "quiet": "--quiet",
     "no_metadata": "--no-metadata",
     "timeout": "--timeout",
+    "out": "--out",
+    "append": "--append",
     "interactive": "--interactive",
     "clarify": "--clarify",
     "pick_model": "--pick-model",
