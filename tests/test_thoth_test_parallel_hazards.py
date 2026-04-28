@@ -116,6 +116,64 @@ def test_first_flag_occurrence_wins():
     assert "first" in hazards[0]
 
 
+def test_o_eq_form_collides_with_space_form():
+    """`-o=foo` must resolve to the same target as `-o foo`."""
+    cases = [_tc("A", "-o=shared"), _tc("B", "-o", "shared")]
+    hazards = detect_parallel_hazards(cases)
+    assert len(hazards) == 1
+    assert "A" in hazards[0] and "B" in hazards[0]
+
+
+def test_output_dir_eq_form_collides_with_o_space_form():
+    """`--output-dir=foo` and `-o foo` are aliases under either syntax."""
+    cases = [_tc("A", "--output-dir=foo"), _tc("B", "-o", "foo")]
+    hazards = detect_parallel_hazards(cases)
+    assert len(hazards) == 1
+
+
+def test_project_eq_form_collides_with_space_form():
+    cases = [_tc("A", "--project=p"), _tc("B", "--project", "p")]
+    hazards = detect_parallel_hazards(cases)
+    assert len(hazards) == 1
+
+
+def test_project_eq_form_cross_collides_with_o_path():
+    """`--project=foo` resolves to research-outputs/foo, same as `-o research-outputs/foo`."""
+    cases = [
+        _tc("A", "--project=foo"),
+        _tc("B", "-o=research-outputs/foo"),
+    ]
+    hazards = detect_parallel_hazards(cases)
+    assert len(hazards) == 1
+
+
+def test_ambiguous_multi_flag_test_is_flagged():
+    """A single TestCase with both -o and --project is ambiguous."""
+    cases = [_tc("A", "-o", "x", "--project", "y")]
+    hazards = detect_parallel_hazards(cases)
+    # Reports the ambiguity for test A (1 message).
+    assert any("Ambiguous" in h and "A" in h for h in hazards)
+
+
+def test_ambiguous_multi_flag_eq_form():
+    """=-attached forms still trip the ambiguity check."""
+    cases = [_tc("A", "-o=x", "--project=y")]
+    hazards = detect_parallel_hazards(cases)
+    assert any("Ambiguous" in h and "A" in h for h in hazards)
+
+
+def test_ambiguous_does_not_suppress_collision_check():
+    """An ambiguous test that ALSO collides with another test should produce
+    both error lines (ambiguity report + collision report)."""
+    cases = [
+        _tc("A", "-o", "x", "--project", "shared"),  # ambiguous; first match -o x
+        _tc("B", "-o", "x"),  # collides with A on '-o x'
+    ]
+    hazards = detect_parallel_hazards(cases)
+    assert any("Ambiguous" in h for h in hazards)
+    assert any("Parallel hazard" in h and "A" in h and "B" in h for h in hazards)
+
+
 def test_real_suite_is_clean():
     """Smoke test: the actual suite must have zero parallel hazards.
 
