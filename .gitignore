@@ -64,6 +64,7 @@ openai.env
 !planning/*.md
 !docs/superpowers/specs/*.md
 !docs/superpowers/plans/*.md
+!docs/json-output.md
 !research/*.md
 !MILESTONES.md
 !thoth_vcr.md
