@@ -433,6 +433,42 @@ class ConfigManager:
                     f"Missing required configuration key: {key}",
                     "Check your configuration file",
                 )
+        self._validate_user_modes_kind()
+
+    def _validate_user_modes_kind(self) -> None:
+        """P18 Phase H: warn-once when a user-defined mode is missing `kind`.
+
+        Builtins are enforced by `tests/test_builtin_modes_have_kind.py`. User
+        modes can omit `kind` for now and fall back to `mode_kind`'s substring
+        heuristic, but we nudge migration. Becomes a hard error in v4.0.0
+        (future P19).
+        """
+        import warnings as _warnings
+
+        user_modes = self.data.get("modes") or {}
+        for name, cfg in user_modes.items():
+            if not isinstance(cfg, dict):
+                continue
+            # Skip alias stubs — they don't carry kind by design
+            if "_deprecated_alias_for" in cfg:
+                continue
+            # Skip user overrides that only override a non-kind field on a builtin —
+            # in that case the merged effective config still has a kind from the builtin
+            if name in BUILTIN_MODES and "kind" in BUILTIN_MODES[name]:
+                # Check whether the user override removed/contradicted kind
+                if "kind" in cfg:
+                    continue
+                # User overlay on top of builtin without overriding kind: silent.
+                continue
+            if "kind" not in cfg:
+                _warnings.warn(
+                    f"User-defined mode '{name}' is missing 'kind' field; falling back "
+                    f"to substring heuristic from model name. Set kind = 'immediate' or "
+                    f"kind = 'background' explicitly. Will become an error in v4.0.0.",
+                    DeprecationWarning,
+                    stacklevel=2,
+                )
+            # TODO(v4.0.0): error on missing kind in user modes (future P19)
 
     def get(self, key: str, default: Any = None) -> Any:
         """Get configuration value using dot notation"""
