@@ -88,3 +88,7 @@ def resolve_profile_layer(
     if project_matches:
         return project_matches[-1]
     return matches[-1]
+
+
+def without_profiles(config: dict[str, Any]) -> dict[str, Any]:
+    return {key: value for key, value in config.items() if key != "profiles"}

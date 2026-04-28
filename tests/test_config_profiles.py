@@ -126,3 +126,146 @@ def test_missing_profile_raises_for_each_selection_source(
     with pytest.raises(ConfigProfileError) as exc:
         resolve_profile_layer(selection, catalog)
     assert detail_substring in exc.value.message
+
+
+from thoth.config import ConfigManager
+
+
+def _write(path: Path, text: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text)
+
+
+def test_config_manager_no_profile_keeps_existing_effective_config(
+    isolated_thoth_home: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("THOTH_PROFILE", raising=False)
+    cm = ConfigManager()
+    cm.load_all_layers({})
+    assert cm.get("general.default_mode") == "default"
+    assert cm.profile_selection.name is None
+    assert cm.active_profile is None
+
+
+def test_config_manager_applies_profile_between_project_and_env(
+    isolated_thoth_home: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from thoth.paths import user_config_file
+
+    monkeypatch.setenv("THOTH_PROFILE", "fast")
+    monkeypatch.setenv("THOTH_DEFAULT_MODE", "clarification")
+    _write(
+        user_config_file(),
+        """
+version = "2.0"
+
+[general]
+default_mode = "deep_research"
+
+[profiles.fast.general]
+default_mode = "thinking"
+""".strip()
+        + "\n",
+    )
+
+    cm = ConfigManager()
+    cm.load_all_layers({})
+
+    assert cm.get("general.default_mode") == "clarification"
+    assert cm.layers["profile"]["general"]["default_mode"] == "thinking"
+    assert cm.profile_selection.name == "fast"
+    assert cm.active_profile is not None
+    assert cm.active_profile.tier == "user"
+
+
+def test_cli_setting_override_beats_active_profile(isolated_thoth_home: Path) -> None:
+    from thoth.paths import user_config_file
+
+    _write(
+        user_config_file(),
+        """
+version = "2.0"
+
+[profiles.fast.execution]
+poll_interval = 5
+""".strip()
+        + "\n",
+    )
+
+    cm = ConfigManager()
+    cm.load_all_layers({"_profile": "fast", "execution": {"poll_interval": 99}})
+
+    assert cm.get("execution.poll_interval") == 99
+    assert cm.layers["profile"]["execution"]["poll_interval"] == 5
+
+
+def test_default_profile_pointer_survives_profile_splitting(
+    isolated_thoth_home: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from thoth.paths import user_config_file
+
+    monkeypatch.delenv("THOTH_PROFILE", raising=False)
+    _write(
+        user_config_file(),
+        """
+version = "2.0"
+
+[general]
+default_profile = "fast"
+
+[profiles.fast.general]
+default_mode = "thinking"
+""".strip()
+        + "\n",
+    )
+
+    cm = ConfigManager()
+    cm.load_all_layers({})
+
+    assert cm.get("general.default_profile") == "fast"
+    assert cm.profile_selection.name == "fast"
+    assert cm.profile_selection.source == "config"
+
+
+def test_config_manager_uses_dot_thoth_project_file_when_present(
+    isolated_thoth_home: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Catalog must report the actual project file used (covers both project_config_paths)."""
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("THOTH_PROFILE", raising=False)
+    _write(
+        tmp_path / ".thoth" / "config.toml",
+        """
+version = "2.0"
+
+[profiles.proj.general]
+default_mode = "thinking"
+""".strip()
+        + "\n",
+    )
+
+    cm = ConfigManager()
+    cm.load_all_layers({"_profile": "proj"})
+
+    assert cm.active_profile is not None
+    assert cm.active_profile.tier == "project"
+    assert cm.active_profile.path == Path(".thoth/config.toml") or \
+           cm.active_profile.path.name == "config.toml"
+
+
+def test_thoth_profile_is_not_a_per_setting_env_override() -> None:
+    """Regression guard: THOTH_PROFILE must not be added to env_mappings."""
+    import inspect
+
+    from thoth import config as thoth_config
+
+    src = inspect.getsource(thoth_config.ConfigManager._get_env_overrides)
+    assert "THOTH_PROFILE" not in src, (
+        "THOTH_PROFILE belongs to Stage 1 selection (read by resolve_profile_selection), "
+        "not Stage 2 per-setting overrides. See CPP REQ-CPP-004."
+    )

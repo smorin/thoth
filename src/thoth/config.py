@@ -22,6 +22,14 @@ from typing import Any
 from rich.console import Console
 
 from thoth import __version__
+from thoth.config_profiles import (
+    ProfileLayer,
+    ProfileSelection,
+    collect_profile_catalog,
+    resolve_profile_layer,
+    resolve_profile_selection,
+    without_profiles,
+)
 from thoth.errors import ThothError
 from thoth.paths import user_checkpoints_dir, user_config_file
 
@@ -273,28 +281,65 @@ class ConfigManager:
     def __init__(self, config_path: Path | None = None):
         self.user_config_path = config_path or user_config_file()
         self.project_config_paths = ["./thoth.toml", "./.thoth/config.toml"]
-        self.layers = {}
-        self.data = {}
+        self.layers: dict[str, dict[str, Any]] = {}
+        self.data: dict[str, Any] = {}
+        self.project_config_path: Path | None = None
+        self.profile_selection: ProfileSelection = ProfileSelection(None, "none", None)
+        self.active_profile: ProfileLayer | None = None
+        self.profile_catalog: list[ProfileLayer] = []
 
     def load_all_layers(self, cli_args: dict[str, Any] | None = None):
         """Load all configuration layers in precedence order"""
+        raw_cli_args = cli_args or {}
+        cli_profile = raw_cli_args.get("_profile")
+        cli_layer = {key: value for key, value in raw_cli_args.items() if key != "_profile"}
+
         # Layer 1: Internal defaults
         self.layers["defaults"] = ConfigSchema.get_defaults()
 
-        # Layer 2: User config file
+        # Layer 2: User config file (raw, including any [profiles.*] tables)
         if self.user_config_path.exists():
-            self.layers["user"] = self._load_toml_file(self.user_config_path)
+            user_raw = self._load_toml_file(self.user_config_path)
         else:
-            self.layers["user"] = {}
+            user_raw = {}
 
-        # Layer 3: Project config file (if exists)
-        self.layers["project"] = self._load_project_config()
+        # Layer 3: Project config file (raw + actual path used)
+        project_raw, project_path = self._load_project_config_with_path()
+        self.project_config_path = project_path
 
-        # Layer 4: Environment variables
+        # Build the profile catalog from the raw layer data BEFORE stripping
+        # profiles, then strip [profiles.*] tables out of the merged user/project
+        # layers so they never participate in the regular layer merge.
+        self.profile_catalog = collect_profile_catalog(
+            user_config=user_raw,
+            project_config=project_raw,
+            user_path=self.user_config_path,
+            project_path=project_path,
+        )
+        self.layers["user"] = without_profiles(user_raw)
+        self.layers["project"] = without_profiles(project_raw)
+
+        # Resolve which profile is active using a base view that contains
+        # defaults + user + project (no env, no CLI). This honors
+        # general.default_profile if set in either config file.
+        base_config: dict[str, Any] = {}
+        for layer_name in ["defaults", "user", "project"]:
+            base_config = self._deep_merge(base_config, self.layers[layer_name])
+
+        self.profile_selection = resolve_profile_selection(
+            cli_profile=str(cli_profile) if cli_profile else None,
+            base_config=base_config,
+        )
+        self.active_profile = resolve_profile_layer(
+            self.profile_selection, self.profile_catalog
+        )
+        self.layers["profile"] = self.active_profile.data if self.active_profile else {}
+
+        # Layer 5: Environment variables (per-setting overrides only)
         self.layers["env"] = self._get_env_overrides()
 
-        # Layer 5: CLI arguments
-        self.layers["cli"] = cli_args or {}
+        # Layer 6: CLI arguments (per-setting overrides only; _profile sentinel stripped)
+        self.layers["cli"] = cli_layer
 
         # Merge all layers
         self.data = self._merge_layers()
@@ -323,13 +368,18 @@ class ConfigManager:
             _console.print(f"[yellow]Warning:[/yellow] Failed to load {path}: {e}")
             return {}
 
-    def _load_project_config(self) -> dict[str, Any]:
-        """Load project-level configuration if it exists"""
+    def _load_project_config_with_path(self) -> tuple[dict[str, Any], Path | None]:
+        """Load project-level configuration if it exists; also return its path."""
         for config_path in self.project_config_paths:
             path = Path(config_path)
             if path.exists():
-                return self._load_toml_file(path)
-        return {}
+                return self._load_toml_file(path), path
+        return {}, None
+
+    def _load_project_config(self) -> dict[str, Any]:
+        """Load project-level configuration if it exists"""
+        data, _ = self._load_project_config_with_path()
+        return data
 
     def _get_env_overrides(self) -> dict[str, Any]:
         """Get configuration overrides from environment variables"""
@@ -373,7 +423,7 @@ class ConfigManager:
         result = {}
 
         # Merge in order of precedence
-        for layer_name in ["defaults", "user", "project", "env", "cli"]:
+        for layer_name in ["defaults", "user", "project", "profile", "env", "cli"]:
             if layer_name in self.layers and self.layers[layer_name]:
                 result = self._deep_merge(result, self.layers[layer_name])
 
