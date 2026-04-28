@@ -122,7 +122,7 @@ class ModeKindMismatchError(ThothError):
                 f"but model '{model}' requires kind='{required_kind}'."
             ),
             (
-                f"Update [modes.{mode_name}] in your config: set "
+                f"Update [modes.{mode_name}] in your config: set "  # nosec B608 — TOML config-edit suggestion, not SQL
                 f"kind = '{required_kind}', or pick a model compatible with "
                 f"'{declared_kind}' execution. Run `thoth modes list` to see "
                 f"current kinds."
