@@ -79,19 +79,48 @@ for _flag, _new_form in _LEGACY_FLAG_TO_NEW_FORM.items():
     help="Show detail for a single mode",
     shell_complete=_mode_names_completer,
 )
+@click.option("--json", "as_json", is_flag=True, help="Emit JSON envelope")
+@click.option("--source", "source", default="all", help="Filter by source")
+@click.option("--show-secrets", "show_secrets", is_flag=True, help="Reveal masked secrets")
 @click.pass_context
-def modes_list(ctx: click.Context, args: tuple[str, ...], name: str | None) -> None:
+def modes_list(
+    ctx: click.Context,
+    args: tuple[str, ...],
+    name: str | None,
+    as_json: bool,
+    source: str,
+    show_secrets: bool,
+) -> None:
     """List research modes."""
     validate_inherited_options(ctx, "modes list", DEFAULT_HONOR)
 
+    config_path = inherited_value(ctx, "config_path")
+
+    if as_json:
+        from thoth.json_output import emit_json
+        from thoth.modes_cmd import get_modes_list_data
+
+        emit_json(
+            get_modes_list_data(
+                name=name,
+                source=source,
+                show_secrets=show_secrets,
+                config_path=config_path,
+            )
+        )
+
     from thoth.modes_cmd import modes_command
 
-    # Re-emit --name back into the passthrough args so modes_command parses it.
+    # Re-emit typed options back into the passthrough args so modes_command
+    # parses them via its inline flag parser (Rich-rendering path).
     rebuilt = list(args)
     if name is not None:
         rebuilt.extend(["--name", name])
+    if source != "all":
+        rebuilt.extend(["--source", source])
+    if show_secrets:
+        rebuilt.append("--show-secrets")
 
-    config_path = inherited_value(ctx, "config_path")
     if config_path is None:
         rc = modes_command("list", rebuilt)
     else:

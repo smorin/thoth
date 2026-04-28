@@ -366,10 +366,16 @@ def test_thoth_modes_subprocess_json_flag_reaches_subcommand(
     isolated_thoth_home: Path,
 ) -> None:
     """PR2 canonical: `thoth modes list --json` (legacy `thoth modes --json`
-    is gated to exit 2 with a migration hint per Q6-PR2-C1)."""
+    is gated to exit 2 with a migration hint per Q6-PR2-C1).
+
+    P16 PR3 T12 promotes `--json` to the canonical envelope contract
+    (`{"status": "ok", "data": {schema_version, modes}}`).
+    """
     rc, out, err = run_thoth(["modes", "list", "--json"])
     assert rc == 0, f"stderr: {err}"
-    data = json.loads(out)
+    payload = json.loads(out)
+    assert payload["status"] == "ok"
+    data = payload["data"]
     assert data["schema_version"] == "1"
     assert len(data["modes"]) >= 10
     thinking = next(m for m in data["modes"] if m["name"] == "thinking")
@@ -388,6 +394,6 @@ def test_thoth_modes_subprocess_name_flag(isolated_thoth_home: Path) -> None:
 def test_thoth_modes_subprocess_source_filter(isolated_thoth_home: Path) -> None:
     rc, out, err = run_thoth(["modes", "list", "--source", "builtin", "--json"])
     assert rc == 0, f"stderr: {err}"
-    data = json.loads(out)
-    sources = {m["source"] for m in data["modes"]}
+    payload = json.loads(out)
+    sources = {m["source"] for m in payload["data"]["modes"]}
     assert sources == {"builtin"}

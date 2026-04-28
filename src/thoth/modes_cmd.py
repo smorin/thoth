@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import asdict, dataclass
+from pathlib import Path
 from typing import Any, Literal, cast
 
 from rich.console import Console
@@ -231,12 +232,45 @@ def _render_detail(m: ModeInfo, full: bool, show_secrets: bool) -> None:
             console.print(f"System prompt: {preview} [dim](use --full to see)[/dim]")
 
 
-def _op_list(args: list[str]) -> int:
+def get_modes_list_data(
+    *,
+    name: str | None,
+    source: str,
+    show_secrets: bool,
+    config_path: str | None = None,
+) -> dict:
+    """Pure data function for `thoth modes list`.
+
+    Returns:
+        - {"modes": [...]} when `name` is None
+        - {"mode": {...} | None} when `name` is set
+    Per spec §7.2, this function NEVER takes an `as_json` flag — the
+    JSON-vs-Rich choice lives at the subcommand-wrapper layer.
+    """
+    cm = ConfigManager(Path(config_path).expanduser().resolve() if config_path else None)
+    cm.load_all_layers({})
+    infos = list_all_modes(cm)
+
+    if source != "all":
+        infos = [m for m in infos if m.source == source]
+
+    if name is not None:
+        match = next((m for m in infos if m.name == name), None)
+        return {"mode": _info_to_dict(match, show_secrets) if match else None}
+
+    infos = sorted(infos, key=_sort_key)
+    return {
+        "schema_version": "1",
+        "modes": [_info_to_dict(m, show_secrets) for m in infos],
+    }
+
+
+def _op_list(args: list[str], *, config_path: str | None = None) -> int:
     as_json, show_secrets, source, name, full, rc = _parse_list_flags(args)
     if rc != 0:
         return rc
 
-    cm = ConfigManager()
+    cm = ConfigManager(Path(config_path).expanduser().resolve() if config_path else None)
     cm.load_all_layers({})
     infos = list_all_modes(cm)
 
@@ -287,15 +321,15 @@ def _op_list(args: list[str]) -> int:
     return 0
 
 
-def modes_command(op: str | None, args: list[str]) -> int:
+def modes_command(op: str | None, args: list[str], *, config_path: str | None = None) -> int:
     """Dispatch `thoth modes <op>`. Returns a process exit code."""
     if op is None:
-        return _op_list(args)
+        return _op_list(args, config_path=config_path)
     ops = {"list": _op_list}
     if op not in ops:
         _get_console().print(f"[red]Error:[/red] unknown modes op: {op}")
         return 2
-    return ops[op](args)
+    return ops[op](args, config_path=config_path)
 
 
-__all__ = ["ModeInfo", "list_all_modes", "modes_command"]
+__all__ = ["ModeInfo", "get_modes_list_data", "list_all_modes", "modes_command"]

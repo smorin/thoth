@@ -1,0 +1,205 @@
+"""Regression coverage for inherited root-option policy.
+
+These tests guard against root options being accepted before a subcommand and
+then silently ignored by that subcommand.
+"""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+from click.testing import CliRunner
+
+from thoth.cli import cli
+
+
+def _stub_run_research(monkeypatch):
+    captured: dict[str, object] = {}
+
+    def fake(**kwargs):
+        captured.update(kwargs)
+        return None
+
+    monkeypatch.setattr("thoth.run.run_research", fake)
+    return captured
+
+
+def test_ask_honors_inherited_prompt_flag(monkeypatch):
+    captured = _stub_run_research(monkeypatch)
+
+    result = CliRunner().invoke(cli, ["--prompt", "from root", "ask"])
+
+    assert result.exit_code == 0, result.output
+    assert captured["prompt"] == "from root"
+
+
+def test_resume_rejects_inherited_research_only_prompt(monkeypatch):
+    captured: dict[str, object] = {}
+
+    async def fake_resume(*args, **kwargs):
+        captured["called"] = True
+
+    monkeypatch.setattr("thoth.run.resume_operation", fake_resume)
+
+    result = CliRunner().invoke(cli, ["--prompt", "ignored", "resume", "op_x"])
+
+    assert result.exit_code == 2
+    assert "--prompt" in result.output
+    assert "resume" in result.output
+    assert "called" not in captured
+
+
+def test_admin_read_only_rejects_inherited_quiet():
+    result = CliRunner().invoke(cli, ["--quiet", "providers", "list"])
+
+    assert result.exit_code == 2
+    assert "--quiet" in result.output
+    assert "providers list" in result.output
+
+
+def test_providers_list_honors_inherited_provider(monkeypatch):
+    captured: dict[str, object] = {}
+
+    async def fake_providers_command(**kwargs):
+        captured.update(kwargs)
+        return 0
+
+    monkeypatch.setattr("thoth.commands.providers_command", fake_providers_command)
+
+    result = CliRunner().invoke(cli, ["--provider", "mock", "providers", "list"])
+
+    assert result.exit_code == 0, result.output
+    assert captured["filter_provider"] == "mock"
+
+
+def test_providers_models_honors_inherited_api_key_and_timeout(monkeypatch):
+    captured: dict[str, object] = {}
+
+    async def fake_providers_command(**kwargs):
+        captured.update(kwargs)
+        return 0
+
+    monkeypatch.setattr("thoth.commands.providers_command", fake_providers_command)
+
+    result = CliRunner().invoke(
+        cli,
+        [
+            "--provider",
+            "openai",
+            "--api-key-openai",
+            "sk-root",
+            "--timeout",
+            "12.5",
+            "providers",
+            "models",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert captured["filter_provider"] == "openai"
+    assert captured["cli_api_keys"] == {
+        "openai": "sk-root",
+        "perplexity": None,
+        "mock": None,
+    }
+    assert captured["timeout_override"] == 12.5
+
+
+def test_providers_check_filters_and_validates_inherited_mock_key(isolated_thoth_home: Path):
+    result = CliRunner().invoke(
+        cli,
+        ["--provider", "mock", "--api-key-mock", "mock-root", "providers", "check"],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "mock" in result.output.lower()
+    assert "openai" not in result.output.lower()
+    assert "set" in result.output.lower()
+
+
+def test_providers_check_returns_2_for_missing_filtered_key(isolated_thoth_home: Path):
+    result = CliRunner().invoke(cli, ["--provider", "mock", "providers", "check"])
+
+    assert result.exit_code == 2
+    assert "mock" in result.output.lower()
+    assert "missing" in result.output.lower()
+
+
+def test_config_get_honors_inherited_config_path(tmp_path: Path):
+    cfg = tmp_path / "custom.toml"
+    cfg.write_text('version = "2.0"\n[general]\ndefault_mode = "custom_mode"\n')
+
+    result = CliRunner().invoke(
+        cli,
+        ["--config", str(cfg), "config", "get", "general.default_mode"],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert result.output.strip() == "custom_mode"
+
+
+def test_config_project_target_rejects_inherited_config_path(tmp_path: Path):
+    cfg = tmp_path / "custom.toml"
+    cfg.write_text('version = "2.0"\n')
+
+    result = CliRunner().invoke(cli, ["--config", str(cfg), "config", "path", "--project"])
+
+    assert result.exit_code == 2
+    assert "--config" in result.output
+    assert "--project" in result.output
+
+
+def test_config_path_rejects_unknown_passthrough_arg():
+    result = CliRunner().invoke(cli, ["config", "path", "--bogus"])
+
+    assert result.exit_code == 2
+    assert "--bogus" in result.output
+
+
+def test_config_help_rejects_inherited_config_path(tmp_path: Path):
+    cfg = tmp_path / "custom.toml"
+    cfg.write_text('version = "2.0"\n')
+
+    result = CliRunner().invoke(cli, ["--config", str(cfg), "config", "help"])
+
+    assert result.exit_code == 2
+    assert "--config" in result.output
+    assert "config help" in result.output
+
+
+def test_modes_list_honors_inherited_config_path(tmp_path: Path):
+    cfg = tmp_path / "custom.toml"
+    cfg.write_text(
+        'version = "2.0"\n[modes.custom_quick]\nprovider = "mock"\nmodel = "mock-model-v1"\n'
+    )
+
+    result = CliRunner().invoke(cli, ["--config", str(cfg), "modes", "list", "--json"])
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    # P16 PR3 T12: payload now uses canonical envelope shape
+    # ({"status": "ok", "data": {schema_version, modes}}).
+    assert any(mode["name"] == "custom_quick" for mode in payload["data"]["modes"])
+
+
+def test_help_rejects_inherited_config_path(tmp_path: Path):
+    cfg = tmp_path / "custom.toml"
+    cfg.write_text('version = "2.0"\n')
+
+    result = CliRunner().invoke(cli, ["--config", str(cfg), "help"])
+
+    assert result.exit_code == 2
+    assert "--config" in result.output
+    assert "help" in result.output
+
+
+def test_bare_admin_groups_reject_inherited_config_path(tmp_path: Path):
+    cfg = tmp_path / "custom.toml"
+    cfg.write_text('version = "2.0"\n')
+
+    for command in ("config", "modes", "providers"):
+        result = CliRunner().invoke(cli, ["--config", str(cfg), command])
+        assert result.exit_code == 2
+        assert "--config" in result.output
+        assert command in result.output

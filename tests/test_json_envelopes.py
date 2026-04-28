@@ -30,8 +30,9 @@ JSON_COMMANDS: list[tuple[str, list[str], int]] = [
     ("config_path", ["config", "path", "--json"], 0),
     ("config_set", ["config", "set", "test.key", "value", "--json"], 0),
     ("config_unset", ["config", "unset", "test.key", "--json"], 0),
-    # T11–T13 will append rows for config edit, modes, ask, resume per the
-    # spec §10 commit sequence.
+    ("modes_list", ["modes", "list", "--json"], 0),
+    ("modes_list_by_name", ["modes", "list", "--json", "--name", "default"], 0),
+    # T13 will append rows for ask + resume per the spec §10 commit sequence.
 ]
 
 
