@@ -25,7 +25,7 @@ from thoth.errors import APIKeyError, ThothError
 from thoth.hints import print_hint
 from thoth.models import ModelCache, OperationStatus
 from thoth.paths import user_config_file
-from thoth.providers import create_provider
+from thoth.providers import create_provider, resolve_api_key
 from thoth.run import run_research
 
 console = Console()
@@ -152,6 +152,28 @@ class CommandHandler:
                 "Run `thoth config help` for usage",
             )
         return _cfg(op, rest or [])
+
+
+def get_init_data(*, non_interactive: bool, config_path: str | None) -> dict:
+    """Pure data function for `thoth init`.
+
+    Returns a dict describing the init outcome (config path, whether the
+    file was newly created, and the version). Does NOT print Rich output.
+    The legacy `init_command` continues to handle the human-readable path.
+    """
+    from thoth.config import THOTH_VERSION
+
+    target = Path(config_path).expanduser().resolve() if config_path else user_config_file()
+    created = not target.exists()
+    if created:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text('version = "2.0"\n')
+    return {
+        "config_path": str(target),
+        "created": created,
+        "thoth_version": THOTH_VERSION,
+        "non_interactive": non_interactive,
+    }
 
 
 def status_command(operation_id):
@@ -315,6 +337,8 @@ async def providers_command(
     filter_provider: str | None = None,
     refresh_cache: bool = False,
     no_cache: bool = False,
+    cli_api_keys: dict[str, str | None] | None = None,
+    timeout_override: float | None = None,
 ):
     """Show provider information and available models"""
     if not show_models and not show_list and not show_keys:
@@ -344,6 +368,7 @@ async def providers_command(
         return
 
     config = get_config()
+    cli_api_keys = cli_api_keys or {}
 
     all_providers = ["openai", "perplexity", "mock"]
     selected_providers = all_providers
@@ -369,7 +394,11 @@ async def providers_command(
 
         for provider_name in selected_providers:
             try:
-                provider = create_provider(provider_name, config)
+                provider = create_provider(
+                    provider_name,
+                    config,
+                    cli_api_key=cli_api_keys.get(provider_name),
+                )
                 status = "[green]✓ Ready[/green]"
 
                 cache_info = "N/A"
@@ -421,23 +450,37 @@ async def providers_command(
         table.add_column("Provider", style="cyan", width=13)
         table.add_column("Environment Variable", style="green", width=22)
         table.add_column("CLI Argument", style="yellow", width=22)
+        table.add_column("Status", width=12)
 
+        missing: list[str] = []
         for provider_name in selected_providers:
             env_var = env_vars.get(provider_name, f"{provider_name.upper()}_API_KEY")
             cli_arg = f"--api-key-{provider_name}"
-            table.add_row(provider_name, env_var, cli_arg)
+            provider_config = config.data["providers"].get(provider_name, {})
+            try:
+                resolved = resolve_api_key(
+                    provider_name,
+                    cli_api_keys.get(provider_name),
+                    provider_config,
+                    env_var_name=env_var,
+                )
+                if provider_name == "mock" and resolved == "invalid":
+                    raise ThothError(
+                        "Invalid mock API key format",
+                        "Mock API key should not be 'invalid'",
+                    )
+                status = "[green]set[/green]"
+            except ThothError:
+                missing.append(provider_name)
+                status = "[red]missing[/red]"
+            table.add_row(provider_name, env_var, cli_arg, status)
 
         console.print(table)
-        console.print("\nExamples:")
-        console.print("  # Set via environment variable")
-        console.print('  $ export OPENAI_API_KEY="your-key-here"')
-        console.print("\n  # Set via command line for single provider")
-        console.print('  $ thoth "prompt" --api-key-openai "your-key-here" --provider openai')
-        console.print("\n  # Set multiple API keys for multi-provider modes")
-        console.print(
-            '  $ thoth deep_research "prompt" --api-key-openai "sk-..." --api-key-perplexity "pplx-..."'
-        )
-        return
+        if missing:
+            console.print(f"\n[red]Missing keys for:[/red] {', '.join(missing)}")
+            return 2
+        console.print("\n[green]All selected providers have keys set[/green]")
+        return 0
 
     providers = selected_providers
 
@@ -448,7 +491,12 @@ async def providers_command(
 
     for provider_name in providers:
         try:
-            provider = create_provider(provider_name, config)
+            provider = create_provider(
+                provider_name,
+                config,
+                cli_api_key=cli_api_keys.get(provider_name),
+                timeout_override=timeout_override,
+            )
 
             if hasattr(provider, "list_models_cached"):
                 models = await provider.list_models_cached(
@@ -570,6 +618,7 @@ def providers_check(config: ConfigManager) -> int:
 
 __all__ = [
     "CommandHandler",
+    "get_init_data",
     "list_command",
     "list_operations",
     "providers_check",
