@@ -2000,8 +2000,8 @@ all_tests = [
     ),
     TestCase(
         test_id="M2T-02",
-        description="Init command creates config directory",
-        command=[THOTH_EXECUTABLE, "init"],
+        description="Init command creates user XDG config directory",
+        command=[THOTH_EXECUTABLE, "init", "--user"],
         expected_stdout_patterns=[r"Configuration saved to"],
         expected_exit_code=0,
     ),

@@ -484,7 +484,7 @@ def test_d11_json_envelope_reflects_target(tmp_path: Path) -> None:
         assert result.exit_code == 0, result.output
         payload = _json.loads(result.output)
         target = tmp_path / "xdg" / "thoth" / "thoth.config.toml"
-        assert Path(payload["config_path"]).resolve() == target.resolve()
+        assert Path(payload["data"]["config_path"]).resolve() == target.resolve()
 
 
 # ---------------------------------------------------------------------------

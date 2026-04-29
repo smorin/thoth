@@ -23,12 +23,48 @@ from thoth.json_output import emit_error, emit_json
     is_flag=True,
     help="Skip interactive prompts (required with --json)",
 )
+@click.option(
+    "--user",
+    "user",
+    is_flag=True,
+    help="Write to the user-tier config (XDG)",
+)
+@click.option(
+    "--hidden",
+    "hidden",
+    is_flag=True,
+    help="Write to ./.thoth.config.toml instead of ./thoth.config.toml",
+)
+@click.option(
+    "--force",
+    "force",
+    is_flag=True,
+    help="Overwrite an existing config file",
+)
 @click.pass_context
-def init(ctx: click.Context, as_json: bool, non_interactive: bool) -> None:
+def init(
+    ctx: click.Context,
+    as_json: bool,
+    non_interactive: bool,
+    user: bool,
+    hidden: bool,
+    force: bool,
+) -> None:
     """Initialize thoth configuration."""
     validate_inherited_options(ctx, "init", DEFAULT_HONOR)
 
+    if user and hidden:
+        raise click.UsageError("--user and --hidden are mutually exclusive")
+
     config_path = ctx.obj.get("config_path") if ctx.obj else None
+
+    # Default CLI behavior writes the visible project file ./thoth.config.toml.
+    # `--user` / `--hidden` / explicit `--config` override. The direct
+    # `init_command()` / `get_init_data()` API keeps the legacy "no args ->
+    # user XDG config" semantics, so the project-file default is materialized
+    # here at the CLI boundary.
+    if config_path is None and not user and not hidden:
+        config_path = "./thoth.config.toml"
 
     if as_json:
         if not non_interactive:
@@ -37,7 +73,15 @@ def init(ctx: click.Context, as_json: bool, non_interactive: bool) -> None:
                 "thoth init --json requires --non-interactive",
                 exit_code=2,
             )
-        emit_json(get_init_data(non_interactive=True, config_path=config_path))
+        emit_json(
+            get_init_data(
+                non_interactive=True,
+                config_path=config_path,
+                user=user,
+                hidden=hidden,
+                force=force,
+            )
+        )
 
     profile = ctx.obj.get("profile") if ctx.obj else None
     config_manager = ConfigManager(
@@ -48,4 +92,14 @@ def init(ctx: click.Context, as_json: bool, non_interactive: bool) -> None:
         cli_args["_profile"] = profile
     config_manager.load_all_layers(cli_args)
     handler = CommandHandler(config_manager)
-    handler.init_command(config_path=config_path)
+    # Only thread the new flags through when they're set, so monkeypatched
+    # init_command stubs that predate P21c (signature `(self, config_path=None)`)
+    # keep working.
+    extra_kwargs: dict[str, bool] = {}
+    if user:
+        extra_kwargs["user"] = True
+    if hidden:
+        extra_kwargs["hidden"] = True
+    if force:
+        extra_kwargs["force"] = True
+    handler.init_command(config_path=config_path, **extra_kwargs)

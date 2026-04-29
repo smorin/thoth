@@ -182,8 +182,27 @@ class CommandHandler:
             )
         return self.commands[command](**params)
 
-    def init_command(self, config_path: str | Path | None = None, **params):
+    def init_command(
+        self,
+        config_path: str | Path | None = None,
+        *,
+        user: bool = False,
+        hidden: bool = False,
+        force: bool = False,
+        **params,
+    ):
         """Initialize Thoth configuration"""
+        if user and hidden:
+            raise ThothError(
+                "thoth init: --user and --hidden are mutually exclusive",
+            )
+
+        target = self._resolve_init_target(config_path, user=user, hidden=hidden)
+        if target.exists() and not force:
+            raise ThothError(
+                f"thoth init: refusing to overwrite existing {target}. Pass --force to overwrite.",
+            )
+
         console.print("[bold]Welcome to Thoth Research Assistant Setup![/bold]\n")
 
         console.print("Checking environment...")
@@ -191,22 +210,35 @@ class CommandHandler:
         console.print("✓ UV package manager available")
         console.print(f"✓ Operating System: {sys.platform} (supported)\n")
 
-        if config_path is None:
-            config_path = user_config_file()
-        else:
-            config_path = Path(config_path).expanduser()
-        console.print(f"Configuration file will be created at: {config_path}\n")
+        console.print(f"Configuration file will be created at: {target}\n")
 
-        config_path.parent.mkdir(parents=True, exist_ok=True)
+        target.parent.mkdir(parents=True, exist_ok=True)
 
         console.print("[yellow]Interactive setup wizard not yet implemented.[/yellow]")
         console.print("Creating default configuration...")
 
         doc = _build_starter_document()
-        config_path.write_text(tomlkit.dumps(doc))
+        target.write_text(tomlkit.dumps(doc))
 
-        console.print(f"\n[green]✓[/green] Configuration saved to {config_path}")
+        console.print(f"\n[green]✓[/green] Configuration saved to {target}")
         console.print('\nYou can now run: thoth deep_research "your prompt"')
+
+    def _resolve_init_target(
+        self,
+        config_path: str | Path | None,
+        *,
+        user: bool,
+        hidden: bool,
+    ) -> Path:
+        if config_path is not None:
+            return Path(config_path).expanduser().resolve()
+        if hidden:
+            return Path("./.thoth.config.toml").resolve()
+        # Default (and `--user`): user-tier XDG config. Project-tier writes
+        # are driven by the CLI leaf pre-resolving `./thoth.config.toml`
+        # before calling into init_command, so direct API callers keep the
+        # legacy "no args → user config" semantics.
+        return user_config_file()
 
     def status_command(self, operation_id: str, **params):
         """Check status of a research operation"""
@@ -259,7 +291,14 @@ class CommandHandler:
         return _cfg(op, rest or [])
 
 
-def get_init_data(*, non_interactive: bool, config_path: str | None) -> dict:
+def get_init_data(
+    *,
+    non_interactive: bool,
+    config_path: str | None,
+    user: bool = False,
+    hidden: bool = False,
+    force: bool = False,
+) -> dict:
     """Pure data function for `thoth init`.
 
     Returns a dict describing the init outcome (config path, whether the
@@ -268,11 +307,29 @@ def get_init_data(*, non_interactive: bool, config_path: str | None) -> dict:
     """
     from thoth.config import THOTH_VERSION
 
-    target = Path(config_path).expanduser().resolve() if config_path else user_config_file()
-    created = not target.exists()
-    if created:
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(tomlkit.dumps(_build_starter_document()))
+    if user and hidden:
+        raise ThothError(
+            "thoth init: --user and --hidden are mutually exclusive",
+        )
+
+    if config_path is not None:
+        target = Path(config_path).expanduser().resolve()
+    elif hidden:
+        target = Path("./.thoth.config.toml").resolve()
+    else:
+        # Default (and `--user`): user-tier XDG config. Project-tier writes
+        # are driven by the CLI leaf pre-resolving `./thoth.config.toml`
+        # before calling into get_init_data.
+        target = user_config_file()
+
+    existed = target.exists()
+    if existed and not force:
+        raise ThothError(
+            f"thoth init: refusing to overwrite existing {target}. Pass --force to overwrite.",
+        )
+    created = not existed
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(tomlkit.dumps(_build_starter_document()))
     return {
         "config_path": str(target),
         "created": created,
