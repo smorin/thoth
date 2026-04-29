@@ -401,6 +401,43 @@ default_mode = "interactive"
 
 This profile can be stored, listed, and selected by P21 today (via hand-edit). The command behavior for a default interactive mode ships with a later interactive-default project.
 
+#### Prepending a prompt prefix
+
+A `prompt_prefix` value is prepended (with a blank line) to the user's prompt before it reaches the LLM. The mode's `system_prompt` is unaffected. Resolution walks a 4-level hierarchy from most-specific to least:
+
+1. `[profiles.<active>.modes.<MODE>] prompt_prefix`
+2. `[profiles.<active>] prompt_prefix`
+3. `[modes.<MODE>] prompt_prefix`
+4. `[general] prompt_prefix`
+
+More-specific values **replace** less-specific ones (no concatenation). An empty string is treated as unset, so an inner-empty value falls through to the outer level.
+
+```toml
+[general]
+prompt_prefix = "Be precise."
+
+[modes.deep_research]
+prompt_prefix = "Cite primary sources."
+
+[profiles.deep.general]
+default_mode = "deep_research"
+prompt_prefix = "Be thorough. Cite primary sources where possible."
+
+[profiles.deep.modes.deep_research]
+prompt_prefix = "Be thorough. Cite primary sources. Include counter-arguments."
+```
+
+Resolution outcomes:
+
+| Active profile | Mode | Resolved prefix |
+|---|---|---|
+| (none) | `default` | `Be precise.` (general) |
+| (none) | `deep_research` | `Cite primary sources.` (modes.deep_research) |
+| `deep` | `default` | `Be thorough. Cite primary sources where possible.` (profiles.deep) |
+| `deep` | `deep_research` | `Be thorough. Cite primary sources. Include counter-arguments.` (profiles.deep.modes.deep_research) |
+
+`thoth init` ships these profiles pre-populated in your config (`~/.config/thoth/config.toml`): `daily`, `quick`, `openai_deep`, `all_deep`, `interactive`, and `deep_research` — the last one demonstrates the `prompt_prefix` hierarchy end-to-end. Edit or delete them as you like.
+
 ## Provider Configuration
 
 ### OpenAI Provider

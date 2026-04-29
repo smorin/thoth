@@ -271,3 +271,23 @@ thoth --profile missing config get general.default_mode    # expect ConfigProfil
 thoth config get general.default_profile                   # expect "fast" (persisted)
 thoth --profile bar config get general.default_profile     # expect "fast" (NOT mutated by --profile)
 ```
+
+### Shipped profile examples
+
+`thoth init` writes these example profiles into your config so you can try them immediately:
+
+```bash
+thoth --profile daily "what should I focus on today?"      # default_mode=thinking, default_project=daily-notes
+thoth --profile openai_deep "compare vector databases"     # deep_research, providers=["openai"]
+thoth --profile all_deep "compare vector databases"        # deep_research, parallel openai+perplexity
+thoth --profile deep_research "literature review of X"     # deep_research + a worked prompt_prefix
+```
+
+### Verifying `prompt_prefix` is applied
+
+```bash
+# With the shipped `deep_research` profile, the prompt that reaches the LLM is
+# prepended with: "Be thorough. Cite primary sources. Include counter-arguments."
+thoth --profile deep_research --verbose "research vector dbs"
+# Look for the assembled prompt in the verbose output.
+```

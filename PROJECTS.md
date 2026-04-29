@@ -14,7 +14,7 @@ This file tracks planned, active, and completed Thoth work. New projects are add
 
 Keep this summary list updated whenever a project is added, renamed, completed, dropped, or proceeded to a successor. The detailed project entry remains the source of truth; this summary is a quick navigation index.
 
-- [-] P21 — Configuration Profile Resolution & Overlay
+- [x] P21 — Configuration Profile Resolution & Overlay
 - [ ] P21b — Configuration Profile CRUD Commands (depends on P21)
 - [ ] P21c — Config Filename Standardization (`thoth.config.toml` everywhere)
 - [ ] P22 — OpenAI — Immediate (Synchronous) Calls
@@ -82,7 +82,7 @@ Existing projects may use older labels such as `**Primary spec**`, `**Plan**`, o
 
 ---
 
-## [-] Project P21: Configuration Profile Resolution & Overlay
+## [x] Project P21: Configuration Profile Resolution & Overlay
 **Goal**: Add CPP-style named configuration profile *resolution* — Thoth honors `--profile NAME`, `THOTH_PROFILE`, and `general.default_profile`, applies the selected `[profiles.<name>]` overlay between project config and env/CLI overrides, and hard-errors on missing profiles. Adds a `prompt_prefix` field with full hierarchy resolution (`profile.modes.X` > `profile` > `modes.X` > `general`; more specific replaces less specific), and ships example profiles via `thoth init` so users get a useful starter config out of the box.
 
 **References**
@@ -90,7 +90,7 @@ Existing projects may use older labels such as `**Primary spec**`, `**Plan**`, o
 - **Plan:** `docs/superpowers/plans/2026-04-28-p21-configuration-profiles.md`
 - **Research:** `research/configuration_profile_pattern.v1.md`
 
-**Status**: Complete — resolver/overlay/root-`--profile` plumbing landed on `feat/p21-config-profiles`.
+**Status**: Complete — resolver/overlay/root-`--profile` plumbing, `prompt_prefix` 4-level hierarchy, runtime wiring through `run_research`, shipped example profiles in `thoth init`, and the permutation test matrix all landed on `feat/p21-config-profiles`.
 
 **Scope**
 - Add profile sections under `[profiles.<name>]`, where nested profile keys mirror normal config paths.
@@ -124,13 +124,13 @@ Existing projects may use older labels such as `**Primary spec**`, `**Plan**`, o
 - [x] [P21-T05] Add root `--profile` to `_RESEARCH_OPTIONS`, inherited-option policy (`DEFAULT_HONOR` includes `"profile"`), root fallback parsing in `_extract_fallback_options`, and **every** existing config-loading call site, including `src/thoth/config_cmd.py` (`_load_manager` and each `get_config_*_data` entry that reads merged config) and `src/thoth/cli_subcommands/config.py` leaves that forward inherited profile.
 - [x] [P21-T06] Update `README.md`, `manual_testing_instructions.md`, and `src/thoth/help.py` with hand-edit profile examples (TOML structure, selection precedence, worked invocations). Documentation examples must show profiles that change the default mode/project, run all available deep-research providers (`["openai", "perplexity"]` today, with a "future-ready" callout pointing at gemini), force one deep-research provider, default to an immediate mode, and store a future-ready interactive default profile. README explains that `--profile`/`THOTH_PROFILE` are read-only runtime inputs and never mutate `general.default_profile`.
 - [x] [P21-T07] Update `PROJECTS.md` as implementation tasks land.
-- [ ] [P21-TS07] `tests/test_config_prompt_prefix.py`: hierarchy resolver — resolves `[profiles.X.modes.M]` > `[profiles.X]` > `[modes.M]` > `[general]` > `None`. More-specific REPLACES less-specific (no concat). Covers each tier, missing-key fallthrough, and empty-string handling.
-- [ ] [P21-TS08] `tests/test_config_profiles_permutations.py`: permutation matrix — `{flag, env, config-pointer, none}` × `{user-tier, project-tier, both}` × `{prefix-set, prefix-unset}` × `{deep_research, thinking, default}`. Each permutation gets a real TOML config fixture; assertions cover `cm.profile_selection`, the resolved `prompt_prefix`, and the final mode_config. Includes the shipped `init` examples.
-- [ ] [P21-TS09] `tests/test_run_prompt_prefix.py`: integration — when a profile is active and a `prompt_prefix` resolves, the assembled prompt that reaches the provider is `f"{prefix}\n\n{user_prompt}"`. The mode's `system_prompt` is unchanged. When no prefix resolves, the prompt is unchanged.
-- [ ] [P21-T08] Add `resolve_prompt_prefix(config, mode)` helper to `src/thoth/config_profiles.py` implementing the 4-level hierarchy.
-- [ ] [P21-T09] Wire `resolve_prompt_prefix` into `src/thoth/run.py:run_research` so the resolved prefix is prepended to the user prompt once at run entry; `operation.prompt` records the assembled prompt for resume parity.
-- [ ] [P21-T10] Update `src/thoth/commands.py:init_command` to ship example profiles in the generated `~/.config/thoth/config.toml`: `daily` (thinking + default project), `quick` (thinking), `openai_deep` (single-provider deep_research), `all_deep` (parallel openai+perplexity), `interactive` (interactive mode), and `deep_research` (deep_research with a worked `prompt_prefix` example demonstrating Q3a hierarchy).
-- [ ] [P21-T11] Document the `prompt_prefix` field and its hierarchy in `README.md` and `manual_testing_instructions.md`. Worked example: `[general] prompt_prefix`, `[modes.deep_research] prompt_prefix`, `[profiles.X] prompt_prefix`, `[profiles.X.modes.M] prompt_prefix` — show resolution outcome for each combination.
+- [x] [P21-TS07] `tests/test_config_prompt_prefix.py`: hierarchy resolver — resolves `[profiles.X.modes.M]` > `[profiles.X]` > `[modes.M]` > `[general]` > `None`. More-specific REPLACES less-specific (no concat). Covers each tier, missing-key fallthrough, and empty-string handling.
+- [x] [P21-TS08] `tests/test_config_profiles_permutations.py`: permutation matrix — `{flag, env, config-pointer, none}` × `{user-tier, project-tier, both}` × `{prefix-set, prefix-unset}` × `{deep_research, thinking, default}`. Each permutation gets a real TOML config fixture; assertions cover `cm.profile_selection`, the resolved `prompt_prefix`, and the final mode_config. Includes the shipped `init` examples.
+- [x] [P21-TS09] `tests/test_run_prompt_prefix.py`: integration — when a profile is active and a `prompt_prefix` resolves, the assembled prompt that reaches the provider is `f"{prefix}\n\n{user_prompt}"`. The mode's `system_prompt` is unchanged. When no prefix resolves, the prompt is unchanged.
+- [x] [P21-T08] Add `resolve_prompt_prefix(config, mode)` helper to `src/thoth/config_profiles.py` implementing the 4-level hierarchy.
+- [x] [P21-T09] Wire `resolve_prompt_prefix` into `src/thoth/run.py:run_research` so the resolved prefix is prepended to the user prompt once at run entry; `operation.prompt` records the assembled prompt for resume parity.
+- [x] [P21-T10] Update `src/thoth/commands.py:init_command` to ship example profiles in the generated `~/.config/thoth/config.toml`: `daily` (thinking + default project), `quick` (thinking), `openai_deep` (single-provider deep_research), `all_deep` (parallel openai+perplexity), `interactive` (interactive mode), and `deep_research` (deep_research with a worked `prompt_prefix` example demonstrating Q3a hierarchy).
+- [x] [P21-T11] Document the `prompt_prefix` field and its hierarchy in `README.md` and `manual_testing_instructions.md`. Worked example: `[general] prompt_prefix`, `[modes.deep_research] prompt_prefix`, `[profiles.X] prompt_prefix`, `[profiles.X.modes.M] prompt_prefix` — show resolution outcome for each combination.
 
 ### Automated Verification
 - `uv run pytest tests/test_config_profiles.py tests/test_config_cmd.py -v` passes.
