@@ -213,6 +213,47 @@ def _load_toml_doc(path: Path) -> tomlkit.TOMLDocument:
     return doc
 
 
+def _profiles_table(doc: tomlkit.TOMLDocument) -> Any:
+    if "profiles" not in doc:
+        doc["profiles"] = tomlkit.table()
+    return doc["profiles"]
+
+
+def _profile_table(doc: tomlkit.TOMLDocument, name: str, *, create: bool) -> Any | None:
+    profiles = _profiles_table(doc)
+    if name not in profiles:
+        if not create:
+            return None
+        profiles[name] = tomlkit.table()
+    table = profiles[name]
+    return table if hasattr(table, "keys") else None
+
+
+def _unset_leaf_no_prune_in_doc(doc: tomlkit.TOMLDocument, key: str) -> bool:
+    """Delete the named leaf only; do NOT prune empty parent tables.
+
+    Profile commands (`unset` and `unset-default`) require this no-prune
+    behavior: empty parent tables and their comments are part of the
+    P21b contract. The companion `_unset_in_doc` prunes empty ancestors
+    for the top-level `thoth config unset` and is intentionally separate.
+    """
+    parts = key.split(".")
+    current = cast(Any, doc)
+    for part in parts[:-1]:
+        if part not in current:
+            return False
+        child = current[part]
+        if not hasattr(child, "keys"):
+            return False
+        current = cast(Any, child)
+
+    leaf = parts[-1]
+    if leaf not in current:
+        return False
+    del current[leaf]
+    return True
+
+
 def _warn_on_validation(key: str, value: Any) -> None:
     from thoth.config import ConfigSchema
 
@@ -617,12 +658,371 @@ def config_command(
     return _op_help(args, config_path=config_path)
 
 
+def get_config_profile_add_data(
+    name: str,
+    *,
+    project: bool,
+    config_path: str | Path | None = None,
+) -> dict:
+    """Pure data function for `thoth config profiles add NAME`.
+
+    Idempotent: if the profile already exists, returns
+    ``{"created": False, ...}`` without touching the file.
+    """
+    if project and config_path is not None:
+        return {
+            "profile": name,
+            "created": False,
+            "path": None,
+            "error": "PROJECT_CONFIG_CONFLICT",
+        }
+
+    path = _target_path(project, config_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    doc = _load_toml_doc(path)
+    if _profile_table(doc, name, create=False) is not None:
+        return {"profile": name, "created": False, "path": str(path)}
+
+    _profile_table(doc, name, create=True)
+    path.write_text(tomlkit.dumps(doc))
+    return {"profile": name, "created": True, "path": str(path)}
+
+
+def get_config_profile_remove_data(
+    name: str,
+    *,
+    project: bool,
+    config_path: str | Path | None = None,
+) -> dict:
+    """Pure data function for `thoth config profiles remove NAME`.
+
+    Idempotent: if the profile doesn't exist, returns
+    ``{"removed": False, ...}`` without touching the file.
+    """
+    if project and config_path is not None:
+        return {
+            "profile": name,
+            "removed": False,
+            "path": None,
+            "error": "PROJECT_CONFIG_CONFLICT",
+        }
+
+    path = _target_path(project, config_path)
+    if not path.exists():
+        return {"profile": name, "removed": False, "path": str(path)}
+
+    doc = _load_toml_doc(path)
+    if _profile_table(doc, name, create=False) is None:
+        return {"profile": name, "removed": False, "path": str(path)}
+
+    profiles = _profiles_table(doc)
+    del profiles[name]
+    path.write_text(tomlkit.dumps(doc))
+    return {"profile": name, "removed": True, "path": str(path)}
+
+
+def get_config_profile_set_data(
+    name: str,
+    key: str,
+    raw_value: str,
+    *,
+    project: bool,
+    force_string: bool,
+    config_path: str | Path | None = None,
+) -> dict:
+    """Pure data function for `thoth config profiles set NAME KEY VALUE`."""
+    if project and config_path is not None:
+        return {
+            "profile": name,
+            "key": key,
+            "value": None,
+            "wrote": False,
+            "path": None,
+            "error": "PROJECT_CONFIG_CONFLICT",
+        }
+
+    value = _parse_value(raw_value, force_string)
+    path = _target_path(project, config_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    doc = _load_toml_doc(path)
+    # Ensure the profile table exists so the nested write lands beneath it.
+    _profile_table(doc, name, create=True)
+    profile_key = f"profiles.{name}.{key}"
+    _set_in_doc(doc, profile_key, value)
+    path.write_text(tomlkit.dumps(doc))
+    return {
+        "profile": name,
+        "key": key,
+        "value": value,
+        "wrote": True,
+        "path": str(path),
+    }
+
+
+def get_config_profile_unset_data(
+    name: str,
+    key: str,
+    *,
+    project: bool,
+    config_path: str | Path | None = None,
+) -> dict:
+    """Pure data function for `thoth config profiles unset NAME KEY`.
+
+    Removes only the named leaf; empty parent tables are left in place
+    (B17). Uses `_unset_leaf_no_prune_in_doc`, NOT `_unset_in_doc`.
+    """
+    if project and config_path is not None:
+        return {
+            "profile": name,
+            "key": key,
+            "removed": False,
+            "path": None,
+            "error": "PROJECT_CONFIG_CONFLICT",
+        }
+
+    path = _target_path(project, config_path)
+    if not path.exists():
+        return {
+            "profile": name,
+            "key": key,
+            "removed": False,
+            "path": str(path),
+            "reason": "NO_FILE",
+        }
+
+    doc = _load_toml_doc(path)
+    profile_key = f"profiles.{name}.{key}"
+    removed = _unset_leaf_no_prune_in_doc(doc, profile_key)
+    if not removed:
+        return {
+            "profile": name,
+            "key": key,
+            "removed": False,
+            "path": str(path),
+            "reason": "NOT_FOUND",
+        }
+
+    path.write_text(tomlkit.dumps(doc))
+    return {"profile": name, "key": key, "removed": True, "path": str(path)}
+
+
+def get_config_profile_show_data(
+    name: str,
+    *,
+    show_secrets: bool,
+    config_path: str | Path | None = None,
+) -> dict:
+    """Pure data function for `thoth config profiles show NAME`.
+
+    Returns the profile's raw contents from the resolved layer. Honors
+    inherited ``--config PATH`` and ``--profile`` (read-only leaf).
+    """
+    cm = _load_manager(config_path)
+    # Apply the same precedence rule as `resolve_profile_layer`: project beats
+    # user. ``cm.profile_catalog`` lists user entries first, then project.
+    matches = [entry for entry in cm.profile_catalog if entry.name == name]
+    project_matches = [entry for entry in matches if entry.tier == "project"]
+    layer = (project_matches or matches)[-1] if matches else None
+    if layer is None:
+        available = sorted({entry.name for entry in cm.profile_catalog})
+        return {
+            "name": name,
+            "profile": None,
+            "found": False,
+            "available_profiles": available,
+            "error": "PROFILE_NOT_FOUND",
+        }
+
+    rendered = _to_plain(layer.data)
+    if not show_secrets:
+        rendered = _mask_in_tree(rendered)
+    return {
+        "name": name,
+        "found": True,
+        "tier": layer.tier,
+        "path": str(layer.path),
+        "profile": rendered,
+    }
+
+
+def get_config_profile_current_data(
+    *,
+    config_path: str | Path | None = None,
+    profile: str | None = None,
+) -> dict:
+    """Pure data function for `thoth config profiles current`.
+
+    Reports the runtime active selection plus its source. Honors
+    inherited ``--config PATH`` and ``--profile``.
+    """
+    cm = _load_manager(config_path, profile=profile)
+    return {
+        "active_profile": cm.profile_selection.name,
+        "selection_source": cm.profile_selection.source,
+        "selection_detail": cm.profile_selection.source_detail,
+    }
+
+
+def get_config_profile_set_default_data(
+    name: str,
+    *,
+    project: bool,
+    config_path: str | Path | None = None,
+) -> dict:
+    """Pure data function for `thoth config profiles set-default NAME`.
+
+    Validates ``name`` against the resolved profile catalog (B16) before
+    writing ``general.default_profile = NAME`` to the target file.
+    """
+    from thoth.errors import ConfigProfileError
+
+    if project and config_path is not None:
+        return {
+            "default_profile": None,
+            "wrote": False,
+            "path": None,
+            "error": "PROJECT_CONFIG_CONFLICT",
+        }
+
+    # Build a transient ConfigManager pointed at the same target view the
+    # command will write. We pass `config_path` to the constructor (NOT
+    # through `load_all_layers`, which intentionally rejects metadata keys).
+    cm = _load_manager(config_path)
+    catalog_names = {entry.name for entry in cm.profile_catalog}
+    if name not in catalog_names:
+        raise ConfigProfileError(
+            f"Profile {name!r} not found",
+            available_profiles=sorted(catalog_names),
+            source="thoth config profiles set-default",
+        )
+
+    path = _target_path(project, config_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    doc = _load_toml_doc(path)
+    _set_in_doc(doc, "general.default_profile", name)
+    path.write_text(tomlkit.dumps(doc))
+    return {
+        "default_profile": name,
+        "wrote": True,
+        "path": str(path),
+    }
+
+
+def get_config_profile_unset_default_data(
+    *,
+    project: bool,
+    config_path: str | Path | None = None,
+) -> dict:
+    """Pure data function for `thoth config profiles unset-default`.
+
+    Removes ``general.default_profile`` from the target file. Leaves the
+    surrounding ``[general]`` table intact even if it becomes empty (B17).
+    """
+    if project and config_path is not None:
+        return {
+            "removed": False,
+            "path": None,
+            "error": "PROJECT_CONFIG_CONFLICT",
+        }
+
+    path = _target_path(project, config_path)
+    if not path.exists():
+        return {"removed": False, "path": str(path), "reason": "NO_FILE"}
+
+    doc = _load_toml_doc(path)
+    removed = _unset_leaf_no_prune_in_doc(doc, "general.default_profile")
+    if not removed:
+        return {"removed": False, "path": str(path), "reason": "NOT_FOUND"}
+
+    path.write_text(tomlkit.dumps(doc))
+    return {"removed": True, "path": str(path)}
+
+
+def get_config_profile_list_data(
+    *,
+    config_path: str | Path | None = None,
+    profile: str | None = None,
+    show_shadowed: bool = False,
+) -> dict:
+    """Pure data function for `thoth config profiles list`.
+
+    Default output collapses duplicate names to the winning layer that
+    `resolve_profile_layer(...)` would choose (project beats user).
+    With ``show_shadowed=True``, lower-precedence same-name rows are
+    included with ``shadowed=True`` and ``shadowed_by`` metadata.
+    """
+    cm = _load_manager(config_path, profile=profile)
+    selected = cm.profile_selection.name
+
+    # Group catalog entries by name preserving precedence: project beats user.
+    by_name: dict[str, dict[str, Any]] = {}
+    for entry in cm.profile_catalog:
+        slot = by_name.setdefault(entry.name, {"project": [], "user": []})
+        slot[entry.tier].append(entry)
+
+    rows: list[dict[str, Any]] = []
+    for name in sorted(by_name):
+        slot = by_name[name]
+        winner = (slot["project"][-1:] or slot["user"][-1:])[0]
+        winner_active = name == selected
+        winner_row = {
+            "name": winner.name,
+            "tier": winner.tier,
+            "path": str(winner.path),
+            "active": winner_active,
+            "shadowed": False,
+            "shadowed_by": None,
+        }
+        rows.append(winner_row)
+        if not show_shadowed:
+            continue
+        # Emit shadowed rows immediately after the winner.
+        shadowed_entries: list[Any] = []
+        if slot["project"] and slot["user"]:
+            # User entries are shadowed by the project winner.
+            shadowed_entries.extend(slot["user"])
+        # Older same-tier duplicates within a single file are also shadowed.
+        same_tier = slot[winner.tier]
+        if len(same_tier) > 1:
+            shadowed_entries.extend(same_tier[:-1])
+        for shadow in shadowed_entries:
+            rows.append(
+                {
+                    "name": shadow.name,
+                    "tier": shadow.tier,
+                    "path": str(shadow.path),
+                    "active": False,
+                    "shadowed": True,
+                    "shadowed_by": {
+                        "tier": winner.tier,
+                        "path": str(winner.path),
+                    },
+                }
+            )
+
+    return {
+        "active_profile": cm.profile_selection.name,
+        "selection_source": cm.profile_selection.source,
+        "selection_detail": cm.profile_selection.source_detail,
+        "profiles": rows,
+    }
+
+
 __all__ = [
     "config_command",
     "get_config_edit_data",
     "get_config_get_data",
     "get_config_list_data",
     "get_config_path_data",
+    "get_config_profile_add_data",
+    "get_config_profile_current_data",
+    "get_config_profile_list_data",
+    "get_config_profile_remove_data",
+    "get_config_profile_set_data",
+    "get_config_profile_set_default_data",
+    "get_config_profile_show_data",
+    "get_config_profile_unset_data",
+    "get_config_profile_unset_default_data",
     "get_config_set_data",
     "get_config_unset_data",
 ]
