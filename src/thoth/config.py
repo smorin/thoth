@@ -30,8 +30,8 @@ from thoth.config_profiles import (
     resolve_profile_selection,
     without_profiles,
 )
-from thoth.errors import ThothError
-from thoth.paths import user_checkpoints_dir, user_config_file
+from thoth.errors import ConfigAmbiguousError, ConfigNotFoundError, ThothError
+from thoth.paths import user_checkpoints_dir, user_config_dir, user_config_file
 
 # Console used for config-warning output only.
 # Distinct from the CLI's main console instance; both write to the same stdout.
@@ -280,7 +280,7 @@ class ConfigManager:
 
     def __init__(self, config_path: Path | None = None):
         self.user_config_path = config_path or user_config_file()
-        self.project_config_paths = ["./thoth.toml", "./.thoth/config.toml"]
+        self.project_config_paths = ["./thoth.config.toml", "./.thoth.config.toml"]
         self.layers: dict[str, dict[str, Any]] = {}
         self.data: dict[str, Any] = {}
         self.project_config_path: Path | None = None
@@ -386,12 +386,25 @@ class ConfigManager:
             return {}
 
     def _load_project_config_with_path(self) -> tuple[dict[str, Any], Path | None]:
-        """Load project-level configuration if it exists; also return its path."""
-        for config_path in self.project_config_paths:
-            path = Path(config_path)
-            if path.exists():
-                return self._load_toml_file(path), path
-        return {}, None
+        """Load project-level configuration if it exists; also return its path.
+
+        P21c: when more than one of the canonical project files exists, raise
+        `ConfigAmbiguousError` rather than picking one. The two canonical names
+        are siblings, not a precedence pair.
+        """
+        candidates = [Path(p) for p in self.project_config_paths]
+        existing = [p for p in candidates if p.exists()]
+        if len(existing) > 1:
+            raise ConfigAmbiguousError(
+                f"Two Thoth config files found in the project root:\n"
+                f"  {existing[0]}\n"
+                f"  {existing[1]}\n"
+                f"\nDelete one before continuing. They are not merged and Thoth "
+                f"will not pick between them.",
+            )
+        if not existing:
+            return {}, None
+        return self._load_toml_file(existing[0]), existing[0]
 
     def _load_project_config(self) -> dict[str, Any]:
         """Load project-level configuration if it exists"""
@@ -594,3 +607,56 @@ def get_config(profile: str | None = None) -> ConfigManager:
         cli_args["_profile"] = profile
     manager.load_all_layers(cli_args)
     return manager
+
+
+# ---------------------------------------------------------------------------
+# P21c: legacy config detection + ConfigNotFoundError formatter.
+#
+# These helpers exist solely to enrich the "no Thoth config found" error
+# message. They are NEVER called from a successful load path — see
+# tests/test_config_filename.py::test_c2_successful_load_does_not_call_legacy_detector.
+# ---------------------------------------------------------------------------
+
+LEGACY_USER_FILENAME = "config.toml"
+LEGACY_PROJECT_PATHS: tuple[str, ...] = ("./thoth.toml", "./.thoth/config.toml")
+
+
+def detect_legacy_paths() -> list[Path]:
+    """Return any legacy Thoth config files that exist on disk.
+
+    Used to enrich 'config not found' error messages — never to load.
+    """
+    found: list[Path] = []
+    legacy_user = user_config_dir() / LEGACY_USER_FILENAME
+    if legacy_user.exists():
+        found.append(legacy_user)
+    for rel in LEGACY_PROJECT_PATHS:
+        p = Path(rel)
+        if p.exists():
+            found.append(p)
+    return found
+
+
+def _format_config_not_found() -> ConfigNotFoundError:
+    canonical = [
+        str(user_config_file()),
+        "./thoth.config.toml",
+        "./.thoth.config.toml",
+    ]
+    legacy = detect_legacy_paths()
+    lines = ["No Thoth config found.", "  Looked for:"]
+    for path in canonical:
+        lines.append(f"    {path}")
+    if legacy:
+        lines.append("")
+        if len(legacy) == 1:
+            lines.append(f"  Detected legacy file: {legacy[0]}")
+        else:
+            lines.append("  Detected legacy files:")
+            for p in legacy:
+                lines.append(f"    {p}")
+        lines.append(
+            "  These filenames are no longer read. Rename to "
+            "thoth.config.toml (or .thoth.config.toml in the project root)."
+        )
+    return ConfigNotFoundError("\n".join(lines))

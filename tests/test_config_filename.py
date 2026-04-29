@@ -26,12 +26,12 @@ from click.testing import CliRunner
 from thoth.cli_subcommands.init import init as init_cmd
 from thoth.config import (
     ConfigManager,
-    _format_config_not_found,  # ty: ignore[unresolved-import]
-    detect_legacy_paths,  # ty: ignore[unresolved-import]
+    _format_config_not_found,
+    detect_legacy_paths,
 )
 from thoth.errors import (
-    ConfigAmbiguousError,  # ty: ignore[unresolved-import]
-    ConfigNotFoundError,  # ty: ignore[unresolved-import]
+    ConfigAmbiguousError,
+    ConfigNotFoundError,
 )
 from thoth.paths import user_config_dir, user_config_file
 
@@ -341,7 +341,7 @@ def test_c3_not_found_formatter_calls_detector_exactly_once(
 
     monkeypatch.setattr(cfg_mod, "detect_legacy_paths", spy, raising=True)
 
-    err = cfg_mod._format_config_not_found()  # ty: ignore[unresolved-attribute]
+    err = cfg_mod._format_config_not_found()
     assert isinstance(err, ConfigNotFoundError)
     assert calls["n"] == 1
 
