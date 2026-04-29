@@ -141,3 +141,17 @@ def resolve_prompt_prefix(config: Any, mode: str) -> str | None:
         if hit is not None:
             return hit
     return None
+
+
+def assemble_prompt_with_prefix(config: Any, mode: str, user_prompt: str) -> str:
+    """Return the user message that should reach the provider.
+
+    If a `prompt_prefix` resolves for ``mode`` under ``config`` (4-level
+    hierarchy via ``resolve_prompt_prefix``), the result is
+    ``f"{prefix}\\n\\n{user_prompt}"``. Otherwise ``user_prompt`` is returned
+    unchanged. The mode's ``system_prompt`` is unaffected.
+    """
+    prefix = resolve_prompt_prefix(config, mode)
+    if prefix is None:
+        return user_prompt
+    return f"{prefix}\n\n{user_prompt}"

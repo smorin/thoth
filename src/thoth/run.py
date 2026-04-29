@@ -212,6 +212,10 @@ async def run_research(
     if not mode or not prompt:
         raise click.BadParameter("Both mode and prompt are required for research operations")
 
+    from thoth.config_profiles import assemble_prompt_with_prefix
+
+    prompt = assemble_prompt_with_prefix(config, mode, prompt)
+
     operation_id = generate_operation_id()
 
     if verbose:
