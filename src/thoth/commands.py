@@ -177,7 +177,7 @@ class CommandHandler:
             )
         return self.commands[command](**params)
 
-    def init_command(self, config_path: Path | None = None, **params):
+    def init_command(self, config_path: str | Path | None = None, **params):
         """Initialize Thoth configuration"""
         console.print("[bold]Welcome to Thoth Research Assistant Setup![/bold]\n")
 
@@ -188,6 +188,8 @@ class CommandHandler:
 
         if config_path is None:
             config_path = user_config_file()
+        else:
+            config_path = Path(config_path).expanduser()
         console.print(f"Configuration file will be created at: {config_path}\n")
 
         config_path.parent.mkdir(parents=True, exist_ok=True)
@@ -236,6 +238,7 @@ class CommandHandler:
                 quiet=params.get("quiet", False),
                 no_metadata=params.get("no_metadata", False),
                 timeout_override=params.get("timeout_override"),
+                profile=params.get("profile"),
             )
         )
 
@@ -264,7 +267,7 @@ def get_init_data(*, non_interactive: bool, config_path: str | None) -> dict:
     created = not target.exists()
     if created:
         target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text('version = "2.0"\n')
+        target.write_text(tomlkit.dumps(_build_starter_document()))
     return {
         "config_path": str(target),
         "created": created,
@@ -512,6 +515,7 @@ async def providers_command(
     no_cache: bool = False,
     cli_api_keys: dict[str, str | None] | None = None,
     timeout_override: float | None = None,
+    profile: str | None = None,
 ):
     """Show provider information and available models"""
     if not show_models and not show_list and not show_keys:
@@ -540,7 +544,7 @@ async def providers_command(
         console.print("  $ thoth providers models --no-cache")
         return
 
-    config = get_config()
+    config = get_config(profile=profile)
     cli_api_keys = cli_api_keys or {}
 
     all_providers = ["openai", "perplexity", "mock"]

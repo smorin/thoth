@@ -123,9 +123,7 @@ def ask(
     # Subcommand-level option wins over group-level (already true via Click)
     inherited = ctx.obj or {}
 
-    effective_mode = pick_value(mode_opt, ctx, "mode_opt") or "default"
     effective_provider = pick_value(provider, ctx, "provider")
-    effective_project = pick_value(project, ctx, "project")
     effective_output_dir = pick_value(output_dir, ctx, "output_dir")
     effective_input_file = pick_value(input_file, ctx, "input_file")
     effective_async = bool(async_mode or inherited.get("async_mode"))
@@ -136,6 +134,7 @@ def ask(
     effective_no_metadata = bool(no_metadata or inherited.get("no_metadata"))
     effective_timeout = pick_value(timeout, ctx, "timeout")
     effective_config = pick_value(config_path, ctx, "config_path")
+    effective_profile = pick_value(profile, ctx, "profile")
     root_api_keys = inherited_api_keys(ctx)
     cli_api_keys = {
         "openai": api_key_openai or root_api_keys["openai"],
@@ -146,12 +145,20 @@ def ask(
     # Local import: avoids cli.py → cli_subcommands → cli.py circular at module load.
     from thoth.cli import (
         _apply_config_path,
+        _config_default_mode,
+        _config_default_project,
         _prompt_max_bytes,
         _read_prompt_input,
         _run_research_default,
     )
+    from thoth.config import get_config
 
     _apply_config_path(effective_config)
+    config = get_config(profile=effective_profile)
+    effective_mode = pick_value(mode_opt, ctx, "mode_opt") or _config_default_mode(config)
+    effective_project = pick_value(project, ctx, "project")
+    if effective_project is None:
+        effective_project = _config_default_project(config)
 
     if effective_prompt_file:
         effective_prompt = _read_prompt_input(str(effective_prompt_file), _prompt_max_bytes())
@@ -202,6 +209,7 @@ def ask(
                     no_metadata=effective_no_metadata,
                     timeout_override=effective_timeout,
                     model_override=None,
+                    profile=effective_profile,
                 )
         except SystemExit as exc:
             if exc.code not in (None, 0):
@@ -255,6 +263,7 @@ def ask(
         model_override=None,
         out=out,
         append=append,
+        profile=effective_profile,
     )
 
 

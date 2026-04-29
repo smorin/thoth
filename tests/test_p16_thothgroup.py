@@ -173,10 +173,12 @@ def test_providers_list_invokes_correct_function(monkeypatch):
         filter_provider=None,
         refresh_cache=False,
         no_cache=False,
+        profile=None,
     ):
         called["invoked"] = True
         called["show_list"] = show_list
         called["filter_provider"] = filter_provider
+        called["profile"] = profile
         return None
 
     monkeypatch.setattr("thoth.commands.providers_command", fake_command)
@@ -186,6 +188,7 @@ def test_providers_list_invokes_correct_function(monkeypatch):
     assert called["invoked"] is True
     assert called["show_list"] is True
     assert called["filter_provider"] is None
+    assert called["profile"] is None
 
 
 def test_config_subgroup_registered():

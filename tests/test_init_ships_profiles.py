@@ -14,10 +14,19 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from click.testing import CliRunner
 
 from thoth.commands import CommandHandler
 from thoth.config import ConfigManager
 from thoth.config_profiles import resolve_prompt_prefix
+
+
+@pytest.fixture(autouse=True)
+def _reset_config_path(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep CLI --config tests from leaking into later tests."""
+    from thoth import config as thoth_config
+
+    monkeypatch.setattr(thoth_config, "_config_path", None)
 
 
 @pytest.fixture
@@ -89,3 +98,43 @@ def test_deep_research_profile_carries_prompt_prefix(init_run: Path) -> None:
     prefix = resolve_prompt_prefix(cm, "deep_research")
     assert prefix is not None
     assert len(prefix) > 0
+
+
+def test_cli_init_custom_config_path_writes_starter_profiles(
+    isolated_thoth_home: Path,
+    tmp_path: Path,
+) -> None:
+    from thoth.cli import cli
+
+    target = tmp_path / "custom-thoth.toml"
+    result = CliRunner().invoke(cli, ["--config", str(target), "init"])
+
+    assert result.exit_code == 0, result.output
+    assert target.exists()
+    text = target.read_text()
+    assert "[profiles.daily.general]" in text
+    assert "[profiles.deep_research.modes.deep_research]" in text
+
+
+def test_cli_init_json_non_interactive_writes_starter_profiles(
+    isolated_thoth_home: Path,
+    tmp_path: Path,
+) -> None:
+    import json
+
+    from thoth.cli import cli
+
+    target = tmp_path / "json-thoth.toml"
+    result = CliRunner().invoke(
+        cli,
+        ["--config", str(target), "init", "--json", "--non-interactive"],
+        catch_exceptions=False,
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["status"] == "ok"
+    assert payload["data"]["created"] is True
+    text = target.read_text()
+    assert "[profiles.daily.general]" in text
+    assert "[profiles.deep_research.modes.deep_research]" in text
