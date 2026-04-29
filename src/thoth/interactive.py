@@ -875,7 +875,7 @@ class InteractiveSession:
 
         if not openai_key:
             raise ValueError(
-                "OpenAI API key not found. Please set OPENAI_API_KEY or configure in ~/.thoth/config.toml"
+                "OpenAI API key not found. Please set OPENAI_API_KEY or configure in ~/.config/thoth/thoth.config.toml"
             )
 
         context = self.clarification_session.get_context()

@@ -191,7 +191,7 @@ def _parse_value(raw: str, force_string: bool) -> Any:
 
 def _target_path(project: bool, config_path: str | Path | None = None) -> Path:
     if project:
-        return Path.cwd() / "thoth.toml"
+        return Path.cwd() / "thoth.config.toml"
     custom = _normalize_config_path(config_path)
     if custom is not None:
         return custom

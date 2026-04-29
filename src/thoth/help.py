@@ -233,7 +233,7 @@ def render_auth_help() -> str:
         "     export OPENAI_API_KEY=sk-...\n"
         "     export PERPLEXITY_API_KEY=pplx-...\n"
         "\n"
-        "2. Config file (persistent, per-machine): ~/.thoth/config.toml\n"
+        "2. Config file (persistent, per-machine): ~/.config/thoth/thoth.config.toml\n"
         "     [providers.openai]\n"
         '     api_key = "sk-..."\n'
         "\n"

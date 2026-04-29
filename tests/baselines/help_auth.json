@@ -6,5 +6,5 @@
   "exit_code": 0,
   "label": "help_auth",
   "stderr": "",
-  "stdout": "Authentication \u2014 recommended order:\n\n1. Environment variables (recommended):\n     export OPENAI_API_KEY=sk-...\n     export PERPLEXITY_API_KEY=pplx-...\n\n2. Config file (persistent, per-machine): ~/.thoth/config.toml\n     [providers.openai]\n     api_key = \"sk-...\"\n\n3. CLI flags (last resort \u2014 exposes keys in shell history; not recommended):\n     thoth --api-key-openai sk-... deep_research \"...\"\n\n"
+  "stdout": "Authentication \u2014 recommended order:\n\n1. Environment variables (recommended):\n     export OPENAI_API_KEY=sk-...\n     export PERPLEXITY_API_KEY=pplx-...\n\n2. Config file (persistent, per-machine): ~/.config/thoth/thoth.config.toml\n     [providers.openai]\n     api_key = \"sk-...\"\n\n3. CLI flags (last resort \u2014 exposes keys in shell history; not recommended):\n     thoth --api-key-openai sk-... deep_research \"...\"\n\n"
 }

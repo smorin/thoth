@@ -109,7 +109,7 @@ def _build_starter_profiles() -> tomlkit.items.Table:
 
 
 def _build_starter_document() -> tomlkit.TOMLDocument:
-    """Construct the full `~/.config/thoth/config.toml` shipped by `thoth init`."""
+    """Construct the full `~/.config/thoth/thoth.config.toml` shipped by `thoth init`."""
     doc = tomlkit.document()
     doc.add(tomlkit.comment("Thoth Configuration File"))
     doc["version"] = CONFIG_VERSION
