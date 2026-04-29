@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import sys
-from typing import NoReturn
 
 import click
 
@@ -54,16 +53,6 @@ def _dispatch(
     sys.exit(rc)
 
 
-def _emit_config_profile_error(exc: Exception) -> NoReturn:
-    from thoth.errors import ConfigProfileError
-    from thoth.json_output import emit_error
-
-    if not isinstance(exc, ConfigProfileError):
-        raise exc
-    details = {"suggestion": exc.suggestion} if exc.suggestion else None
-    emit_error("CONFIG_PROFILE_ERROR", exc.message, details, exit_code=exc.exit_code)
-
-
 @config.command(name="get")
 @click.argument("key", shell_complete=_config_keys_completer)
 @click.option(
@@ -99,6 +88,7 @@ def config_get(
 
     if as_json:
         from thoth.config_cmd import get_config_get_data
+        from thoth.errors import ConfigProfileError
         from thoth.json_output import emit_error, emit_json
 
         profile = inherited_value(ctx, "profile")
@@ -111,8 +101,9 @@ def config_get(
                 config_path=config_path,
                 profile=profile,
             )
-        except Exception as exc:  # noqa: BLE001 - converted selectively below
-            _emit_config_profile_error(exc)
+        except ConfigProfileError as exc:
+            details = {"suggestion": exc.suggestion} if exc.suggestion else None
+            emit_error("CONFIG_PROFILE_ERROR", exc.message, details, exit_code=exc.exit_code)
         if data.get("error") == "INVALID_LAYER":
             emit_error(
                 "INVALID_LAYER",
@@ -222,6 +213,7 @@ def config_list(ctx: click.Context, args: tuple[str, ...], as_json: bool) -> Non
     """List all configuration values. Supports --json."""
     if as_json:
         from thoth.config_cmd import get_config_list_data
+        from thoth.errors import ConfigProfileError
         from thoth.json_output import emit_error, emit_json
 
         validate_inherited_options(ctx, "config list", DEFAULT_HONOR)
@@ -256,8 +248,9 @@ def config_list(ctx: click.Context, args: tuple[str, ...], as_json: bool) -> Non
                 config_path=config_path,
                 profile=profile,
             )
-        except Exception as exc:  # noqa: BLE001 - converted selectively below
-            _emit_config_profile_error(exc)
+        except ConfigProfileError as exc:
+            details = {"suggestion": exc.suggestion} if exc.suggestion else None
+            emit_error("CONFIG_PROFILE_ERROR", exc.message, details, exit_code=exc.exit_code)
         if data.get("error") == "INVALID_LAYER":
             emit_error(
                 "INVALID_LAYER",
