@@ -51,7 +51,7 @@ Keep this summary list updated whenever a project is added, renamed, completed, 
 - [x] P03 — Fix BUG-03 OpenAI Poll Interval Scheduling
 - [x] P02 — Fix BUG-01 OpenAI Background Status Handling
 - [x] P04 — GAP-01 — max_tool_calls safeguard and tool-selection config
-- [ ] P01 — Developer Tooling & Automation
+- [~] P01 — Developer Tooling & Automation
 
 ## Project References
 
@@ -1670,7 +1670,7 @@ Phase 6 — Cleanup
 
 ---
 
-## [ ] Project P01: Developer Tooling & Automation (v2.6.0)
+## [~] Project P01: Developer Tooling & Automation (v2.6.0)
 **Goal**: Add automated dependency updates, changelog generation, version bumping, GitHub contribution templates, snapshot test tooling, security linting, and devcontainer support.
 
 ### Tests & Tasks
@@ -1692,6 +1692,7 @@ Phase 6 — Cleanup
 - [x] [P01-T10] Create `cliff.toml`
 - [x] [P01-T11] Add `changelog` and `release` Makefile targets
 - [x] [P01-T12] Create `.devcontainer/devcontainer.json`
+- [ ] [P01-T13] Run all P01-TS01..06 verifications and check off each TS row as it passes (snapshot artifact ignore, `make update-snapshots`, `uvx yamllint .github/dependabot.yml`, `uvx bandit -r src/thoth/ -ll -q`, `make bump TYPE=patch`, `make changelog`)
 
 ### Deliverable
 ```bash
