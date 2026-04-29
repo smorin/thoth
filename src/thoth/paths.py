@@ -32,7 +32,7 @@ def user_cache_dir() -> Path:
 
 
 def user_config_file() -> Path:
-    return user_config_dir() / "config.toml"
+    return user_config_dir() / "thoth.config.toml"
 
 
 def user_checkpoints_dir() -> Path:

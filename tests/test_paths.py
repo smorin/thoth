@@ -67,7 +67,7 @@ def test_dir_falls_back_when_env_empty(
 
 def test_user_config_file_under_config_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
-    assert paths.user_config_file() == tmp_path / "thoth" / "config.toml"
+    assert paths.user_config_file() == tmp_path / "thoth" / "thoth.config.toml"
 
 
 def test_user_checkpoints_dir_under_state_dir(

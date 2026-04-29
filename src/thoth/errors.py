@@ -112,6 +112,20 @@ class ConfigProfileError(ThothError):
         )
 
 
+class ConfigNotFoundError(ThothError):
+    """Configuration file is required but no canonical file exists."""
+
+    def __init__(self, message: str, suggestion: str | None = None):
+        super().__init__(message, suggestion, exit_code=1)
+
+
+class ConfigAmbiguousError(ThothError):
+    """Both `./thoth.config.toml` and `./.thoth.config.toml` exist."""
+
+    def __init__(self, message: str, suggestion: str | None = None):
+        super().__init__(message, suggestion, exit_code=1)
+
+
 class ModeKindMismatchError(ThothError):
     """A mode's declared `kind` is incompatible with its model's required kind.
 
