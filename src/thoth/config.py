@@ -291,6 +291,25 @@ class ConfigManager:
     def load_all_layers(self, cli_args: dict[str, Any] | None = None):
         """Load all configuration layers in precedence order"""
         raw_cli_args = cli_args or {}
+
+        # Defense-in-depth (BUG-05): cli_args is the CLI override LAYER for
+        # config values. Its keys must be either the `_profile` sentinel or
+        # top-level config-schema keys (e.g., "general", "execution"). Anything
+        # else is a programming error — most commonly someone confusing this
+        # with a generic options bag and passing metadata like "config_path"
+        # (which belongs in the ConfigManager(config_path=...) constructor).
+        allowed_top_level = set(ConfigSchema.get_defaults().keys())
+        for key in raw_cli_args:
+            if key == "_profile" or key in allowed_top_level:
+                continue
+            raise ValueError(
+                f"cli_args key {key!r} is not a known config root or sentinel. "
+                f"Allowed: '_profile' or one of {sorted(allowed_top_level)}. "
+                f"If {key!r} is metadata about which file to load (e.g. "
+                f"'config_path'), pass it to ConfigManager(config_path=...) "
+                f"instead."
+            )
+
         cli_profile = raw_cli_args.get("_profile")
         cli_layer = {key: value for key, value in raw_cli_args.items() if key != "_profile"}
 

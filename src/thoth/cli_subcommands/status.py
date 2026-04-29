@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 
 import click
 
@@ -50,8 +51,10 @@ def status(ctx: click.Context, operation_id: str | None, as_json: bool) -> None:
     # Default Rich path
     config_path = ctx.obj.get("config_path") if ctx.obj else None
     profile = ctx.obj.get("profile") if ctx.obj else None
-    config_manager = ConfigManager()
-    cli_args: dict[str, object] = {"config_path": config_path}
+    config_manager = ConfigManager(
+        Path(config_path).expanduser().resolve() if config_path else None
+    )
+    cli_args: dict[str, object] = {}
     if profile:
         cli_args["_profile"] = profile
     config_manager.load_all_layers(cli_args)
