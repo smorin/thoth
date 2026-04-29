@@ -100,6 +100,28 @@ def test_deep_research_profile_carries_prompt_prefix(init_run: Path) -> None:
     assert len(prefix) > 0
 
 
+def test_build_profile_section_preserves_sibling_subsections() -> None:
+    """C14: siblings sharing a prefix (e.g., modes.deep_research + modes.thinking)
+    must coexist under the same intermediate table, not overwrite each other."""
+    from thoth.commands import _build_profile_section
+
+    body = {
+        "modes.deep_research": {"providers": ["openai"], "parallel": False},
+        "modes.thinking": {"prompt_prefix": "Think hard."},
+    }
+    table = _build_profile_section(body)
+    modes = table.get("modes")
+    assert modes is not None, "modes intermediate table missing"
+    assert "deep_research" in modes, (
+        f"deep_research silently dropped; modes keys = {list(modes.keys())}"
+    )
+    assert "thinking" in modes, f"thinking silently dropped; modes keys = {list(modes.keys())}"
+    # Full content must round-trip — not just keys
+    assert modes["deep_research"]["providers"] == ["openai"]
+    assert modes["deep_research"]["parallel"] is False
+    assert modes["thinking"]["prompt_prefix"] == "Think hard."
+
+
 def test_cli_init_custom_config_path_writes_starter_profiles(
     isolated_thoth_home: Path,
     tmp_path: Path,

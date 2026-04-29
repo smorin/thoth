@@ -39,6 +39,11 @@ def _build_profile_section(body: dict[str, Any]) -> tomlkit.items.Table:
     `body` is a flat dict whose keys are TOML section names under the profile
     (e.g., ``"general"``, ``"modes.deep_research"``) and whose values are
     dicts of leaf keys.
+
+    Sibling sections sharing a prefix (e.g., ``"modes.deep_research"`` and
+    ``"modes.thinking"``) are merged under the same intermediate table; the
+    helper reuses an existing intermediate when present rather than
+    overwriting it (C14).
     """
     profile_table = tomlkit.table()
     for section_path, leaves in body.items():
@@ -46,12 +51,18 @@ def _build_profile_section(body: dict[str, Any]) -> tomlkit.items.Table:
         for key, value in leaves.items():
             section[key] = value
         # Resolve nested paths like "modes.deep_research" by walking parts.
+        # Reuse an existing intermediate table when it's already present
+        # (so multiple sibling sections under the same prefix coexist).
         parts = section_path.split(".")
         cursor: Any = profile_table
         for part in parts[:-1]:
-            child = tomlkit.table()
-            cursor[part] = child
-            cursor = child
+            existing = cursor.get(part) if hasattr(cursor, "get") else None
+            if hasattr(existing, "keys"):
+                cursor = existing
+            else:
+                child = tomlkit.table()
+                cursor[part] = child
+                cursor = child
         cursor[parts[-1]] = section
     return profile_table
 
