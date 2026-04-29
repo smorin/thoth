@@ -45,7 +45,7 @@ Keep this summary list updated whenever a project is added, renamed, completed, 
 - [x] P11 — `thoth modes` Discovery Command
 - [x] P10 — Config Subcommand + XDG Layout
 - [x] P09 — Decompose __main__.py + AppContext DI + Provider Registry
-- [-] P08 — Typed Exceptions, Unified API Key Resolution, Drop Legacy Config Shim
+- [x] P08 — Typed Exceptions, Unified API Key Resolution, Drop Legacy Config Shim
 - [x] P06 — Hybrid Transient/Permanent Error Handling with Resumable Recovery
 - [x] P05 — VCR Cassette Replay Tests
 - [x] P03 — Fix BUG-03 OpenAI Poll Interval Scheduling
@@ -1468,7 +1468,7 @@ Phase 6 — Cleanup
 
 ---
 
-## [-] Project P08: Typed Exceptions, Unified API Key Resolution, Drop Legacy Config Shim (v2.8.0)
+## [x] Project P08: Typed Exceptions, Unified API Key Resolution, Drop Legacy Config Shim (v2.8.0)
 **Goal**: Replace string-based error discrimination in OpenAIProvider.submit with typed openai SDK exceptions, unify API key resolution precedence (CLI > env > config) via a single resolver, and delete the legacy `Config` shim now that `ConfigManager` is used everywhere.
 
 **Out of Scope**
