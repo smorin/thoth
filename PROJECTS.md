@@ -2,13 +2,16 @@
 
 This file tracks planned, active, and completed Thoth work. New projects are added near the top in descending project-number order unless the user gives a specific ordering. Each project should keep test/design tasks (`TS`) ahead of implementation tasks (`T`) so work stays test-driven.
 
-## Status Key
+## Quick reference: status glyphs
 
-- `[ ]` Not started
-- `[~]` In progress
-- `[x]` Completed
-- `[-]` Dropped, superseded, or won't fix
-- `[>]` Proceeded to a successor project, follow-up, or later phase
+| Glyph | Meaning                | Reach for…                    |
+|-------|------------------------|-------------------------------|
+| `[?]` | Idea                   | `project-refine` to scope     |
+| `[ ]` | Scoped, not started    | start work; flip to `[~]`     |
+| `[~]` | In progress            | continue; check next task     |
+| `[x]` | Completed              | leave alone                   |
+| `[-]` | Decided not to do      | leave alone                   |
+| `[>]` | Proceeded to successor | follow the redirect           |
 
 ## Project Summary
 
