@@ -31,6 +31,55 @@ from thoth.run import run_research
 console = Console()
 
 
+def _starter_profiles_block() -> str:
+    """TOML block of example `[profiles.*]` sections shipped by `thoth init`.
+
+    Six worked examples that double as on-ramp documentation for the
+    `--profile NAME` plumbing and the `prompt_prefix` hierarchy. Users are
+    expected to customize/remove these.
+    """
+    return (
+        "# --- Configuration profiles (P21) -----------------------------------\n"
+        "# Activate with `thoth --profile NAME ...`, `THOTH_PROFILE=NAME`,\n"
+        "# or set `general.default_profile = \"NAME\"` above.\n"
+        "# Profile values REPLACE top-level values when the profile is active.\n"
+        "\n"
+        "[profiles.daily.general]\n"
+        'default_mode = "thinking"\n'
+        'default_project = "daily-notes"\n'
+        "\n"
+        "[profiles.quick.general]\n"
+        'default_mode = "thinking"\n'
+        "\n"
+        "[profiles.openai_deep.general]\n"
+        'default_mode = "deep_research"\n'
+        "[profiles.openai_deep.modes.deep_research]\n"
+        'providers = ["openai"]\n'
+        "parallel = false\n"
+        "\n"
+        "[profiles.all_deep.general]\n"
+        'default_mode = "deep_research"\n'
+        "[profiles.all_deep.modes.deep_research]\n"
+        'providers = ["openai", "perplexity"]\n'
+        "parallel = true\n"
+        "\n"
+        "[profiles.interactive.general]\n"
+        'default_mode = "interactive"\n'
+        "\n"
+        "# Worked example of the `prompt_prefix` hierarchy. The prefix below\n"
+        "# is prepended to the user's prompt when this profile is active and\n"
+        "# any deep_research run starts. Order: profile.modes.M > profile >\n"
+        "# modes.M > general (more-specific replaces less-specific).\n"
+        "[profiles.deep_research.general]\n"
+        'default_mode = "deep_research"\n'
+        'prompt_prefix = "Be thorough. Cite primary sources where possible."\n'
+        "[profiles.deep_research.modes.deep_research]\n"
+        'providers = ["openai", "perplexity"]\n'
+        "parallel = true\n"
+        'prompt_prefix = "Be thorough. Cite primary sources. Include counter-arguments."\n'
+    )
+
+
 class CommandHandler:
     """Unified command execution for CLI and interactive modes"""
 
@@ -99,7 +148,8 @@ class CommandHandler:
             f.write("[providers.openai]\n")
             f.write('api_key = "${OPENAI_API_KEY}"\n\n')
             f.write("[providers.perplexity]\n")
-            f.write('api_key = "${PERPLEXITY_API_KEY}"\n')
+            f.write('api_key = "${PERPLEXITY_API_KEY}"\n\n')
+            f.write(_starter_profiles_block())
 
         console.print(f"\n[green]✓[/green] Configuration saved to {config_path}")
         console.print('\nYou can now run: thoth deep_research "your prompt"')

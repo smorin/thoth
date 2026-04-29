@@ -1,0 +1,91 @@
+"""P21-T10: `thoth init` ships example profiles users can customize.
+
+The generated `~/.config/thoth/config.toml` should contain:
+  - daily          — thinking + default project for daily notes
+  - quick          — thinking (immediate)
+  - openai_deep    — single-provider deep_research
+  - all_deep       — parallel openai+perplexity deep_research
+  - interactive    — interactive default mode
+  - deep_research  — deep_research with a `prompt_prefix` example
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+import pytest
+
+from thoth.commands import CommandHandler
+from thoth.config import ConfigManager
+from thoth.config_profiles import resolve_prompt_prefix
+
+
+@pytest.fixture
+def init_run(isolated_thoth_home: Path) -> Path:
+    """Run init_command against the isolated XDG config dir, return config path."""
+    from thoth.paths import user_config_file
+
+    handler = CommandHandler(ConfigManager())
+    handler.init_command()
+    path = user_config_file()
+    assert path.exists(), f"init did not create config at {path}"
+    return path
+
+
+def test_init_writes_parseable_config(init_run: Path) -> None:
+    cm = ConfigManager()
+    cm.load_all_layers({})
+    # Every shipped profile should be in the catalog.
+    names = {entry.name for entry in cm.profile_catalog}
+    assert {
+        "daily",
+        "quick",
+        "openai_deep",
+        "all_deep",
+        "interactive",
+        "deep_research",
+    }.issubset(names)
+
+
+@pytest.mark.parametrize(
+    "profile_name,expected_default_mode",
+    [
+        ("daily", "thinking"),
+        ("quick", "thinking"),
+        ("openai_deep", "deep_research"),
+        ("all_deep", "deep_research"),
+        ("interactive", "interactive"),
+        ("deep_research", "deep_research"),
+    ],
+)
+def test_each_shipped_profile_sets_expected_default_mode(
+    init_run: Path, profile_name: str, expected_default_mode: str
+) -> None:
+    cm = ConfigManager()
+    cm.load_all_layers({"_profile": profile_name})
+    assert cm.profile_selection.name == profile_name
+    assert cm.get("general.default_mode") == expected_default_mode
+
+
+def test_openai_deep_profile_uses_single_provider(init_run: Path) -> None:
+    cm = ConfigManager()
+    cm.load_all_layers({"_profile": "openai_deep"})
+    deep = cm.data["modes"]["deep_research"]
+    assert deep.get("providers") == ["openai"]
+    assert deep.get("parallel") is False
+
+
+def test_all_deep_profile_uses_parallel_providers(init_run: Path) -> None:
+    cm = ConfigManager()
+    cm.load_all_layers({"_profile": "all_deep"})
+    deep = cm.data["modes"]["deep_research"]
+    assert deep.get("providers") == ["openai", "perplexity"]
+    assert deep.get("parallel") is True
+
+
+def test_deep_research_profile_carries_prompt_prefix(init_run: Path) -> None:
+    cm = ConfigManager()
+    cm.load_all_layers({"_profile": "deep_research"})
+    prefix = resolve_prompt_prefix(cm, "deep_research")
+    assert prefix is not None
+    assert len(prefix) > 0
