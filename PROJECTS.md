@@ -1175,6 +1175,8 @@ Existing projects may use older labels such as `**Primary spec**`, `**Plan**`, o
 ## [x] Project P14: Thoth CLI Ergonomics v1 (v2.13.0)
 **Goal**: Reduce first-time-user friction in the thoth CLI.
 
+> **Note:** P14 predates the TS/T split convention; tests landed inline with each T task — see `tests/test_cli_help.py`, `tests/test_pick_model.py`, etc.
+
 ### Tests & Tasks
 - [x] [P14-T01] format_config_context helper + tests
 - [x] [P14-T02] APIKeyError surfaces config file path
