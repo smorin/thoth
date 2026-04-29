@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add `thoth config profiles list/show/current/use/clear/add/set/unset/remove` so users can manage profiles from the CLI without hand-editing TOML.
+**Goal:** Add `thoth config profiles list/show/current/set-default/unset-default/add/set/unset/remove` so users can manage profiles from the CLI without hand-editing TOML.
 
-**Architecture:** Reuse `src/thoth/config_cmd.py` data-function patterns and `tomlkit` helpers. Add nine `get_config_profile_*_data` functions and a nested Click group `profiles` under `thoth config`. Read-only leaves (`list`/`show`/`current`) honor inherited `--profile`; mutator leaves (`add`/`set`/`unset`/`remove`/`use`/`clear`) reject it.
+**Architecture:** Reuse `src/thoth/config_cmd.py` data-function patterns and `tomlkit` helpers. Add nine `get_config_profile_*_data` functions and a nested Click group `profiles` under `thoth config`. Read-only leaves (`list`/`show`/`current`) honor inherited `--profile`; mutator leaves (`add`/`set`/`unset`/`remove`/`set-default`/`unset-default`) reject it.
 
 **Tech Stack:** Python 3.11+, Click 8.x, tomlkit, pytest.
 
@@ -58,14 +58,14 @@ import tomllib
 
 from thoth.config_cmd import (
     get_config_profile_add_data,
-    get_config_profile_clear_data,
     get_config_profile_current_data,
     get_config_profile_list_data,
     get_config_profile_remove_data,
     get_config_profile_set_data,
+    get_config_profile_set_default_data,
     get_config_profile_show_data,
     get_config_profile_unset_data,
-    get_config_profile_use_data,
+    get_config_profile_unset_default_data,
 )
 
 
@@ -102,18 +102,24 @@ def test_profile_add_set_show_unset_remove_round_trip(isolated_thoth_home: Path)
     assert remove["removed"] is True
 
 
-def test_profile_use_and_clear_write_general_default_profile(isolated_thoth_home: Path) -> None:
+def test_profile_set_default_and_unset_default_write_general_default_profile(
+    isolated_thoth_home: Path,
+) -> None:
     get_config_profile_add_data("fast", project=False, config_path=None)
-    use = get_config_profile_use_data("fast", project=False, config_path=None)
-    assert use["selected"] == "fast"
+    set_default = get_config_profile_set_default_data(
+        "fast", project=False, config_path=None
+    )
+    assert set_default["default_profile"] == "fast"
 
     from thoth.paths import user_config_file
 
     data = tomllib.loads(user_config_file().read_text())
     assert data["general"]["default_profile"] == "fast"
 
-    clear = get_config_profile_clear_data(project=False, config_path=None)
-    assert clear["cleared"] is True
+    unset_default = get_config_profile_unset_default_data(
+        project=False, config_path=None
+    )
+    assert unset_default["removed"] is True
     data = tomllib.loads(user_config_file().read_text())
     assert "default_profile" not in data.get("general", {})
 
@@ -129,37 +135,37 @@ def test_profile_project_conflicts_with_config_path(tmp_path: Path) -> None:
 
 def test_profile_list_reports_active_and_source(isolated_thoth_home: Path) -> None:
     get_config_profile_add_data("fast", project=False, config_path=None)
-    get_config_profile_use_data("fast", project=False, config_path=None)
+    get_config_profile_set_default_data("fast", project=False, config_path=None)
     data = get_config_profile_list_data(config_path=None)
     assert data["active_profile"] == "fast"
     assert data["selection_source"] == "config"
     assert [p["name"] for p in data["profiles"]] == ["fast"]
 
 
-def test_profile_use_rejects_unknown_profile(isolated_thoth_home: Path) -> None:
-    """B16: `use NAME` validates against the resolved catalog before persisting."""
+def test_profile_set_default_rejects_unknown_profile(isolated_thoth_home: Path) -> None:
+    """B16: `set-default NAME` validates against the resolved catalog before persisting."""
     from thoth.errors import ConfigProfileError
 
     import pytest
 
     with pytest.raises(ConfigProfileError) as exc:
-        get_config_profile_use_data("ghost", project=False, config_path=None)
+        get_config_profile_set_default_data("ghost", project=False, config_path=None)
     assert "ghost" in exc.value.message
 
 
-def test_profile_use_accepts_project_only_profile_against_user_config(
+def test_profile_set_default_accepts_project_only_profile_against_user_config(
     isolated_thoth_home: Path,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """B16 cross-tier: `use prod` when prod lives in project tier writes pointer to user config."""
+    """B16 cross-tier: `set-default prod` when prod lives in project tier writes pointer to user config."""
     monkeypatch.chdir(tmp_path)
     (tmp_path / "thoth.toml").write_text(
         'version = "2.0"\n[profiles.prod.general]\ndefault_mode = "thinking"\n'
     )
 
-    out = get_config_profile_use_data("prod", project=False, config_path=None)
-    assert out["selected"] == "prod"
+    out = get_config_profile_set_default_data("prod", project=False, config_path=None)
+    assert out["default_profile"] == "prod"
 
 
 def test_profile_current_reports_runtime_active_and_source(
@@ -169,7 +175,7 @@ def test_profile_current_reports_runtime_active_and_source(
     """B12: `config profiles current` shows runtime active selection + source."""
     monkeypatch.delenv("THOTH_PROFILE", raising=False)
     get_config_profile_add_data("fast", project=False, config_path=None)
-    get_config_profile_use_data("fast", project=False, config_path=None)
+    get_config_profile_set_default_data("fast", project=False, config_path=None)
 
     monkeypatch.setenv("THOTH_PROFILE", "fast")
     data = get_config_profile_current_data(config_path=None)
@@ -280,7 +286,7 @@ def _profile_table(doc: tomlkit.TOMLDocument, name: str, *, create: bool) -> Any
 
 - [ ] **Step 4: Add profile CRUD data functions**
 
-Add the nine functions named by the tests, all singular (`get_config_profile_{list,show,current,use,clear,add,set,unset,remove}_data`). Reuse `_target_path`, `_reject_config_project_conflict`, `_load_toml_doc`, `_parse_value`, `_unset_in_doc`, `_mask_in_tree`, and `_to_plain`. For nested profile keys, prepend `profiles.<name>.` when writing or deleting:
+Add the nine functions named by the tests, all singular (`get_config_profile_{list,show,current,set_default,unset_default,add,set,unset,remove}_data`). Reuse `_target_path`, `_reject_config_project_conflict`, `_load_toml_doc`, `_parse_value`, `_unset_in_doc`, `_mask_in_tree`, and `_to_plain`. For nested profile keys, prepend `profiles.<name>.` when writing or deleting:
 
 ```python
 profile_key = f"profiles.{name}.{key}"
@@ -288,7 +294,7 @@ profile_key = f"profiles.{name}.{key}"
 
 Use the existing `get_config_set_data(...)` and `get_config_unset_data(...)` patterns where possible, but keep profile commands explicit so error data includes `profile`, `key`, `path`, and command-specific booleans.
 
-**`use NAME` validation (B16):** before writing `general.default_profile = NAME`, build a transient `ConfigManager`, call `load_all_layers({})`, and check `NAME` against `cm.profile_catalog`. If absent, raise `ConfigProfileError(f"Profile {name!r} not found", available_profiles=..., source="thoth config profiles use")`. The cross-tier case (e.g. `prod` defined only in the project tier) is allowed because the catalog spans both tiers.
+**`set-default NAME` validation (B16):** before writing `general.default_profile = NAME`, build a transient `ConfigManager`, call `load_all_layers({})`, and check `NAME` against `cm.profile_catalog`. If absent, raise `ConfigProfileError(f"Profile {name!r} not found", available_profiles=..., source="thoth config profiles set-default")`. The cross-tier case (e.g. `prod` defined only in the project tier) is allowed because the catalog spans both tiers.
 
 **`current` data function (B12):** loads a fresh `ConfigManager`, returns:
 
@@ -343,7 +349,7 @@ from click.testing import CliRunner
 from thoth.cli import cli
 
 
-def test_config_profiles_click_set_and_use(isolated_thoth_home: Path) -> None:
+def test_config_profiles_click_set_and_set_default(isolated_thoth_home: Path) -> None:
     runner = CliRunner()
     result = runner.invoke(cli, ["config", "profiles", "add", "fast"])
     assert result.exit_code == 0, result.output
@@ -354,7 +360,7 @@ def test_config_profiles_click_set_and_use(isolated_thoth_home: Path) -> None:
     )
     assert result.exit_code == 0, result.output
 
-    result = runner.invoke(cli, ["config", "profiles", "use", "fast"])
+    result = runner.invoke(cli, ["config", "profiles", "set-default", "fast"])
     assert result.exit_code == 0, result.output
 
     result = runner.invoke(cli, ["config", "get", "general.default_mode"])
@@ -382,8 +388,8 @@ def test_config_profiles_mutators_reject_root_profile_flag(
     for op_args in (
         ["config", "profiles", "add", "bar"],
         ["config", "profiles", "set", "bar", "general.default_mode", "thinking"],
-        ["config", "profiles", "use", "bar"],
-        ["config", "profiles", "clear"],
+        ["config", "profiles", "set-default", "bar"],
+        ["config", "profiles", "unset-default"],
         ["config", "profiles", "unset", "bar", "general.default_mode"],
         ["config", "profiles", "remove", "bar"],
     ):
@@ -432,14 +438,14 @@ def test_runtime_selection_does_not_mutate_persisted_pointer(
     With persisted general.default_profile = "fast", running with --profile bar:
       - `config get general.default_profile` returns "fast" (the persisted file value).
       - `config profiles current` returns "bar" with source "flag".
-    Only `config profiles use NAME` / `clear` mutate the persisted pointer.
+    Only `config profiles set-default NAME` / `unset-default` mutate the persisted pointer.
     """
     import json
 
     runner = CliRunner()
     assert runner.invoke(cli, ["config", "profiles", "add", "fast"]).exit_code == 0
     assert runner.invoke(cli, ["config", "profiles", "add", "bar"]).exit_code == 0
-    assert runner.invoke(cli, ["config", "profiles", "use", "fast"]).exit_code == 0
+    assert runner.invoke(cli, ["config", "profiles", "set-default", "fast"]).exit_code == 0
 
     # Persisted pointer is "fast"; runtime selection is "bar".
     get_result = runner.invoke(
@@ -482,19 +488,19 @@ def config_profiles(ctx: click.Context) -> None:
         validate_inherited_options(ctx, "config profiles", DEFAULT_HONOR)
         click.echo(
             "Error: config profiles requires an op "
-            "(list|show|current|use|clear|add|set|unset|remove)",
+            "(list|show|current|set-default|unset-default|add|set|unset|remove)",
             err=True,
         )
         ctx.exit(2)
 ```
 
-Add leaves for `list`, `show`, `current`, `use`, `clear`, `add`, `set`, `unset`, and `remove`. Each leaf calls the matching data function and emits JSON with `emit_json(data)` when `--json` is passed. Human output should be terse:
+Add leaves for `list`, `show`, `current`, `set-default`, `unset-default`, `add`, `set`, `unset`, and `remove`. Each leaf calls the matching data function and emits JSON with `emit_json(data)` when `--json` is passed. Human output should be terse:
 
 ```text
 Added profile 'fast'
 Updated profile 'fast': general.default_mode = thinking
-Selected profile 'fast'
-Cleared default profile
+Set default profile to 'fast'
+Unset default profile
 Removed profile 'fast'
 Active profile: fast (from --profile flag)
 Active profile: (none)
@@ -504,7 +510,7 @@ Active profile: (none)
 
 Read-only leaves (`list`, `show`, `current`) honor `DEFAULT_HONOR` (which already includes both `"config_path"` and `"profile"` from P21).
 
-Mutator leaves (`add`, `set`, `unset`, `remove`, `use`, `clear`) call `validate_inherited_options(ctx, "config profiles <op>", honored_options={"config_path"})` — explicitly drop `"profile"` from honored options. This makes `thoth --profile foo config profiles add bar` error with the standard "no such option" message rather than silently ignoring `--profile foo`. Mutators forward only `config_path` via `inherited_value(ctx, "config_path")`.
+Mutator leaves (`add`, `set`, `unset`, `remove`, `set-default`, `unset-default`) call `validate_inherited_options(ctx, "config profiles <op>", honored_options={"config_path"})` — explicitly drop `"profile"` from honored options. This makes `thoth --profile foo config profiles add bar` error with the standard "no such option" message rather than silently ignoring `--profile foo`. Mutators forward only `config_path` via `inherited_value(ctx, "config_path")`.
 
 - [ ] **Step 5: Add JSON envelope rows**
 
@@ -571,7 +577,7 @@ thoth config profiles list
 thoth config profiles current
 thoth config profiles add fast
 thoth config profiles set fast general.default_mode thinking
-thoth config profiles use fast
+thoth config profiles set-default fast
 ```
 
 - [ ] **Step 4: Update README**
@@ -586,13 +592,13 @@ Once P21b ships, you no longer need to hand-edit `[profiles.<name>]` blocks. The
 ```bash
 thoth config profiles add fast
 thoth config profiles set fast general.default_mode thinking
-thoth config profiles use fast            # persists general.default_profile = "fast"
+thoth config profiles set-default fast    # persists general.default_profile = "fast"
 thoth config profiles current             # shows fast (from general.default_profile)
 thoth config profiles list                # lists all profiles, marks active
 thoth config profiles show fast --json    # full profile contents
 thoth config profiles unset fast general.default_mode  # remove a single key
 thoth config profiles remove fast         # delete the entire profile
-thoth config profiles clear               # clear the persisted pointer
+thoth config profiles unset-default       # clear the persisted pointer
 ```
 
 `--profile` is honored only by `list`, `show`, and `current`. Mutator commands reject `--profile` because the profile they operate on is the positional argument.
@@ -605,13 +611,13 @@ Append to `manual_testing_instructions.md`:
 ```bash
 thoth config profiles add fast
 thoth config profiles set fast general.default_mode thinking
-thoth config profiles use fast
+thoth config profiles set-default fast
 thoth config get general.default_mode
 THOTH_PROFILE=fast thoth config get general.default_mode
 thoth config profiles current
 thoth --profile fast config profiles current
 thoth --profile missing config get general.default_mode
-thoth config profiles use ghost              # expect ConfigProfileError
+thoth config profiles set-default ghost      # expect ConfigProfileError
 thoth --profile foo config profiles add bar  # expect 'no such option' error
 thoth config profiles add interactive
 thoth config profiles set interactive general.default_mode interactive

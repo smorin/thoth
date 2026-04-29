@@ -20,8 +20,8 @@ The new subgroup:
 thoth config profiles list [--json] [--show-shadowed]
 thoth config profiles show NAME [--json] [--show-secrets]
 thoth config profiles current [--json]
-thoth config profiles use NAME [--project] [--json]
-thoth config profiles clear [--project] [--json]
+thoth config profiles set-default NAME [--project] [--json]
+thoth config profiles unset-default [--project] [--json]
 thoth config profiles add NAME [--project] [--json]
 thoth config profiles set NAME KEY VALUE [--project] [--string] [--json]
 thoth config profiles unset NAME KEY [--project] [--json]
@@ -46,17 +46,22 @@ Under `thoth config profiles`. Not at the top level. Reasons:
 - A top-level `thoth profiles` group would collide with the future research-options surface and create a second discovery surface.
 - `thoth config profiles` is consistent with `thoth modes` (which lives at top level because modes are a research concept, not a config concept).
 
+The two persisted-default mutators are named **`set-default NAME`** and **`unset-default`** rather than the shorter `use NAME` / `clear`. The shorter names were rejected for ambiguity:
+
+- `use` reads as shell-style "activate for this session" but the actual behavior is a persistent file write to `general.default_profile`. The naming mismatch is a typo trap.
+- `clear` does not say *what* it clears (the persisted default pointer? a profile's contents? the runtime selection?). `unset-default` mirrors the persisted key (`general.default_profile`) and pairs symmetrically with the existing `config set` / `config unset`.
+
 ### Q2. How are read-only leaves vs mutator leaves treated for inherited `--profile`?
 
 **Read-only leaves** (`list`, `show`, `current`) honor the inherited root `--profile` because they read merged config; the active profile changes the values they report. They include `"profile"` in `honored_options` (i.e. `DEFAULT_HONOR`).
 
-**Mutator leaves** (`add`, `set`, `unset`, `remove`, `use`, `clear`) reject the inherited root `--profile`. They omit `"profile"` from `honored_options`. Click rejects `thoth --profile foo config profiles add bar` with the standard "no such option" error. Mutators operate on the positional `NAME` argument only; the runtime active profile is irrelevant to a mutation target. Accepting `--profile` here would be a typo trap with no useful behavior.
+**Mutator leaves** (`add`, `set`, `unset`, `remove`, `set-default`, `unset-default`) reject the inherited root `--profile`. They omit `"profile"` from `honored_options`. Click rejects `thoth --profile foo config profiles add bar` with the standard "no such option" error. Mutators operate on the positional `NAME` argument only; the runtime active profile is irrelevant to a mutation target. Accepting `--profile` here would be a typo trap with no useful behavior.
 
-### Q3. How does `use NAME` validate the target?
+### Q3. How does `set-default NAME` validate the target?
 
-Before persisting `general.default_profile = NAME`, build a transient `ConfigManager`, call `load_all_layers({})`, and check `NAME` against `cm.profile_catalog` (the union of user-tier and project-tier profiles, computed by P21). If `NAME` is absent from the catalog, raise `ConfigProfileError(f"Profile {NAME!r} not found", available_profiles=..., source="thoth config profiles use")`.
+Before persisting `general.default_profile = NAME`, build a transient `ConfigManager`, call `load_all_layers({})`, and check `NAME` against `cm.profile_catalog` (the union of user-tier and project-tier profiles, computed by P21). If `NAME` is absent from the catalog, raise `ConfigProfileError(f"Profile {NAME!r} not found", available_profiles=..., source="thoth config profiles set-default")`.
 
-Cross-tier resolution is allowed: `thoth config profiles use prod` succeeds when `prod` is defined only in the project tier even though the pointer is being written to the user config. The next load resolves the pointer via the project catalog entry.
+Cross-tier resolution is allowed: `thoth config profiles set-default prod` succeeds when `prod` is defined only in the project tier even though the pointer is being written to the user config. The next load resolves the pointer via the project catalog entry.
 
 This honors REQ-CPP-103's spirit (always-loadable file state) and prevents the most common typo class.
 
@@ -65,7 +70,7 @@ This honors REQ-CPP-103's spirit (always-loadable file state) and prevents the m
 `unset` removes exactly the named leaf key. Empty parent tables are left in place:
 
 - `unset fast general.default_mode` removes `default_mode` but leaves `[profiles.fast.general] = {}` and `[profiles.fast]`.
-- `clear` (which removes `general.default_profile`) leaves `[general]` even if it becomes empty.
+- `unset-default` (which removes `general.default_profile`) leaves `[general]` even if it becomes empty.
 
 Pruning empty parents would surprise users who expect `unset` to be a one-key operation, and would risk eating user comments attached to the table header. Users who want a profile gone can run `remove NAME`. Users who want a parent table gone can hand-edit.
 
@@ -91,8 +96,8 @@ All nine data functions are singular-named:
 get_config_profile_list_data
 get_config_profile_show_data
 get_config_profile_current_data
-get_config_profile_use_data
-get_config_profile_clear_data
+get_config_profile_set_default_data
+get_config_profile_unset_default_data
 get_config_profile_add_data
 get_config_profile_set_data
 get_config_profile_unset_data
@@ -133,7 +138,7 @@ def _profile_table(doc: tomlkit.TOMLDocument, name: str, *, create: bool) -> Any
     return profiles[name]
 ```
 
-`use NAME` validation builds a transient `ConfigManager` to access `cm.profile_catalog` and checks the name against the catalog before calling `tomlkit` to write `general.default_profile`.
+`set-default NAME` validation builds a transient `ConfigManager` to access `cm.profile_catalog` and checks the name against the catalog before calling `tomlkit` to write `general.default_profile`.
 
 `current` builds a transient `ConfigManager` (honoring inherited `config_path` and `profile`) and returns `cm.profile_selection.name`, `.source`, and `.source_detail`.
 
@@ -150,7 +155,7 @@ def config_profiles(ctx: click.Context) -> None:
         validate_inherited_options(ctx, "config profiles", DEFAULT_HONOR)
         click.echo(
             "Error: config profiles requires an op "
-            "(list|show|current|use|clear|add|set|unset|remove)",
+            "(list|show|current|set-default|unset-default|add|set|unset|remove)",
             err=True,
         )
         ctx.exit(2)
@@ -159,7 +164,7 @@ def config_profiles(ctx: click.Context) -> None:
 Leaf commands:
 
 - `list`, `show`, `current`: `validate_inherited_options(ctx, ..., DEFAULT_HONOR)` — honor both `config_path` and `profile`.
-- `add`, `set`, `unset`, `remove`, `use`, `clear`: `validate_inherited_options(ctx, ..., honored_options={"config_path"})` — drop `profile` so Click rejects `thoth --profile foo config profiles add bar`.
+- `add`, `set`, `unset`, `remove`, `set-default`, `unset-default`: `validate_inherited_options(ctx, ..., honored_options={"config_path"})` — drop `profile` so Click rejects `thoth --profile foo config profiles add bar`.
 
 JSON output uses the existing envelope helpers (`emit_json`).
 
@@ -168,8 +173,8 @@ Human-readable output is terse:
 ```text
 Added profile 'fast'
 Updated profile 'fast': general.default_mode = thinking
-Selected profile 'fast'
-Cleared default profile
+Set default profile to 'fast'
+Unset default profile
 Removed profile 'fast'
 Active profile: fast (from --profile flag)
 Active profile: (none)
@@ -184,15 +189,15 @@ Active profile: (none)
 Tests live in `tests/test_config_profiles_cmd.py`.
 
 - Round-trip CRUD: `add` → `set` → `show` → `unset` → `remove` for the user config.
-- `use` and `clear` write `general.default_profile` to the target file; `clear` leaves an empty `[general]` in place.
+- `set-default` and `unset-default` write `general.default_profile` to the target file; `unset-default` leaves an empty `[general]` in place.
 - `--project` writes `./thoth.toml`; `--config PATH` writes the custom file; `--project` + `--config` errors with `PROJECT_CONFIG_CONFLICT`.
 - Deep-path coverage: `set fast general.default_mode thinking` produces `[profiles.fast.general]` at depth 4; `unset` removes only the leaf and leaves `[profiles.fast.general] = {}` in place.
 - tomlkit comment preservation: a comment above `[profiles.fast]` and a comment on `default_mode` line both survive a `set` then `unset` round-trip (asserted via `Path.read_text()` containing the comment text).
-- `use ghost` raises `ConfigProfileError` (catalog rejection); `use prod` succeeds when `prod` lives only in the project tier.
+- `set-default ghost` raises `ConfigProfileError` (catalog rejection); `set-default prod` succeeds when `prod` lives only in the project tier.
 - Mutator leaves reject `--profile foo`; read-only leaves accept it.
 - `current` reports the runtime active selection plus its source for `flag`, `env`, `config`, and `none`.
 - B20 end-to-end: persisted `fast` + `--profile bar` → `config get general.default_profile` returns `fast`, `config profiles current` returns `bar` from source `flag`, the file is unchanged after the flag invocation.
-- JSON envelopes for `list`, `show`, `current`, `use`, `clear`, `add`, `set`, `unset`, `remove` have correct status/data/error shape.
+- JSON envelopes for `list`, `show`, `current`, `set-default`, `unset-default`, `add`, `set`, `unset`, `remove` have correct status/data/error shape.
 
 Existing regression slices: `tests/test_config_cmd.py`, `tests/test_p16_dispatch_parity.py`.
 
@@ -201,7 +206,7 @@ Existing regression slices: `tests/test_config_cmd.py`, `tests/test_p16_dispatch
 Docs updated in P21b:
 
 - `README.md`: command examples for each leaf, plus the `config get general.default_profile` (persisted) vs `config profiles current` (runtime) distinction.
-- `manual_testing_instructions.md`: `thoth config profiles ...` smoke checks, including expected error cases (`use ghost`, `--profile foo add bar`).
+- `manual_testing_instructions.md`: `thoth config profiles ...` smoke checks, including expected error cases (`set-default ghost`, `--profile foo add bar`).
 - `src/thoth/help.py`: `thoth help config` includes the new `config profiles` subgroup.
 - `PROJECTS.md`: P21b references this spec, the P21b plan, P21 (predecessor), and `research/configuration_profile_pattern.v1.md`.
 - Update P21's README forward pointer ("CLI commands ship in P21b") to remove the "ship in" phrasing once P21b lands.
@@ -210,14 +215,14 @@ Docs updated in P21b:
 
 - All nine `get_config_profile_*_data` functions exist with singular naming, are exported in `__all__`, and round-trip via `tomlkit`.
 - All nine Click leaves under `thoth config profiles` exist and are wired into the `config` group.
-- Read-only leaves (`list`, `show`, `current`) honor inherited `--profile`; mutator leaves (`add`/`set`/`unset`/`remove`/`use`/`clear`) reject it with the standard "no such option" Click error.
-- `use NAME` rejects unknown names against the resolved catalog (cross-tier allowed).
+- Read-only leaves (`list`, `show`, `current`) honor inherited `--profile`; mutator leaves (`add`/`set`/`unset`/`remove`/`set-default`/`unset-default`) reject it with the standard "no such option" Click error.
+- `set-default NAME` rejects unknown names against the resolved catalog (cross-tier allowed).
 - `unset` removes only the named leaf; empty parent tables are left in place.
 - `remove NAME` deletes the whole `[profiles.<name>]` block.
 - TOML comments and formatting survive `set`/`unset` round-trips through `tomlkit`, asserted by a test that reads the file as text.
 - `--config PATH` and `--project` remain mutually exclusive (`PROJECT_CONFIG_CONFLICT` error).
 - JSON envelopes have correct status/data/error shape for every JSON-capable leaf.
 - `current` reports `name` plus `source` (`flag`, `env`, `config`, `none`).
-- B20 invariant verified end-to-end: `--profile bar` does not mutate `general.default_profile` written by `use fast`.
+- B20 invariant verified end-to-end: `--profile bar` does not mutate `general.default_profile` written by `set-default fast`.
 - README, manual testing instructions, and `help.py` updated; PROJECTS.md task list reflects the implemented commands.
 - `git diff --check`, targeted pytest, `just check`, and relevant `./thoth_test` slices pass before implementation is marked complete.
