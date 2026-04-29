@@ -15,6 +15,8 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+import tomlkit
+import tomlkit.items
 from rich import box
 from rich.console import Console
 from rich.table import Table
@@ -31,53 +33,141 @@ from thoth.run import run_research
 console = Console()
 
 
-def _starter_profiles_block() -> str:
-    """TOML block of example `[profiles.*]` sections shipped by `thoth init`.
+def _build_profile_section(name: str, body: dict[str, Any]) -> tomlkit.items.Table:
+    """Build a `[profiles.<name>]` table containing nested sub-tables.
 
-    Six worked examples that double as on-ramp documentation for the
-    `--profile NAME` plumbing and the `prompt_prefix` hierarchy. Users are
-    expected to customize/remove these.
+    `body` is a flat dict whose keys are TOML section names under the profile
+    (e.g., ``"general"``, ``"modes.deep_research"``) and whose values are
+    dicts of leaf keys.
     """
-    return (
-        "# --- Configuration profiles (P21) -----------------------------------\n"
-        "# Activate with `thoth --profile NAME ...`, `THOTH_PROFILE=NAME`,\n"
-        "# or set `general.default_profile = \"NAME\"` above.\n"
-        "# Profile values REPLACE top-level values when the profile is active.\n"
-        "\n"
-        "[profiles.daily.general]\n"
-        'default_mode = "thinking"\n'
-        'default_project = "daily-notes"\n'
-        "\n"
-        "[profiles.quick.general]\n"
-        'default_mode = "thinking"\n'
-        "\n"
-        "[profiles.openai_deep.general]\n"
-        'default_mode = "deep_research"\n'
-        "[profiles.openai_deep.modes.deep_research]\n"
-        'providers = ["openai"]\n'
-        "parallel = false\n"
-        "\n"
-        "[profiles.all_deep.general]\n"
-        'default_mode = "deep_research"\n'
-        "[profiles.all_deep.modes.deep_research]\n"
-        'providers = ["openai", "perplexity"]\n'
-        "parallel = true\n"
-        "\n"
-        "[profiles.interactive.general]\n"
-        'default_mode = "interactive"\n'
-        "\n"
-        "# Worked example of the `prompt_prefix` hierarchy. The prefix below\n"
-        "# is prepended to the user's prompt when this profile is active and\n"
-        "# any deep_research run starts. Order: profile.modes.M > profile >\n"
-        "# modes.M > general (more-specific replaces less-specific).\n"
-        "[profiles.deep_research.general]\n"
-        'default_mode = "deep_research"\n'
-        'prompt_prefix = "Be thorough. Cite primary sources where possible."\n'
-        "[profiles.deep_research.modes.deep_research]\n"
-        'providers = ["openai", "perplexity"]\n'
-        "parallel = true\n"
-        'prompt_prefix = "Be thorough. Cite primary sources. Include counter-arguments."\n'
+    profile_table = tomlkit.table()
+    for section_path, leaves in body.items():
+        section = tomlkit.table()
+        for key, value in leaves.items():
+            section[key] = value
+        # Resolve nested paths like "modes.deep_research" by walking parts.
+        parts = section_path.split(".")
+        cursor: Any = profile_table
+        for part in parts[:-1]:
+            child = tomlkit.table()
+            cursor[part] = child
+            cursor = child
+        cursor[parts[-1]] = section
+    return profile_table
+
+
+def _build_starter_profiles() -> tomlkit.items.Table:
+    """Build the `[profiles]` super-table shipped by `thoth init`."""
+    profiles = tomlkit.table()
+
+    profiles["daily"] = _build_profile_section(
+        "daily",
+        {"general": {"default_mode": "thinking", "default_project": "daily-notes"}},
     )
+    profiles["quick"] = _build_profile_section(
+        "quick", {"general": {"default_mode": "thinking"}}
+    )
+    profiles["openai_deep"] = _build_profile_section(
+        "openai_deep",
+        {
+            "general": {"default_mode": "deep_research"},
+            "modes.deep_research": {"providers": ["openai"], "parallel": False},
+        },
+    )
+    profiles["all_deep"] = _build_profile_section(
+        "all_deep",
+        {
+            "general": {"default_mode": "deep_research"},
+            "modes.deep_research": {
+                "providers": ["openai", "perplexity"],
+                "parallel": True,
+            },
+        },
+    )
+    profiles["interactive"] = _build_profile_section(
+        "interactive", {"general": {"default_mode": "interactive"}}
+    )
+
+    profiles["deep_research"] = _build_profile_section(
+        "deep_research",
+        {
+            "general": {
+                "default_mode": "deep_research",
+                "prompt_prefix": "Be thorough. Cite primary sources where possible.",
+            },
+            "modes.deep_research": {
+                "providers": ["openai", "perplexity"],
+                "parallel": True,
+                "prompt_prefix": (
+                    "Be thorough. Cite primary sources. Include counter-arguments."
+                ),
+            },
+        },
+    )
+    return profiles
+
+
+def _build_starter_document() -> tomlkit.TOMLDocument:
+    """Construct the full `~/.config/thoth/config.toml` shipped by `thoth init`."""
+    doc = tomlkit.document()
+    doc.add(tomlkit.comment("Thoth Configuration File"))
+    doc["version"] = CONFIG_VERSION
+
+    general = tomlkit.table()
+    general["default_project"] = ""
+    general["default_mode"] = "default"
+    doc["general"] = general
+
+    paths = tomlkit.table()
+    paths["base_output_dir"] = "./research-outputs"
+    # Resolved against the user's checkpoint dir at init time.
+    from thoth.paths import user_checkpoints_dir
+
+    paths["checkpoint_dir"] = str(user_checkpoints_dir())
+    doc["paths"] = paths
+
+    execution = tomlkit.table()
+    execution["poll_interval"] = 30
+    execution["max_wait"] = 30
+    execution["parallel_providers"] = True
+    execution["retry_attempts"] = 3
+    execution["auto_input"] = True
+    doc["execution"] = execution
+
+    output = tomlkit.table()
+    output["combine_reports"] = False
+    output["format"] = "markdown"
+    output["include_metadata"] = True
+    output["timestamp_format"] = "%Y-%m-%d_%H%M%S"
+    doc["output"] = output
+
+    providers = tomlkit.table()
+    openai_t = tomlkit.table()
+    openai_t["api_key"] = "${OPENAI_API_KEY}"
+    providers["openai"] = openai_t
+    perplexity_t = tomlkit.table()
+    perplexity_t["api_key"] = "${PERPLEXITY_API_KEY}"
+    providers["perplexity"] = perplexity_t
+    doc["providers"] = providers
+
+    doc.add(tomlkit.nl())
+    doc.add(
+        tomlkit.comment(
+            "Configuration profiles (P21). Activate with --profile NAME,"
+        )
+    )
+    doc.add(
+        tomlkit.comment(
+            "THOTH_PROFILE=NAME, or general.default_profile."
+        )
+    )
+    doc.add(
+        tomlkit.comment(
+            "Profile values REPLACE top-level values when the profile is active."
+        )
+    )
+    doc["profiles"] = _build_starter_profiles()
+    return doc
 
 
 class CommandHandler:
@@ -121,35 +211,8 @@ class CommandHandler:
         console.print("[yellow]Interactive setup wizard not yet implemented.[/yellow]")
         console.print("Creating default configuration...")
 
-        config_manager = ConfigManager()
-        config_manager.load_all_layers()
-        config_data = config_manager.get_effective_config()
-
-        with open(config_path, "w") as f:
-            f.write("# Thoth Configuration File\n")
-            f.write(f'version = "{CONFIG_VERSION}"\n\n')
-            f.write("[general]\n")
-            f.write('default_project = ""\n')
-            f.write('default_mode = "default"\n\n')
-            f.write("[paths]\n")
-            f.write('base_output_dir = "./research-outputs"\n')
-            f.write(f'checkpoint_dir = "{config_data["paths"]["checkpoint_dir"]}"\n\n')
-            f.write("[execution]\n")
-            f.write("poll_interval = 30\n")
-            f.write("max_wait = 30\n")
-            f.write("parallel_providers = true\n")
-            f.write("retry_attempts = 3\n")
-            f.write("auto_input = true\n\n")
-            f.write("[output]\n")
-            f.write("combine_reports = false\n")
-            f.write('format = "markdown"\n')
-            f.write("include_metadata = true\n")
-            f.write('timestamp_format = "%Y-%m-%d_%H%M%S"\n\n')
-            f.write("[providers.openai]\n")
-            f.write('api_key = "${OPENAI_API_KEY}"\n\n')
-            f.write("[providers.perplexity]\n")
-            f.write('api_key = "${PERPLEXITY_API_KEY}"\n\n')
-            f.write(_starter_profiles_block())
+        doc = _build_starter_document()
+        config_path.write_text(tomlkit.dumps(doc))
 
         console.print(f"\n[green]✓[/green] Configuration saved to {config_path}")
         console.print('\nYou can now run: thoth deep_research "your prompt"')
