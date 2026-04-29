@@ -56,6 +56,8 @@ from pathlib import Path
 
 import tomllib
 
+import pytest
+
 from thoth.config_cmd import (
     get_config_profile_add_data,
     get_config_profile_current_data,
@@ -142,15 +144,66 @@ def test_profile_list_reports_active_and_source(isolated_thoth_home: Path) -> No
     assert [p["name"] for p in data["profiles"]] == ["fast"]
 
 
+def test_profile_list_show_shadowed_includes_hidden_user_profile(
+    isolated_thoth_home: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """B21: project same-name profile shadows user by default; --show-shadowed reveals it."""
+    from thoth.paths import user_config_file
+
+    user_config_file().write_text(
+        'version = "2.0"\n'
+        "[general]\n"
+        'default_profile = "prod"\n'
+        "[profiles.prod.general]\n"
+        'default_mode = "thinking"\n'
+    )
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "thoth.config.toml").write_text(
+        'version = "2.0"\n[profiles.prod.execution]\npoll_interval = 5\n'
+    )
+
+    default_data = get_config_profile_list_data(config_path=None, show_shadowed=False)
+    assert [(p["name"], p["tier"]) for p in default_data["profiles"]] == [
+        ("prod", "project")
+    ]
+    assert default_data["profiles"][0]["active"] is True
+    assert default_data["profiles"][0]["shadowed"] is False
+
+    shadowed_data = get_config_profile_list_data(config_path=None, show_shadowed=True)
+    rows = {(p["name"], p["tier"]): p for p in shadowed_data["profiles"]}
+    assert rows[("prod", "project")]["active"] is True
+    assert rows[("prod", "project")]["shadowed"] is False
+    assert rows[("prod", "user")]["active"] is False
+    assert rows[("prod", "user")]["shadowed"] is True
+    assert rows[("prod", "user")]["shadowed_by"]["tier"] == "project"
+
+
 def test_profile_set_default_rejects_unknown_profile(isolated_thoth_home: Path) -> None:
     """B16: `set-default NAME` validates against the resolved catalog before persisting."""
     from thoth.errors import ConfigProfileError
 
-    import pytest
-
     with pytest.raises(ConfigProfileError) as exc:
         get_config_profile_set_default_data("ghost", project=False, config_path=None)
     assert "ghost" in exc.value.message
+
+
+def test_profile_add_is_idempotent(isolated_thoth_home: Path) -> None:
+    """add NAME for an existing profile succeeds with created=False (no-op)."""
+    first = get_config_profile_add_data("fast", project=False, config_path=None)
+    assert first["created"] is True
+
+    second = get_config_profile_add_data("fast", project=False, config_path=None)
+    assert second["created"] is False
+    assert second["profile"] == "fast"
+
+
+def test_profile_remove_is_idempotent(isolated_thoth_home: Path) -> None:
+    """remove NAME for a missing profile succeeds with removed=False (no-op)."""
+    out = get_config_profile_remove_data("ghost", project=False, config_path=None)
+    assert out["removed"] is False
+    assert out["profile"] == "ghost"
 
 
 def test_profile_set_default_accepts_project_only_profile_against_user_config(
@@ -166,6 +219,44 @@ def test_profile_set_default_accepts_project_only_profile_against_user_config(
 
     out = get_config_profile_set_default_data("prod", project=False, config_path=None)
     assert out["default_profile"] == "prod"
+
+
+def test_profile_set_default_validates_against_custom_config_path(
+    isolated_thoth_home: Path,
+    tmp_path: Path,
+) -> None:
+    """B16: inherited --config PATH participates in set-default validation."""
+    import tomllib
+
+    custom_config = tmp_path / "custom.toml"
+    custom_config.write_text(
+        'version = "2.0"\n[profiles.fast.general]\ndefault_mode = "thinking"\n'
+    )
+
+    out = get_config_profile_set_default_data(
+        "fast", project=False, config_path=custom_config
+    )
+    assert out["default_profile"] == "fast"
+
+    data = tomllib.loads(custom_config.read_text())
+    assert data["general"]["default_profile"] == "fast"
+
+
+def test_profile_unset_default_leaves_empty_general_table_in_place(
+    isolated_thoth_home: Path,
+) -> None:
+    """B17: unset-default removes only general.default_profile; [general] remains."""
+    import tomllib
+
+    from thoth.paths import user_config_file
+
+    get_config_profile_add_data("fast", project=False, config_path=None)
+    get_config_profile_set_default_data("fast", project=False, config_path=None)
+    get_config_profile_unset_default_data(project=False, config_path=None)
+
+    data = tomllib.loads(user_config_file().read_text())
+    assert "general" in data
+    assert "default_profile" not in data["general"]
 
 
 def test_profile_current_reports_runtime_active_and_source(
@@ -286,7 +377,7 @@ def _profile_table(doc: tomlkit.TOMLDocument, name: str, *, create: bool) -> Any
 
 - [ ] **Step 4: Add profile CRUD data functions**
 
-Add the nine functions named by the tests, all singular (`get_config_profile_{list,show,current,set_default,unset_default,add,set,unset,remove}_data`). Reuse `_target_path`, `_reject_config_project_conflict`, `_load_toml_doc`, `_parse_value`, `_unset_in_doc`, `_mask_in_tree`, and `_to_plain`. For nested profile keys, prepend `profiles.<name>.` when writing or deleting:
+Add the nine functions named by the tests, all singular (`get_config_profile_{list,show,current,set_default,unset_default,add,set,unset,remove}_data`). Reuse `_target_path`, `_reject_config_project_conflict`, `_load_toml_doc`, `_parse_value`, `_mask_in_tree`, and `_to_plain`. Add a no-prune leaf-removal helper, e.g. `_unset_leaf_no_prune_in_doc(doc, key)`, for profile `unset` and `unset-default`; do not call `_unset_in_doc` for these commands because the existing helper prunes empty parent tables. For nested profile keys, prepend `profiles.<name>.` when writing or deleting:
 
 ```python
 profile_key = f"profiles.{name}.{key}"
@@ -294,7 +385,22 @@ profile_key = f"profiles.{name}.{key}"
 
 Use the existing `get_config_set_data(...)` and `get_config_unset_data(...)` patterns where possible, but keep profile commands explicit so error data includes `profile`, `key`, `path`, and command-specific booleans.
 
-**`set-default NAME` validation (B16):** before writing `general.default_profile = NAME`, build a transient `ConfigManager`, call `load_all_layers({})`, and check `NAME` against `cm.profile_catalog`. If absent, raise `ConfigProfileError(f"Profile {name!r} not found", available_profiles=..., source="thoth config profiles set-default")`. The cross-tier case (e.g. `prod` defined only in the project tier) is allowed because the catalog spans both tiers.
+**`set-default NAME` validation (B16):** before writing `general.default_profile = NAME`, build a transient `ConfigManager` with the same target config path the command will write, then call `load_all_layers({})` and check `NAME` against `cm.profile_catalog`. Use `ConfigManager(_normalize_config_path(config_path))` or the existing `_load_manager(config_path)` helper when inherited `--config PATH` is present; do not pass `config_path` through `load_all_layers(...)`, which intentionally rejects metadata keys. If absent, raise `ConfigProfileError(f"Profile {name!r} not found", available_profiles=..., source="thoth config profiles set-default")`. The cross-tier case (e.g. `prod` defined only in the project tier) is allowed because the catalog spans both tiers, and a custom-config case (e.g. `fast` defined only in `--config /tmp/custom.toml`) must validate against that custom file before writing the pointer there.
+
+**`list` data function (B21):** accepts `show_shadowed: bool = False`, loads a fresh `ConfigManager`, and builds rows from `cm.profile_catalog`. Default output collapses duplicate names to the same winning layer that `resolve_profile_layer(...)` would choose (project beats user), so users see one effective row per profile name. With `show_shadowed=True`, include lower-precedence same-name rows. Sort rows by profile name; for duplicate names, emit the winning row first and the shadowed row immediately after it. Rows use:
+
+```python
+{
+    "name": entry.name,
+    "tier": entry.tier,          # "user" | "project"
+    "path": str(entry.path),
+    "active": is_winning_active_layer,
+    "shadowed": is_shadowed,
+    "shadowed_by": None | {"tier": winner.tier, "path": str(winner.path)},
+}
+```
+
+`active` is true only for the winning layer of the selected profile name. A shadowed row is never active, even if it has the selected profile name.
 
 **`current` data function (B12):** loads a fresh `ConfigManager`, returns:
 
@@ -308,7 +414,16 @@ Use the existing `get_config_set_data(...)` and `get_config_unset_data(...)` pat
 
 It honors inherited `--profile` so `thoth --profile foo config profiles current` reports `flag` as the source.
 
-**`unset` semantics (B17):** `_unset_in_doc` removes only the leaf key. Do **not** prune empty parent tables. Leave `[profiles.fast.general] = {}` and `[general] = {}` in place; users can `remove fast` to delete a whole profile and hand-edit if they want a parent table gone.
+**`unset` semantics (B17):** profile unsets remove only the leaf key. Do **not** prune empty parent tables. Leave `[profiles.fast.general] = {}` and `[general] = {}` in place; users can `remove fast` to delete a whole profile and hand-edit if they want a parent table gone. The existing `_unset_in_doc` in `config_cmd.py` prunes empty ancestors for `thoth config unset`; keep that behavior isolated from P21b unless it is deliberately refactored with regression coverage for both pruning and no-prune callers.
+
+**`add` and `remove` idempotence (Q7):** both commands are no-ops when the target state already holds.
+
+- `add NAME` on a missing profile: create `[profiles.<name>]`, write the file, return `{"created": True, "profile": NAME, "path": ...}`.
+- `add NAME` on an existing profile: skip the write, return `{"created": False, "profile": NAME, "path": ...}` (exit 0).
+- `remove NAME` on an existing profile: delete the block, write the file, return `{"removed": True, "profile": NAME, "path": ...}`.
+- `remove NAME` on a missing profile: skip the write, return `{"removed": False, "profile": NAME, "path": ...}` (exit 0).
+
+Use `_profile_table(doc, name, create=False)` to detect existence before deciding to write. The Click leaf prints `Added profile 'NAME'` / `Already exists: profile 'NAME'` for `add`, and `Removed profile 'NAME'` / `No such profile: 'NAME'` for `remove`.
 
 - [ ] **Step 5: Export the data functions**
 
@@ -378,6 +493,38 @@ def test_config_profiles_click_list_json(isolated_thoth_home: Path) -> None:
     payload = json.loads(result.output)
     assert payload["status"] == "ok"
     assert payload["data"]["profiles"][0]["name"] == "fast"
+
+
+def test_config_profiles_click_list_show_shadowed_json(
+    isolated_thoth_home: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """B21: list --show-shadowed is wired through Click and JSON."""
+    import json
+
+    from thoth.paths import user_config_file
+
+    user_config_file().write_text(
+        'version = "2.0"\n'
+        "[profiles.prod.general]\n"
+        'default_mode = "thinking"\n'
+    )
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "thoth.config.toml").write_text(
+        'version = "2.0"\n[profiles.prod.execution]\npoll_interval = 5\n'
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(
+        cli, ["config", "profiles", "list", "--show-shadowed", "--json"]
+    )
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    rows = {(p["name"], p["tier"]): p for p in payload["data"]["profiles"]}
+    assert rows[("prod", "project")]["shadowed"] is False
+    assert rows[("prod", "user")]["shadowed"] is True
+    assert rows[("prod", "user")]["shadowed_by"]["tier"] == "project"
 
 
 def test_config_profiles_mutators_reject_root_profile_flag(
@@ -494,7 +641,7 @@ def config_profiles(ctx: click.Context) -> None:
         ctx.exit(2)
 ```
 
-Add leaves for `list`, `show`, `current`, `set-default`, `unset-default`, `add`, `set`, `unset`, and `remove`. Each leaf calls the matching data function and emits JSON with `emit_json(data)` when `--json` is passed. Human output should be terse:
+Add leaves for `list`, `show`, `current`, `set-default`, `unset-default`, `add`, `set`, `unset`, and `remove`. Each leaf calls the matching data function and emits JSON with `emit_json(data)` when `--json` is passed. The `list` leaf has a typed `--show-shadowed` flag and passes it to `get_config_profile_list_data(...)`. Human output should be terse:
 
 ```text
 Added profile 'fast'
@@ -505,6 +652,8 @@ Removed profile 'fast'
 Active profile: fast (from --profile flag)
 Active profile: (none)
 ```
+
+For `list --show-shadowed`, human output marks hidden lower-precedence rows with a status such as `shadowed by project`; default `list` omits those rows.
 
 - [ ] **Step 4: Inherited-option policy by leaf (B7)**
 
@@ -518,11 +667,24 @@ In `tests/test_json_envelopes.py`, add rows for:
 
 ```python
 ("config_profiles_list", ["config", "profiles", "list", "--json"], 0),
-("config_profiles_show_missing", ["config", "profiles", "show", "missing", "--json"], 1),
+("config_profiles_list_show_shadowed", ["config", "profiles", "list", "--show-shadowed", "--json"], 0),
+("config_profiles_show", ["config", "profiles", "show", "fast", "--json"], 0),
 ("config_profiles_current", ["config", "profiles", "current", "--json"], 0),
+("config_profiles_set_default", ["config", "profiles", "set-default", "fast", "--json"], 0),
+("config_profiles_unset_default", ["config", "profiles", "unset-default", "--json"], 0),
+("config_profiles_add", ["config", "profiles", "add", "fast", "--json"], 0),
+("config_profiles_set", ["config", "profiles", "set", "fast", "general.default_mode", "thinking", "--json"], 0),
+("config_profiles_unset", ["config", "profiles", "unset", "fast", "general.default_mode", "--json"], 0),
+("config_profiles_remove", ["config", "profiles", "remove", "fast", "--json"], 0),
 ```
 
-In `tests/test_ci_lint_rules.py`, add `config profiles list`, `config profiles show`, and `config profiles current` to the JSON command inventory checked by the lint rule.
+Rows that require existing state should seed it in `test_json_envelope_contract` before invoking the target command:
+
+- `show`, `set`, `remove`, and `set-default`: run `config profiles add fast` first.
+- `unset`: run `config profiles add fast` then `config profiles set fast general.default_mode thinking` first.
+- `unset-default`: run `config profiles add fast` then `config profiles set-default fast` first.
+
+In `tests/test_ci_lint_rules.py`, make the inventory/meta-test cover every JSON-capable profile leaf: `config profiles list/show/current/set-default/unset-default/add/set/unset/remove`. The current AST walker records leaf command names, so the `JSON_COMMANDS` token set must include each new leaf name even when another command group already has a same-named command.
 
 - [ ] **Step 6: Run command tests**
 
@@ -595,6 +757,7 @@ thoth config profiles set fast general.default_mode thinking
 thoth config profiles set-default fast    # persists general.default_profile = "fast"
 thoth config profiles current             # shows fast (from general.default_profile)
 thoth config profiles list                # lists all profiles, marks active
+thoth config profiles list --show-shadowed  # also shows user profiles shadowed by project profiles
 thoth config profiles show fast --json    # full profile contents
 thoth config profiles unset fast general.default_mode  # remove a single key
 thoth config profiles remove fast         # delete the entire profile

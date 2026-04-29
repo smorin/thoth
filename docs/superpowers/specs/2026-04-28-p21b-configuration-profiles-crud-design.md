@@ -34,7 +34,7 @@ Default writes target the user config. `--project` targets `./thoth.config.toml`
 
 P21 ships profile resolution and overlay. Users can run `thoth --profile fast "topic"` and persist `general.default_profile = "fast"` — but only by hand-editing TOML. This is fine for v1 but cumbersome for day-to-day workflows: adding a new profile means opening an editor; persisting a selection means knowing the exact key path.
 
-P21b removes that friction. The data functions and Click leaves use the same `tomlkit` patterns as the existing `thoth config set/unset/list` commands, so the surface is familiar and the implementation reuses existing helpers (`_target_path`, `_reject_config_project_conflict`, `_load_toml_doc`, `_parse_value`, `_unset_in_doc`, `_mask_in_tree`, `_to_plain`).
+P21b removes that friction. The data functions and Click leaves use the same `tomlkit` patterns as the existing `thoth config set/unset/list` commands, so the surface is familiar and the implementation reuses existing helpers (`_target_path`, `_reject_config_project_conflict`, `_load_toml_doc`, `_parse_value`, `_mask_in_tree`, `_to_plain`). Profile `unset` and `unset-default` must use a no-prune leaf-removal helper rather than `_unset_in_doc`, because empty parent tables and their comments are part of the P21b contract.
 
 ## 3. Decisions
 
@@ -59,9 +59,9 @@ The two persisted-default mutators are named **`set-default NAME`** and **`unset
 
 ### Q3. How does `set-default NAME` validate the target?
 
-Before persisting `general.default_profile = NAME`, build a transient `ConfigManager`, call `load_all_layers({})`, and check `NAME` against `cm.profile_catalog` (the union of user-tier and project-tier profiles, computed by P21). If `NAME` is absent from the catalog, raise `ConfigProfileError(f"Profile {NAME!r} not found", available_profiles=..., source="thoth config profiles set-default")`.
+Before persisting `general.default_profile = NAME`, build a transient `ConfigManager` for the same target view that the command will write. When inherited `--config PATH` is present, pass that path to the constructor (`ConfigManager(PATH)`) so profiles defined only in the custom config participate in `cm.profile_catalog`; do not pass `config_path` through `load_all_layers(...)`. Then call `load_all_layers({})` and check `NAME` against `cm.profile_catalog` (the union of the target user/custom tier plus the current project tier, computed by P21). If `NAME` is absent from the catalog, raise `ConfigProfileError(f"Profile {NAME!r} not found", available_profiles=..., source="thoth config profiles set-default")`.
 
-Cross-tier resolution is allowed: `thoth config profiles set-default prod` succeeds when `prod` is defined only in the project tier even though the pointer is being written to the user config. The next load resolves the pointer via the project catalog entry.
+Cross-tier resolution is allowed: `thoth config profiles set-default prod` succeeds when `prod` is defined only in the project tier even though the pointer is being written to the user config. `thoth --config /tmp/thoth.config.toml config profiles set-default fast` succeeds when `fast` exists only in `/tmp/thoth.config.toml`. The next load resolves the pointer via the same catalog entry.
 
 This honors REQ-CPP-103's spirit (always-loadable file state) and prevents the most common typo class.
 
@@ -88,7 +88,53 @@ $ THOTH_PROFILE=fast thoth config profiles current --json
 
 This is the runtime view. It can disagree with `thoth config get general.default_profile` (which is the persisted view). See P21 §4.Q5 for the read-only-runtime-input invariant.
 
-### Q6. Naming convention for data functions
+### Q6. What does `list --show-shadowed` report?
+
+P21 profile resolution already defines the shadowing rule: when user and project tiers both define the same profile name, the project profile shadows the user profile wholesale. `thoth config profiles list` uses that same rule.
+
+Default `list` output shows one winning row per profile name. For duplicate names, the project row is shown and the user row is hidden. `--show-shadowed` includes the hidden lower-precedence row so users can diagnose why a user profile is not active. Rows are sorted by profile name; for duplicate names in `--show-shadowed` output, the winning row appears first and the shadowed row follows it.
+
+Each JSON profile row includes:
+
+```json
+{
+  "name": "prod",
+  "tier": "project",
+  "path": "/repo/thoth.config.toml",
+  "active": true,
+  "shadowed": false,
+  "shadowed_by": null
+}
+```
+
+For a shadowed user row:
+
+```json
+{
+  "name": "prod",
+  "tier": "user",
+  "path": "/home/user/.config/thoth/thoth.config.toml",
+  "active": false,
+  "shadowed": true,
+  "shadowed_by": {
+    "tier": "project",
+    "path": "/repo/thoth.config.toml"
+  }
+}
+```
+
+`active` means "this row is the winning active layer", so a shadowed row is never active even when it has the selected profile name. Human output includes a status marker such as `active`, `available`, or `shadowed by project`.
+
+### Q7. Idempotence of `add` and `remove`
+
+`add NAME` and `remove NAME` are **idempotent**. Repeating either against a stable target is a no-op that exits 0.
+
+- `add NAME` on a missing profile creates `[profiles.<name>]` and returns `{"created": True, "profile": NAME, "path": ...}`. On an existing profile it returns `{"created": False, "profile": NAME, "path": ...}` without touching the file.
+- `remove NAME` on an existing profile deletes the `[profiles.<name>]` block and returns `{"removed": True, "profile": NAME, "path": ...}`. On a missing profile it returns `{"removed": False, "profile": NAME, "path": ...}` without touching the file.
+
+Rationale: matches `mkdir -p` / `kubectl apply` semantics, makes both commands script-safe, and keeps the surface symmetric. Users who want strict-not-found feedback for typos in `remove` can read the `removed` field; the JSON envelope is unambiguous.
+
+### Q8. Naming convention for data functions
 
 All nine data functions are singular-named:
 
@@ -138,7 +184,9 @@ def _profile_table(doc: tomlkit.TOMLDocument, name: str, *, create: bool) -> Any
     return profiles[name]
 ```
 
-`set-default NAME` validation builds a transient `ConfigManager` to access `cm.profile_catalog` and checks the name against the catalog before calling `tomlkit` to write `general.default_profile`.
+`set-default NAME` validation builds a transient `ConfigManager` with the inherited `config_path` when present, calls `load_all_layers({})`, and checks the name against `cm.profile_catalog` before calling `tomlkit` to write `general.default_profile`.
+
+`list` builds rows from `cm.profile_catalog`. Without `show_shadowed`, collapse duplicate names to the same winning layer that `resolve_profile_layer(...)` would choose (project beats user). With `show_shadowed=True`, include shadowed lower-precedence rows and set their `shadowed` / `shadowed_by` fields.
 
 `current` builds a transient `ConfigManager` (honoring inherited `config_path` and `profile`) and returns `cm.profile_selection.name`, `.source`, and `.source_detail`.
 
@@ -163,7 +211,7 @@ def config_profiles(ctx: click.Context) -> None:
 
 Leaf commands:
 
-- `list`, `show`, `current`: `validate_inherited_options(ctx, ..., DEFAULT_HONOR)` — honor both `config_path` and `profile`.
+- `list`, `show`, `current`: `validate_inherited_options(ctx, ..., DEFAULT_HONOR)` — honor both `config_path` and `profile`. The `list` leaf also has a typed `--show-shadowed` flag.
 - `add`, `set`, `unset`, `remove`, `set-default`, `unset-default`: `validate_inherited_options(ctx, ..., honored_options={"config_path"})` — drop `profile` so Click rejects `thoth --profile foo config profiles add bar`.
 
 JSON output uses the existing envelope helpers (`emit_json`).
@@ -193,8 +241,9 @@ Tests live in `tests/test_config_profiles_cmd.py`.
 - `--project` writes `./thoth.config.toml`; `--config PATH` writes the custom file; `--project` + `--config` errors with `PROJECT_CONFIG_CONFLICT`.
 - Deep-path coverage: `set fast general.default_mode thinking` produces `[profiles.fast.general]` at depth 4; `unset` removes only the leaf and leaves `[profiles.fast.general] = {}` in place.
 - tomlkit comment preservation: a comment above `[profiles.fast]` and a comment on `default_mode` line both survive a `set` then `unset` round-trip (asserted via `Path.read_text()` containing the comment text).
-- `set-default ghost` raises `ConfigProfileError` (catalog rejection); `set-default prod` succeeds when `prod` lives only in the project tier.
+- `set-default ghost` raises `ConfigProfileError` (catalog rejection); `set-default prod` succeeds when `prod` lives only in the project tier; inherited `--config PATH` succeeds when the profile exists only in that custom file.
 - Mutator leaves reject `--profile foo`; read-only leaves accept it.
+- `list` hides shadowed same-name user profiles by default and includes them with `shadowed=true` plus `shadowed_by` metadata when `--show-shadowed` is passed.
 - `current` reports the runtime active selection plus its source for `flag`, `env`, `config`, and `none`.
 - B20 end-to-end: persisted `fast` + `--profile bar` → `config get general.default_profile` returns `fast`, `config profiles current` returns `bar` from source `flag`, the file is unchanged after the flag invocation.
 - JSON envelopes for `list`, `show`, `current`, `set-default`, `unset-default`, `add`, `set`, `unset`, `remove` have correct status/data/error shape.
@@ -216,7 +265,8 @@ Docs updated in P21b:
 - All nine `get_config_profile_*_data` functions exist with singular naming, are exported in `__all__`, and round-trip via `tomlkit`.
 - All nine Click leaves under `thoth config profiles` exist and are wired into the `config` group.
 - Read-only leaves (`list`, `show`, `current`) honor inherited `--profile`; mutator leaves (`add`/`set`/`unset`/`remove`/`set-default`/`unset-default`) reject it with the standard "no such option" Click error.
-- `set-default NAME` rejects unknown names against the resolved catalog (cross-tier allowed).
+- `list --show-shadowed` includes same-name lower-precedence rows with stable `shadowed` / `shadowed_by` JSON metadata; default `list` hides those rows.
+- `set-default NAME` rejects unknown names against the resolved catalog; cross-tier and inherited `--config PATH` profile definitions are valid.
 - `unset` removes only the named leaf; empty parent tables are left in place.
 - `remove NAME` deletes the whole `[profiles.<name>]` block.
 - TOML comments and formatting survive `set`/`unset` round-trips through `tomlkit`, asserted by a test that reads the file as text.
