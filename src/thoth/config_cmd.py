@@ -17,7 +17,7 @@ from thoth.paths import user_config_file
 
 console = Console()
 
-_VALID_LAYERS = ("defaults", "user", "project", "env", "cli")
+_VALID_LAYERS = ("defaults", "user", "project", "profile", "env", "cli")
 _ROOT_KEYS_ALLOW_UNKNOWN = ("modes",)
 
 

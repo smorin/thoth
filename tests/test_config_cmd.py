@@ -37,6 +37,52 @@ def test_get_layer_defaults(isolated_thoth_home: Path, capsys: pytest.CaptureFix
     assert out == "default"
 
 
+def test_get_layer_profile_returns_profile_overlay(
+    isolated_thoth_home: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """C9: --layer profile must return the active profile's overlay (not merged)."""
+    user_toml = Path(isolated_thoth_home) / "config" / "thoth" / "config.toml"
+    user_toml.parent.mkdir(parents=True, exist_ok=True)
+    user_toml.write_text(
+        'version = "2.0"\n'
+        "[general]\n"
+        'default_mode = "default"\n'
+        "[profiles.fast.general]\n"
+        'default_mode = "thinking"\n'
+    )
+
+    rc = config_command(
+        "get",
+        ["--layer", "profile", "general.default_mode"],
+        profile="fast",
+    )
+    out = capsys.readouterr().out.strip()
+    assert rc == 0
+    assert out == "thinking", f"expected profile-overlay value, got {out!r}"
+
+
+def test_get_raw_includes_profile_layer(
+    isolated_thoth_home: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """C9: --raw must merge the profile layer (not silently omit it)."""
+    user_toml = Path(isolated_thoth_home) / "config" / "thoth" / "config.toml"
+    user_toml.parent.mkdir(parents=True, exist_ok=True)
+    user_toml.write_text(
+        'version = "2.0"\n'
+        "[general]\n"
+        'default_mode = "default"\n'
+        "[profiles.fast.general]\n"
+        'default_mode = "thinking"\n'
+    )
+
+    rc = config_command("get", ["--raw", "general.default_mode"], profile="fast")
+    out = capsys.readouterr().out.strip()
+    assert rc == 0
+    assert out == "thinking", (
+        f"--raw must include profile-layer overlay; expected 'thinking', got {out!r}"
+    )
+
+
 def test_get_raw_preserves_env_template(
     isolated_thoth_home: Path,
     capsys: pytest.CaptureFixture[str],

@@ -15,7 +15,7 @@ from thoth.cli_subcommands._option_policy import (
 from thoth.completion.sources import config_keys as _config_keys_completer
 
 _PASSTHROUGH_CONTEXT = {"ignore_unknown_options": True, "allow_extra_args": True}
-_VALID_LAYERS = ("defaults", "user", "project", "env", "cli")
+_VALID_LAYERS = ("defaults", "user", "project", "profile", "env", "cli")
 
 
 @click.group(name="config", invoke_without_command=True)
