@@ -3,7 +3,10 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from click.testing import CliRunner
 
+from thoth.cli import cli
+from thoth.config import ConfigManager
 from thoth.config_profiles import (
     ProfileSelection,
     collect_profile_catalog,
@@ -126,9 +129,6 @@ def test_missing_profile_raises_for_each_selection_source(
     with pytest.raises(ConfigProfileError) as exc:
         resolve_profile_layer(selection, catalog)
     assert detail_substring in exc.value.message
-
-
-from thoth.config import ConfigManager
 
 
 def _write(path: Path, text: str) -> None:
@@ -254,8 +254,10 @@ default_mode = "thinking"
 
     assert cm.active_profile is not None
     assert cm.active_profile.tier == "project"
-    assert cm.active_profile.path == Path(".thoth/config.toml") or \
-           cm.active_profile.path.name == "config.toml"
+    assert (
+        cm.active_profile.path == Path(".thoth/config.toml")
+        or cm.active_profile.path.name == "config.toml"
+    )
 
 
 def test_thoth_profile_is_not_a_per_setting_env_override() -> None:
@@ -269,11 +271,6 @@ def test_thoth_profile_is_not_a_per_setting_env_override() -> None:
         "THOTH_PROFILE belongs to Stage 1 selection (read by resolve_profile_selection), "
         "not Stage 2 per-setting overrides. See CPP REQ-CPP-004."
     )
-
-
-from click.testing import CliRunner
-
-from thoth.cli import cli
 
 
 def test_root_profile_reaches_config_get(isolated_thoth_home: Path) -> None:

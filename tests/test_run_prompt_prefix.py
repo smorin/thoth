@@ -97,9 +97,7 @@ def test_empty_user_prompt_still_assembles(isolated_thoth_home: Path) -> None:
 
 
 @pytest.mark.parametrize("user_prompt", ["short", "multi\nline\nprompt", "  whitespace  "])
-def test_user_prompt_preserved_verbatim(
-    isolated_thoth_home: Path, user_prompt: str
-) -> None:
+def test_user_prompt_preserved_verbatim(isolated_thoth_home: Path, user_prompt: str) -> None:
     cm = _cm(
         isolated_thoth_home,
         'version = "2.0"\n[general]\nprompt_prefix = "PREFIX"\n',

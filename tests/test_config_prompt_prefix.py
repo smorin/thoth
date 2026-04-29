@@ -169,9 +169,7 @@ prompt_prefix = "INNER"
         ("default", "PROFILE"),
     ],
 )
-def test_resolution_per_mode(
-    isolated_thoth_home: Path, mode: str, expected: str
-) -> None:
+def test_resolution_per_mode(isolated_thoth_home: Path, mode: str, expected: str) -> None:
     cm = _cm(
         isolated_thoth_home,
         """version = "2.0"

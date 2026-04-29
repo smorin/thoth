@@ -64,9 +64,7 @@ def _build_starter_profiles() -> tomlkit.items.Table:
         "daily",
         {"general": {"default_mode": "thinking", "default_project": "daily-notes"}},
     )
-    profiles["quick"] = _build_profile_section(
-        "quick", {"general": {"default_mode": "thinking"}}
-    )
+    profiles["quick"] = _build_profile_section("quick", {"general": {"default_mode": "thinking"}})
     profiles["openai_deep"] = _build_profile_section(
         "openai_deep",
         {
@@ -98,9 +96,7 @@ def _build_starter_profiles() -> tomlkit.items.Table:
             "modes.deep_research": {
                 "providers": ["openai", "perplexity"],
                 "parallel": True,
-                "prompt_prefix": (
-                    "Be thorough. Cite primary sources. Include counter-arguments."
-                ),
+                "prompt_prefix": ("Be thorough. Cite primary sources. Include counter-arguments."),
             },
         },
     )
@@ -151,21 +147,9 @@ def _build_starter_document() -> tomlkit.TOMLDocument:
     doc["providers"] = providers
 
     doc.add(tomlkit.nl())
-    doc.add(
-        tomlkit.comment(
-            "Configuration profiles (P21). Activate with --profile NAME,"
-        )
-    )
-    doc.add(
-        tomlkit.comment(
-            "THOTH_PROFILE=NAME, or general.default_profile."
-        )
-    )
-    doc.add(
-        tomlkit.comment(
-            "Profile values REPLACE top-level values when the profile is active."
-        )
-    )
+    doc.add(tomlkit.comment("Configuration profiles (P21). Activate with --profile NAME,"))
+    doc.add(tomlkit.comment("THOTH_PROFILE=NAME, or general.default_profile."))
+    doc.add(tomlkit.comment("Profile values REPLACE top-level values when the profile is active."))
     doc["profiles"] = _build_starter_profiles()
     return doc
 

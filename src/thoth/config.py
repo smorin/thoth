@@ -330,9 +330,7 @@ class ConfigManager:
             cli_profile=str(cli_profile) if cli_profile else None,
             base_config=base_config,
         )
-        self.active_profile = resolve_profile_layer(
-            self.profile_selection, self.profile_catalog
-        )
+        self.active_profile = resolve_profile_layer(self.profile_selection, self.profile_catalog)
         self.layers["profile"] = self.active_profile.data if self.active_profile else {}
 
         # Layer 5: Environment variables (per-setting overrides only)
