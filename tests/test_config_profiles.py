@@ -261,7 +261,13 @@ default_mode = "thinking"
 
 
 def test_thoth_profile_is_not_a_per_setting_env_override() -> None:
-    """Regression guard: THOTH_PROFILE must not be added to env_mappings."""
+    """Regression guard (structural): THOTH_PROFILE must not be added to env_mappings.
+
+    Brittle under refactor — a future move of env_mappings to a module-level
+    constant would silently bypass this check. See the companion behavioral
+    guard ``test_thoth_profile_does_not_leak_into_env_layer_at_runtime`` for
+    the refactor-safe check (BUG-06).
+    """
     import inspect
 
     from thoth import config as thoth_config
@@ -270,6 +276,25 @@ def test_thoth_profile_is_not_a_per_setting_env_override() -> None:
     assert "THOTH_PROFILE" not in src, (
         "THOTH_PROFILE belongs to Stage 1 selection (read by resolve_profile_selection), "
         "not Stage 2 per-setting overrides. See CPP REQ-CPP-004."
+    )
+
+
+def test_thoth_profile_does_not_leak_into_env_layer_at_runtime(
+    isolated_thoth_home: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """BUG-06 (behavioral): regardless of how env mappings are structured
+    (literal-in-method or module-level constant), setting THOTH_PROFILE in
+    the environment must NOT produce a per-setting override in the env
+    layer. THOTH_PROFILE is a Stage 1 selector (read by
+    ``resolve_profile_selection``), not a Stage 2 per-setting value.
+    """
+    monkeypatch.setenv("THOTH_PROFILE", "ghost-profile")
+    cm = ConfigManager()
+    overrides = cm._get_env_overrides()
+    # The selector value must not appear anywhere in the env-override layer.
+    assert "ghost-profile" not in repr(overrides), (
+        f"THOTH_PROFILE leaked into env overrides as a per-setting value: {overrides!r}"
     )
 
 
