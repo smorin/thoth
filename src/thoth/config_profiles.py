@@ -92,3 +92,52 @@ def resolve_profile_layer(
 
 def without_profiles(config: dict[str, Any]) -> dict[str, Any]:
     return {key: value for key, value in config.items() if key != "profiles"}
+
+
+def _nonempty_str(value: Any) -> str | None:
+    if isinstance(value, str) and value:
+        return value
+    return None
+
+
+def resolve_prompt_prefix(config: Any, mode: str) -> str | None:
+    """Resolve `prompt_prefix` for ``mode`` using the 4-level hierarchy.
+
+    Order (most-specific first):
+      1. profiles.<active>.modes.<MODE>.prompt_prefix
+      2. profiles.<active>.prompt_prefix
+      3. modes.<MODE>.prompt_prefix
+      4. general.prompt_prefix
+
+    More-specific REPLACES less-specific. Empty strings are treated as unset
+    so they cannot accidentally erase outer values.
+    """
+    profile = getattr(config, "active_profile", None)
+    if profile is not None:
+        profile_data = profile.data if isinstance(profile.data, dict) else {}
+        profile_modes = profile_data.get("modes")
+        if isinstance(profile_modes, dict):
+            mode_table = profile_modes.get(mode)
+            if isinstance(mode_table, dict):
+                hit = _nonempty_str(mode_table.get("prompt_prefix"))
+                if hit is not None:
+                    return hit
+        hit = _nonempty_str(profile_data.get("prompt_prefix"))
+        if hit is not None:
+            return hit
+
+    data = getattr(config, "data", {}) or {}
+    modes = data.get("modes") if isinstance(data, dict) else None
+    if isinstance(modes, dict):
+        mode_table = modes.get(mode)
+        if isinstance(mode_table, dict):
+            hit = _nonempty_str(mode_table.get("prompt_prefix"))
+            if hit is not None:
+                return hit
+
+    general = data.get("general") if isinstance(data, dict) else None
+    if isinstance(general, dict):
+        hit = _nonempty_str(general.get("prompt_prefix"))
+        if hit is not None:
+            return hit
+    return None
