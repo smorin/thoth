@@ -1259,8 +1259,8 @@ Existing projects may use older labels such as `**Primary spec**`, `**Plan**`, o
 - [ ] [P12-T03] Implement `_op_unset` with empty-table pruning (mirrors `config_cmd._unset_in_doc`)
 - [ ] [P12-TS04] Tests for `thoth modes rename <old> <new>` (user modes only) and `thoth modes copy <src> <dst>` (copies from any mode — builtin or user — into a new user mode)
 - [ ] [P12-T04] Implement `_op_rename` and `_op_copy`
-- [~] [P12-TS05] Obsoleted by P13-TS03 — shared-secrets tests already exist in `tests/test_secrets.py`
-- [~] [P12-T05] Obsoleted by P13-T04 — `src/thoth/_secrets.py` already extracted; `config_cmd.py` and `modes_cmd.py` already route through it
+- [>] [P12-TS05] Proceeded to P13-TS03 — shared-secrets tests already exist in `tests/test_secrets.py`
+- [>] [P12-T05] Proceeded to P13-T04 — `src/thoth/_secrets.py` already extracted; `config_cmd.py` and `modes_cmd.py` already route through it
 - [ ] [P12-TS06] Subprocess tests: `thoth modes add / set / unset / rename / copy` through the click CLI (now that `ignore_unknown_options=True` from P11 makes flags work)
 - [ ] [P12-T06] Wire new ops into `modes_command` dispatch (`list | add | set | unset | rename | copy`)
 - [ ] [P12-T07] Update `show_modes_help()` in `help.py` with the new ops + examples; update `thoth help modes` epilog
