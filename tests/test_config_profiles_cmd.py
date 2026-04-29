@@ -4,7 +4,9 @@ import tomllib
 from pathlib import Path
 
 import pytest
+from click.testing import CliRunner
 
+from thoth.cli import cli
 from thoth.config_cmd import (
     get_config_profile_add_data,
     get_config_profile_current_data,
@@ -306,3 +308,148 @@ def test_profile_set_unset_handles_deep_four_level_path(
         config_path=None,
     )
     assert unset_out["removed"] is True
+
+
+def test_config_profiles_click_set_and_set_default(isolated_thoth_home: Path) -> None:
+    runner = CliRunner()
+    result = runner.invoke(cli, ["config", "profiles", "add", "fast"])
+    assert result.exit_code == 0, result.output
+
+    result = runner.invoke(
+        cli,
+        ["config", "profiles", "set", "fast", "general.default_mode", "thinking"],
+    )
+    assert result.exit_code == 0, result.output
+
+    result = runner.invoke(cli, ["config", "profiles", "set-default", "fast"])
+    assert result.exit_code == 0, result.output
+
+    result = runner.invoke(cli, ["config", "get", "general.default_mode"])
+    assert result.exit_code == 0, result.output
+    assert result.output.strip().splitlines()[-1] == "thinking"
+
+
+def test_config_profiles_click_list_json(isolated_thoth_home: Path) -> None:
+    import json
+
+    runner = CliRunner()
+    assert runner.invoke(cli, ["config", "profiles", "add", "fast"]).exit_code == 0
+    result = runner.invoke(cli, ["config", "profiles", "list", "--json"])
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["status"] == "ok"
+    assert payload["data"]["profiles"][0]["name"] == "fast"
+
+
+def test_config_profiles_click_list_show_shadowed_json(
+    isolated_thoth_home: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """B21: list --show-shadowed is wired through Click and JSON."""
+    import json
+
+    from thoth.paths import user_config_file
+
+    user_config_file().parent.mkdir(parents=True, exist_ok=True)
+    user_config_file().write_text(
+        'version = "2.0"\n[profiles.prod.general]\ndefault_mode = "thinking"\n'
+    )
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "thoth.config.toml").write_text(
+        'version = "2.0"\n[profiles.prod.execution]\npoll_interval = 5\n'
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["config", "profiles", "list", "--show-shadowed", "--json"])
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    rows = {(p["name"], p["tier"]): p for p in payload["data"]["profiles"]}
+    assert rows[("prod", "project")]["shadowed"] is False
+    assert rows[("prod", "user")]["shadowed"] is True
+    assert rows[("prod", "user")]["shadowed_by"]["tier"] == "project"
+
+
+def test_config_profiles_mutators_reject_root_profile_flag(
+    isolated_thoth_home: Path,
+) -> None:
+    """B7: --profile is not honored by mutator leaves."""
+    runner = CliRunner()
+    for op_args in (
+        ["config", "profiles", "add", "bar"],
+        ["config", "profiles", "set", "bar", "general.default_mode", "thinking"],
+        ["config", "profiles", "set-default", "bar"],
+        ["config", "profiles", "unset-default"],
+        ["config", "profiles", "unset", "bar", "general.default_mode"],
+        ["config", "profiles", "remove", "bar"],
+    ):
+        result = runner.invoke(cli, ["--profile", "foo", *op_args])
+        assert result.exit_code != 0, f"{op_args} should reject --profile"
+        assert "--profile" in result.output
+
+
+def test_config_profiles_readers_honor_root_profile_flag(
+    isolated_thoth_home: Path,
+) -> None:
+    """B7: --profile IS honored by read-only leaves."""
+    runner = CliRunner()
+    assert runner.invoke(cli, ["config", "profiles", "add", "fast"]).exit_code == 0
+    for op_args in (
+        ["config", "profiles", "list"],
+        ["config", "profiles", "show", "fast"],
+        ["config", "profiles", "current"],
+    ):
+        result = runner.invoke(cli, ["--profile", "fast", *op_args])
+        assert result.exit_code == 0, f"{op_args} should accept --profile: {result.output}"
+
+
+def test_config_profiles_current_reports_flag_source(
+    isolated_thoth_home: Path,
+) -> None:
+    """B12: profiles current reports the runtime source as 'flag' under --profile."""
+    import json
+
+    runner = CliRunner()
+    assert runner.invoke(cli, ["config", "profiles", "add", "fast"]).exit_code == 0
+    result = runner.invoke(cli, ["--profile", "fast", "config", "profiles", "current", "--json"])
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["data"]["active_profile"] == "fast"
+    assert payload["data"]["selection_source"] == "flag"
+
+
+def test_runtime_selection_does_not_mutate_persisted_pointer(
+    isolated_thoth_home: Path,
+) -> None:
+    """B20 end-to-end: --profile/THOTH_PROFILE are read-only; persisted default_profile is unchanged.
+
+    With persisted general.default_profile = "fast", running with --profile bar:
+      - `config get general.default_profile` returns "fast" (the persisted file value).
+      - `config profiles current` returns "bar" with source "flag".
+    Only `config profiles set-default NAME` / `unset-default` mutate the persisted pointer.
+    """
+    import json
+
+    runner = CliRunner()
+    assert runner.invoke(cli, ["config", "profiles", "add", "fast"]).exit_code == 0
+    assert runner.invoke(cli, ["config", "profiles", "add", "bar"]).exit_code == 0
+    assert runner.invoke(cli, ["config", "profiles", "set-default", "fast"]).exit_code == 0
+
+    # Persisted pointer is "fast"; runtime selection is "bar".
+    get_result = runner.invoke(
+        cli, ["--profile", "bar", "config", "get", "general.default_profile"]
+    )
+    assert get_result.exit_code == 0, get_result.output
+    assert get_result.output.strip().splitlines()[-1] == "fast"
+
+    current_result = runner.invoke(
+        cli, ["--profile", "bar", "config", "profiles", "current", "--json"]
+    )
+    assert current_result.exit_code == 0, current_result.output
+    payload = json.loads(current_result.output)
+    assert payload["data"]["active_profile"] == "bar"
+    assert payload["data"]["selection_source"] == "flag"
+
+    # Confirm the file is unchanged: re-read without any flag.
+    get_after = runner.invoke(cli, ["config", "get", "general.default_profile"])
+    assert get_after.output.strip().splitlines()[-1] == "fast"

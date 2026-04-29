@@ -43,6 +43,35 @@ JSON_COMMANDS: list[tuple[str, list[str], int]] = [
     # in the parametrize body).
     ("completion_unsupported_shell", ["completion", "powershell", "--json"], 2),
     ("config_edit_with_editor_true", ["config", "edit", "--json"], 0),
+    # P21b: config profiles subgroup. Rows that need an existing profile are
+    # seeded inside test_json_envelope_contract by pre-invoking
+    # `config profiles add fast` (and friends) before the target argv.
+    ("config_profiles_list", ["config", "profiles", "list", "--json"], 0),
+    (
+        "config_profiles_list_show_shadowed",
+        ["config", "profiles", "list", "--show-shadowed", "--json"],
+        0,
+    ),
+    ("config_profiles_show", ["config", "profiles", "show", "fast", "--json"], 0),
+    ("config_profiles_current", ["config", "profiles", "current", "--json"], 0),
+    (
+        "config_profiles_set_default",
+        ["config", "profiles", "set-default", "fast", "--json"],
+        0,
+    ),
+    ("config_profiles_unset_default", ["config", "profiles", "unset-default", "--json"], 0),
+    ("config_profiles_add", ["config", "profiles", "add", "fast", "--json"], 0),
+    (
+        "config_profiles_set",
+        ["config", "profiles", "set", "fast", "general.default_mode", "thinking", "--json"],
+        0,
+    ),
+    (
+        "config_profiles_unset",
+        ["config", "profiles", "unset", "fast", "general.default_mode", "--json"],
+        0,
+    ),
+    ("config_profiles_remove", ["config", "profiles", "remove", "fast", "--json"], 0),
 ]
 
 
@@ -59,7 +88,43 @@ def test_json_envelope_contract(label, argv, exit_code, cli, isolated_thoth_home
     if "edit" in argv:
         monkeypatch.setenv("EDITOR", "true")
     runner = CliRunner()  # NOTE: drop mix_stderr=False — Click 8.3 removed it (PR2 precedent)
-    result = runner.invoke(cli, argv, catch_exceptions=False)
+    # P21b profile-row seeding: rows that exercise a profile target need the
+    # `fast` profile (and sometimes a key/value or persisted default) in place
+    # before the target argv runs. Seed via the same runner so the isolated
+    # XDG_CONFIG_HOME from `isolated_thoth_home` stays consistent.
+    _PROFILE_SEED_ADD = {
+        "config_profiles_show",
+        "config_profiles_set",
+        "config_profiles_remove",
+        "config_profiles_set_default",
+        "config_profiles_unset",
+        "config_profiles_unset_default",
+    }
+    if label in _PROFILE_SEED_ADD:
+        seed = runner.invoke(cli, ["config", "profiles", "add", "fast"], catch_exceptions=False)
+        assert seed.exit_code == 0, f"{label} seed (add fast) failed: {seed.output}"
+    if label == "config_profiles_unset":
+        seed = runner.invoke(
+            cli,
+            ["config", "profiles", "set", "fast", "general.default_mode", "thinking"],
+            catch_exceptions=False,
+        )
+        assert seed.exit_code == 0, f"{label} seed (set) failed: {seed.output}"
+    if label == "config_profiles_unset_default":
+        seed = runner.invoke(
+            cli,
+            ["config", "profiles", "set-default", "fast"],
+            catch_exceptions=False,
+        )
+        assert seed.exit_code == 0, f"{label} seed (set-default) failed: {seed.output}"
+
+    if label == "init_non_interactive":
+        # `thoth init` defaults to writing ./thoth.config.toml, so keep this
+        # success-contract row independent of the repository cwd.
+        with runner.isolated_filesystem(temp_dir=isolated_thoth_home):
+            result = runner.invoke(cli, argv, catch_exceptions=False)
+    else:
+        result = runner.invoke(cli, argv, catch_exceptions=False)
 
     assert result.exit_code == exit_code, f"{label}: output={result.output}"
     payload = json.loads(result.output)
