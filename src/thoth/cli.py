@@ -356,6 +356,7 @@ def _enter_interactive_from_options(
             quiet=bool(opts.get("quiet")),
             no_metadata=bool(opts.get("no_metadata")),
             timeout=opts.get("timeout"),
+            profile=opts.get("profile"),
         )
     )
 

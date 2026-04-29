@@ -68,6 +68,66 @@ def test_basic_interactive_mode_stores_last_operation_id(
     assert observed["kwargs"]["prompt"] == "interactive stored op id"
 
 
+def test_basic_interactive_mode_threads_profile_to_run_research(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """BUG-02: --profile passed to enter_interactive_mode reaches both
+    get_config (so profile-aware overlays are applied during interactive
+    setup) and run_research (so the profile is honored on each prompt)."""
+    observed: dict[str, Any] = {}
+    get_config_calls: list[str | None] = []
+
+    async def fake_run_research(**kwargs: Any) -> str:
+        observed["kwargs"] = kwargs
+        return "research-20260416-020202-fedcba9876543210"
+
+    def fake_get_config(profile: str | None = None) -> Any:
+        get_config_calls.append(profile)
+        # Return a minimal stand-in with the attribute access the basic-input
+        # branch makes: config.data["general"].get("default_mode", ...).
+        from thoth.config import ConfigManager
+
+        cm = ConfigManager.__new__(ConfigManager)
+        cm.data = {"general": {"default_mode": "default"}}
+        return cm
+
+    prompts = iter(["profile reaches run_research"])
+
+    def fake_input(prompt: object = "") -> str:
+        try:
+            return next(prompts)
+        except StopIteration as exc:
+            raise EOFError("no more inputs") from exc
+
+    import thoth.interactive as _interactive
+
+    monkeypatch.setattr(thoth_main, "PROMPT_TOOLKIT_AVAILABLE", False)
+    monkeypatch.setattr(thoth_main, "run_research", cast(Any, fake_run_research))
+    monkeypatch.setattr(_interactive, "get_config", cast(Any, fake_get_config))
+    monkeypatch.setattr(builtins, "input", cast(Any, fake_input))
+
+    asyncio.run(
+        thoth_main.enter_interactive_mode(
+            initial_settings=thoth_main.InteractiveInitialSettings(provider="mock"),
+            project=None,
+            output_dir=None,
+            config_path=None,
+            verbose=False,
+            quiet=True,
+            no_metadata=False,
+            timeout=None,
+            profile="fast",
+        )
+    )
+
+    assert get_config_calls == ["fast"], (
+        f"expected get_config called once with profile='fast', got: {get_config_calls!r}"
+    )
+    assert observed["kwargs"].get("profile") == "fast", (
+        f"expected profile='fast' to reach run_research, got: {observed['kwargs'].get('profile')!r}"
+    )
+
+
 def test_slash_status_delegates_to_show_status(monkeypatch: pytest.MonkeyPatch) -> None:
     """P07-M3-02: prompt-toolkit /status delegates to show_status for the last operation."""
     if not getattr(thoth_main, "PROMPT_TOOLKIT_AVAILABLE", False):
