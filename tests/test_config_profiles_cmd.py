@@ -453,3 +453,9 @@ def test_runtime_selection_does_not_mutate_persisted_pointer(
     # Confirm the file is unchanged: re-read without any flag.
     get_after = runner.invoke(cli, ["config", "get", "general.default_profile"])
     assert get_after.output.strip().splitlines()[-1] == "fast"
+
+
+def test_config_profiles_appears_in_config_help(isolated_thoth_home: Path) -> None:
+    result = CliRunner().invoke(cli, ["config", "--help"])
+    assert result.exit_code == 0
+    assert "profiles" in result.output

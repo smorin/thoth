@@ -291,3 +291,25 @@ thoth --profile deep_research "literature review of X"     # deep_research + a w
 thoth --profile deep_research --verbose "research vector dbs"
 # Look for the assembled prompt in the verbose output.
 ```
+
+### Configuration Profile CRUD (P21b)
+
+Smoke-check the `thoth config profiles ...` CLI introduced in P21b. Run from a
+clean working directory (no `./thoth.config.toml`) so the user-tier config is
+the active write target:
+
+```bash
+thoth config profiles add fast
+thoth config profiles set fast general.default_mode thinking
+thoth config profiles set-default fast
+thoth config get general.default_mode
+THOTH_PROFILE=fast thoth config get general.default_mode
+thoth config profiles current
+thoth --profile fast config profiles current
+thoth --profile missing config get general.default_mode
+thoth config profiles set-default ghost      # expect ConfigProfileError
+thoth --profile foo config profiles add bar  # expect 'no such option' error
+thoth config profiles add interactive
+thoth config profiles set interactive general.default_mode interactive
+thoth config profiles show interactive
+```

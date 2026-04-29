@@ -335,7 +335,26 @@ Selection precedence is `--profile` → `THOTH_PROFILE` → `general.default_pro
 
 `thoth config get general.default_profile` reflects the **persisted pointer** in the file. `--profile` and `THOTH_PROFILE` are read-only runtime inputs — they never write back to `general.default_profile`. With persisted `general.default_profile = "fast"`, running `thoth --profile bar config get general.default_profile` returns `"fast"`; the runtime active selection is `bar`.
 
-> **CLI management coming in P21b.** Today, manage profiles by editing `~/.config/thoth/thoth.config.toml` (or `./thoth.config.toml`/`./.thoth.config.toml` for project-scoped profiles) directly. The next project (P21b) adds `thoth config profiles list/show/current/use/clear/add/set/unset/remove` so you don't have to hand-edit.
+> **CLI management coming in P21b.** Today, manage profiles by editing `~/.config/thoth/thoth.config.toml` (or `./thoth.config.toml`/`./.thoth.config.toml` for project-scoped profiles) directly. The next project (P21b) adds `thoth config profiles list/show/current/set-default/unset-default/add/set/unset/remove` so you don't have to hand-edit.
+
+#### Managing profiles from the CLI
+
+Once P21b ships, you no longer need to hand-edit `[profiles.<name>]` blocks. The same profile from the hand-edit example above can be created end-to-end with:
+
+```bash
+thoth config profiles add fast
+thoth config profiles set fast general.default_mode thinking
+thoth config profiles set-default fast    # persists general.default_profile = "fast"
+thoth config profiles current             # shows fast (from general.default_profile)
+thoth config profiles list                # lists all profiles, marks active
+thoth config profiles list --show-shadowed  # also shows user profiles shadowed by project profiles
+thoth config profiles show fast --json    # full profile contents
+thoth config profiles unset fast general.default_mode  # remove a single key
+thoth config profiles remove fast         # delete the entire profile
+thoth config profiles unset-default       # clear the persisted pointer
+```
+
+`--profile` is honored only by `list`, `show`, and `current`. Mutator commands reject `--profile` because the profile they operate on is the positional argument.
 
 ### Migrating from earlier Thoth versions
 
@@ -347,7 +366,7 @@ Thoth previously read three different filenames depending on location. Starting 
 | `./thoth.toml` | `./thoth.config.toml` *or* `./.thoth.config.toml` |
 | `./.thoth/config.toml` | `./.thoth.config.toml` *or* `./thoth.config.toml` |
 
-The old filenames are no longer read. Rename them with `mv`. If both `./thoth.config.toml` and `./.thoth.config.toml` exist in the same project, Thoth will refuse to start until one is deleted.
+The old filenames are no longer read. Rename them with `mv`. If both `./thoth.config.toml` and `./.thoth.config.toml` exist in the same project, config-loading commands refuse to start until one is deleted. `thoth init --user` is a user-tier write and still creates or repairs `~/.config/thoth/thoth.config.toml` from that directory.
 
 #### Change the default mode for a profile
 

@@ -203,6 +203,9 @@ def show_config_help():
     console.print("     Print the target config file path.")
     console.print("  edit [--project]")
     console.print("     Open the target config file in $EDITOR (fallback: vi).")
+    console.print("  profiles <SUBCOMMAND>")
+    console.print("     Manage configuration profiles (list/show/current/add/set/unset/")
+    console.print("     remove/set-default/unset-default). Run `thoth config profiles --help`.")
     console.print("  help")
     console.print("     Show this help.")
     console.print("\n[bold]Examples:[/bold]")
@@ -211,6 +214,11 @@ def show_config_help():
     console.print("  $ thoth config set --project execution.poll_interval 15")
     console.print("  $ thoth config list --keys")
     console.print("  $ thoth config path")
+    console.print("  $ thoth config profiles list")
+    console.print("  $ thoth config profiles current")
+    console.print("  $ thoth config profiles add fast")
+    console.print("  $ thoth config profiles set fast general.default_mode thinking")
+    console.print("  $ thoth config profiles set-default fast")
     console.print("\n[bold]Notable keys:[/bold]")
     console.print("  execution.prompt_max_bytes  Cap on --prompt-file / stdin bytes")
     console.print("                              (default: 1048576 = 1 MiB)")
@@ -218,8 +226,9 @@ def show_config_help():
     console.print("  --profile NAME (also THOTH_PROFILE env, or general.default_profile in config)")
     console.print("  Profile sections live under [profiles.<name>] and overlay top-level config.")
     console.print(
-        "  CLI management commands (`thoth config profiles ...`) ship in a follow-up project (P21b)."
+        "  Manage profiles with `thoth config profiles ...` (read-only leaves honor --profile;"
     )
+    console.print("  mutator leaves take the profile name as a positional argument).")
     console.print("\n[bold]Notes:[/bold]")
     console.print("  API key values are masked by default; use --show-secrets to reveal.")
     console.print("  Writes preserve comments and formatting of the target TOML file.")
