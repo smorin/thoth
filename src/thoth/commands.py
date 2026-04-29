@@ -33,7 +33,7 @@ from thoth.run import run_research
 console = Console()
 
 
-def _build_profile_section(name: str, body: dict[str, Any]) -> tomlkit.items.Table:
+def _build_profile_section(body: dict[str, Any]) -> tomlkit.items.Table:
     """Build a `[profiles.<name>]` table containing nested sub-tables.
 
     `body` is a flat dict whose keys are TOML section names under the profile
@@ -61,19 +61,16 @@ def _build_starter_profiles() -> tomlkit.items.Table:
     profiles = tomlkit.table()
 
     profiles["daily"] = _build_profile_section(
-        "daily",
         {"general": {"default_mode": "thinking", "default_project": "daily-notes"}},
     )
-    profiles["quick"] = _build_profile_section("quick", {"general": {"default_mode": "thinking"}})
+    profiles["quick"] = _build_profile_section({"general": {"default_mode": "thinking"}})
     profiles["openai_deep"] = _build_profile_section(
-        "openai_deep",
         {
             "general": {"default_mode": "deep_research"},
             "modes.deep_research": {"providers": ["openai"], "parallel": False},
         },
     )
     profiles["all_deep"] = _build_profile_section(
-        "all_deep",
         {
             "general": {"default_mode": "deep_research"},
             "modes.deep_research": {
@@ -82,12 +79,9 @@ def _build_starter_profiles() -> tomlkit.items.Table:
             },
         },
     )
-    profiles["interactive"] = _build_profile_section(
-        "interactive", {"general": {"default_mode": "interactive"}}
-    )
+    profiles["interactive"] = _build_profile_section({"general": {"default_mode": "interactive"}})
 
     profiles["deep_research"] = _build_profile_section(
-        "deep_research",
         {
             "general": {
                 "default_mode": "deep_research",
