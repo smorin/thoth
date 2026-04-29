@@ -1375,6 +1375,8 @@ $ thoth modes --json | jq '.[] | select(.kind == "background") | .name'
 ## [x] Project P10: Config Subcommand + XDG Layout (v2.10.0)
 **Goal**: Add `thoth config` subcommand (get/set/unset/list/path/edit/help) and migrate all user-writable paths to XDG Base Directory Spec. No legacy-path migration.
 
+> **Note:** P10 predates the TS/T split convention; tests landed inline with each T task (see P10-T02 "with TDD" and P10-T11 verification step).
+
 ### Tests & Tasks
 - [x] [P10-T01] Add tomlkit dependency
 - [x] [P10-T02] XDG path helpers in src/thoth/paths.py with TDD
