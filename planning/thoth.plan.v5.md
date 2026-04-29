@@ -61,7 +61,7 @@ This plan reflects the comprehensive restructuring of milestones to properly seq
 - [x] **M2-02**: Implement TOML config file parsing
 - [x] **M2-03**: Add environment variable substitution (`${VAR}`)
 - [x] **M2-04**: Create default configuration structure
-- [x] **M2-05**: Implement config file path resolution (`~/.thoth/config.toml`)
+- [x] **M2-05**: Implement config file path resolution (`~/.config/thoth/thoth.config.toml`)
 - [x] **M2-06**: Add path expansion for file paths
 - [x] **M2-07**: Create init command skeleton
 - [x] **M2-08**: Add API key validation and masking ✅ *Implemented with masking in output*

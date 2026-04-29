@@ -112,7 +112,7 @@ def test_project_profile_shadows_user_profile_wholesale(tmp_path: Path) -> None:
         user_config={"profiles": {"prod": {"general": {"default_mode": "thinking"}}}},
         project_config={"profiles": {"prod": {"execution": {"poll_interval": 5}}}},
         user_path=tmp_path / "user.toml",
-        project_path=tmp_path / "thoth.toml",
+        project_path=tmp_path / "thoth.config.toml",
     )
     layer = resolve_profile_layer(
         ProfileSelection("prod", "flag", "--profile flag"),
@@ -448,7 +448,7 @@ def test_config_manager_uses_dot_thoth_project_file_when_present(
     monkeypatch.chdir(tmp_path)
     monkeypatch.delenv("THOTH_PROFILE", raising=False)
     _write(
-        tmp_path / ".thoth" / "config.toml",
+        tmp_path / ".thoth.config.toml",
         """
 version = "2.0"
 
@@ -463,8 +463,8 @@ default_mode = "thinking"
 
     assert cm.active_profile is not None
     assert cm.active_profile.tier == "project"
-    assert cm.active_profile.path == Path(".thoth/config.toml") or \
-           cm.active_profile.path.name == "config.toml"
+    assert cm.active_profile.path == Path(".thoth.config.toml") or \
+           cm.active_profile.path.name == "thoth.config.toml"
 
 
 def test_thoth_profile_is_not_a_per_setting_env_override() -> None:
@@ -852,7 +852,7 @@ Selection precedence is `--profile` → `THOTH_PROFILE` → `general.default_pro
 
 `thoth config get general.default_profile` reflects the **persisted pointer** in the file. `--profile` and `THOTH_PROFILE` are read-only runtime inputs — they never write back to `general.default_profile`. With persisted `general.default_profile = "fast"`, running `thoth --profile bar config get general.default_profile` returns `"fast"`; the runtime active selection is `bar`.
 
-> **CLI management coming in P21b.** Today, manage profiles by editing `~/.config/thoth/config.toml` (or `./thoth.toml`/`./.thoth/config.toml` for project-scoped profiles) directly. The next project (P21b) adds `thoth config profiles list/show/current/use/clear/add/set/unset/remove` so you don't have to hand-edit.
+> **CLI management coming in P21b.** Today, manage profiles by editing `~/.config/thoth/thoth.config.toml` (or `./thoth.config.toml`/`./.thoth.config.toml` for project-scoped profiles) directly. The next project (P21b) adds `thoth config profiles list/show/current/use/clear/add/set/unset/remove` so you don't have to hand-edit.
 ````
 
 - [ ] **Step 3: Add concrete README examples**
@@ -928,7 +928,7 @@ This profile can be stored, listed, and selected by P21 today (via hand-edit). T
 Append to `manual_testing_instructions.md`:
 
 ```bash
-# Hand-edit ~/.config/thoth/config.toml first to add:
+# Hand-edit ~/.config/thoth/thoth.config.toml first to add:
 #
 #   [profiles.fast.general]
 #   default_mode = "thinking"

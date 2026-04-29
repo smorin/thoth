@@ -67,7 +67,7 @@ Authentication — recommended order:
    export PERPLEXITY_API_KEY=pplx-...
    ```
 
-2. **Config file** (persistent, per-machine): `~/.thoth/config.toml`
+2. **Config file** (persistent, per-machine): `~/.config/thoth/thoth.config.toml`
    ```toml
    [providers.openai]
    api_key = "sk-..."
@@ -209,7 +209,7 @@ upstream job runs to completion.
 
 Each mode is declared as `kind = "immediate"` (synchronous, streaming)
 or `kind = "background"` (async, polling-loop). User-defined modes in
-`~/.config/thoth/config.toml` should declare `kind` explicitly; missing
+`~/.config/thoth/thoth.config.toml` should declare `kind` explicitly; missing
 `kind` warns once and falls back to a substring heuristic on the model
 name.
 
@@ -308,7 +308,7 @@ thoth list --all
 
 ## Configuration
 
-Configuration file is stored at `~/.thoth/config.toml`. Key settings:
+Configuration file is stored at `~/.config/thoth/thoth.config.toml`. Key settings:
 
 - `default_project`: Default project name for outputs
 - `default_mode`: Default research mode
@@ -335,7 +335,19 @@ Selection precedence is `--profile` → `THOTH_PROFILE` → `general.default_pro
 
 `thoth config get general.default_profile` reflects the **persisted pointer** in the file. `--profile` and `THOTH_PROFILE` are read-only runtime inputs — they never write back to `general.default_profile`. With persisted `general.default_profile = "fast"`, running `thoth --profile bar config get general.default_profile` returns `"fast"`; the runtime active selection is `bar`.
 
-> **CLI management coming in P21b.** Today, manage profiles by editing `~/.config/thoth/config.toml` (or `./thoth.toml`/`./.thoth/config.toml` for project-scoped profiles) directly. The next project (P21b) adds `thoth config profiles list/show/current/use/clear/add/set/unset/remove` so you don't have to hand-edit.
+> **CLI management coming in P21b.** Today, manage profiles by editing `~/.config/thoth/thoth.config.toml` (or `./thoth.config.toml`/`./.thoth.config.toml` for project-scoped profiles) directly. The next project (P21b) adds `thoth config profiles list/show/current/use/clear/add/set/unset/remove` so you don't have to hand-edit.
+
+### Migrating from earlier Thoth versions
+
+Thoth previously read three different filenames depending on location. Starting with vX.Y.0, the canonical name is `thoth.config.toml` everywhere:
+
+| Old | New |
+|---|---|
+| `~/.config/thoth/config.toml` | `~/.config/thoth/thoth.config.toml` |
+| `./thoth.toml` | `./thoth.config.toml` *or* `./.thoth.config.toml` |
+| `./.thoth/config.toml` | `./.thoth.config.toml` *or* `./thoth.config.toml` |
+
+The old filenames are no longer read. Rename them with `mv`. If both `./thoth.config.toml` and `./.thoth.config.toml` exist in the same project, Thoth will refuse to start until one is deleted.
 
 #### Change the default mode for a profile
 
@@ -436,7 +448,7 @@ Resolution outcomes:
 | `deep` | `default` | `Be thorough. Cite primary sources where possible.` (profiles.deep) |
 | `deep` | `deep_research` | `Be thorough. Cite primary sources. Include counter-arguments.` (profiles.deep.modes.deep_research) |
 
-`thoth init` ships these profiles pre-populated in your config (`~/.config/thoth/config.toml`): `daily`, `quick`, `openai_deep`, `all_deep`, `interactive`, and `deep_research` — the last one demonstrates the `prompt_prefix` hierarchy end-to-end. Edit or delete them as you like.
+`thoth init` ships these profiles pre-populated in your config (`~/.config/thoth/thoth.config.toml`): `daily`, `quick`, `openai_deep`, `all_deep`, `interactive`, and `deep_research` — the last one demonstrates the `prompt_prefix` hierarchy end-to-end. Edit or delete them as you like.
 
 ## Provider Configuration
 
@@ -458,7 +470,7 @@ Configure your OpenAI API key using one of these methods (in order of precedence
    export OPENAI_API_KEY="sk-..."
    ```
 
-3. **Configuration file** (`~/.thoth/config.toml`):
+3. **Configuration file** (`~/.config/thoth/thoth.config.toml`):
    ```toml
    [providers.openai]
    api_key = "${OPENAI_API_KEY}"  # Reference env var
@@ -468,7 +480,7 @@ Configure your OpenAI API key using one of these methods (in order of precedence
 
 #### Configuration Options
 
-All OpenAI settings can be configured in `~/.thoth/config.toml`:
+All OpenAI settings can be configured in `~/.config/thoth/thoth.config.toml`:
 
 ```toml
 [providers.openai]
@@ -715,7 +727,7 @@ just test-typecheck
 API keys are resolved in the following order (highest to lowest priority):
 1. Command-line arguments (`--api-key-openai`, `--api-key-perplexity`, `--api-key-mock`)
 2. Environment variables (`OPENAI_API_KEY`, `PERPLEXITY_API_KEY`, `MOCK_API_KEY`)
-3. Configuration file (`~/.thoth/config.toml`)
+3. Configuration file (`~/.config/thoth/thoth.config.toml`)
 
 ## Exit Codes
 

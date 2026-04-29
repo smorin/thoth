@@ -162,7 +162,7 @@ def test_tier_axis(
     monkeypatch.chdir(tmp_path)
     _write(user_config_file(), user_block)
     if project_block is not None:
-        _write(tmp_path / "thoth.toml", project_block)
+        _write(tmp_path / "thoth.config.toml", project_block)
 
     cm = ConfigManager()
     cm.load_all_layers({"_profile": "shared"})

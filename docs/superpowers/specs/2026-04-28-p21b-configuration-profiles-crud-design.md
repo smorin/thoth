@@ -28,7 +28,7 @@ thoth config profiles unset NAME KEY [--project] [--json]
 thoth config profiles remove NAME [--project] [--json]
 ```
 
-Default writes target the user config. `--project` targets `./thoth.toml`, matching `thoth config set --project`. `--config PATH` and `--project` remain mutually exclusive.
+Default writes target the user config. `--project` targets `./thoth.config.toml`, matching `thoth config set --project`. `--config PATH` and `--project` remain mutually exclusive.
 
 ## 2. Motivation
 
@@ -190,7 +190,7 @@ Tests live in `tests/test_config_profiles_cmd.py`.
 
 - Round-trip CRUD: `add` → `set` → `show` → `unset` → `remove` for the user config.
 - `set-default` and `unset-default` write `general.default_profile` to the target file; `unset-default` leaves an empty `[general]` in place.
-- `--project` writes `./thoth.toml`; `--config PATH` writes the custom file; `--project` + `--config` errors with `PROJECT_CONFIG_CONFLICT`.
+- `--project` writes `./thoth.config.toml`; `--config PATH` writes the custom file; `--project` + `--config` errors with `PROJECT_CONFIG_CONFLICT`.
 - Deep-path coverage: `set fast general.default_mode thinking` produces `[profiles.fast.general]` at depth 4; `unset` removes only the leaf and leaves `[profiles.fast.general] = {}` in place.
 - tomlkit comment preservation: a comment above `[profiles.fast]` and a comment on `default_mode` line both survive a `set` then `unset` round-trip (asserted via `Path.read_text()` containing the comment text).
 - `set-default ghost` raises `ConfigProfileError` (catalog rejection); `set-default prod` succeeds when `prod` lives only in the project tier.

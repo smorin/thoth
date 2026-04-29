@@ -30,7 +30,7 @@ def test_bug_cli_001_research_fallback_forwards_global_options(
 ) -> None:
     captured = _stub_run_research(monkeypatch)
     monkeypatch.setattr("thoth.config._config_path", None)
-    cfg = tmp_path / "thoth.toml"
+    cfg = tmp_path / "thoth.config.toml"
     cfg.write_text('version = "2.0"\n')
 
     result = CliRunner().invoke(
@@ -266,7 +266,7 @@ def test_bug_08_extract_fallback_options_is_parse_only(
     import thoth.config as thoth_config
     from thoth.cli import _extract_fallback_options
 
-    cfg = tmp_path / "thoth.toml"
+    cfg = tmp_path / "thoth.config.toml"
     monkeypatch.setattr(thoth_config, "_config_path", None)
 
     positional, parsed = _extract_fallback_options(["foo", "--config", str(cfg)], {})

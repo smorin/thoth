@@ -17,7 +17,7 @@ from thoth.config import ConfigManager
 
 
 def _write_user_toml(tmp: Path, content: str) -> Path:
-    p = tmp / "thoth.toml"
+    p = tmp / "thoth.config.toml"
     p.write_text(content)
     return p
 

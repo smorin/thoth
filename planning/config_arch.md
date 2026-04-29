@@ -9,7 +9,7 @@ I'll let you know once I’ve gathered the findings and proposed the design stru
 
 ## Current Configuration & CLI Design Overview
 
-Thoth’s current implementation (as of v1.5) is a single-file CLI app using **Click** for argument parsing. It defines internal **default settings** (hard-coded in code) and optionally loads a TOML **config file** (`~/.thoth/config.toml` by default). For example, the `Config` class returns a default config dict (with values like `general.default_mode = "default"` and `general.default_project = ""`) if no file exists. If a config file is present, those values override the built-in defaults. At runtime, command-line **options** further override the config. In code, however, this layering isn’t applied uniformly – some config fields are not yet used when they should be. For instance, if you run `thoth "query"` with no `--mode`, the code still uses `"default"` hard-coded instead of your config’s `default_mode` setting. Likewise, if no project is specified, outputs are saved to the current directory (ad-hoc mode) rather than using a `default_project` defined in config. These examples highlight that while the *intended* precedence is **internal defaults < config file < CLI arguments**, the implementation has gaps where config values aren’t propagated. This can lead to inconsistency if a setting is defined in one place but ignored elsewhere.
+Thoth’s current implementation (as of v1.5) is a single-file CLI app using **Click** for argument parsing. It defines internal **default settings** (hard-coded in code) and optionally loads a TOML **config file** (`~/.config/thoth/thoth.config.toml` by default). For example, the `Config` class returns a default config dict (with values like `general.default_mode = "default"` and `general.default_project = ""`) if no file exists. If a config file is present, those values override the built-in defaults. At runtime, command-line **options** further override the config. In code, however, this layering isn’t applied uniformly – some config fields are not yet used when they should be. For instance, if you run `thoth "query"` with no `--mode`, the code still uses `"default"` hard-coded instead of your config’s `default_mode` setting. Likewise, if no project is specified, outputs are saved to the current directory (ad-hoc mode) rather than using a `default_project` defined in config. These examples highlight that while the *intended* precedence is **internal defaults < config file < CLI arguments**, the implementation has gaps where config values aren’t propagated. This can lead to inconsistency if a setting is defined in one place but ignored elsewhere.
 
 Thoth also provides special CLI subcommands (`init`, `status`, `list`, `providers`, etc.) which are handled by manually intercepting arguments (instead of using Click subcommands). The help system is partially custom – e.g. a `ThothCommand` class overrides help behavior to show detailed help for subcommands like `init` or `status`, and there are custom functions to print help text for each command. There is currently no fully implemented **interactive mode** (aside from the planned interactive config wizard for `thoth init`), but the question hints at a future REPL-like mode where users can enter multiple commands interactively. In summary, the **current architecture** is functional but monolithic – configuration logic, CLI parsing, command handling, and help text are all intertwined in one file. This makes it easy to miss updating one part (e.g. help or config defaults) when changing another, and harder to test or extend (like adding new subcommands or an interactive shell).
 
@@ -19,7 +19,7 @@ To improve Thoth’s design, we want to achieve the following key objectives:
 
 * **Single Source of Truth for Settings:** Define default values and configurable options in one place (or via one mechanism) so they don’t drift. Avoid scattering hard-coded defaults across the code.
 * **Consistent Config Precedence:** Enforce a clear hierarchy where **internal defaults** are overridden by the **config file**, which is overridden by **CLI arguments**, and finally **interactive input** overrides all (since interactive mode can ask the user for final decisions). This priority order should be clearly implemented and documented (mirroring how other CLIs do it).
-* **Unified Option Handling:** Ensure that any setting configurable in the file is also adjustable via CLI flag (and vice versa), and likely available in interactive mode as well. This prevents situations where a user can set something in `config.toml` but cannot override it on the command line, or an interactive user lacks access to an option.
+* **Unified Option Handling:** Ensure that any setting configurable in the file is also adjustable via CLI flag (and vice versa), and likely available in interactive mode as well. This prevents situations where a user can set something in `thoth.config.toml` but cannot override it on the command line, or an interactive user lacks access to an option.
 * **Modularity and Separation of Concerns:** Break the program into logical components – e.g. *config management*, *command parsing/execution*, *interactive shell interface*, *help documentation*, *business logic* – to minimize side effects between them. This makes the code easier to understand and modify without affecting unrelated parts. For example, reading config should be isolated from the CLI parser (perhaps done once at startup), and help text definitions should be centralized rather than scattered.
 * **Ease of Testing and Extension:** By designing clear interfaces between components, we can more easily unit-test (e.g. test that effective settings are computed correctly from various config/CLI combinations) and add new features. Adding a new subcommand or configuration option should require changes in only one or two places, not copy-pasting default values or help text in many spots.
 * **Consistent Error Handling & Validation:** All parts of the app should use a common strategy for input validation and error reporting. For instance, invalid combinations of options are caught early with clear messages (Thoth already does some of this with `click.BadParameter` checks). A clean design would also validate config file contents (e.g. types, ranges) on load and provide uniform error messages via a central error handler (as `handle_error()` does for exceptions).
@@ -114,8 +114,8 @@ This approach aligns with best practices from other CLI systems. For instance, A
 
 * **Git**: Git uses a layered config (system, global, local) and allows overriding any config key with the `-c key=value` CLI option. It achieves flexibility by reading config once and then letting command logic use those values. While Git doesn’t have an interactive mode, the concept of *scoped config and override* is similar to what we want.
 * **Kubernetes kubectl**: Uses a kubeconfig file for defaults (cluster, user, namespace) and CLI flags to override (`--kubeconfig`, `--namespace`, etc.). The precedence is CLI over config, and they provide an interactive mode via external tools (like `kubectl alpha interactive`). Kubectl’s design is modular, with a clear separation between the CLI command definitions and the underlying API calls – an analogy for separating our Click interface from the research execution logic.
-* **AWS CLI & Azure CLI**: As noted, they have well-defined config systems. The AWS CLI example explicitly lists the order of precedence (CLI > env > credentials file > config file), and Azure CLI similarly enumerates CLI > env > file. In our case, **Interactive** would be an even higher layer (since it’s essentially asking the user to confirm or change options at runtime). We can document Thoth’s precedence in its help or docs in a similar way: for instance, “**Note:** Command-line arguments override settings in `config.toml`, which in turn override Thoth’s internal defaults. In interactive mode, prompts and commands can override all of the above for that session.”
-* **Azure’s defaults command**: Azure CLI’s `az config set defaults.<name>=<value>` is an interesting model where users can set persistent defaults for any argument. We might not implement a full equivalent, but conceptually, `~/.thoth/config.toml` serves this role. We could also consider a command like `thoth config set <key> <value>` to programmatically update the config file (for advanced users or scripting), but that can be future work.
+* **AWS CLI & Azure CLI**: As noted, they have well-defined config systems. The AWS CLI example explicitly lists the order of precedence (CLI > env > credentials file > config file), and Azure CLI similarly enumerates CLI > env > file. In our case, **Interactive** would be an even higher layer (since it’s essentially asking the user to confirm or change options at runtime). We can document Thoth’s precedence in its help or docs in a similar way: for instance, “**Note:** Command-line arguments override settings in `thoth.config.toml`, which in turn override Thoth’s internal defaults. In interactive mode, prompts and commands can override all of the above for that session.”
+* **Azure’s defaults command**: Azure CLI’s `az config set defaults.<name>=<value>` is an interesting model where users can set persistent defaults for any argument. We might not implement a full equivalent, but conceptually, `~/.config/thoth/thoth.config.toml` serves this role. We could also consider a command like `thoth config set <key> <value>` to programmatically update the config file (for advanced users or scripting), but that can be future work.
 
 **No Impact on Out-of-Scope Concerns:** It’s worth noting that these changes focus on **software design, not runtime performance or security** (explicitly out of scope). The architecture can remain efficient (the overhead of merging configs is negligible) and we are not introducing security issues (we’re actually making API key handling more consistent by clearly delineating how to supply them via env, config, or CLI – e.g. continuing to encourage env for secrets is fine). We also continue to use well-supported libraries (Click, etc.) so the maintainability remains high.
 
@@ -284,9 +284,9 @@ If you want Thoth to mimic Git’s convenience while keeping the simple preceden
 ```
 internal defaults
         ↓
-user‑level config      (~/.config/thoth/config.toml)
+user‑level config      (~/.config/thoth/thoth.config.toml)
         ↓
-project/local config   (./thoth.toml or ./.thoth/config.toml)
+project/local config   (./thoth.config.toml or ./.thoth.config.toml)
         ↓
 environment variables  (THOTH_…)
         ↓
@@ -333,14 +333,14 @@ def deep_merge(base: dict, override: dict) -> dict:
 def build_runtime_config(args) -> Config:
     cfg = Config()                            # internal defaults
     deep_merge(cfg, load_layer(Path.home() /
-                               ".config/thoth/config.toml"))             # user
+                               ".config/thoth/thoth.config.toml"))       # user
     deep_merge(cfg, load_layer(find_project_config()))                   # local
     deep_merge(cfg, env_to_config(os.environ))                           # env
     deep_merge(cfg, cli_to_config(args))                                 # CLI
     return cfg
 ```
 
-*Search strategy*: `find_project_config()` walks from the current directory upward until it finds `thoth.toml` (or `.thoth/config.toml`).
+*Search strategy*: `find_project_config()` walks from the current directory upward until it finds `thoth.config.toml` (or `.thoth.config.toml`).
 *Conversion helpers*: `env_to_config()` and `cli_to_config()` translate env‑var names / Click options to the nested‑dict structure described by `Config`.
 
 ---
@@ -355,7 +355,7 @@ If you need to *disable* an inherited value, borrow Git’s pattern: support a s
 
 ---
 
-### Key take‑aways
+### Key takeaways
 
 1. **Git merges** all visible config files—later ones override earlier ones for single‑value keys; lists accumulate. ([Stack Overflow][1])
 2. Thoth can replicate this by adding **user** and **project** config layers between defaults and env/CLI, then performing a deep merge at start‑up.

@@ -63,7 +63,7 @@ def test_prompt_max_bytes_config_override(tmp_path: Path, monkeypatch):
     """User can shrink the cap via [execution].prompt_max_bytes in config."""
     _make_dummy_run(monkeypatch)
 
-    cfg = tmp_path / "thoth.toml"
+    cfg = tmp_path / "thoth.config.toml"
     cfg.write_text('version = "2.0"\n[execution]\nprompt_max_bytes = 50\n')
     long_file = tmp_path / "long.txt"
     long_file.write_text("x" * 100)

@@ -109,7 +109,7 @@ default_mode = "thinking"
 
 ### Q5. How are profiles managed in P21?
 
-By **hand-editing TOML.** P21 ships no CLI commands for adding, setting, or removing profile keys. Users open `~/.config/thoth/config.toml` (or the project `./thoth.toml` / `./.thoth/config.toml`) and write `[profiles.<name>.<section>]` tables directly. Selection (`--profile`, `THOTH_PROFILE`, `general.default_profile`) works the moment P21 lands.
+By **hand-editing TOML.** P21 ships no CLI commands for adding, setting, or removing profile keys. Users open `~/.config/thoth/thoth.config.toml` (or the project `./thoth.config.toml` / `./.thoth.config.toml`) and write `[profiles.<name>.<section>]` tables directly. Selection (`--profile`, `THOTH_PROFILE`, `general.default_profile`) works the moment P21 lands.
 
 CLI management commands ship in **P21b** (`thoth config profiles list/show/current/use/clear/add/set/unset/remove`). The split is intentional: P21 delivers the runtime feature; P21b delivers the convenience UI. Hand-editing remains supported even after P21b ships — the CLI is additive.
 
@@ -180,7 +180,7 @@ Responsibilities:
    - `self.profile_selection: ProfileSelection`
    - `self.active_profile: ProfileLayer | None`
    - `self.profile_catalog: list[ProfileLayer]`
-5. Record the actual project config path used by `_load_project_config()` (one of `./thoth.toml`, `./.thoth/config.toml`, or `None` if no project file exists) so profile diagnostics can name the source file. `_load_project_config` is updated to return `(data, path)` (or to set a sibling `self._project_config_path`); the catalog only adds project entries when a real path was loaded.
+5. Record the actual project config path used by `_load_project_config()` (one of `./thoth.config.toml`, `./.thoth.config.toml`, or `None` if no project file exists) so profile diagnostics can name the source file. `_load_project_config` is updated to return `(data, path)` (or to set a sibling `self._project_config_path`); the catalog only adds project entries when a real path was loaded.
 6. Merge `layers["profile"]` after project and before env/cli.
 
 The profile selector key in `cli_args` is private (`"_profile"`) so it does not leak into effective config output as a normal setting.
@@ -240,7 +240,7 @@ Tests are written before implementation. The P21 test surface is `tests/test_con
   - project profile shadows user profile wholesale;
   - missing selected profiles raise `ConfigProfileError` naming the source for **all three** sources (flag, env, config pointer) — load-time error per REQ-CPP-103;
   - `general.default_profile` survives the user/project profile-table splitting (i.e. is still readable via `cm.get(...)`);
-  - the catalog records the actual project config path (`./thoth.toml` *or* `./.thoth/config.toml`) used by `_load_project_config`;
+  - the catalog records the actual project config path (`./thoth.config.toml` *or* `./.thoth.config.toml`) used by `_load_project_config`;
   - `THOTH_PROFILE` is not added to `_get_env_overrides` (regression guard);
   - root `--profile` reaches `thoth config get` / `thoth config list` (proves the threading sweep is complete);
   - persisted `general.default_profile` is not mutated by runtime `--profile`/`THOTH_PROFILE` (B20: `cm.profile_selection.name == "bar"` from source `flag` while `cm.get("general.default_profile") == "fast"`).
@@ -274,7 +274,7 @@ Docs updated in P21:
 - Missing selected profile is a hard error and names the selection source for all three selection sources (flag, env, and config pointer), surfaced at config load time.
 - Environment and CLI per-setting overrides still beat active profile values.
 - Project profile shadows user profile of the same name; no profile table merging.
-- The catalog reports the actual project file (`./thoth.toml` or `./.thoth/config.toml`) used by `_load_project_config`, not a hardcoded path.
+- The catalog reports the actual project file (`./thoth.config.toml` or `./.thoth.config.toml`) used by `_load_project_config`, not a hardcoded path.
 - Root `--profile` reaches `thoth config get` and other existing config-loading subcommands via the threaded plumbing; `thoth --profile fast config get general.default_mode` returns the profile's value.
 - `--profile` and `THOTH_PROFILE` never write back to `general.default_profile`. With persisted `general.default_profile = "fast"`, running `thoth --profile bar config get general.default_profile` returns `"fast"`, while `cm.profile_selection` reports `name="bar"` from source `flag`.
 - Profile overlay is data-driven: a profile can store and list future config values, including `general.default_mode = "interactive"`, even if command execution for that mode lands in a later project.

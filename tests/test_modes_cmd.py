@@ -23,7 +23,7 @@ def _wide_columns_for_table_tests(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def _cm(isolated_thoth_home: Path, toml: str | None = None) -> ConfigManager:
     if toml is not None:
-        cfg = Path(isolated_thoth_home) / "config" / "thoth" / "config.toml"
+        cfg = Path(isolated_thoth_home) / "config" / "thoth" / "thoth.config.toml"
         cfg.parent.mkdir(parents=True, exist_ok=True)
         cfg.write_text(toml)
     cm = ConfigManager()
@@ -180,7 +180,7 @@ def test_modes_list_json_shape(
 def test_modes_list_masks_api_key_inside_mode(
     isolated_thoth_home: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    cfg = Path(isolated_thoth_home) / "config" / "thoth" / "config.toml"
+    cfg = Path(isolated_thoth_home) / "config" / "thoth" / "thoth.config.toml"
     cfg.parent.mkdir(parents=True, exist_ok=True)
     cfg.write_text(
         'version = "2.0"\n'
@@ -203,7 +203,7 @@ def test_modes_list_masks_api_key_inside_mode(
 def test_modes_list_show_secrets_unmasks(
     isolated_thoth_home: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    cfg = Path(isolated_thoth_home) / "config" / "thoth" / "config.toml"
+    cfg = Path(isolated_thoth_home) / "config" / "thoth" / "thoth.config.toml"
     cfg.parent.mkdir(parents=True, exist_ok=True)
     cfg.write_text(
         'version = "2.0"\n'
@@ -221,7 +221,7 @@ def test_modes_list_show_secrets_unmasks(
 def test_modes_list_source_filter_user(
     isolated_thoth_home: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    cfg = Path(isolated_thoth_home) / "config" / "thoth" / "config.toml"
+    cfg = Path(isolated_thoth_home) / "config" / "thoth" / "thoth.config.toml"
     cfg.parent.mkdir(parents=True, exist_ok=True)
     cfg.write_text(
         'version = "2.0"\n[modes.my_brief]\nprovider = "openai"\nmodel = "gpt-4o-mini"\n'
@@ -237,7 +237,7 @@ def test_modes_list_source_filter_user(
 def test_modes_list_source_filter_overridden(
     isolated_thoth_home: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    cfg = Path(isolated_thoth_home) / "config" / "thoth" / "config.toml"
+    cfg = Path(isolated_thoth_home) / "config" / "thoth" / "thoth.config.toml"
     cfg.parent.mkdir(parents=True, exist_ok=True)
     cfg.write_text('version = "2.0"\n[modes.deep_research]\nparallel = false\n')
     rc = modes_command("list", ["--json", "--source", "overridden"])
@@ -281,7 +281,7 @@ def test_modes_detail_builtin(
 def test_modes_detail_overridden_shows_diff(
     isolated_thoth_home: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    cfg = Path(isolated_thoth_home) / "config" / "thoth" / "config.toml"
+    cfg = Path(isolated_thoth_home) / "config" / "thoth" / "thoth.config.toml"
     cfg.parent.mkdir(parents=True, exist_ok=True)
     cfg.write_text('version = "2.0"\n[modes.deep_research]\nparallel = false\n')
     rc = modes_command("list", ["--name", "deep_research"])

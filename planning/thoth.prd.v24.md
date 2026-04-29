@@ -212,7 +212,7 @@ Create the simplest yet most powerful research tool where users can get comprehe
 | F-02 | Accept prompt as single positional argument: `thoth "prompt"` | Must | T-CLI-01 |
 | F-03 | Save outputs to current directory by default | Must | T-OUT-01 |
 | F-04 | Support full mode specification for advanced users | Must | T-MODE-02 |
-| F-05 | Single config file `~/.thoth/config.toml` with all settings | Must | T-CFG-01 |
+| F-05 | Single config file `~/.config/thoth/thoth.config.toml` with all settings | Must | T-CFG-01 |
 | F-06 | Built-in defaults overridden by config file, overridden by CLI args | Must | T-CFG-02 |
 | F-07 | Create jobs in background mode; capture and return operation_id | Must | T-ASYNC-01 |
 | F-08 | Poll job status every n seconds (configurable); default 30s | Must | T-ASYNC-02 |
@@ -441,7 +441,7 @@ All Perplexity requirements are **Planned** — the provider is not implemented 
 | F-145 | Implement CommandHandler class for unified command execution across interfaces | Must | T-ARCH-03 |
 | F-146 | Create ProviderRegistry for dynamic provider management | Must | T-ARCH-04 |
 | F-147 | Add configuration schema validation at load time | Must | T-ARCH-05 |
-| F-148 | Support project-level configuration file (./thoth.toml or ./.thoth/config.toml) | Should | T-ARCH-06 |
+| F-148 | Support project-level configuration file (./thoth.config.toml or ./.thoth.config.toml) | Should | T-ARCH-06 |
 | F-149 | Implement configuration merging with deep merge support | Must | T-ARCH-07 |
 | F-150 | Add dot notation config access (e.g., config.get('providers.openai.model')) | Should | T-ARCH-08 |
 | F-151 | Maintain single-file distribution while improving internal organization | Must | T-ARCH-09 |
@@ -831,7 +831,7 @@ $ thoth "what is quantum computing"
 ? Enter OpenAI API key (or press Enter to use $OPENAI_API_KEY): sk-...
 ? Enter Perplexity API key (or press Enter to use $PERPLEXITY_API_KEY): pplx-...
 
-✓ Configuration saved to ~/.thoth/config.toml
+✓ Configuration saved to ~/.config/thoth/thoth.config.toml
 
 💡 Tips for new users:
   • Use --provider mock for testing without API keys
@@ -1071,7 +1071,7 @@ $ thoth -i --clarify
 
 ### 12.1 Default Configuration
 
-The system works with zero configuration if API keys are in environment variables. The config file at `~/.thoth/config.toml` provides additional control:
+The system works with zero configuration if API keys are in environment variables. The config file at `~/.config/thoth/thoth.config.toml` provides additional control:
 
 ```toml
 # Thoth Configuration File
@@ -1130,7 +1130,7 @@ health_check_interval = 300     # seconds
 Projects can have their own configuration that overrides the global config:
 
 ```toml
-# .thoth/config.toml in project directory
+# .thoth.config.toml in project directory
 [project]
 name = "quantum_research"
 base_output_dir = "./research"

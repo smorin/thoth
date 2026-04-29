@@ -88,7 +88,7 @@ def test_config_api_key_method_uses_per_test_tmpdir_config_file(monkeypatch, tmp
     case = _provider_tc(
         "CFG",
         "--config",
-        "./test_config.toml",
+        "./test_cfg.toml",
         api_key_method="config",
     )
     runner = _MOD.TestRunner()
@@ -99,9 +99,9 @@ def test_config_api_key_method_uses_per_test_tmpdir_config_file(monkeypatch, tmp
         config_idx = captured["command"].index("--config") + 1
         config_path = Path(captured["command"][config_idx])
         assert config_path.parent == tmpdir
-        assert config_path.name == "test_config.toml"
+        assert config_path.name == "test_cfg.toml"
         assert config_path.exists()
-        assert not (tmp_path / "test_config.toml").exists()
+        assert not (tmp_path / "test_cfg.toml").exists()
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)
 

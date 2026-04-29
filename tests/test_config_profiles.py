@@ -70,7 +70,7 @@ def test_project_profile_shadows_user_profile_wholesale(tmp_path: Path) -> None:
         user_config={"profiles": {"prod": {"general": {"default_mode": "thinking"}}}},
         project_config={"profiles": {"prod": {"execution": {"poll_interval": 5}}}},
         user_path=tmp_path / "user.toml",
-        project_path=tmp_path / "thoth.toml",
+        project_path=tmp_path / "thoth.config.toml",
     )
     layer = resolve_profile_layer(
         ProfileSelection("prod", "flag", "--profile flag"),
@@ -239,7 +239,7 @@ def test_config_manager_uses_dot_thoth_project_file_when_present(
     monkeypatch.chdir(tmp_path)
     monkeypatch.delenv("THOTH_PROFILE", raising=False)
     _write(
-        tmp_path / ".thoth" / "config.toml",
+        tmp_path / ".thoth.config.toml",
         """
 version = "2.0"
 
@@ -255,8 +255,8 @@ default_mode = "thinking"
     assert cm.active_profile is not None
     assert cm.active_profile.tier == "project"
     assert (
-        cm.active_profile.path == Path(".thoth/config.toml")
-        or cm.active_profile.path.name == "config.toml"
+        cm.active_profile.path == Path(".thoth.config.toml")
+        or cm.active_profile.path.name == "thoth.config.toml"
     )
 
 

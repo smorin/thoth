@@ -124,8 +124,8 @@ unset OPENAI_API_KEY
 uv run thoth "test" --provider openai 2>&1 | head -10
 # Expected: error message mentions
 #   - "openai API key not found"
-#   - "Set OPENAI_API_KEY (or edit /Users/<you>/.thoth/config.toml)"
-#   - "Config file: /Users/<you>/.thoth/config.toml  (does not exist|exists)"
+#   - "Set OPENAI_API_KEY (or edit /Users/<you>/.config/thoth/thoth.config.toml)"
+#   - "Config file: /Users/<you>/.config/thoth/thoth.config.toml  (does not exist|exists)"
 #   - "Env checked: OPENAI_API_KEY (unset)"
 echo "exit=$?"
 # Expected exit: 2
@@ -252,7 +252,7 @@ Expected:
 
 ## Configuration Profiles (P21)
 
-Hand-edit `~/.config/thoth/config.toml` first to add:
+Hand-edit `~/.config/thoth/thoth.config.toml` first to add:
 
 ```toml
 [profiles.fast.general]

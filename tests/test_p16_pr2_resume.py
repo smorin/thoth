@@ -105,7 +105,7 @@ def test_resume_honors_api_key_mock(monkeypatch):
 
 def test_resume_honors_config_path(monkeypatch, tmp_path):
     captured = _stub_resume(monkeypatch)
-    cfg = tmp_path / "thoth.toml"
+    cfg = tmp_path / "thoth.config.toml"
     cfg.write_text('version = "2.0"\n')
     r = CliRunner().invoke(cli, ["resume", "op_x", "--config", str(cfg)])
     assert r.exit_code == 0, r.output

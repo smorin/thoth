@@ -22,7 +22,7 @@ All three XDG categories, on all platforms (overrides `platformdirs` behavior on
 
 | Purpose | Env var | Default | Thoth subpath |
 |---|---|---|---|
-| Config | `XDG_CONFIG_HOME` | `~/.config` | `thoth/config.toml` |
+| Config | `XDG_CONFIG_HOME` | `~/.config` | `thoth/thoth.config.toml` |
 | State (checkpoints) | `XDG_STATE_HOME` | `~/.local/state` | `thoth/checkpoints/` |
 | Cache (model cache) | `XDG_CACHE_HOME` | `~/.cache` | `thoth/model_cache/` |
 
@@ -35,7 +35,7 @@ def user_config_dir() -> Path:  # $XDG_CONFIG_HOME/thoth or ~/.config/thoth
 def user_state_dir() -> Path:   # $XDG_STATE_HOME/thoth or ~/.local/state/thoth
 def user_cache_dir() -> Path:   # $XDG_CACHE_HOME/thoth or ~/.cache/thoth
 
-def user_config_file() -> Path:       # user_config_dir() / "config.toml"
+def user_config_file() -> Path:       # user_config_dir() / "thoth.config.toml"
 def user_checkpoints_dir() -> Path:   # user_state_dir() / "checkpoints"
 def user_model_cache_dir() -> Path:   # user_cache_dir() / "model_cache"
 ```
@@ -73,7 +73,7 @@ Exit codes: `0` found; `1` missing key.
 Writes `<KEY>=<VALUE>` to the user config file (creating the file if missing).
 
 Flags:
-- `--project` — target `./thoth.toml` instead.
+- `--project` — target `./thoth.config.toml` instead.
 - `--string` — force value to be stored as a string regardless of parse.
 
 Value parsing (TOML scalar inference):
@@ -91,7 +91,7 @@ Validation (warn, do not block):
 Removes `<KEY>` from the target layer's TOML file. Empty parent tables are pruned. No-op on missing key: exit 0 with a note on stderr.
 
 Flags:
-- `--project` — target `./thoth.toml`.
+- `--project` — target `./thoth.config.toml`.
 
 ### 4.4 `thoth config list`
 
@@ -107,7 +107,7 @@ Flags:
 Prints the target config file path (absolute).
 
 Flags:
-- `--project` — print `./thoth.toml` (prints the would-be path if not yet created).
+- `--project` — print `./thoth.config.toml` (prints the would-be path if not yet created).
 
 No flag: prints the user config file path.
 
@@ -116,7 +116,7 @@ No flag: prints the user config file path.
 Opens the target config file in `$EDITOR` (fallback: `vi`). Creates the file with a minimal header (`# Thoth Configuration File\nversion = "2.0"\n`) if it doesn't exist.
 
 Flags:
-- `--project` — edit `./thoth.toml`.
+- `--project` — edit `./thoth.config.toml`.
 
 ### 4.7 `thoth config help`
 
@@ -148,7 +148,7 @@ Renders `show_config_help()` from `help.py`. Also reachable via `thoth help conf
 ### 8.2 Config subcommand (`tests/config/test_config_cmd.py`)
 
 - `set general.default_mode exploration` writes to user TOML; merged read returns `exploration`.
-- `set --project general.default_mode deep_dive` writes to `./thoth.toml`; user TOML untouched.
+- `set --project general.default_mode deep_dive` writes to `./thoth.config.toml`; user TOML untouched.
 - Value parsing: `set execution.poll_interval 15` → int; `set execution.parallel_providers true` → bool; `set paths.base_output_dir "./out"` → string.
 - `--string execution.poll_interval 15` → string `"15"`.
 - Unknown root key emits a warning and still writes.
@@ -174,7 +174,7 @@ Renders `show_config_help()` from `help.py`. Also reachable via `thoth help conf
 
 ### 8.5 Path / edit / help
 
-- `config path` prints the user path; `--project` prints `./thoth.toml`.
+- `config path` prints the user path; `--project` prints `./thoth.config.toml`.
 - `config edit` invokes `$EDITOR` with the target path; creates the file when missing (stub editor writes a sentinel; test verifies file contents).
 - `config help`, `thoth help config`, and `thoth --help config` all print identical text.
 

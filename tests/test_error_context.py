@@ -2,7 +2,7 @@ from thoth.errors import APIKeyError, format_config_context
 
 
 def test_context_path_exists_env_set(tmp_path, monkeypatch):
-    cfg = tmp_path / "config.toml"
+    cfg = tmp_path / "thoth.config.toml"
     cfg.write_text("")
     monkeypatch.setenv("OPENAI_API_KEY", "sk-x")
     out = format_config_context(cfg, env_vars=["OPENAI_API_KEY"])
@@ -38,6 +38,6 @@ def test_api_key_error_includes_config_path(monkeypatch):
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     err = APIKeyError("openai")
     assert err.suggestion is not None
-    assert "config.toml" in err.suggestion
+    assert "thoth.config.toml" in err.suggestion
     assert "OPENAI_API_KEY" in err.suggestion
     assert "(unset)" in err.suggestion

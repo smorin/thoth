@@ -160,7 +160,7 @@ def test_profile_set_default_accepts_project_only_profile_against_user_config(
 ) -> None:
     """B16 cross-tier: `set-default prod` when prod lives in project tier writes pointer to user config."""
     monkeypatch.chdir(tmp_path)
-    (tmp_path / "thoth.toml").write_text(
+    (tmp_path / "thoth.config.toml").write_text(
         'version = "2.0"\n[profiles.prod.general]\ndefault_mode = "thinking"\n'
     )
 

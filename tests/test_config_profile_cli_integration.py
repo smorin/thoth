@@ -41,7 +41,7 @@ def test_root_profile_applies_prompt_prefix_to_ask_research(
     isolated_thoth_home: Path,
     tmp_path: Path,
 ) -> None:
-    cfg = tmp_path / "thoth.toml"
+    cfg = tmp_path / "thoth.config.toml"
     out = tmp_path / "out.txt"
     _write_profile_config(cfg)
 
@@ -75,7 +75,7 @@ def test_missing_root_profile_fails_research_before_provider(
     isolated_thoth_home: Path,
     tmp_path: Path,
 ) -> None:
-    cfg = tmp_path / "thoth.toml"
+    cfg = tmp_path / "thoth.config.toml"
     out = tmp_path / "out.txt"
     _write_profile_config(cfg)
 
@@ -110,7 +110,7 @@ def test_profile_default_mode_used_for_bare_prompt(
     isolated_thoth_home: Path,
     tmp_path: Path,
 ) -> None:
-    cfg = tmp_path / "thoth.toml"
+    cfg = tmp_path / "thoth.config.toml"
     out = tmp_path / "out.txt"
     _write_profile_config(cfg)
 
@@ -141,7 +141,7 @@ def test_providers_check_honors_root_profile_provider_key(
     isolated_thoth_home: Path,
     tmp_path: Path,
 ) -> None:
-    cfg = tmp_path / "thoth.toml"
+    cfg = tmp_path / "thoth.config.toml"
     _write_profile_config(cfg)
 
     result = CliRunner().invoke(
@@ -168,7 +168,7 @@ def test_config_get_json_missing_profile_emits_json_error(
     isolated_thoth_home: Path,
     tmp_path: Path,
 ) -> None:
-    cfg = tmp_path / "thoth.toml"
+    cfg = tmp_path / "thoth.config.toml"
     _write_profile_config(cfg)
 
     result = CliRunner().invoke(

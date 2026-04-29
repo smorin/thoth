@@ -1,6 +1,6 @@
 """P21-T10: `thoth init` ships example profiles users can customize.
 
-The generated `~/.config/thoth/config.toml` should contain:
+The generated `~/.config/thoth/thoth.config.toml` should contain:
   - daily          — thinking + default project for daily notes
   - quick          — thinking (immediate)
   - openai_deep    — single-provider deep_research
@@ -128,7 +128,7 @@ def test_cli_init_custom_config_path_writes_starter_profiles(
 ) -> None:
     from thoth.cli import cli
 
-    target = tmp_path / "custom-thoth.toml"
+    target = tmp_path / "custom-cfg.toml"
     result = CliRunner().invoke(cli, ["--config", str(target), "init"])
 
     assert result.exit_code == 0, result.output
@@ -146,7 +146,7 @@ def test_cli_init_json_non_interactive_writes_starter_profiles(
 
     from thoth.cli import cli
 
-    target = tmp_path / "json-thoth.toml"
+    target = tmp_path / "json-cfg.toml"
     result = CliRunner().invoke(
         cli,
         ["--config", str(target), "init", "--json", "--non-interactive"],

@@ -27,7 +27,7 @@ def test_get_missing_key_exits_nonzero(
 
 def test_get_layer_defaults(isolated_thoth_home: Path, capsys: pytest.CaptureFixture[str]) -> None:
     # Write a user override, confirm --layer defaults still returns the default.
-    user_toml = Path(isolated_thoth_home) / "config" / "thoth" / "config.toml"
+    user_toml = Path(isolated_thoth_home) / "config" / "thoth" / "thoth.config.toml"
     user_toml.parent.mkdir(parents=True, exist_ok=True)
     user_toml.write_text('version = "2.0"\n[general]\ndefault_mode = "exploration"\n')
 
@@ -41,7 +41,7 @@ def test_get_layer_profile_returns_profile_overlay(
     isolated_thoth_home: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """C9: --layer profile must return the active profile's overlay (not merged)."""
-    user_toml = Path(isolated_thoth_home) / "config" / "thoth" / "config.toml"
+    user_toml = Path(isolated_thoth_home) / "config" / "thoth" / "thoth.config.toml"
     user_toml.parent.mkdir(parents=True, exist_ok=True)
     user_toml.write_text(
         'version = "2.0"\n'
@@ -65,7 +65,7 @@ def test_get_raw_includes_profile_layer(
     isolated_thoth_home: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """C9: --raw must merge the profile layer (not silently omit it)."""
-    user_toml = Path(isolated_thoth_home) / "config" / "thoth" / "config.toml"
+    user_toml = Path(isolated_thoth_home) / "config" / "thoth" / "thoth.config.toml"
     user_toml.parent.mkdir(parents=True, exist_ok=True)
     user_toml.write_text(
         'version = "2.0"\n'
@@ -120,7 +120,7 @@ def test_set_project_writes_project_toml(
     monkeypatch.chdir(tmp_path)
     rc = config_command("set", ["--project", "general.default_mode", "deep_dive"])
     assert rc == 0
-    project_path = tmp_path / "thoth.toml"
+    project_path = tmp_path / "thoth.config.toml"
     assert project_path.exists()
     assert "deep_dive" in project_path.read_text()
 
@@ -189,7 +189,7 @@ def test_unset_project_target(
     config_command("set", ["--project", "general.default_mode", "deep_dive"])
     rc = config_command("unset", ["--project", "general.default_mode"])
     assert rc == 0
-    data = tomllib.loads((tmp_path / "thoth.toml").read_text())
+    data = tomllib.loads((tmp_path / "thoth.config.toml").read_text())
     assert "general" not in data
 
 
@@ -255,7 +255,7 @@ def test_path_project_prints_project_path(
     rc = config_command("path", ["--project"])
     out = capsys.readouterr().out.strip()
     assert rc == 0
-    assert out == str(tmp_path / "thoth.toml")
+    assert out == str(tmp_path / "thoth.config.toml")
 
 
 def test_get_masks_api_key_by_default(
