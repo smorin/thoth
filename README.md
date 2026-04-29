@@ -319,6 +319,125 @@ Configuration file is stored at `~/.thoth/config.toml`. Key settings:
 - `combine_reports`: Generate combined reports from multiple providers
 - `execution.prompt_max_bytes`: Max bytes accepted from `--prompt-file` (file path or stdin). Files exceeding this are rejected before reading. Default: `1048576` (1 MiB).
 
+### Configuration Profiles
+
+Profiles let you keep shared config at the top level and define named overlays for different work contexts.
+
+```toml
+[general]
+default_mode = "deep_research"
+
+[profiles.fast.general]
+default_mode = "thinking"
+```
+
+Selection precedence is `--profile` → `THOTH_PROFILE` → `general.default_profile` → no profile.
+
+`thoth config get general.default_profile` reflects the **persisted pointer** in the file. `--profile` and `THOTH_PROFILE` are read-only runtime inputs — they never write back to `general.default_profile`. With persisted `general.default_profile = "fast"`, running `thoth --profile bar config get general.default_profile` returns `"fast"`; the runtime active selection is `bar`.
+
+> **CLI management coming in P21b.** Today, manage profiles by editing `~/.config/thoth/config.toml` (or `./thoth.toml`/`./.thoth/config.toml` for project-scoped profiles) directly. The next project (P21b) adds `thoth config profiles list/show/current/use/clear/add/set/unset/remove` so you don't have to hand-edit.
+
+#### Change the default mode for a profile
+
+```toml
+[profiles.daily.general]
+default_mode = "thinking"
+default_project = "daily-notes"
+```
+
+```bash
+thoth --profile daily "summarize today's notes"
+```
+
+#### Run all available deep-research providers
+
+```toml
+[profiles.all_deep.general]
+default_mode = "deep_research"
+
+[profiles.all_deep.modes.deep_research]
+providers = ["openai", "perplexity"]
+parallel = true
+```
+
+```bash
+thoth --profile all_deep "compare vector databases"
+```
+
+> **Future-ready: gemini.** A `gemini` provider is planned (see `research/gemini-deep-research-api.v1.md`). Once it ships, you'll be able to add it to the `providers` list above. The profile schema is already future-ready; the runtime support lands in a later project — analogous to the interactive default-mode example below.
+
+#### Use one deep-research provider
+
+```toml
+[profiles.openai_deep.general]
+default_mode = "deep_research"
+
+[profiles.openai_deep.modes.deep_research]
+providers = ["openai"]
+parallel = false
+```
+
+```bash
+thoth --profile openai_deep "research model routing"
+```
+
+#### Use an immediate default mode
+
+```toml
+[profiles.quick.general]
+default_mode = "thinking"
+```
+
+```bash
+thoth --profile quick "give me the short version"
+```
+
+#### Reserve an interactive default profile
+
+```toml
+[profiles.interactive.general]
+default_mode = "interactive"
+```
+
+This profile can be stored, listed, and selected by P21 today (via hand-edit). The command behavior for a default interactive mode ships with a later interactive-default project.
+
+#### Prepending a prompt prefix
+
+A `prompt_prefix` value is prepended (with a blank line) to the user's prompt before it reaches the LLM. The mode's `system_prompt` is unaffected. Resolution walks a 4-level hierarchy from most-specific to least:
+
+1. `[profiles.<active>.modes.<MODE>] prompt_prefix`
+2. `[profiles.<active>] prompt_prefix`
+3. `[modes.<MODE>] prompt_prefix`
+4. `[general] prompt_prefix`
+
+More-specific values **replace** less-specific ones (no concatenation). An empty string is treated as unset, so an inner-empty value falls through to the outer level.
+
+```toml
+[general]
+prompt_prefix = "Be precise."
+
+[modes.deep_research]
+prompt_prefix = "Cite primary sources."
+
+[profiles.deep.general]
+default_mode = "deep_research"
+prompt_prefix = "Be thorough. Cite primary sources where possible."
+
+[profiles.deep.modes.deep_research]
+prompt_prefix = "Be thorough. Cite primary sources. Include counter-arguments."
+```
+
+Resolution outcomes:
+
+| Active profile | Mode | Resolved prefix |
+|---|---|---|
+| (none) | `default` | `Be precise.` (general) |
+| (none) | `deep_research` | `Cite primary sources.` (modes.deep_research) |
+| `deep` | `default` | `Be thorough. Cite primary sources where possible.` (profiles.deep) |
+| `deep` | `deep_research` | `Be thorough. Cite primary sources. Include counter-arguments.` (profiles.deep.modes.deep_research) |
+
+`thoth init` ships these profiles pre-populated in your config (`~/.config/thoth/config.toml`): `daily`, `quick`, `openai_deep`, `all_deep`, `interactive`, and `deep_research` — the last one demonstrates the `prompt_prefix` hierarchy end-to-end. Edit or delete them as you like.
+
 ## Provider Configuration
 
 ### OpenAI Provider

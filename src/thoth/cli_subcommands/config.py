@@ -15,7 +15,7 @@ from thoth.cli_subcommands._option_policy import (
 from thoth.completion.sources import config_keys as _config_keys_completer
 
 _PASSTHROUGH_CONTEXT = {"ignore_unknown_options": True, "allow_extra_args": True}
-_VALID_LAYERS = ("defaults", "user", "project", "env", "cli")
+_VALID_LAYERS = ("defaults", "user", "project", "profile", "env", "cli")
 
 
 @click.group(name="config", invoke_without_command=True)
@@ -38,13 +38,18 @@ def _dispatch(
     honored_options=DEFAULT_HONOR,
 ) -> None:
     from thoth.config_cmd import config_command
+    from thoth.errors import ConfigProfileError
 
     validate_inherited_options(ctx, f"config {op}", honored_options)
     config_path = inherited_value(ctx, "config_path")
-    if config_path is None:
-        rc = config_command(op, list(args))
-    else:
-        rc = config_command(op, list(args), config_path=config_path)
+    profile = inherited_value(ctx, "profile")
+    try:
+        rc = config_command(op, list(args), config_path=config_path, profile=profile)
+    except ConfigProfileError as exc:
+        click.echo(f"Error: {exc.message}")
+        if exc.suggestion:
+            click.echo(f"Suggestion: {exc.suggestion}")
+        sys.exit(exc.exit_code)
     sys.exit(rc)
 
 
@@ -83,11 +88,22 @@ def config_get(
 
     if as_json:
         from thoth.config_cmd import get_config_get_data
+        from thoth.errors import ConfigProfileError
         from thoth.json_output import emit_error, emit_json
 
-        data = get_config_get_data(
-            key, layer=layer, raw=raw, show_secrets=show_secrets, config_path=config_path
-        )
+        profile = inherited_value(ctx, "profile")
+        try:
+            data = get_config_get_data(
+                key,
+                layer=layer,
+                raw=raw,
+                show_secrets=show_secrets,
+                config_path=config_path,
+                profile=profile,
+            )
+        except ConfigProfileError as exc:
+            details = {"suggestion": exc.suggestion} if exc.suggestion else None
+            emit_error("CONFIG_PROFILE_ERROR", exc.message, details, exit_code=exc.exit_code)
         if data.get("error") == "INVALID_LAYER":
             emit_error(
                 "INVALID_LAYER",
@@ -197,6 +213,7 @@ def config_list(ctx: click.Context, args: tuple[str, ...], as_json: bool) -> Non
     """List all configuration values. Supports --json."""
     if as_json:
         from thoth.config_cmd import get_config_list_data
+        from thoth.errors import ConfigProfileError
         from thoth.json_output import emit_error, emit_json
 
         validate_inherited_options(ctx, "config list", DEFAULT_HONOR)
@@ -222,12 +239,18 @@ def config_list(ctx: click.Context, args: tuple[str, ...], as_json: bool) -> Non
                 i += 1
             else:
                 emit_error("USAGE_ERROR", f"unknown arg: {a}", exit_code=2)
-        data = get_config_list_data(
-            layer=layer,
-            keys_only=keys_only,
-            show_secrets=show_secrets,
-            config_path=config_path,
-        )
+        profile = inherited_value(ctx, "profile")
+        try:
+            data = get_config_list_data(
+                layer=layer,
+                keys_only=keys_only,
+                show_secrets=show_secrets,
+                config_path=config_path,
+                profile=profile,
+            )
+        except ConfigProfileError as exc:
+            details = {"suggestion": exc.suggestion} if exc.suggestion else None
+            emit_error("CONFIG_PROFILE_ERROR", exc.message, details, exit_code=exc.exit_code)
         if data.get("error") == "INVALID_LAYER":
             emit_error(
                 "INVALID_LAYER",

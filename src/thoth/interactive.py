@@ -1002,13 +1002,14 @@ async def enter_interactive_mode(
     quiet: bool,
     no_metadata: bool,
     timeout: float | None,
+    profile: str | None = None,
 ):
     """Enter interactive prompt mode with Prompt Toolkit"""
     if not PROMPT_TOOLKIT_AVAILABLE:
         console.print(
             "[yellow]Warning: prompt_toolkit not available, falling back to basic input[/yellow]"
         )
-        config = get_config()
+        config = get_config(profile=profile)
         console.print("[bold cyan]Interactive Mode (Basic)[/bold cyan]")
         console.print("[dim]Enter prompt • /help: commands • /exit: quit[/dim]")
         console.print()
@@ -1050,13 +1051,14 @@ async def enter_interactive_mode(
                         quiet=quiet,
                         no_metadata=no_metadata,
                         timeout_override=timeout,
+                        profile=profile,
                     )
                     break
         except (KeyboardInterrupt, EOFError):
             console.print("\n[yellow]Interactive mode cancelled[/yellow]")
         return
 
-    config = get_config()
+    config = get_config(profile=profile)
 
     session = InteractiveSession(console, config, initial_settings)
 
@@ -1090,6 +1092,7 @@ async def enter_interactive_mode(
             quiet=quiet,
             no_metadata=no_metadata,
             timeout_override=timeout,
+            profile=profile,
         )
 
     except Exception as e:

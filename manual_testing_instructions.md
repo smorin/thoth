@@ -247,3 +247,47 @@ Expected:
 - Two resume hints print on Ctrl-C (the older Rich-formatted line + the new "Resume later:"). Functional but redundant; tracked as a follow-up nit.
 - `thoth providers help` (without subcommand) currently shows the legacy provider help — examples there still mention `--list` / `--models` flags rather than the new subcommands. Will be cleaned up when the deprecation shim is removed in N+1.
 - `--pick-model` over a non-TTY input (e.g. CI without `echo N |`) will hang on the prompt. Pipe a number in or skip the flag.
+
+---
+
+## Configuration Profiles (P21)
+
+Hand-edit `~/.config/thoth/config.toml` first to add:
+
+```toml
+[profiles.fast.general]
+default_mode = "thinking"
+
+[general]
+default_profile = "fast"
+```
+
+Then run:
+
+```bash
+thoth config get general.default_mode                      # expect "thinking" (from profile)
+THOTH_PROFILE=fast thoth config get general.default_mode   # expect "thinking"
+thoth --profile missing config get general.default_mode    # expect ConfigProfileError naming '--profile flag'
+thoth config get general.default_profile                   # expect "fast" (persisted)
+thoth --profile bar config get general.default_profile     # expect "fast" (NOT mutated by --profile)
+```
+
+### Shipped profile examples
+
+`thoth init` writes these example profiles into your config so you can try them immediately:
+
+```bash
+thoth --profile daily "what should I focus on today?"      # default_mode=thinking, default_project=daily-notes
+thoth --profile openai_deep "compare vector databases"     # deep_research, providers=["openai"]
+thoth --profile all_deep "compare vector databases"        # deep_research, parallel openai+perplexity
+thoth --profile deep_research "literature review of X"     # deep_research + a worked prompt_prefix
+```
+
+### Verifying `prompt_prefix` is applied
+
+```bash
+# With the shipped `deep_research` profile, the prompt that reaches the LLM is
+# prepended with: "Be thorough. Cite primary sources. Include counter-arguments."
+thoth --profile deep_research --verbose "research vector dbs"
+# Look for the assembled prompt in the verbose output.
+```

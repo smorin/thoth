@@ -29,6 +29,7 @@ ROOT_OPTION_LABELS: dict[str, str] = {
     "api_key_perplexity": "--api-key-perplexity",
     "api_key_mock": "--api-key-mock",
     "config_path": "--config",
+    "profile": "--profile",
     "combined": "--combined",
     "quiet": "--quiet",
     "no_metadata": "--no-metadata",
@@ -44,7 +45,7 @@ ROOT_OPTION_ORDER: tuple[str, ...] = tuple(ROOT_OPTION_LABELS)
 
 # The smallest cross-command default: a custom config file can be honored by
 # command handlers that load configuration. Other inherited options must opt in.
-DEFAULT_HONOR: frozenset[str] = frozenset({"config_path"})
+DEFAULT_HONOR: frozenset[str] = frozenset({"config_path", "profile"})
 NO_INHERITED_OPTIONS: frozenset[str] = frozenset()
 
 

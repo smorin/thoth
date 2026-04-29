@@ -6,6 +6,8 @@ from the pre-P16 imperative dispatch (cli.py:298-300).
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import click
 
 from thoth.cli_subcommands._option_policy import DEFAULT_HONOR, validate_inherited_options
@@ -37,7 +39,13 @@ def init(ctx: click.Context, as_json: bool, non_interactive: bool) -> None:
             )
         emit_json(get_init_data(non_interactive=True, config_path=config_path))
 
-    config_manager = ConfigManager()
-    config_manager.load_all_layers({"config_path": config_path})
+    profile = ctx.obj.get("profile") if ctx.obj else None
+    config_manager = ConfigManager(
+        Path(config_path).expanduser().resolve() if config_path else None
+    )
+    cli_args: dict[str, object] = {}
+    if profile:
+        cli_args["_profile"] = profile
+    config_manager.load_all_layers(cli_args)
     handler = CommandHandler(config_manager)
     handler.init_command(config_path=config_path)

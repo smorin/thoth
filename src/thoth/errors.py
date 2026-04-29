@@ -91,6 +91,27 @@ class APIQuotaError(ThothError):
         )
 
 
+class ConfigProfileError(ThothError):
+    """Configuration profile selection or validation failed."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        available_profiles: list[str] | None = None,
+        source: str | None = None,
+    ):
+        details = message if source is None else f"{message} (from {source})"
+        suggestion_parts = ["Run `thoth config profiles list` to see available profiles."]
+        if available_profiles:
+            suggestion_parts.append(f"Available profiles: {', '.join(available_profiles)}.")
+        super().__init__(
+            details,
+            " ".join(suggestion_parts),
+            exit_code=1,
+        )
+
+
 class ModeKindMismatchError(ThothError):
     """A mode's declared `kind` is incompatible with its model's required kind.
 

@@ -69,6 +69,7 @@ _RESEARCH_OPTIONS: list[tuple[tuple, dict]] = [
         {"help": "API key for Mock provider (not recommended; prefer env vars)"},
     ),
     (("--config", "-c", "config_path"), {"help": "Path to custom config file"}),
+    (("--profile", "profile"), {"help": "Configuration profile to apply"}),
     (
         ("--combined",),
         {"is_flag": True, "help": "Generate combined report from multiple providers"},

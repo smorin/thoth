@@ -14,8 +14,9 @@ This file tracks planned, active, and completed Thoth work. New projects are add
 
 Keep this summary list updated whenever a project is added, renamed, completed, dropped, or proceeded to a successor. The detailed project entry remains the source of truth; this summary is a quick navigation index.
 
-- [ ] P21 — Configuration Profile Resolution & Overlay
+- [x] P21 — Configuration Profile Resolution & Overlay
 - [ ] P21b — Configuration Profile CRUD Commands (depends on P21)
+- [ ] P21c — Config Filename Standardization (`thoth.config.toml` everywhere)
 - [ ] P22 — OpenAI — Immediate (Synchronous) Calls
 - [ ] P23 — Perplexity — Immediate (Synchronous) Calls
 - [ ] P24 — Gemini — Immediate (Synchronous) Calls
@@ -27,6 +28,7 @@ Keep this summary list updated whenever a project is added, renamed, completed, 
 - [ ] P30 — Claude Code Skills Support
 - [ ] P31 — Interactive Init Command
 - [ ] P32 — Interactive Prompt Refiner
+- [ ] P33 — Schema-Driven Config Defaults (typed source for `thoth init` and `ConfigSchema`)
 - [ ] P20 — Extended Real-API Workflow Coverage — Mirror Mock Contracts
 - [ ] P18 — Immediate vs Background — Explicit `kind`, Runtime Mismatch, Path Split, Streaming, Cancel
 - [ ] P17 — thoth-ergonomics-v1 Spec Round-Trip — Annotate Implementation Status
@@ -81,15 +83,15 @@ Existing projects may use older labels such as `**Primary spec**`, `**Plan**`, o
 
 ---
 
-## [ ] Project P21: Configuration Profile Resolution & Overlay
-**Goal**: Add CPP-style named configuration profile *resolution* — Thoth honors `--profile NAME`, `THOTH_PROFILE`, and `general.default_profile`, applies the selected `[profiles.<name>]` overlay between project config and env/CLI overrides, and hard-errors on missing profiles. Users manage profiles by hand-editing TOML in this project; CRUD commands ship in P21b.
+## [x] Project P21: Configuration Profile Resolution & Overlay
+**Goal**: Add CPP-style named configuration profile *resolution* — Thoth honors `--profile NAME`, `THOTH_PROFILE`, and `general.default_profile`, applies the selected `[profiles.<name>]` overlay between project config and env/CLI overrides, and hard-errors on missing profiles. Adds a `prompt_prefix` field with full hierarchy resolution (`profile.modes.X` > `profile` > `modes.X` > `general`; more specific replaces less specific), and ships example profiles via `thoth init` so users get a useful starter config out of the box.
 
 **References**
 - **Spec:** `docs/superpowers/specs/2026-04-28-p21-configuration-profiles-design.md`
 - **Plan:** `docs/superpowers/plans/2026-04-28-p21-configuration-profiles.md`
 - **Research:** `research/configuration_profile_pattern.v1.md`
 
-**Status**: Planned — requirements scoped; implementation tasks unchecked.
+**Status**: Complete — resolver/overlay/root-`--profile` plumbing, `prompt_prefix` 4-level hierarchy, runtime wiring through `run_research`, shipped example profiles in `thoth init`, and the permutation test matrix all landed on `feat/p21-config-profiles`.
 
 **Scope**
 - Add profile sections under `[profiles.<name>]`, where nested profile keys mirror normal config paths.
@@ -112,17 +114,24 @@ Existing projects may use older labels such as `**Primary spec**`, `**Plan**`, o
 ### Tests & Tasks
 - [x] [P21-TS01] Specify the resolver/overlay test suite (resolver, `ConfigManager` overlay, root-flag plumbing) before implementation.
 - [x] [P21-T01] Flesh out requirements for configuration profile resolution using `research/configuration_profile_pattern.v1.md`.
-- [ ] [P21-TS02] `tests/test_config_profiles.py`: `resolve_profile_selection` uses `--profile` before `THOTH_PROFILE`, `THOTH_PROFILE` before `general.default_profile`, and no profile when all are absent.
-- [ ] [P21-TS03] `tests/test_config_profiles.py`: project profile shadows user profile of the same name wholesale; same-named profile tables are not merged.
-- [ ] [P21-TS04] `tests/test_config_profiles.py`: missing selected profile raises `ConfigProfileError` and names the selection source for each of `--profile` flag, `THOTH_PROFILE`, and `general.default_profile` pointer (load-time error per REQ-CPP-103).
-- [ ] [P21-T02] Add `src/thoth/config_profiles.py` with `ProfileSelection`, `ProfileLayer`, profile catalog collection, selection resolution, profile layer resolution, and profile stripping helpers.
-- [ ] [P21-T03] Add `ConfigProfileError` to `src/thoth/errors.py`.
-- [ ] [P21-TS05] `tests/test_config_profiles.py`: `ConfigManager` leaves behavior unchanged when no profile is active, applies active profile values, lets env/CLI per-setting values beat profile values, records the actual project config path (`./thoth.toml` or `./.thoth/config.toml`) used by `_load_project_config`, preserves `general.default_profile` after profile splitting, and `THOTH_PROFILE` is NOT in `_get_env_overrides` (regression guard).
-- [ ] [P21-T04] Update `ConfigManager.load_all_layers` to record the actual project config path used by `_load_project_config`, load raw user/project profiles, resolve the active profile, expose `profile_selection`/`active_profile`/`profile_catalog`, and merge a `profile` layer between project and env.
-- [ ] [P21-TS06] `tests/test_config_profiles.py`: root `--profile` reaches `thoth config get` and `thoth config list` (via `config_cmd._load_manager`); unknown root profile errors before command output; runtime `--profile`/`THOTH_PROFILE` does NOT mutate the persisted `general.default_profile` (B20: persisted `fast` + `--profile bar` → `config get` returns `fast`, and `cm.profile_selection.name == "bar"` from source `flag`).
-- [ ] [P21-T05] Add root `--profile` to `_RESEARCH_OPTIONS`, inherited-option policy (`DEFAULT_HONOR` includes `"profile"`), root fallback parsing in `_extract_fallback_options`, and **every** existing config-loading call site, including `src/thoth/config_cmd.py` (`_load_manager` and each `get_config_*_data` entry that reads merged config) and `src/thoth/cli_subcommands/config.py` leaves that forward inherited profile.
-- [ ] [P21-T06] Update `README.md`, `manual_testing_instructions.md`, and `src/thoth/help.py` with hand-edit profile examples (TOML structure, selection precedence, worked invocations). Documentation examples must show profiles that change the default mode/project, run all available deep-research providers (`["openai", "perplexity"]` today, with a "future-ready" callout pointing at gemini), force one deep-research provider, default to an immediate mode, and store a future-ready interactive default profile. README explains that `--profile`/`THOTH_PROFILE` are read-only runtime inputs and never mutate `general.default_profile`.
-- [ ] [P21-T07] Update `PROJECTS.md` as implementation tasks land.
+- [x] [P21-TS02] `tests/test_config_profiles.py`: `resolve_profile_selection` uses `--profile` before `THOTH_PROFILE`, `THOTH_PROFILE` before `general.default_profile`, and no profile when all are absent.
+- [x] [P21-TS03] `tests/test_config_profiles.py`: project profile shadows user profile of the same name wholesale; same-named profile tables are not merged.
+- [x] [P21-TS04] `tests/test_config_profiles.py`: missing selected profile raises `ConfigProfileError` and names the selection source for each of `--profile` flag, `THOTH_PROFILE`, and `general.default_profile` pointer (load-time error per REQ-CPP-103).
+- [x] [P21-T02] Add `src/thoth/config_profiles.py` with `ProfileSelection`, `ProfileLayer`, profile catalog collection, selection resolution, profile layer resolution, and profile stripping helpers.
+- [x] [P21-T03] Add `ConfigProfileError` to `src/thoth/errors.py`.
+- [x] [P21-TS05] `tests/test_config_profiles.py`: `ConfigManager` leaves behavior unchanged when no profile is active, applies active profile values, lets env/CLI per-setting values beat profile values, records the actual project config path (`./thoth.toml` or `./.thoth/config.toml`) used by `_load_project_config`, preserves `general.default_profile` after profile splitting, and `THOTH_PROFILE` is NOT in `_get_env_overrides` (regression guard).
+- [x] [P21-T04] Update `ConfigManager.load_all_layers` to record the actual project config path used by `_load_project_config`, load raw user/project profiles, resolve the active profile, expose `profile_selection`/`active_profile`/`profile_catalog`, and merge a `profile` layer between project and env.
+- [x] [P21-TS06] `tests/test_config_profiles.py`: root `--profile` reaches `thoth config get` and `thoth config list` (via `config_cmd._load_manager`); unknown root profile errors before command output; runtime `--profile`/`THOTH_PROFILE` does NOT mutate the persisted `general.default_profile` (B20: persisted `fast` + `--profile bar` → `config get` returns `fast`, and `cm.profile_selection.name == "bar"` from source `flag`).
+- [x] [P21-T05] Add root `--profile` to `_RESEARCH_OPTIONS`, inherited-option policy (`DEFAULT_HONOR` includes `"profile"`), root fallback parsing in `_extract_fallback_options`, and **every** existing config-loading call site, including `src/thoth/config_cmd.py` (`_load_manager` and each `get_config_*_data` entry that reads merged config) and `src/thoth/cli_subcommands/config.py` leaves that forward inherited profile.
+- [x] [P21-T06] Update `README.md`, `manual_testing_instructions.md`, and `src/thoth/help.py` with hand-edit profile examples (TOML structure, selection precedence, worked invocations). Documentation examples must show profiles that change the default mode/project, run all available deep-research providers (`["openai", "perplexity"]` today, with a "future-ready" callout pointing at gemini), force one deep-research provider, default to an immediate mode, and store a future-ready interactive default profile. README explains that `--profile`/`THOTH_PROFILE` are read-only runtime inputs and never mutate `general.default_profile`.
+- [x] [P21-T07] Update `PROJECTS.md` as implementation tasks land.
+- [x] [P21-TS07] `tests/test_config_prompt_prefix.py`: hierarchy resolver — resolves `[profiles.X.modes.M]` > `[profiles.X]` > `[modes.M]` > `[general]` > `None`. More-specific REPLACES less-specific (no concat). Covers each tier, missing-key fallthrough, and empty-string handling.
+- [x] [P21-TS08] `tests/test_config_profiles_permutations.py`: permutation matrix — `{flag, env, config-pointer, none}` × `{user-tier, project-tier, both}` × `{prefix-set, prefix-unset}` × `{deep_research, thinking, default}`. Each permutation gets a real TOML config fixture; assertions cover `cm.profile_selection`, the resolved `prompt_prefix`, and the final mode_config. Includes the shipped `init` examples.
+- [x] [P21-TS09] `tests/test_run_prompt_prefix.py`: integration — when a profile is active and a `prompt_prefix` resolves, the assembled prompt that reaches the provider is `f"{prefix}\n\n{user_prompt}"`. The mode's `system_prompt` is unchanged. When no prefix resolves, the prompt is unchanged.
+- [x] [P21-T08] Add `resolve_prompt_prefix(config, mode)` helper to `src/thoth/config_profiles.py` implementing the 4-level hierarchy.
+- [x] [P21-T09] Wire `resolve_prompt_prefix` into `src/thoth/run.py:run_research` so the resolved prefix is prepended to the user prompt once at run entry; `operation.prompt` records the assembled prompt for resume parity.
+- [x] [P21-T10] Update `src/thoth/commands.py:init_command` to ship example profiles in the generated `~/.config/thoth/config.toml`: `daily` (thinking + default project), `quick` (thinking), `openai_deep` (single-provider deep_research), `all_deep` (parallel openai+perplexity), `interactive` (interactive mode), and `deep_research` (deep_research with a worked `prompt_prefix` example demonstrating Q3a hierarchy).
+- [x] [P21-T11] Document the `prompt_prefix` field and its hierarchy in `README.md` and `manual_testing_instructions.md`. Worked example: `[general] prompt_prefix`, `[modes.deep_research] prompt_prefix`, `[profiles.X] prompt_prefix`, `[profiles.X.modes.M] prompt_prefix` — show resolution outcome for each combination.
 
 ### Automated Verification
 - `uv run pytest tests/test_config_profiles.py tests/test_config_cmd.py -v` passes.
@@ -173,6 +182,68 @@ Existing projects may use older labels such as `**Primary spec**`, `**Plan**`, o
 
 ### Automated Verification
 - `uv run pytest tests/test_config_profiles_cmd.py tests/test_json_envelopes.py tests/test_ci_lint_rules.py -v` passes.
+- `just check` passes.
+- `./thoth_test -r --skip-interactive -q` passes.
+- `just test-lint` passes.
+- `just test-typecheck` passes.
+- `git diff --check` passes.
+
+---
+
+## [ ] Project P21c: Config Filename Standardization
+**Goal**: Standardize Thoth's config filename to `thoth.config.toml` so the filename alone uniquely identifies a Thoth config file. Three canonical locations: one user-tier (`$XDG_CONFIG_HOME/thoth/thoth.config.toml`) and two project-tier (`./thoth.config.toml` or `./.thoth.config.toml`, mutually exclusive). Clean break — legacy filenames (`config.toml` in user dir, `thoth.toml`, `.thoth/config.toml`) are no longer read; their presence is detected only to enrich "config not found" error messages with rename guidance.
+
+**References**
+- **Spec:** `docs/superpowers/specs/2026-04-28-p21c-config-filename-standardization-design.md`
+- **Plan:** `docs/superpowers/plans/2026-04-28-p21c-config-filename-standardization.md`
+- **Related:** P21 (`docs/superpowers/specs/2026-04-28-p21-configuration-profiles-design.md`), P21b (`docs/superpowers/specs/2026-04-28-p21b-configuration-profiles-crud-design.md`) — both reference legacy filenames in their specs/plans/tests; P21c either lands first or sweeps through them.
+
+**Status**: Spec + plan drafted; decisions locked (filename, no-legacy clean break, error on project-root ambiguity, `init --user` in scope, `--hidden` flag spelling, `--force` applies to `--user`). Awaiting greenlight to begin implementation (Task 1 = failing test scenario matrix).
+
+**Scope**
+- Canonical filename is `thoth.config.toml`. Three accepted locations:
+  - User: `$XDG_CONFIG_HOME/thoth/thoth.config.toml`
+  - Project root, visible: `./thoth.config.toml`
+  - Project root, dotfile: `./.thoth.config.toml`
+- The two project-tier filenames are mutually exclusive. Both present → `ConfigAmbiguousError` with a "delete one before continuing" message. No precedence is applied.
+- Legacy filenames (`config.toml` in user XDG dir, `./thoth.toml`, `./.thoth/config.toml`) are **not loaded**. The `.thoth/` directory form is retired for config purposes.
+- A "config not found" error path (and only that path) checks for legacy files at the legacy paths and, if any are present, names them in the suggestion text with the rename target. The legacy-detection helper is never called on the happy path.
+- `thoth init` writes `./thoth.config.toml` by default. A flag (`--hidden` or similar — final spelling decided in plan) writes `./.thoth.config.toml` instead. `thoth init --user` writes `$XDG_CONFIG_HOME/thoth/thoth.config.toml`. `--user` and the dotfile flag are mutually exclusive. `--force` semantics unchanged.
+- Sweep README, `manual_testing_instructions.md`, help text, error messages, and the P21/P21b spec/plan docs to use the canonical filename.
+
+**Out of Scope**
+- A `thoth config migrate` CLI command that renames files in place.
+- Any deprecation-window or fallback read of legacy filenames. Legacy reads are gone, full stop.
+- Changes to file format, file structure, or the `[profiles.<name>]` overlay semantics.
+- A `THOTH_CONFIG_FILENAME` env var to override the filename.
+- Project marker semantics — presence of either canonical project path still means "this is a Thoth project."
+- Picking precedence between `./thoth.config.toml` and `./.thoth.config.toml`. There is none; both present → error.
+- A directory-form project config (e.g. `./.thoth/thoth.config.toml`).
+
+**Sequencing preference**: P21c → P21 → P21b. Landing P21c before P21 implementation lets P21's spec/plan/tests be written against the canonical names from the start. If P21 is mid-implementation when P21c is approved, fall back to a P21 → P21c → P21b ordering and accept the small sweep through P21's just-landed strings.
+
+**Open questions for the plan** (small items, do not block plan write-up)
+- Final spelling for the dotfile-form `init` flag: `--hidden` (recommended), `--dotfile`, or `--dot`.
+- Confirm `--force` overwrite semantics extend to `init --user` too.
+
+### Tests & Tasks
+- [ ] [P21c-TS01] Specify the test suite — canonical resolution at all three locations, ambiguity error on both project-root files, "config not found" error message includes any detected legacy paths, `init` flag combinations — before implementation.
+- [x] [P21c-T01] Write the implementation plan at `docs/superpowers/plans/2026-04-28-p21c-config-filename-standardization.md`, resolving the small open questions from the spec.
+- [ ] [P21c-TS02] `tests/test_config_filename.py` (or `tests/test_config.py`): user-tier loads `$XDG_CONFIG_HOME/thoth/thoth.config.toml` when present; raises `ConfigNotFoundError` (or treats as missing per existing optional-config behavior) when only the legacy `config.toml` exists, and the error message names the legacy file with the rename target.
+- [ ] [P21c-TS03] Project tier: `./thoth.config.toml` only → loads. `./.thoth.config.toml` only → loads. Both present → `ConfigAmbiguousError` with a "delete one before continuing" message naming both files. Neither present → returns empty/no-project-config (current optional-project-config semantics).
+- [ ] [P21c-TS04] Legacy detection helper is invoked only on the "config not found" error path. Regression guard: a successful canonical load asserts the legacy detector was not called.
+- [ ] [P21c-TS05] `thoth init` writes `./thoth.config.toml` by default. `thoth init --hidden` (or chosen spelling) writes `./.thoth.config.toml`. `thoth init --user` writes the user-tier canonical path. `--user` and `--hidden` are mutually exclusive. None of the three overwrite an existing canonical file without `--force`.
+- [ ] [P21c-T02] Update `src/thoth/paths.py`: `user_config_file()` returns the canonical user path. Do not add a `legacy_user_config_file()` helper; legacy paths live in the detection helper (T03) and nowhere else.
+- [ ] [P21c-T03] Update `src/thoth/config.py`: `project_config_paths = ["./thoth.config.toml", "./.thoth.config.toml"]`; `_load_project_config_with_path` raises `ConfigAmbiguousError` if both exist; user-tier load skips legacy filenames; add `detect_legacy_paths()` helper used only by the not-found error formatter.
+- [ ] [P21c-T04] Update `thoth init` (`src/thoth/cli_subcommands/...`): add `--user` and the dotfile flag, enforce mutual exclusion, respect existing `--force` semantics.
+- [ ] [P21c-T05] Add `ConfigNotFoundError` and `ConfigAmbiguousError` to `src/thoth/errors.py` (P21's `ConfigProfileError` is unchanged).
+- [ ] [P21c-T06] Sweep error messages, help text, and CLI strings (`src/thoth/help.py`, `src/thoth/errors.py`, `src/thoth/cli_subcommands/config.py`, `src/thoth/config.py`, etc.) to use the canonical filename.
+- [ ] [P21c-T07] Update `README.md` (config section, install/setup walkthrough, short "Migrating from earlier Thoth versions" note giving the rename mapping) and `manual_testing_instructions.md` (every smoke test that names a config path).
+- [ ] [P21c-T08] Update P21 and P21b spec/plan docs to use the canonical filename, or add a "see P21c" pointer per the chosen sequencing.
+- [ ] [P21c-T09] Update `PROJECTS.md` as implementation tasks land.
+
+### Automated Verification
+- `uv run pytest tests/test_config_filename.py tests/test_config.py -v` passes (test file name finalized in plan).
 - `just check` passes.
 - `./thoth_test -r --skip-interactive -q` passes.
 - `just test-lint` passes.
@@ -329,6 +400,34 @@ Existing projects may use older labels such as `**Primary spec**`, `**Plan**`, o
 - [ ] [P32-T01] Flesh out requirements for the interactive prompt refiner.
 - [ ] [P32-T02] Implement an interactive workflow that refines a research prompt before submission.
 - [ ] [P32-T03] Keep the refiner fast and avoid full deep research during refinement.
+
+---
+
+## [ ] Project P33: Schema-Driven Config Defaults
+**Goal**: Drive every default config value — including `thoth init`'s starter document, `ConfigSchema.get_defaults()`, and `BUILTIN_MODES` — from a single typed source (Pydantic model or `@dataclass`-based schema). Eliminate the duplication between the runtime defaults and the init-template, and gain typechecker coverage for every key/value the project ships.
+
+**Status**: Placeholder — requirements still need to be fleshed out before this can be worked on.
+
+**Motivation (P21 follow-up)**: P21's tomlkit refactor (option 2 in the P21 retrospective) made the init writer structurally sound but didn't unify the two sources of "default config truth": `ConfigSchema.get_defaults()` (used by `ConfigManager.load_all_layers`) and `_build_starter_document()` (used by `thoth init`). A typo like `prompy_prefix` in the init template still slips past lint/typecheck today. Schema-driven generation closes that gap.
+
+**Scope (rough)**
+- Define a typed `StarterConfig` schema (Pydantic v2 or dataclasses) covering general/paths/execution/output/providers/profiles.
+- Refactor `ConfigSchema.get_defaults()` to derive its dict from the schema.
+- Refactor `_build_starter_document()` (and `_build_starter_profiles`) to serialize the schema via tomlkit instead of constructing tables by hand.
+- Add a regression test asserting `init`'s generated config round-trips through the schema with no validation errors.
+- Document migration in `README.md` if any default values change as a side-effect.
+
+**Out of Scope**
+- Changing the on-disk TOML schema or any default values.
+- Replacing `tomlkit` with another serializer.
+- Touching `BUILTIN_MODES` (it's mode-specific data, not config defaults).
+
+### Tests & Tasks
+- [ ] [P33-TS01] Design tests for schema-driven config generation before implementation.
+- [ ] [P33-T01] Flesh out requirements: pick the schema library (Pydantic v2 vs typed dataclasses), enumerate every key currently in `ConfigSchema.get_defaults()` and `_build_starter_document()`, and document the migration plan.
+- [ ] [P33-T02] Implement the typed `StarterConfig` schema and a serializer that emits tomlkit documents.
+- [ ] [P33-T03] Replace `ConfigSchema.get_defaults()` and `_build_starter_document()` to derive from the schema. Keep public API stable.
+- [ ] [P33-T04] Round-trip test: `init` output parses back to the schema with zero validation errors and matches `ConfigSchema.get_defaults()` byte-for-byte (after profile-stripping).
 
 ---
 

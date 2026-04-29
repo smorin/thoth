@@ -15,6 +15,8 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+import tomlkit
+import tomlkit.items
 from rich import box
 from rich.console import Console
 from rich.table import Table
@@ -29,6 +31,132 @@ from thoth.providers import create_provider, resolve_api_key
 from thoth.run import run_research
 
 console = Console()
+
+
+def _build_profile_section(body: dict[str, Any]) -> tomlkit.items.Table:
+    """Build a `[profiles.<name>]` table containing nested sub-tables.
+
+    `body` is a flat dict whose keys are TOML section names under the profile
+    (e.g., ``"general"``, ``"modes.deep_research"``) and whose values are
+    dicts of leaf keys.
+
+    Sibling sections sharing a prefix (e.g., ``"modes.deep_research"`` and
+    ``"modes.thinking"``) are merged under the same intermediate table; the
+    helper reuses an existing intermediate when present rather than
+    overwriting it (C14).
+    """
+    profile_table = tomlkit.table()
+    for section_path, leaves in body.items():
+        section = tomlkit.table()
+        for key, value in leaves.items():
+            section[key] = value
+        # Resolve nested paths like "modes.deep_research" by walking parts.
+        # Reuse an existing intermediate table when it's already present
+        # (so multiple sibling sections under the same prefix coexist).
+        parts = section_path.split(".")
+        cursor: Any = profile_table
+        for part in parts[:-1]:
+            existing = cursor.get(part) if hasattr(cursor, "get") else None
+            if hasattr(existing, "keys"):
+                cursor = existing
+            else:
+                child = tomlkit.table()
+                cursor[part] = child
+                cursor = child
+        cursor[parts[-1]] = section
+    return profile_table
+
+
+def _build_starter_profiles() -> tomlkit.items.Table:
+    """Build the `[profiles]` super-table shipped by `thoth init`."""
+    profiles = tomlkit.table()
+
+    profiles["daily"] = _build_profile_section(
+        {"general": {"default_mode": "thinking", "default_project": "daily-notes"}},
+    )
+    profiles["quick"] = _build_profile_section({"general": {"default_mode": "thinking"}})
+    profiles["openai_deep"] = _build_profile_section(
+        {
+            "general": {"default_mode": "deep_research"},
+            "modes.deep_research": {"providers": ["openai"], "parallel": False},
+        },
+    )
+    profiles["all_deep"] = _build_profile_section(
+        {
+            "general": {"default_mode": "deep_research"},
+            "modes.deep_research": {
+                "providers": ["openai", "perplexity"],
+                "parallel": True,
+            },
+        },
+    )
+    profiles["interactive"] = _build_profile_section({"general": {"default_mode": "interactive"}})
+
+    profiles["deep_research"] = _build_profile_section(
+        {
+            "general": {
+                "default_mode": "deep_research",
+                "prompt_prefix": "Be thorough. Cite primary sources where possible.",
+            },
+            "modes.deep_research": {
+                "providers": ["openai", "perplexity"],
+                "parallel": True,
+                "prompt_prefix": ("Be thorough. Cite primary sources. Include counter-arguments."),
+            },
+        },
+    )
+    return profiles
+
+
+def _build_starter_document() -> tomlkit.TOMLDocument:
+    """Construct the full `~/.config/thoth/config.toml` shipped by `thoth init`."""
+    doc = tomlkit.document()
+    doc.add(tomlkit.comment("Thoth Configuration File"))
+    doc["version"] = CONFIG_VERSION
+
+    general = tomlkit.table()
+    general["default_project"] = ""
+    general["default_mode"] = "default"
+    doc["general"] = general
+
+    paths = tomlkit.table()
+    paths["base_output_dir"] = "./research-outputs"
+    # Resolved against the user's checkpoint dir at init time.
+    from thoth.paths import user_checkpoints_dir
+
+    paths["checkpoint_dir"] = str(user_checkpoints_dir())
+    doc["paths"] = paths
+
+    execution = tomlkit.table()
+    execution["poll_interval"] = 30
+    execution["max_wait"] = 30
+    execution["parallel_providers"] = True
+    execution["retry_attempts"] = 3
+    execution["auto_input"] = True
+    doc["execution"] = execution
+
+    output = tomlkit.table()
+    output["combine_reports"] = False
+    output["format"] = "markdown"
+    output["include_metadata"] = True
+    output["timestamp_format"] = "%Y-%m-%d_%H%M%S"
+    doc["output"] = output
+
+    providers = tomlkit.table()
+    openai_t = tomlkit.table()
+    openai_t["api_key"] = "${OPENAI_API_KEY}"
+    providers["openai"] = openai_t
+    perplexity_t = tomlkit.table()
+    perplexity_t["api_key"] = "${PERPLEXITY_API_KEY}"
+    providers["perplexity"] = perplexity_t
+    doc["providers"] = providers
+
+    doc.add(tomlkit.nl())
+    doc.add(tomlkit.comment("Configuration profiles (P21). Activate with --profile NAME,"))
+    doc.add(tomlkit.comment("THOTH_PROFILE=NAME, or general.default_profile."))
+    doc.add(tomlkit.comment("Profile values REPLACE top-level values when the profile is active."))
+    doc["profiles"] = _build_starter_profiles()
+    return doc
 
 
 class CommandHandler:
@@ -54,7 +182,7 @@ class CommandHandler:
             )
         return self.commands[command](**params)
 
-    def init_command(self, config_path: Path | None = None, **params):
+    def init_command(self, config_path: str | Path | None = None, **params):
         """Initialize Thoth configuration"""
         console.print("[bold]Welcome to Thoth Research Assistant Setup![/bold]\n")
 
@@ -65,6 +193,8 @@ class CommandHandler:
 
         if config_path is None:
             config_path = user_config_file()
+        else:
+            config_path = Path(config_path).expanduser()
         console.print(f"Configuration file will be created at: {config_path}\n")
 
         config_path.parent.mkdir(parents=True, exist_ok=True)
@@ -72,34 +202,8 @@ class CommandHandler:
         console.print("[yellow]Interactive setup wizard not yet implemented.[/yellow]")
         console.print("Creating default configuration...")
 
-        config_manager = ConfigManager()
-        config_manager.load_all_layers()
-        config_data = config_manager.get_effective_config()
-
-        with open(config_path, "w") as f:
-            f.write("# Thoth Configuration File\n")
-            f.write(f'version = "{CONFIG_VERSION}"\n\n')
-            f.write("[general]\n")
-            f.write('default_project = ""\n')
-            f.write('default_mode = "default"\n\n')
-            f.write("[paths]\n")
-            f.write('base_output_dir = "./research-outputs"\n')
-            f.write(f'checkpoint_dir = "{config_data["paths"]["checkpoint_dir"]}"\n\n')
-            f.write("[execution]\n")
-            f.write("poll_interval = 30\n")
-            f.write("max_wait = 30\n")
-            f.write("parallel_providers = true\n")
-            f.write("retry_attempts = 3\n")
-            f.write("auto_input = true\n\n")
-            f.write("[output]\n")
-            f.write("combine_reports = false\n")
-            f.write('format = "markdown"\n')
-            f.write("include_metadata = true\n")
-            f.write('timestamp_format = "%Y-%m-%d_%H%M%S"\n\n')
-            f.write("[providers.openai]\n")
-            f.write('api_key = "${OPENAI_API_KEY}"\n\n')
-            f.write("[providers.perplexity]\n")
-            f.write('api_key = "${PERPLEXITY_API_KEY}"\n')
+        doc = _build_starter_document()
+        config_path.write_text(tomlkit.dumps(doc))
 
         console.print(f"\n[green]✓[/green] Configuration saved to {config_path}")
         console.print('\nYou can now run: thoth deep_research "your prompt"')
@@ -139,6 +243,7 @@ class CommandHandler:
                 quiet=params.get("quiet", False),
                 no_metadata=params.get("no_metadata", False),
                 timeout_override=params.get("timeout_override"),
+                profile=params.get("profile"),
             )
         )
 
@@ -167,7 +272,7 @@ def get_init_data(*, non_interactive: bool, config_path: str | None) -> dict:
     created = not target.exists()
     if created:
         target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text('version = "2.0"\n')
+        target.write_text(tomlkit.dumps(_build_starter_document()))
     return {
         "config_path": str(target),
         "created": created,
@@ -415,6 +520,7 @@ async def providers_command(
     no_cache: bool = False,
     cli_api_keys: dict[str, str | None] | None = None,
     timeout_override: float | None = None,
+    profile: str | None = None,
 ):
     """Show provider information and available models"""
     if not show_models and not show_list and not show_keys:
@@ -443,7 +549,7 @@ async def providers_command(
         console.print("  $ thoth providers models --no-cache")
         return
 
-    config = get_config()
+    config = get_config(profile=profile)
     cli_api_keys = cli_api_keys or {}
 
     all_providers = ["openai", "perplexity", "mock"]

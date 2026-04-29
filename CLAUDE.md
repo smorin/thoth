@@ -80,8 +80,43 @@ Two consecutive failures of the same test = real bug. One failure = noise.
   often; keep changes uncommitted and run targeted tools until green.
 - **Exception**: for a short-lived intermediate WIP commit you plan to
   squash, `LEFTHOOK=0` is acceptable IF you have already run the equivalent
-  checks manually (`just check` + the targeted tests you care about). The
-  **last commit before `git push`** MUST go through the full hook set.
+  checks manually (`just check` + `uv run ruff format --check src/ tests/`
+  + the targeted tests you care about). The **last commit before
+  `git push`** MUST go through the full hook set.
+- ⚠️ `just check` does NOT run `ruff format --check`. If you bypass
+  lefthook, you must also run `ruff format --check` (or `ruff format`)
+  yourself, otherwise CI's format gate will catch it.
+
+### Periodic full-gate runs (don't save it all for the end)
+
+When working through a multi-commit task, do **not** save the full
+lefthook-equivalent gate for the very last commit. Run it periodically
+as you go, scaled to commit complexity:
+
+- **Complex / wide-blast-radius commit** (touches many files, refactors
+  core modules, changes runtime behavior, modifies CLI surface): run
+  the full gate **immediately** after that commit, before starting
+  the next one.
+- **Simple commits** (test additions, doc tweaks, small bug fixes):
+  batch at most **2–3 commits** between full-gate runs. Never more
+  than "a few."
+- **Always**: the last commit before `git push` goes through the
+  full hook set (see above).
+
+The goal is to catch latent format / lint / type / test errors while
+the working set is still small enough to fix cheaply, instead of
+letting them compound until CI fails after push. Concretely, run:
+
+```bash
+uv run ruff check src/ tests/
+uv run ruff format --check src/ tests/
+uv run ty check src/
+uv run pytest -q
+./thoth_test -r --skip-interactive -q
+```
+
+…or equivalently, do a normal `git commit` (no `LEFTHOOK=0`) which
+runs all of the above via lefthook.
 
 ## Code Quality Assurance Workflow (final pre-commit gate)
 

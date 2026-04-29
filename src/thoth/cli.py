@@ -111,6 +111,7 @@ def _version_conflicts(ctx: click.Context, opts: dict) -> list[str]:
         "api_key_perplexity": "--api-key-perplexity",
         "api_key_mock": "--api-key-mock",
         "config_path": "--config",
+        "profile": "--profile",
         "combined": "--combined",
         "quiet": "--quiet",
         "no_metadata": "--no-metadata",
@@ -145,7 +146,22 @@ def _prompt_max_bytes() -> int:
     return max_bytes
 
 
-def _resolve_mode_and_prompt(args: list[str], opts: dict) -> tuple[str, str | None]:
+def _config_default_mode(config: ConfigManager) -> str:
+    raw = config.get("general.default_mode", "default")
+    return str(raw) if raw else "default"
+
+
+def _config_default_project(config: ConfigManager) -> str | None:
+    raw = config.get("general.default_project")
+    return str(raw) if raw else None
+
+
+def _resolve_mode_and_prompt(
+    args: list[str],
+    opts: dict,
+    *,
+    default_mode: str = "default",
+) -> tuple[str, str | None]:
     mode_opt = opts.get("mode_opt")
     prompt_opt = opts.get("prompt_opt")
     prompt_file = opts.get("prompt_file")
@@ -164,10 +180,10 @@ def _resolve_mode_and_prompt(args: list[str], opts: dict) -> tuple[str, str | No
             console.print(f"[red]Error:[/red] Unknown mode: {first}")
             sys.exit(1)
         else:
-            mode = mode_opt or "default"
+            mode = mode_opt or default_mode
             prompt = " ".join(args)
     else:
-        mode = mode_opt or "default"
+        mode = mode_opt or default_mode
         prompt = prompt_opt
 
     if prompt_file:
@@ -197,6 +213,7 @@ def _extract_fallback_options(args: list[str], opts: dict) -> tuple[list[str], d
         "--api-key-mock": "api_key_mock",
         "--config": "config_path",
         "-c": "config_path",
+        "--profile": "profile",
         "--timeout": "timeout",
         "-T": "timeout",
         "--out": "out",
@@ -339,6 +356,7 @@ def _enter_interactive_from_options(
             quiet=bool(opts.get("quiet")),
             no_metadata=bool(opts.get("no_metadata")),
             timeout=opts.get("timeout"),
+            profile=opts.get("profile"),
         )
     )
 
@@ -355,7 +373,12 @@ def _dispatch_click_fallback(
     _apply_config_path(opts.get("config_path"))
 
     if opts.get("interactive"):
-        mode, prompt = _resolve_mode_and_prompt(args, opts)
+        config = _thoth_config.get_config(profile=opts.get("profile"))
+        mode, prompt = _resolve_mode_and_prompt(
+            args,
+            opts,
+            default_mode=_config_default_mode(config),
+        )
         _enter_interactive_from_options(mode=mode, prompt=prompt, opts=opts)
         return
 
@@ -363,14 +386,22 @@ def _dispatch_click_fallback(
         click.echo(ctx.get_help())
         ctx.exit(0)
 
-    mode, prompt = _resolve_mode_and_prompt(args, opts)
+    config = _thoth_config.get_config(profile=opts.get("profile"))
+    mode, prompt = _resolve_mode_and_prompt(
+        args,
+        opts,
+        default_mode=_config_default_mode(config),
+    )
     if not prompt:
         raise click.BadParameter("Prompt cannot be empty")
 
     model_override = None
     if opts.get("pick_model"):
-        config = _thoth_config.get_config()
         model_override = _pick_model_override(mode, config)
+
+    project = opts.get("project")
+    if project is None:
+        project = _config_default_project(config)
 
     cli_api_keys = {
         "openai": opts.get("api_key_openai"),
@@ -381,7 +412,7 @@ def _dispatch_click_fallback(
         mode=mode,
         prompt=prompt,
         async_mode=bool(opts.get("async_mode")),
-        project=opts.get("project"),
+        project=project,
         output_dir=opts.get("output_dir"),
         provider=opts.get("provider"),
         input_file=opts.get("input_file"),
@@ -396,6 +427,7 @@ def _dispatch_click_fallback(
         ctx_obj=None,
         out=tuple(opts.get("out") or ()),
         append=bool(opts.get("append")),
+        profile=opts.get("profile"),
     )
 
 
@@ -437,6 +469,7 @@ def _run_research_default(
     ctx_obj=None,
     out: tuple[str, ...] = (),
     append: bool = False,
+    profile: str | None = None,
 ) -> None:
     """Execute a research run with the given mode and prompt.
 
@@ -467,6 +500,7 @@ def _run_research_default(
         model_override=model_override,
         out_specs=tuple(out or ()),
         append=append,
+        profile=profile,
     )
     _run_maybe_async(_result)
 
@@ -496,6 +530,7 @@ def cli(
     api_key_perplexity,
     api_key_mock,
     config_path,
+    profile,
     combined,
     quiet,
     no_metadata,
@@ -532,6 +567,7 @@ def cli(
     ctx.obj["api_key_perplexity"] = api_key_perplexity
     ctx.obj["api_key_mock"] = api_key_mock
     ctx.obj["config_path"] = config_path
+    ctx.obj["profile"] = profile
     ctx.obj["combined"] = combined
     ctx.obj["quiet"] = quiet
     ctx.obj["no_metadata"] = no_metadata

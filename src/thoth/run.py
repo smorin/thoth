@@ -187,6 +187,7 @@ async def run_research(
     model_override: str | None = None,
     out_specs: tuple[str, ...] = (),
     append: bool = False,
+    profile: str | None = None,
 ):
     """Execute research operation.
 
@@ -196,7 +197,7 @@ async def run_research(
     threading ctx through every test case.
     """
 
-    config = get_config()
+    config = get_config(profile=profile)
     if ctx is None:
         ctx = AppContext(config=config, verbose=verbose)
     console = ctx.console  # noqa: F811 — shadow module-level console with ctx's
@@ -211,6 +212,10 @@ async def run_research(
 
     if not mode or not prompt:
         raise click.BadParameter("Both mode and prompt are required for research operations")
+
+    from thoth.config_profiles import assemble_prompt_with_prefix
+
+    prompt = assemble_prompt_with_prefix(config, mode, prompt)
 
     operation_id = generate_operation_id()
 

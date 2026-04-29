@@ -109,14 +109,14 @@ def providers_list_cmd(ctx: click.Context, filter_provider: str | None, as_json:
     validate_inherited_options(ctx, "providers list", _PROVIDERS_LIST_HONOR)
 
     from thoth import commands as _commands
-    from thoth.config import ConfigManager
+    from thoth.config import get_config
     from thoth.json_output import emit_error, emit_json
 
     effective_provider = pick_value(filter_provider, ctx, "provider")
+    profile = inherited_value(ctx, "profile")
 
     if as_json:
-        config_manager = ConfigManager()
-        config_manager.load_all_layers({})
+        config_manager = get_config(profile=profile)
         data = _commands.get_providers_list_data(config_manager, filter_provider=effective_provider)
         if data.get("unknown"):
             emit_error(
@@ -135,6 +135,7 @@ def providers_list_cmd(ctx: click.Context, filter_provider: str | None, as_json:
                     show_list=True,
                     filter_provider=effective_provider,
                     cli_api_keys=keys,
+                    profile=profile,
                 )
             )
         )
@@ -143,6 +144,7 @@ def providers_list_cmd(ctx: click.Context, filter_provider: str | None, as_json:
             _commands.providers_command(
                 show_list=True,
                 filter_provider=effective_provider,
+                profile=profile,
             )
         )
     )
@@ -178,14 +180,14 @@ def providers_models_cmd(
             param_hint="--refresh-cache / --no-cache",
         )
     from thoth import commands as _commands
-    from thoth.config import ConfigManager
+    from thoth.config import get_config
     from thoth.json_output import emit_json
 
     effective_provider = pick_value(filter_provider, ctx, "provider")
+    profile = inherited_value(ctx, "profile")
 
     if as_json:
-        config_manager = ConfigManager()
-        config_manager.load_all_layers({})
+        config_manager = get_config(profile=profile)
         emit_json(
             _commands.get_providers_models_data(config_manager, filter_provider=effective_provider)
         )
@@ -202,6 +204,7 @@ def providers_models_cmd(
                     no_cache=no_cache,
                     cli_api_keys=keys,
                     timeout_override=timeout,
+                    profile=profile,
                 )
             )
         )
@@ -214,6 +217,7 @@ def providers_models_cmd(
                     refresh_cache=refresh_cache,
                     no_cache=no_cache,
                     cli_api_keys=keys,
+                    profile=profile,
                 )
             )
         )
@@ -224,6 +228,7 @@ def providers_models_cmd(
                 filter_provider=effective_provider,
                 refresh_cache=refresh_cache,
                 no_cache=no_cache,
+                profile=profile,
             )
         )
     )
@@ -245,14 +250,14 @@ def providers_check_cmd(ctx: click.Context, filter_provider: str | None, as_json
     validate_inherited_options(ctx, "providers check", _PROVIDERS_CHECK_HONOR)
 
     from thoth import commands as _commands
-    from thoth.config import ConfigManager
+    from thoth.config import get_config
     from thoth.json_output import emit_json
 
     effective_provider = pick_value(filter_provider, ctx, "provider")
+    profile = inherited_value(ctx, "profile")
 
     if as_json:
-        config_manager = ConfigManager()
-        config_manager.load_all_layers({})
+        config_manager = get_config(profile=profile)
         # Honor `--provider` by narrowing the providers view before checking.
         if effective_provider is not None:
             full = config_manager.data["providers"]
@@ -269,6 +274,7 @@ def providers_check_cmd(ctx: click.Context, filter_provider: str | None, as_json
                     show_keys=True,
                     filter_provider=effective_provider,
                     cli_api_keys=keys,
+                    profile=profile,
                 )
             )
         )
@@ -277,6 +283,7 @@ def providers_check_cmd(ctx: click.Context, filter_provider: str | None, as_json
             _commands.providers_command(
                 show_keys=True,
                 filter_provider=effective_provider,
+                profile=profile,
             )
         )
     )
