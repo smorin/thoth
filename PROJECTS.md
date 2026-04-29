@@ -19,7 +19,7 @@ Keep this summary list updated whenever a project is added, renamed, completed, 
 
 - [x] P21 — Configuration Profile Resolution & Overlay
 - [ ] P21b — Configuration Profile CRUD Commands (depends on P21)
-- [ ] P21c — Config Filename Standardization (`thoth.config.toml` everywhere)
+- [x] P21c — Config Filename Standardization (`thoth.config.toml` everywhere)
 - [ ] P22 — OpenAI — Immediate (Synchronous) Calls
 - [ ] P23 — Perplexity — Immediate (Synchronous) Calls
 - [ ] P24 — Gemini — Immediate (Synchronous) Calls
@@ -193,7 +193,7 @@ Existing projects may use older labels such as `**Primary spec**`, `**Plan**`, o
 
 ---
 
-## [ ] Project P21c: Config Filename Standardization
+## [x] Project P21c: Config Filename Standardization
 **Goal**: Standardize Thoth's config filename to `thoth.config.toml` so the filename alone uniquely identifies a Thoth config file. Three canonical locations: one user-tier (`$XDG_CONFIG_HOME/thoth/thoth.config.toml`) and two project-tier (`./thoth.config.toml` or `./.thoth.config.toml`, mutually exclusive). Clean break — legacy filenames (`config.toml` in user dir, `thoth.toml`, `.thoth/config.toml`) are no longer read; their presence is detected only to enrich "config not found" error messages with rename guidance.
 
 **References**
@@ -201,7 +201,7 @@ Existing projects may use older labels such as `**Primary spec**`, `**Plan**`, o
 - **Plan:** `docs/superpowers/plans/2026-04-28-p21c-config-filename-standardization.md`
 - **Related:** P21 (`docs/superpowers/specs/2026-04-28-p21-configuration-profiles-design.md`), P21b (`docs/superpowers/specs/2026-04-28-p21b-configuration-profiles-crud-design.md`) — both reference legacy filenames in their specs/plans/tests; P21c either lands first or sweeps through them.
 
-**Status**: Spec + plan drafted; decisions locked (filename, no-legacy clean break, error on project-root ambiguity, `init --user` in scope, `--hidden` flag spelling, `--force` applies to `--user`). Awaiting greenlight to begin implementation (Task 1 = failing test scenario matrix).
+**Status**: Complete — canonical filename, ambiguity error, legacy-detection helper, `init --user/--hidden/--force`, full source/test/docs sweep all landed across commits `0ce248a` (failing tests), `ac84b00` (paths + errors), `0b5b5b1` (loader), `6ca8ac0` (init flags), `88978c7` (source string sweep), `2590928` (tests + docs sweep).
 
 **Scope**
 - Canonical filename is `thoth.config.toml`. Three accepted locations:
@@ -230,20 +230,21 @@ Existing projects may use older labels such as `**Primary spec**`, `**Plan**`, o
 - Confirm `--force` overwrite semantics extend to `init --user` too.
 
 ### Tests & Tasks
-- [ ] [P21c-TS01] Specify the test suite — canonical resolution at all three locations, ambiguity error on both project-root files, "config not found" error message includes any detected legacy paths, `init` flag combinations — before implementation.
+- [x] [P21c-TS01] Specify the test suite — canonical resolution at all three locations, ambiguity error on both project-root files, "config not found" error message includes any detected legacy paths, `init` flag combinations — before implementation.
+      Landed in `0ce248a` as 30 failing tests in `tests/test_config_filename.py`.
 - [x] [P21c-T01] Write the implementation plan at `docs/superpowers/plans/2026-04-28-p21c-config-filename-standardization.md`, resolving the small open questions from the spec.
-- [ ] [P21c-TS02] `tests/test_config_filename.py` (or `tests/test_config.py`): user-tier loads `$XDG_CONFIG_HOME/thoth/thoth.config.toml` when present; raises `ConfigNotFoundError` (or treats as missing per existing optional-config behavior) when only the legacy `config.toml` exists, and the error message names the legacy file with the rename target.
-- [ ] [P21c-TS03] Project tier: `./thoth.config.toml` only → loads. `./.thoth.config.toml` only → loads. Both present → `ConfigAmbiguousError` with a "delete one before continuing" message naming both files. Neither present → returns empty/no-project-config (current optional-project-config semantics).
-- [ ] [P21c-TS04] Legacy detection helper is invoked only on the "config not found" error path. Regression guard: a successful canonical load asserts the legacy detector was not called.
-- [ ] [P21c-TS05] `thoth init` writes `./thoth.config.toml` by default. `thoth init --hidden` (or chosen spelling) writes `./.thoth.config.toml`. `thoth init --user` writes the user-tier canonical path. `--user` and `--hidden` are mutually exclusive. None of the three overwrite an existing canonical file without `--force`.
-- [ ] [P21c-T02] Update `src/thoth/paths.py`: `user_config_file()` returns the canonical user path. Do not add a `legacy_user_config_file()` helper; legacy paths live in the detection helper (T03) and nowhere else.
-- [ ] [P21c-T03] Update `src/thoth/config.py`: `project_config_paths = ["./thoth.config.toml", "./.thoth.config.toml"]`; `_load_project_config_with_path` raises `ConfigAmbiguousError` if both exist; user-tier load skips legacy filenames; add `detect_legacy_paths()` helper used only by the not-found error formatter.
-- [ ] [P21c-T04] Update `thoth init` (`src/thoth/cli_subcommands/...`): add `--user` and the dotfile flag, enforce mutual exclusion, respect existing `--force` semantics.
-- [ ] [P21c-T05] Add `ConfigNotFoundError` and `ConfigAmbiguousError` to `src/thoth/errors.py` (P21's `ConfigProfileError` is unchanged).
-- [ ] [P21c-T06] Sweep error messages, help text, and CLI strings (`src/thoth/help.py`, `src/thoth/errors.py`, `src/thoth/cli_subcommands/config.py`, `src/thoth/config.py`, etc.) to use the canonical filename.
-- [ ] [P21c-T07] Update `README.md` (config section, install/setup walkthrough, short "Migrating from earlier Thoth versions" note giving the rename mapping) and `manual_testing_instructions.md` (every smoke test that names a config path).
-- [ ] [P21c-T08] Update P21 and P21b spec/plan docs to use the canonical filename, or add a "see P21c" pointer per the chosen sequencing.
-- [ ] [P21c-T09] Update `PROJECTS.md` as implementation tasks land.
+- [x] [P21c-TS02] `tests/test_config_filename.py`: user-tier loads `$XDG_CONFIG_HOME/thoth/thoth.config.toml` when present; raises `ConfigNotFoundError` when only the legacy `config.toml` exists, and the error message names the legacy file with the rename target. (Tests A1–A5.)
+- [x] [P21c-TS03] Project tier: `./thoth.config.toml` only → loads. `./.thoth.config.toml` only → loads. Both present → `ConfigAmbiguousError`. Neither present → returns empty/no-project-config. (Tests B1–B8.)
+- [x] [P21c-TS04] Legacy detection helper invoked only on the "config not found" error path; regression guard asserts the legacy detector was not called on a successful canonical load. (Tests C1–C3.)
+- [x] [P21c-TS05] `thoth init` writes `./thoth.config.toml` by default. `--hidden` writes `./.thoth.config.toml`. `--user` writes the user-tier canonical path. `--user` and `--hidden` are mutually exclusive. None overwrite without `--force`. (Tests D1–D11.)
+- [x] [P21c-T02] Update `src/thoth/paths.py`: `user_config_file()` returns the canonical user path. (Commit `ac84b00`.)
+- [x] [P21c-T03] Update `src/thoth/config.py`: canonical `project_config_paths`; `ConfigAmbiguousError` if both exist; user-tier load skips legacy; `detect_legacy_paths()` helper. (Commit `0b5b5b1`.)
+- [x] [P21c-T04] Update `thoth init`: add `--user`, `--hidden`, `--force`; enforce mutual exclusion. (Commit `6ca8ac0`.)
+- [x] [P21c-T05] Add `ConfigNotFoundError` and `ConfigAmbiguousError` to `src/thoth/errors.py`. (Commit `ac84b00`.)
+- [x] [P21c-T06] Sweep error messages, help text, and CLI strings to canonical filename. (Commit `88978c7`.)
+- [x] [P21c-T07] Update `README.md` with migration note and `manual_testing_instructions.md`. (Commit `2590928`.)
+- [x] [P21c-T08] Update P21 and P21b spec/plan docs to canonical filename. (Commit `2590928`.)
+- [x] [P21c-T09] Update `PROJECTS.md` as implementation tasks land.
 
 ### Automated Verification
 - `uv run pytest tests/test_config_filename.py tests/test_config.py -v` passes (test file name finalized in plan).
