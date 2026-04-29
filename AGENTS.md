@@ -37,6 +37,16 @@ After making any code changes, follow this verification workflow:
 
 This ensures both the main executable and test suite maintain code quality standards.
 
+### Periodic full-gate runs (don't save it all for the end)
+
+When working through a multi-commit task, do not save the full pre-commit gate for the very last commit. Run it periodically:
+
+- **Complex / wide-blast-radius commit**: run the full gate immediately after, before starting the next commit.
+- **Simple commits** (test additions, docs, small fixes): batch at most 2–3 commits between full-gate runs.
+- **Always**: the last commit before `git push` MUST go through the full hook set.
+
+⚠️ `just check` does NOT include `ruff format --check`. If you bypass lefthook with `LEFTHOOK=0`, also run `uv run ruff format --check src/ tests/` (or `ruff format`) yourself — CI runs the format-check separately and will fail otherwise. See `CLAUDE.md` "Fast Iteration Loop" → "Periodic full-gate runs" for full guidance.
+
 ### Test Debugging Workflow
 - When a test fails, start by running the test suite with only the failing tests
 - Fix the specific tests while running the subset of tests
