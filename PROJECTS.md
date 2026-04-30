@@ -33,7 +33,7 @@ Keep this summary list updated whenever a project is added, renamed, completed, 
 - [ ] P32 — Interactive Prompt Refiner
 - [ ] P33 — Schema-Driven Config Defaults (typed source for `thoth init` and `ConfigSchema`)
 - [ ] P20 — Extended Real-API Workflow Coverage — Mirror Mock Contracts
-- [ ] P18 — Immediate vs Background — Explicit `kind`, Runtime Mismatch, Path Split, Streaming, Cancel
+- [~] P18 — Immediate vs Background — Explicit `kind`, Runtime Mismatch, Path Split, Streaming, Cancel
 - [ ] P17 — thoth-ergonomics-v1 Spec Round-Trip — Annotate Implementation Status
 - [x] P16 PR2 — Remove Legacy Shims, Add resume + ask Subcommands
 - [x] P16 PR3 — Automation Polish — `completion` subcommand + universal `--json`
@@ -516,7 +516,7 @@ Existing projects may use older labels such as `**Primary spec**`, `**Plan**`, o
 - Every background mock workflow for project, input file, no metadata, quiet, prompt-file, stdin, CLI API key, status/cancel, and output-file creation has a corresponding real-API extended test or a documented provider-availability skip.
 - `--combined` and `--auto` are explicitly covered by future extended tests, not just by mock/integration tests.
 
-## [ ] Project P18: Immediate vs Background — Explicit `kind`, Runtime Mismatch, Path Split, Streaming, Cancel (v3.1.0)
+## [~] Project P18: Immediate vs Background — Explicit `kind`, Runtime Mismatch, Path Split, Streaming, Cancel (v3.1.0)
 
 **References**
 - **Spec:** `docs/superpowers/specs/2026-04-26-p18-immediate-vs-background-design.md` (decisions Q1–Q12 §4, architecture §5, rollout §6, testing strategy §7, cross-project coordination §8, risks §9, **§11 reevaluation log 2026-04-27**)
@@ -555,91 +555,91 @@ Existing projects may use older labels such as `**Primary spec**`, `**Plan**`, o
 
 ### Tests & Tasks
 **Phase A — `kind` schema + `KNOWN_MODELS` derivation (no behavior change)**
-- [ ] [P18-TS01] `tests/test_builtin_modes_have_kind.py`: every entry in `BUILTIN_MODES` declares `kind ∈ {"immediate","background"}`
-- [ ] [P18-TS02] `tests/test_known_models_registry.py`: `derive_known_models()` returns one entry per unique `(provider, model)` across builtins; cross-mode kind conflicts raise `ThothError` at module import
-- [ ] [P18-TS03] `tests/test_known_models_registry.py`: every builtin's `(provider, model, kind)` triple appears in `KNOWN_MODELS`
-- [ ] [P18-T01] Add `kind` field to all 12 entries in `BUILTIN_MODES` (`config.py:42-133`)
-- [ ] [P18-T02] Add `ModelSpec` NamedTuple + `derive_known_models()` + module-level `KNOWN_MODELS` constant (in `models.py`)
-- [ ] [P18-T03] Add `mode_kind(cfg) -> Literal["immediate","background"]` resolver in `config.py`; thin `is_background_mode` wrapper kept for compat with deprecation comment
-- [ ] [P18-T03b] **(Reeval 2026-04-27)** Update `modes_cmd.py:_derive_kind` (`modes_cmd.py:46-50`) to read `cfg["kind"]` first; fall back to substring heuristic only with a warning. Pre-existing CLI surface (`thoth modes` table "Kind" column) keeps working unchanged.
-- [ ] [P18-T03c] **(Reeval 2026-04-27)** Audit summary deliverable: write `planning/p18-call-site-audit.md` enumerating the 9 `is_background_*` call sites (per spec §10 acceptance gate); annotate each with disposition (migrate to `mode_kind` / keep as model-level helper / no-op).
+- [x] [P18-TS01] `tests/test_builtin_modes_have_kind.py`: every entry in `BUILTIN_MODES` declares `kind ∈ {"immediate","background"}`
+- [x] [P18-TS02] `tests/test_known_models_registry.py`: `derive_known_models()` returns one entry per unique `(provider, model)` across builtins; cross-mode kind conflicts raise `ThothError` at module import
+- [x] [P18-TS03] `tests/test_known_models_registry.py`: every builtin's `(provider, model, kind)` triple appears in `KNOWN_MODELS`
+- [x] [P18-T01] Add `kind` field to all 12 entries in `BUILTIN_MODES` (`config.py:42-133`)
+- [x] [P18-T02] Add `ModelSpec` NamedTuple + `derive_known_models()` + module-level `KNOWN_MODELS` constant (in `models.py`)
+- [x] [P18-T03] Add `mode_kind(cfg) -> Literal["immediate","background"]` resolver in `config.py`; thin `is_background_mode` wrapper kept for compat with deprecation comment
+- [x] [P18-T03b] **(Reeval 2026-04-27)** Update `modes_cmd.py:_derive_kind` (`modes_cmd.py:46-50`) to read `cfg["kind"]` first; fall back to substring heuristic only with a warning. Pre-existing CLI surface (`thoth modes` table "Kind" column) keeps working unchanged.
+- [x] [P18-T03c] **(Reeval 2026-04-27)** Audit summary deliverable: write `planning/p18-call-site-audit.md` enumerating the 9 `is_background_*` call sites (per spec §10 acceptance gate); annotate each with disposition (migrate to `mode_kind` / keep as model-level helper / no-op).
 
 **Phase B — Runtime mismatch error (additive, user-visible)**
-- [ ] [P18-TS04] `tests/test_mode_kind_mismatch.py`: `OpenAIProvider.submit(...)` with `kind="immediate"` + `model="o3-deep-research"` raises `ModeKindMismatchError` *before* any HTTP call (use `respx`/cassette to assert no API hit)
-- [ ] [P18-TS05] Same with `kind="immediate"` + `model="o4-mini-deep-research"`
-- [ ] [P18-TS06] `kind="background"` + `model="o3"` does NOT raise (legal force-background)
-- [ ] [P18-TS07] `tests/test_mode_kind_mismatch.py`: `ModeKindMismatchError` carries `mode_name`, `model`, `declared_kind`, `required_kind` attrs and renders a user-facing `suggestion` referencing `[modes.{mode_name}]`
-- [ ] [P18-T04] Add `ModeKindMismatchError` class to `errors.py` (subclass of `ThothError`)
-- [ ] [P18-T05] Thread `mode_config["kind"]` through `create_provider` (`providers/__init__.py:107-112`) into `provider_config["kind"]`; replace the `is_background_mode(provider_config)` call at `providers/__init__.py:111` with `mode_kind(provider_config) == "background"`
-- [ ] [P18-T06] Add `OpenAIProvider._validate_kind_for_model(mode)` and call it as the first line of `submit()`. The check uses `is_background_model(self.model)` (model-level helper, kept) to determine *required* kind.
+- [x] [P18-TS04] `tests/test_mode_kind_mismatch.py`: `OpenAIProvider.submit(...)` with `kind="immediate"` + `model="o3-deep-research"` raises `ModeKindMismatchError` *before* any HTTP call (use `respx`/cassette to assert no API hit)
+- [x] [P18-TS05] Same with `kind="immediate"` + `model="o4-mini-deep-research"`
+- [x] [P18-TS06] `kind="background"` + `model="o3"` does NOT raise (legal force-background)
+- [x] [P18-TS07] `tests/test_mode_kind_mismatch.py`: `ModeKindMismatchError` carries `mode_name`, `model`, `declared_kind`, `required_kind` attrs and renders a user-facing `suggestion` referencing `[modes.{mode_name}]`
+- [x] [P18-T04] Add `ModeKindMismatchError` class to `errors.py` (subclass of `ThothError`)
+- [x] [P18-T05] Thread `mode_config["kind"]` through `create_provider` (`providers/__init__.py:107-112`) into `provider_config["kind"]`; replace the `is_background_mode(provider_config)` call at `providers/__init__.py:111` with `mode_kind(provider_config) == "background"`
+- [x] [P18-T06] Add `OpenAIProvider._validate_kind_for_model(mode)` and call it as the first line of `submit()`. The check uses `is_background_model(self.model)` (model-level helper, kept) to determine *required* kind.
 
 **Phase C — Path split + hint suppression**
-- [ ] [P18-TS08] `tests/test_immediate_path.py`: an immediate-mode run produces no `Progress` rendering, no spinner, no operation-ID echo (unless `--project` or `--out FILE` set), no `thoth resume` hint on failure
-- [ ] [P18-TS09] `tests/test_background_path.py`: existing background-mode behavior unchanged (regression gate — uses existing fixtures including spinner-engaged TTY case)
-- [ ] [P18-TS10] `tests/test_immediate_path.py`: an immediate-mode run with `--project foo` DOES write a checkpoint and emit operation ID
-- [ ] [P18-TS10b] **(Reeval 2026-04-27)** `tests/test_progress_gating.py`: `should_show_spinner` returns `False` for immediate-kind runs (extends existing `progress.py:16-36` test coverage); `_poll_display` falls through to a no-display branch (neither spinner nor Progress) for immediate-kind in TTY
-- [ ] [P18-T07] Rename `_execute_research` (`run.py:550`) → `_execute_background` in `run.py`; extract a top-level `execute(...)` dispatcher that matches `mode_kind(mode_config)`
-- [ ] [P18-T08] Add `_execute_immediate` (initially non-streaming — single `submit()` call, direct `get_result()` call, sink to stdout); skips progress bar, spinner, polling loop, resume hints
-- [ ] [P18-T08b] **(Reeval 2026-04-27)** Extend `_poll_display` (`run.py:57-90`) and `should_show_spinner` (`progress.py:16-36`) to also suppress the `Progress` bar branch for immediate-kind runs (today: spinner is gated, Progress fires unconditionally). Add a `mode_cfg` or `mode_kind` parameter so the gate is mode-aware, not just model-aware.
-- [ ] [P18-T09] Audit `run.py:629,654,691,692` and `run.py:199,311,313` and `signals.py:93,99` and `commands.py:227,238` — gate every `thoth resume {id}` / `thoth status {id}` / `Operation ID:` emission on `mode_kind(mode_config) == "background"` (or persistence flag set)
-- [ ] [P18-T09b] **(Reeval 2026-04-27)** Migrate `cli.py:284` (`_thoth_config.is_background_model(model_name)` call) to `mode_kind(mode_config) == "background"` once a mode_cfg is in scope. If `mode_cfg` not available at that call site, leave as `is_background_model(model_name)` (model-level helper) and document.
-- [ ] [P18-T09c] **(Reeval 2026-04-27)** Migrate `interactive_picker.py:35,44` (`is_background_model(model)` filter on `--pick-model` candidates) to `mode_kind(mode_cfg) == "immediate"`. UX unchanged.
-- [ ] [P18-T09d] **(Reeval 2026-04-27)** Migrate `cli_subcommands/ask.py:171,176` (`is_background_mode(mode_config)` for Option E `--json` envelope) to `mode_kind(mode_config) == "background"`. Behavior unchanged.
+- [x] [P18-TS08] `tests/test_immediate_path.py`: an immediate-mode run produces no `Progress` rendering, no spinner, no operation-ID echo (unless `--project` or `--out FILE` set), no `thoth resume` hint on failure
+- [x] [P18-TS09] `tests/test_background_path.py`: existing background-mode behavior unchanged (regression gate — uses existing fixtures including spinner-engaged TTY case)
+- [x] [P18-TS10] `tests/test_immediate_path.py`: an immediate-mode run with `--project foo` DOES write a checkpoint and emit operation ID
+- [x] [P18-TS10b] **(Reeval 2026-04-27)** `tests/test_progress_gating.py`: `should_show_spinner` returns `False` for immediate-kind runs (extends existing `progress.py:16-36` test coverage); `_poll_display` falls through to a no-display branch (neither spinner nor Progress) for immediate-kind in TTY
+- [x] [P18-T07] Rename `_execute_research` (`run.py:550`) → `_execute_background` in `run.py`; extract a top-level `execute(...)` dispatcher that matches `mode_kind(mode_config)`
+- [x] [P18-T08] Add `_execute_immediate` (initially non-streaming — single `submit()` call, direct `get_result()` call, sink to stdout); skips progress bar, spinner, polling loop, resume hints
+- [x] [P18-T08b] **(Reeval 2026-04-27)** Extend `_poll_display` (`run.py:57-90`) and `should_show_spinner` (`progress.py:16-36`) to also suppress the `Progress` bar branch for immediate-kind runs (today: spinner is gated, Progress fires unconditionally). Add a `mode_cfg` or `mode_kind` parameter so the gate is mode-aware, not just model-aware.
+- [x] [P18-T09] Audit `run.py:629,654,691,692` and `run.py:199,311,313` and `signals.py:93,99` and `commands.py:227,238` — gate every `thoth resume {id}` / `thoth status {id}` / `Operation ID:` emission on `mode_kind(mode_config) == "background"` (or persistence flag set)
+- [x] [P18-T09b] **(Reeval 2026-04-27)** Migrate `cli.py:284` (`_thoth_config.is_background_model(model_name)` call) to `mode_kind(mode_config) == "background"` once a mode_cfg is in scope. If `mode_cfg` not available at that call site, leave as `is_background_model(model_name)` (model-level helper) and document.
+- [x] [P18-T09c] **(Reeval 2026-04-27)** Migrate `interactive_picker.py:35,44` (`is_background_model(model)` filter on `--pick-model` candidates) to `mode_kind(mode_cfg) == "immediate"`. UX unchanged.
+- [x] [P18-T09d] **(Reeval 2026-04-27)** Migrate `cli_subcommands/ask.py:171,176` (`is_background_mode(mode_config)` for Option E `--json` envelope) to `mode_kind(mode_config) == "background"`. Behavior unchanged.
 
 **Phase D — Mode rename + `thoth modes --kind` filter**
-- [ ] [P18-TS11] `tests/test_mode_aliases.py`: `--mode mini_research` resolves to `quick_research`'s config, prints a one-time deprecation warning per process
-- [ ] [P18-TS11b] **(Reeval 2026-04-27)** `tests/test_modes_kind_filter.py`: `thoth modes --kind immediate` shows only immediate modes; `thoth modes --kind background` shows only background; invalid value rejected with `BadParameter`; tab-completion uses `completion/sources.py:79 mode_kind` (returns `["immediate","background"]`)
-- [ ] [P18-T10] Add `quick_research` builtin (copy of current `mini_research` with renamed key + `kind="background"`); keep `mini_research` as `{"_deprecated_alias_for": "quick_research"}` stub
-- [ ] [P18-T11] `get_mode_config` resolves alias and emits deprecation warning via stdlib `warnings`
-- [ ] [P18-T11b] **(Reeval 2026-04-27)** Wire `--kind <immediate|background>` flag into `cli_subcommands/modes.py` (the existing `modes` subgroup from P11); use `shell_complete=mode_kind` from `completion/sources.py:79` (currently committed as P18 forward-compat dead code per its own docstring). Filter applies to `modes list/json` operations.
-- [ ] [P18-T11c] **(Reeval 2026-04-27)** Update `cli_subcommands/_options.py:91` `--pick-model` help string from "(immediate modes only)" to "Interactively pick a model (only for modes with `kind = immediate`)" — language now reflects declared kind, not the substring heuristic.
+- [x] [P18-TS11] `tests/test_mode_aliases.py`: `--mode mini_research` resolves to `quick_research`'s config, prints a one-time deprecation warning per process
+- [x] [P18-TS11b] **(Reeval 2026-04-27)** `tests/test_modes_kind_filter.py`: `thoth modes --kind immediate` shows only immediate modes; `thoth modes --kind background` shows only background; invalid value rejected with `BadParameter`; tab-completion uses `completion/sources.py:79 mode_kind` (returns `["immediate","background"]`)
+- [x] [P18-T10] Add `quick_research` builtin (copy of current `mini_research` with renamed key + `kind="background"`); keep `mini_research` as `{"_deprecated_alias_for": "quick_research"}` stub
+- [x] [P18-T11] `get_mode_config` resolves alias and emits deprecation warning via stdlib `warnings`
+- [x] [P18-T11b] **(Reeval 2026-04-27)** Wire `--kind <immediate|background>` flag into `cli_subcommands/modes.py` (the existing `modes` subgroup from P11); use `shell_complete=mode_kind` from `completion/sources.py:79` (currently committed as P18 forward-compat dead code per its own docstring). Filter applies to `modes list/json` operations.
+- [x] [P18-T11c] **(Reeval 2026-04-27)** Update `cli_subcommands/_options.py:91` `--pick-model` help string from "(immediate modes only)" to "Interactively pick a model (only for modes with `kind = immediate`)" — language now reflects declared kind, not the substring heuristic.
 
 **Phase E — Streaming + output sinks**
-- [ ] [P18-TS12] `tests/test_provider_stream_contract.py`: `MockProvider.stream()` yields deterministic chunks; aggregating them equals the full mock result
-- [ ] [P18-TS13] `tests/test_provider_stream_contract.py`: `OpenAIProvider.stream()` (cassette-replay) yields text deltas; final aggregated string matches non-streaming `get_result` output for the same prompt
-- [ ] [P18-TS14] `tests/test_provider_stream_contract.py`: streaming a background-only model raises (defense in depth — should be unreachable post-mismatch-check)
-- [ ] [P18-TS15] `tests/test_output_sinks.py`: `--out -` writes to stdout only; `--out FILE` writes to file only and creates it; `--out -,FILE` tees; `--append` opens with `"a"`, default opens with `"w"`; file is opened lazily (no empty file on aborted submit)
-- [ ] [P18-T12] Add `StreamEvent` dataclass (`kind`, `text`) and `async def stream(...)` to `ResearchProvider` base raising `NotImplementedError`
-- [ ] [P18-T13] Implement `MockProvider.stream()` — fixed chunk list with small `await asyncio.sleep(0)` between yields
-- [ ] [P18-T14] Implement `OpenAIProvider.stream()` using `client.responses.stream(...)` for non-deep-research models; translate `response.output_text.delta` into `StreamEvent("text", delta)`
-- [ ] [P18-T15] Add `MultiSink` class (in new `src/thoth/sinks.py`) — fans `write(chunk)` to a list of `IO[str]` handles, lazy file open, ordered close in `finally`
-- [ ] [P18-T16] **(Reeval 2026-04-27)** Add `--out PATH` (repeatable, accepts `-`, comma-list also accepted) and `--append` flags to **`cli_subcommands/_options.py:_RESEARCH_OPTIONS`** so they are inherited by both top-level CLI and `thoth ask` (the existing `_research_options` decorator stack). Add corresponding entries to `cli_subcommands/_option_policy.py` for inheritance + validation. Wire to `MultiSink` inside `_execute_immediate` via `_run_research_default`.
-- [ ] [P18-T17] Update `_execute_immediate` to call `provider.stream()` and feed chunks into the configured `MultiSink`. If `provider.stream()` raises `NotImplementedError`, fall back to `submit()` + `get_result()` and sink the final string in one chunk.
+- [x] [P18-TS12] `tests/test_provider_stream_contract.py`: `MockProvider.stream()` yields deterministic chunks; aggregating them equals the full mock result
+- [x] [P18-TS13] `tests/test_provider_stream_contract.py`: `OpenAIProvider.stream()` (cassette-replay) yields text deltas; final aggregated string matches non-streaming `get_result` output for the same prompt
+- [x] [P18-TS14] `tests/test_provider_stream_contract.py`: streaming a background-only model raises (defense in depth — should be unreachable post-mismatch-check)
+- [x] [P18-TS15] `tests/test_output_sinks.py`: `--out -` writes to stdout only; `--out FILE` writes to file only and creates it; `--out -,FILE` tees; `--append` opens with `"a"`, default opens with `"w"`; file is opened lazily (no empty file on aborted submit)
+- [x] [P18-T12] Add `StreamEvent` dataclass (`kind`, `text`) and `async def stream(...)` to `ResearchProvider` base raising `NotImplementedError`
+- [x] [P18-T13] Implement `MockProvider.stream()` — fixed chunk list with small `await asyncio.sleep(0)` between yields
+- [x] [P18-T14] Implement `OpenAIProvider.stream()` using `client.responses.stream(...)` for non-deep-research models; translate `response.output_text.delta` into `StreamEvent("text", delta)`
+- [x] [P18-T15] Add `MultiSink` class (in new `src/thoth/sinks.py`) — fans `write(chunk)` to a list of `IO[str]` handles, lazy file open, ordered close in `finally`
+- [x] [P18-T16] **(Reeval 2026-04-27)** Add `--out PATH` (repeatable, accepts `-`, comma-list also accepted) and `--append` flags to **`cli_subcommands/_options.py:_RESEARCH_OPTIONS`** so they are inherited by both top-level CLI and `thoth ask` (the existing `_research_options` decorator stack). Add corresponding entries to `cli_subcommands/_option_policy.py` for inheritance + validation. Wire to `MultiSink` inside `_execute_immediate` via `_run_research_default`.
+- [x] [P18-T17] Update `_execute_immediate` to call `provider.stream()` and feed chunks into the configured `MultiSink`. If `provider.stream()` raises `NotImplementedError`, fall back to `submit()` + `get_result()` and sink the final string in one chunk.
 
 **Phase F — Cancel: research per provider**
-- [ ] [P18-T18] **Research item: OpenAI cancel.** WebFetch `https://platform.openai.com/docs/api-reference/responses` (cancel endpoint section) and `https://cookbook.openai.com/examples/deep_research_api/introduction_to_deep_research_api`. Confirm: signature of `client.responses.cancel(response_id)`, accepted source states, returned status string. Document findings in `planning/p18-cancel-research.md`.
-- [ ] [P18-T19] **Research item: Perplexity cancel.** WebFetch `https://docs.perplexity.ai/getting-started/models/models/sonar-deep-research` and `https://docs.perplexity.ai/guides/chat-completions-guide`. Confirm: does the async submission flow expose a cancel endpoint, or must we orphan the request_id? Document in `planning/p18-cancel-research.md`.
-- [ ] [P18-T20] **Research item: Gemini cancel.** WebFetch `https://ai.google.dev/gemini-api/docs/deep-research` and `https://ai.google.dev/gemini-api/docs/interactions`. Confirm: Interactions API cancel/abort semantics. Document in `planning/p18-cancel-research.md`.
+- [x] [P18-T18] **Research item: OpenAI cancel.** WebFetch `https://platform.openai.com/docs/api-reference/responses` (cancel endpoint section) and `https://cookbook.openai.com/examples/deep_research_api/introduction_to_deep_research_api`. Confirm: signature of `client.responses.cancel(response_id)`, accepted source states, returned status string. Document findings in `planning/p18-cancel-research.md`.
+- [x] [P18-T19] **Research item: Perplexity cancel.** WebFetch `https://docs.perplexity.ai/getting-started/models/models/sonar-deep-research` and `https://docs.perplexity.ai/guides/chat-completions-guide`. Confirm: does the async submission flow expose a cancel endpoint, or must we orphan the request_id? Document in `planning/p18-cancel-research.md`.
+- [x] [P18-T20] **Research item: Gemini cancel.** WebFetch `https://ai.google.dev/gemini-api/docs/deep-research` and `https://ai.google.dev/gemini-api/docs/interactions`. Confirm: Interactions API cancel/abort semantics. Document in `planning/p18-cancel-research.md`.
 
 **Phase G — Cancel: implementation**
-- [ ] [P18-TS16] `tests/test_provider_cancel.py`: `MockProvider.cancel(job_id)` removes the job and returns `{"status":"cancelled","error":"cancelled by user"}`
-- [ ] [P18-TS17] `tests/test_provider_cancel.py` (cassette): `OpenAIProvider.cancel(job_id)` calls `responses.cancel`, returns cancelled-shaped status
-- [ ] [P18-TS18] `tests/test_provider_cancel.py`: providers that don't implement cancel raise `NotImplementedError`; the `thoth cancel` CLI catches it and reports "upstream cancel not supported, local checkpoint marked cancelled"
-- [ ] [P18-TS19] `tests/test_cancel_subcommand.py`: `thoth cancel <op-id>` updates the checkpoint to `cancelled`, calls `provider.cancel()` for each non-completed provider, exits 0
-- [ ] [P18-TS20] `tests/test_cancel_subcommand.py`: `thoth cancel MISSING_ID` exits 6 (matching `thoth resume` missing-op behavior)
-- [ ] [P18-T21] Add `async def cancel(self, job_id: str) -> dict[str, Any]` to `ResearchProvider` base raising `NotImplementedError`
-- [ ] [P18-T22] Implement `MockProvider.cancel()`
-- [ ] [P18-T23] Implement `OpenAIProvider.cancel()` per Phase F findings
-- [ ] [P18-T24] (Perplexity/Gemini cancel impls — only if Phase F research confirms upstream support; otherwise leave as the base `NotImplementedError`)
-- [ ] [P18-T25] Add `src/thoth/cli_subcommands/cancel.py` — `@click.command("cancel")`, `OP_ID` required positional, `--json` flag, delegates to a new `cancel_operation(op_id, ctx)` in `commands.py`. Mirror the `cli_subcommands/resume.py` pattern (already shipped).
-- [ ] [P18-T25b] **(Reeval 2026-04-27)** Register `cancel` in `cli.py` via `cli.add_command(cancel)` and add to "Run research" help section in `ThothGroup.format_commands`. Add `shell_complete=operation_ids` to the `OP_ID` positional (using the existing completer from `completion/sources.py:26`).
-- [ ] [P18-T26] Add `cancel_operation()` to `commands.py` — load operation, iterate non-completed providers, call `provider.cancel()` (catch `NotImplementedError` → emit "upstream cancel not supported, local checkpoint marked cancelled"), update checkpoint, emit user-facing summary. Returns enough data for `--json` envelope.
+- [x] [P18-TS16] `tests/test_provider_cancel.py`: `MockProvider.cancel(job_id)` removes the job and returns `{"status":"cancelled","error":"cancelled by user"}`
+- [x] [P18-TS17] `tests/test_provider_cancel.py` (cassette): `OpenAIProvider.cancel(job_id)` calls `responses.cancel`, returns cancelled-shaped status
+- [x] [P18-TS18] `tests/test_provider_cancel.py`: providers that don't implement cancel raise `NotImplementedError`; the `thoth cancel` CLI catches it and reports "upstream cancel not supported, local checkpoint marked cancelled"
+- [x] [P18-TS19] `tests/test_cancel_subcommand.py`: `thoth cancel <op-id>` updates the checkpoint to `cancelled`, calls `provider.cancel()` for each non-completed provider, exits 0
+- [x] [P18-TS20] `tests/test_cancel_subcommand.py`: `thoth cancel MISSING_ID` exits 6 (matching `thoth resume` missing-op behavior)
+- [x] [P18-T21] Add `async def cancel(self, job_id: str) -> dict[str, Any]` to `ResearchProvider` base raising `NotImplementedError`
+- [x] [P18-T22] Implement `MockProvider.cancel()`
+- [x] [P18-T23] Implement `OpenAIProvider.cancel()` per Phase F findings
+- [-] [P18-T24] (Perplexity/Gemini cancel impls — only if Phase F research confirms upstream support; otherwise leave as the base `NotImplementedError`)
+- [x] [P18-T25] Add `src/thoth/cli_subcommands/cancel.py` — `@click.command("cancel")`, `OP_ID` required positional, `--json` flag, delegates to a new `cancel_operation(op_id, ctx)` in `commands.py`. Mirror the `cli_subcommands/resume.py` pattern (already shipped).
+- [x] [P18-T25b] **(Reeval 2026-04-27)** Register `cancel` in `cli.py` via `cli.add_command(cancel)` and add to "Run research" help section in `ThothGroup.format_commands`. Add `shell_complete=operation_ids` to the `OP_ID` positional (using the existing completer from `completion/sources.py:26`).
+- [x] [P18-T26] Add `cancel_operation()` to `commands.py` — load operation, iterate non-completed providers, call `provider.cancel()` (catch `NotImplementedError` → emit "upstream cancel not supported, local checkpoint marked cancelled"), update checkpoint, emit user-facing summary. Returns enough data for `--json` envelope.
 - [ ] [P18-T27] Wire Ctrl-C signal path (`signals.py`) to call `cancel_operation()` best-effort with a 5s timeout before exiting
 
 **Phase H — User-mode `kind` warning (warn-once now; v4.0.0 follow-up errors)**
-- [ ] [P18-TS21] `tests/test_user_mode_kind_warning.py`: a user TOML with a `[modes.X]` table missing `kind` triggers a one-time warning at config load referencing the offending key
-- [ ] [P18-T28] Add the warning emission in `_validate_config` (`config.py:367`) / mode-merge path; do not error
-- [ ] [P18-T29] Add a `# TODO(v4.0.0): error on missing kind in user modes` comment at the warning site, cross-referencing future P19
+- [x] [P18-TS21] `tests/test_user_mode_kind_warning.py`: a user TOML with a `[modes.X]` table missing `kind` triggers a one-time warning at config load referencing the offending key
+- [x] [P18-T28] Add the warning emission in `_validate_config` (`config.py:367`) / mode-merge path; do not error
+- [x] [P18-T29] Add a `# TODO(v4.0.0): error on missing kind in user modes` comment at the warning site, cross-referencing future P19
 
 **Phase I — Extended test infrastructure**
-- [ ] [P18-TS22] `tests/extended/test_model_kind_runtime.py`: parametrized over `KNOWN_MODELS`, hits real API, asserts immediate-kind models return `completed` on first `check_status` and background-kind models return `running`/`queued`/`completed`; cancels background submissions to limit cost (depends on Phase G `provider.cancel()`)
-- [ ] [P18-T30] **(Reeval 2026-04-27)** Add a NEW `[tool.pytest.ini_options]` section to `pyproject.toml` (none present today): register `extended` marker; add `addopts = "-m 'not extended'"` to default invocation. Verify pre-commit `./thoth_test` integration suite is unaffected (it uses its own runner, not pytest markers).
-- [ ] [P18-T31] Add `just test-extended` recipe → `uv run pytest -m extended -v`
-- [ ] [P18-T32] Add `--extended` flag to `thoth_test` runner (parses to a category column); wire to category filter
-- [ ] [P18-T33] Add `.github/workflows/extended.yml` (nightly cron, gated on `OPENAI_API_KEY` repo secret); failures notify but don't block PRs
+- [x] [P18-TS22] `tests/extended/test_model_kind_runtime.py`: parametrized over `KNOWN_MODELS`, hits real API, asserts immediate-kind models return `completed` on first `check_status` and background-kind models return `running`/`queued`/`completed`; cancels background submissions to limit cost (depends on Phase G `provider.cancel()`)
+- [x] [P18-T30] **(Reeval 2026-04-27)** Add a NEW `[tool.pytest.ini_options]` section to `pyproject.toml` (none present today): register `extended` marker; add `addopts = "-m 'not extended'"` to default invocation. Verify pre-commit `./thoth_test` integration suite is unaffected (it uses its own runner, not pytest markers).
+- [x] [P18-T31] Add `just test-extended` recipe → `uv run pytest -m extended -v`
+- [-] [P18-T32] Add `--extended` flag to `thoth_test` runner (parses to a category column); wire to category filter — *superseded by `just test-extended` (P18-T31) + `.github/workflows/extended.yml` (P18-T33), which already provide pytest-level gating; runner-flag is duplicative*
+- [x] [P18-T33] Add `.github/workflows/extended.yml` (nightly cron, gated on `OPENAI_API_KEY` repo secret); failures notify but don't block PRs
 
 **Phase J — Documentation + cleanup**
-- [ ] [P18-T34] Update `README.md` with `--out` flag examples; document the `kind` field for user-defined modes; document `thoth cancel`; document `thoth modes --kind <immediate|background>` filter
+- [x] [P18-T34] Update `README.md` with `--out` flag examples; document the `kind` field for user-defined modes; document `thoth cancel`; document `thoth modes --kind <immediate|background>` filter
 - [ ] [P18-T35] Update `manual_testing_instructions.md` with immediate-vs-background streaming/cancel/modes-filter scenarios
 - [ ] [P18-T36] Remove the `if not job_info.get("background", False): return {"status": "completed"}` shortcut in `OpenAIProvider.check_status` (`providers/openai.py:232-233`) — unreachable post-Phase C. Run `uv run pytest tests/` first to confirm no test depends on the shortcut implicitly.
 - [ ] [P18-T36b] **(Reeval 2026-04-27)** Update spec `docs/superpowers/specs/2026-04-26-p18-immediate-vs-background-design.md` Status field from "Draft" → "Shipped (v3.1.0, commit `<HASH>`)". Update plan with the same status note.
