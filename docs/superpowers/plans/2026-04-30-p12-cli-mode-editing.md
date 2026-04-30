@@ -1,5 +1,38 @@
 # P12: CLI Mode Editing Implementation Plan
 
+> ⚠️ **SUPERSEDED — DO NOT IMPLEMENT FROM THIS PLAN.**
+>
+> This plan was written 2026-04-30 (earlier in the day) and has been
+> superseded by **[`projects/P12-cli-mode-editing.md`](../../../projects/P12-cli-mode-editing.md)**, which reflects the
+> seven design decisions (D1–D8) and four ambiguity resolutions (Q1–Q4)
+> made later that day during the project-refine and audit rounds.
+>
+> **Stale on five points** (this plan does NOT match the spec in
+> `PROJECTS.md`):
+>
+> 1. Goal line lists `add / set / unset / rename / copy` — missing
+>    `remove NAME` (D1, the parallel of `config profiles remove`).
+> 2. Architecture says "four mode-aware helpers" — actually six are
+>    needed: `ensure_mode`, `set_mode_value`, `unset_mode_value`,
+>    `remove_mode`, `rename_mode`, `copy_mode`.
+> 3. No mention of `--override` flag (Q2, overlay-only opt-in for
+>    builtin-name shadowing).
+> 4. No mention of `--from-profile X` flag for `copy` (Q3, enables the
+>    four directions: base→base, base→overlay, overlay→base,
+>    overlay→overlay).
+> 5. No cross-cutting layering test (Q4, asserts overlay-tier writes
+>    are visible to P21*'s overlay reader).
+>
+> Idempotency wording is also subtly out of date (the canonical rule
+> is **model-only** — same NAME + same model = no-op; differing
+> `--description` / `--provider` / `--kind` are ignored on re-add per
+> Q1).
+>
+> **For implementation, follow [`projects/P12-cli-mode-editing.md`](../../../projects/P12-cli-mode-editing.md).** This file is
+> retained only as a historical record of the day's iteration.
+
+---
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Add `thoth modes add / set / unset / rename / copy` so users can author and edit research-mode definitions from the CLI instead of hand-editing TOML, with the same `--project` / `--config PATH` / `--profile <name>` targeting that `thoth config set` already supports.
