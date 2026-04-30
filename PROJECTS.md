@@ -1382,8 +1382,10 @@ Per-command TS rows enumerate functional cases at single-case granularity. Per-c
 - [ ] [P12-T07] Help integration — extend `show_modes_help()` and the click group epilog; keep `thoth help modes` in sync
 
 #### Removed-from-scope (already shipped under P13)
-- [>] [P12-TS05] Proceeded to P13-TS03 — shared-secrets tests already exist in `tests/test_secrets.py`
-- [>] [P12-T05] Proceeded to P13-T04 — `src/thoth/_secrets.py` already extracted; `config_cmd.py` and `modes_cmd.py` already route through it
+
+The original P12 design included two pre-work tasks that already shipped
+under P13 — see P13-TS03 (shared-secrets tests) and P13-T04 (secrets
+helper extraction).
 
 #### Regression
 - [ ] [P12-TS08] Full `uv run pytest tests/` + `./thoth_test -r` green; existing P11 read paths (`thoth modes`, `--json`, `--name`, `--source`, `--full`, `--profile`) unchanged
