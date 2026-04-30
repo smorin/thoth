@@ -1,5 +1,6 @@
 extends: default
 ignore: |
+  .codex/skills/
   thoth_test_cassettes/
   node_modules/
 rules:
