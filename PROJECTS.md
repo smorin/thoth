@@ -34,7 +34,7 @@ Keep this summary list updated whenever a project is added, renamed, completed, 
 - [ ] P33 — Schema-Driven Config Defaults (typed source for `thoth init` and `ConfigSchema`)
 - [ ] P20 — Extended Real-API Workflow Coverage — Mirror Mock Contracts
 - [~] P18 — Immediate vs Background — Explicit `kind`, Runtime Mismatch, Path Split, Streaming, Cancel
-- [ ] P17 — thoth-ergonomics-v1 Spec Round-Trip — Annotate Implementation Status
+- [x] P17 — thoth-ergonomics-v1 Spec Round-Trip — Annotate Implementation Status
 - [x] P16 PR2 — Remove Legacy Shims, Add resume + ask Subcommands
 - [x] P16 PR3 — Automation Polish — `completion` subcommand + universal `--json`
 - [x] P16 PR1 — Click-Native CLI Refactor — Subcommand Migration & Parity Gate
@@ -679,7 +679,7 @@ Existing projects may use older labels such as `**Primary spec**`, `**Plan**`, o
 
 ---
 
-## [ ] Project P17: thoth-ergonomics-v1 Spec Round-Trip — Annotate Implementation Status (no code change)
+## [x] Project P17: thoth-ergonomics-v1 Spec Round-Trip — Annotate Implementation Status (no code change)
 **Goal**: Close the documentation round-trip on the `thoth-ergonomics-v1` spec. The spec was never back-linked from `PROJECTS.md`, which silently allowed §3.4 (decided dropped) and §3.7 (already shipped) to look "open" from a `PROJECTS.md`-only audit. After this project, the spec itself carries an `## Implementation status` block citing the project/task IDs (P11, P14, dropped) for each §3 item, so future audits can grep the spec to know it's fully accounted for. **Zero code change** — this is purely a documentation correctness project.
 
 **Primary spec**: `docs/superpowers/specs/2026-04-24-thoth-ergonomics-design.md`
@@ -714,7 +714,7 @@ Existing projects may use older labels such as `**Primary spec**`, `**Plan**`, o
 - [x] [P17-T07..08] **SHIPPED in P14-T04** — `-v` example tasks. `help.py:135`, tested at `tests/test_cli_help.py:29`. No follow-up work required.
 - [x] [P17-T09] Add an `## Implementation status` block at the top of `docs/superpowers/specs/2026-04-24-thoth-ergonomics-design.md` reproducing the §-outcome map above. Pin each ✅ row to its `Pxx-T##` shipping task; pin §3.4 to its drop decision in `planning/thoth.plan.v9.md:18` and the supersession by P11.
 - [x] [P17-T10] Annotate `docs/superpowers/specs/2026-04-24-thoth-ergonomics-design.md:135` (the §3.4 `thoth workflow` heading) with a one-line callout: `> **Status:** Dropped per planning/thoth.plan.v9.md:18 — superseded by 'thoth modes' (P11).` so a reader landing in §3.4 directly sees the decision without scrolling to the top.
-- [ ] [P17-T11] Verify `planning/project_promote_commands.md:5` and `planning/thoth.plan.v9.md:6` (the only other files that reference this spec) don't need updates — they're plan-side, the spec is the source of truth getting annotated.
+- [x] [P17-T11] Verify `planning/project_promote_commands.md:5` and `planning/thoth.plan.v9.md:6` (the only other files that reference this spec) don't need updates — they're plan-side, the spec is the source of truth getting annotated. *Verified: `thoth.plan.v9.md:6` is just a "Spec:" link and v9's own line 18 records the §3.4 drop; `project_promote_commands.md:5` references spec §5 (deferred admin-promote work), not §3.4. No edits required.*
 
 ### Automated Verification
 - `grep -n "Implementation status" docs/superpowers/specs/2026-04-24-thoth-ergonomics-design.md` → returns line 1-region match
