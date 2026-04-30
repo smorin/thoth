@@ -713,7 +713,7 @@ Existing projects may use older labels such as `**Primary spec**`, `**Plan**`, o
 - [x] [P17-T01..06] **DROPPED** — `thoth workflow` / `thoth guide` command tasks. Decision: `planning/thoth.plan.v9.md:18` (`thoth modes` already provides discovery). Tasks intentionally numbered to preserve audit trail; do not re-allocate these IDs.
 - [x] [P17-T07..08] **SHIPPED in P14-T04** — `-v` example tasks. `help.py:135`, tested at `tests/test_cli_help.py:29`. No follow-up work required.
 - [x] [P17-T09] Add an `## Implementation status` block at the top of `docs/superpowers/specs/2026-04-24-thoth-ergonomics-design.md` reproducing the §-outcome map above. Pin each ✅ row to its `Pxx-T##` shipping task; pin §3.4 to its drop decision in `planning/thoth.plan.v9.md:18` and the supersession by P11.
-- [ ] [P17-T10] Annotate `docs/superpowers/specs/2026-04-24-thoth-ergonomics-design.md:135` (the §3.4 `thoth workflow` heading) with a one-line callout: `> **Status:** Dropped per planning/thoth.plan.v9.md:18 — superseded by 'thoth modes' (P11).` so a reader landing in §3.4 directly sees the decision without scrolling to the top.
+- [x] [P17-T10] Annotate `docs/superpowers/specs/2026-04-24-thoth-ergonomics-design.md:135` (the §3.4 `thoth workflow` heading) with a one-line callout: `> **Status:** Dropped per planning/thoth.plan.v9.md:18 — superseded by 'thoth modes' (P11).` so a reader landing in §3.4 directly sees the decision without scrolling to the top.
 - [ ] [P17-T11] Verify `planning/project_promote_commands.md:5` and `planning/thoth.plan.v9.md:6` (the only other files that reference this spec) don't need updates — they're plan-side, the spec is the source of truth getting annotated.
 
 ### Automated Verification

@@ -157,6 +157,8 @@ as `BUILTIN_MODES` evolves.
 
 ### 3.4 `thoth workflow` command
 
+> **Status:** Dropped per `planning/thoth.plan.v9.md:18` — superseded by `thoth modes` (P11).
+
 **Change:** add a new `thoth workflow` (alias `thoth guide`) top-level
 command that prints the workflow ladder with one-line descriptions and the
 recommended invocation per step. Thin wrapper around shared rendering
