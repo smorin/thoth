@@ -518,8 +518,9 @@ Existing projects may use older labels such as `**Primary spec**`, `**Plan**`, o
 
 ## [ ] Project P18: Immediate vs Background — Explicit `kind`, Runtime Mismatch, Path Split, Streaming, Cancel (v3.1.0)
 
-**Primary spec**: `docs/superpowers/specs/2026-04-26-p18-immediate-vs-background-design.md` (decisions Q1–Q12 §4, architecture §5, rollout §6, testing strategy §7, cross-project coordination §8, risks §9, **§11 reevaluation log 2026-04-27**)
-**Plan**: `docs/superpowers/plans/2026-04-26-p18-immediate-vs-background.md` (TDD discipline, phase dependency graph, file map, Phase A starter steps, commit cadence, end-of-project checklist, **call-site migration matrix**, **reevaluation 2026-04-27**)
+**References**
+- **Spec:** `docs/superpowers/specs/2026-04-26-p18-immediate-vs-background-design.md` (decisions Q1–Q12 §4, architecture §5, rollout §6, testing strategy §7, cross-project coordination §8, risks §9, **§11 reevaluation log 2026-04-27**)
+- **Plan:** `docs/superpowers/plans/2026-04-26-p18-immediate-vs-background.md` (TDD discipline, phase dependency graph, file map, Phase A starter steps, commit cadence, end-of-project checklist, **call-site migration matrix**, **reevaluation 2026-04-27**)
 
 **Reevaluated 2026-04-27 against post-P16-PR3 codebase.** P16 PR1+PR2+PR3 shipped to `main` in commit `f8b62f2`; v3.0.0 release tag pending release-please. P18 lands as **v3.1.0** (next minor on v3 line). Several P18 hooks are already in the codebase awaiting wiring: `completion/sources.py:79 mode_kind` is dead-code "for P18 forward-compat"; `progress.py:should_show_spinner` already gates spinner on `is_background_model`; `interactive_picker.py:44` filters `--pick-model` candidates "immediate models only"; `cli_subcommands/ask.py:176` uses `is_background_mode(mode_config)` for the `--json` Option E split. Architecture/decisions unchanged; only file references and target version changed. See spec §11 for the full delta.
 
