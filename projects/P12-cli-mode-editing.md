@@ -19,7 +19,7 @@
 | Action | Path | Responsibility |
 |---|---|---|
 | Modify | `src/thoth/config_document.py` | Add `ensure_mode`, `remove_mode`, `set_mode_value`, `unset_mode_value`, `rename_mode`, `copy_mode`. Each accepts an optional `profile: str \| None` parameter — when set, the target sub-tree becomes `profiles.<X>.modes.<NAME>` instead of `modes.<NAME>`. Pure file-mutation; no resolver logic. |
-| Modify | `src/thoth/modes_cmd.py` | Add `get_modes_<op>_data` data functions and `_op_<op>` CLI wrappers for `add` / `set` / `unset` / `remove` / `rename` / `copy`. Add a shared `_parse_target_flags` helper for `--project` / `--config` / `--profile` / `--from-profile`. Wire ops into `modes_command` dispatch. |
+| Modify | `src/thoth/modes_cmd.py` | Add `get_modes_<op>_data` data functions, `get_modes_<op>_data_from_args` parser helpers for JSON wrappers, and `_op_<op>` human CLI wrappers for `add` / `set` / `unset` / `remove` / `rename` / `copy`. Add a shared `_parse_target_flags` helper for `--project` / `--config` / `--profile` / `--from-profile`. Wire ops into `modes_command` dispatch. |
 | Modify | `src/thoth/cli_subcommands/modes.py` | Register six new Click leaves: `add`, `set`, `unset`, `remove`, `rename`, `copy`. Each uses `_PASSTHROUGH_CONTEXT` and forwards to `modes_command`. Define `_MODES_MUTATOR_HONOR = frozenset({"config_path", "profile"})` so root `--profile` IS honored on mutators (overlay-tier writes; this is the deliberate divergence from `_MUTATOR_HONOR` in `cli_subcommands/config.py:347`). |
 | Modify | `src/thoth/help.py` | Extend the modes-group `format_epilog` (around line 161) with examples for each new op covering `--project`, `--config PATH`, `--profile X`, `--override`, and `--from-profile X`. |
 | Create | `tests/test_modes_mutations.py` | Unit tests calling `modes_command` and the `get_modes_<op>_data` functions directly. Covers TS01–TS06 functional cases. Uses `isolated_thoth_home` autouse-style fixture. |
@@ -62,13 +62,13 @@ git commit -m "chore(p12): start P12 — flip trunk glyph [ ] to [~]"
 
 ---
 
-## Task 1: Shared targeting-flag parser + JSON envelope constants
+## Task 1: Shared targeting-flag parser + schema-version constant
 
 **Files:**
 - Modify: `src/thoth/modes_cmd.py` (add `_parse_target_flags` helper near the top, `SCHEMA_VERSION` constant, `_TargetFlags` dataclass)
 - Test: `tests/test_modes_mutations.py` (create)
 
-This task lays the cross-cutting infrastructure used by all six commands. Doing it first so every later task can call `_parse_target_flags(args)` and emit JSON via the shared `SCHEMA_VERSION`.
+This task lays the cross-cutting infrastructure used by all six commands. Doing it first so every later task can call `_parse_target_flags(args)` and stamp data receipts via the shared `SCHEMA_VERSION`. JSON wrapping still happens only in `cli_subcommands/modes.py`.
 
 - [ ] **Step 1.1: Write the failing test for `_parse_target_flags`**
 
@@ -93,26 +93,22 @@ def test_parse_target_flags_defaults() -> None:
     assert flags.config_path is None
     assert flags.profile is None
     assert flags.from_profile is None
-    assert flags.as_json is False
     assert flags.force_string is False
     assert flags.override is False
     assert remaining == []
 
 
-def test_parse_target_flags_each_flag() -> None:
+def test_parse_target_flags_project_success() -> None:
     from thoth.modes_cmd import _parse_target_flags
 
     flags, remaining, rc = _parse_target_flags(
         [
             "alpha",
             "--project",
-            "--config",
-            "/tmp/x.toml",
             "--profile",
             "dev",
             "--from-profile",
             "ci",
-            "--json",
             "--string",
             "--override",
             "beta",
@@ -122,13 +118,24 @@ def test_parse_target_flags_each_flag() -> None:
     )
     assert rc == 0
     assert flags.project is True
-    assert flags.config_path == "/tmp/x.toml"
+    assert flags.config_path is None
     assert flags.profile == "dev"
     assert flags.from_profile == "ci"
-    assert flags.as_json is True
     assert flags.force_string is True
     assert flags.override is True
     assert remaining == ["alpha", "beta", "--model", "gpt-4o-mini"]
+
+
+def test_parse_target_flags_config_success() -> None:
+    from thoth.modes_cmd import _parse_target_flags
+
+    flags, remaining, rc = _parse_target_flags(
+        ["alpha", "--config", "/tmp/x.toml", "beta"]
+    )
+    assert rc == 0
+    assert flags.project is False
+    assert flags.config_path == "/tmp/x.toml"
+    assert remaining == ["alpha", "beta"]
 
 
 def test_parse_target_flags_project_config_conflict() -> None:
@@ -139,16 +146,18 @@ def test_parse_target_flags_project_config_conflict() -> None:
     )
     assert rc == 2
     # rc=2 signals USAGE_ERROR; the caller is responsible for the error
-    # message (so JSON callers can emit a structured error envelope).
+    # message (the Click wrapper emits structured JSON errors when needed).
 
 
-def test_parse_target_flags_override_without_profile_rejected() -> None:
+def test_parse_target_flags_override_without_profile_allowed() -> None:
     from thoth.modes_cmd import _parse_target_flags
 
     flags, remaining, rc = _parse_target_flags(["--override"])
-    assert rc == 2
-    # --override is overlay-only per P12 design; without --profile X it's a
-    # USAGE_ERROR.
+    assert rc == 0
+    assert flags.override is True
+    assert flags.profile is None
+    # Operation-specific parsers decide whether --override is accepted.
+    # P12 accepts it for add/copy and rejects it for set/unset/remove/rename.
 ```
 
 - [ ] **Step 1.2: Run tests to verify they fail**
@@ -157,7 +166,7 @@ def test_parse_target_flags_override_without_profile_rejected() -> None:
 uv run pytest tests/test_modes_mutations.py -x -v
 ```
 
-Expected: 4 FAIL with `ImportError: cannot import name '_parse_target_flags' from 'thoth.modes_cmd'`.
+Expected: 5 FAIL with `ImportError: cannot import name '_parse_target_flags' from 'thoth.modes_cmd'`.
 
 - [ ] **Step 1.3: Implement `_parse_target_flags`, `_TargetFlags`, and `SCHEMA_VERSION` in `modes_cmd.py`**
 
@@ -177,14 +186,14 @@ class _TargetFlags:
     `profile` selects the destination tier (`[profiles.<X>.modes.<NAME>]`
     when set, `[modes.<NAME>]` otherwise). `from_profile` is the SRC-tier
     selector for `copy` only — every other op rejects it as USAGE_ERROR.
-    `override` is the builtin-shadow opt-in; valid only with `profile`.
+    `override` is the builtin-shadow opt-in for add/copy; every other op
+    rejects it as USAGE_ERROR.
     """
 
     project: bool = False
     config_path: str | None = None
     profile: str | None = None
     from_profile: str | None = None
-    as_json: bool = False
     force_string: bool = False
     override: bool = False
 
@@ -192,11 +201,12 @@ class _TargetFlags:
 def _parse_target_flags(
     args: list[str],
 ) -> tuple[_TargetFlags, list[str], int]:
-    """Pull targeting / output flags out of `args`. Returns (flags, remaining, rc).
+    """Pull targeting flags out of `args`. Returns (flags, remaining, rc).
 
     rc == 0 → ok; rc == 2 → USAGE_ERROR (caller emits the message).
-    Validates `--project` ⊥ `--config PATH`, `--override` requires `--profile X`.
-    Does NOT validate that an op accepts `--from-profile` — that's per-op.
+    Validates `--project` ⊥ `--config PATH`.
+    Does NOT validate that an op accepts `--from-profile` or `--override` —
+    that's per-op.
     """
     flags = _TargetFlags()
     remaining: list[str] = []
@@ -221,9 +231,6 @@ def _parse_target_flags(
                 return flags, remaining, 2
             flags.from_profile = args[i + 1]
             i += 2
-        elif a == "--json":
-            flags.as_json = True
-            i += 1
         elif a == "--string":
             flags.force_string = True
             i += 1
@@ -236,8 +243,6 @@ def _parse_target_flags(
 
     if flags.project and flags.config_path is not None:
         return flags, remaining, 2
-    if flags.override and flags.profile is None:
-        return flags, remaining, 2
 
     return flags, remaining, 0
 ```
@@ -248,7 +253,7 @@ def _parse_target_flags(
 uv run pytest tests/test_modes_mutations.py -x -v
 ```
 
-Expected: 4 PASS.
+Expected: 5 PASS.
 
 - [ ] **Step 1.5: Commit**
 
@@ -679,7 +684,7 @@ def test_copy_mode_base_to_overlay(tmp_path: Path) -> None:
     p = tmp_path / "thoth.config.toml"
     doc = _doc(p)
     doc.set_mode_value("src", "model", "gpt-4o-mini")
-    assert doc.copy_mode("src", "dst", to_profile="dev") is True
+    assert doc.copy_mode("src", "dst", profile="dev") is True
     doc.save()
     text = p.read_text()
     assert "[modes.src]" in text
@@ -702,7 +707,7 @@ def test_copy_mode_overlay_to_overlay_cross_profile(tmp_path: Path) -> None:
     doc = _doc(p)
     doc.set_mode_value("src", "model", "gpt-4o-mini", profile="dev")
     assert (
-        doc.copy_mode("src", "dst", from_profile="dev", to_profile="ci")
+        doc.copy_mode("src", "dst", from_profile="dev", profile="ci")
         is True
     )
     doc.save()
@@ -739,17 +744,17 @@ def test_copy_mode_when_src_absent_falls_back_to_caller_provided_data(
         dst: str,
         *,
         from_profile: str | None = None,
-        to_profile: str | None = None,
+        profile: str | None = None,
     ) -> bool:
         """Copy mode SRC (read from `from_profile`'s tier or base) into
-        DST (written to `to_profile`'s tier or base) within the same file.
+        DST (written to `profile`'s tier or base) within the same file.
 
         The four directions are:
 
-        - from_profile=None, to_profile=None  → base→base
-        - from_profile=None, to_profile="X"   → base→overlay
-        - from_profile="X",  to_profile=None  → overlay→base
-        - from_profile="X",  to_profile="Y"   → overlay→overlay (incl. X==Y)
+        - from_profile=None, profile=None  → base→base
+        - from_profile=None, profile="X"   → base→overlay
+        - from_profile="X",  profile=None  → overlay→base
+        - from_profile="X",  profile="Y"   → overlay→overlay (incl. X==Y)
 
         Returns False if SRC is absent in its tier or DST already exists
         in its tier. The primitive does NOT layer with BUILTIN_MODES — the
@@ -758,7 +763,7 @@ def test_copy_mode_when_src_absent_falls_back_to_caller_provided_data(
         `[modes.<SRC>]` from `BUILTIN_MODES` before calling).
         """
         src_prefix = self._mode_segments(src, from_profile)
-        dst_prefix = self._mode_segments(dst, to_profile)
+        dst_prefix = self._mode_segments(dst, profile)
         src_table = self._table_at(src_prefix)
         if src_table is None:
             return False
@@ -790,7 +795,7 @@ Expected: all pass. The existing `test_config_document.py` (profile-primitives s
 ## Task 3: `thoth modes add` (TS01a-j + T01)
 
 **Files:**
-- Modify: `src/thoth/modes_cmd.py` (add `get_modes_add_data`, `_op_add`)
+- Modify: `src/thoth/modes_cmd.py` (add `get_modes_add_data`, `get_modes_add_data_from_args`, `_op_add`)
 - Modify: `src/thoth/cli_subcommands/modes.py` (add `modes_add` click leaf)
 - Test: `tests/test_modes_mutations.py` (extend)
 
@@ -851,13 +856,14 @@ def get_modes_add_data(
     profile: str | None = None,
     override: bool = False,
 ) -> dict:
-    """Pure data function for `thoth modes add`. Returns a JSON-shaped dict.
+    """Pure data function for `thoth modes add`. Returns a receipt dict.
 
     Idempotency: same NAME + same model = no-op exit 0; different model =
     `MODE_EXISTS_DIFFERENT_MODEL` exit 1. Other flags ignored on re-add.
 
-    Builtin-name guard: refuses unless `--profile X --override` is set
-    (overlay-only opt-in).
+    Builtin-name guard: refuses unless `--override` is set. `--override`
+    writes a builtin-name override in the selected tier (base by default,
+    profile overlay when `profile` is set).
     """
     from thoth.config import BUILTIN_MODES
     from thoth.config_write_context import (
@@ -874,17 +880,18 @@ def get_modes_add_data(
             "message": f"--kind must be one of immediate, background (got {kind!r})",
         }
 
-    # Builtin-name guard. Overlay-tier + --override opts in.
+    # Builtin-name guard. --override opts in for either base or profile tier.
     if name in BUILTIN_MODES:
-        if not (profile is not None and override):
+        if not override:
             return {
                 "schema_version": SCHEMA_VERSION,
                 "op": "add",
                 "mode": name,
                 "error": "BUILTIN_NAME_RESERVED",
                 "message": (
-                    f"'{name}' is a builtin. To create a per-profile override, "
-                    f"use `thoth modes add {name} --model M --profile X --override`. "
+                    f"'{name}' is a builtin. To create an override, "
+                    f"use `thoth modes add {name} --model M --override` "
+                    f"(optionally with `--profile X`). "
                     f"To fork into a new mode, use `thoth modes copy {name} <new>`."
                 ),
             }
@@ -965,7 +972,7 @@ def _target_descriptor(path: Path, profile: str | None) -> dict[str, str]:
 def _op_add(args: list[str], *, config_path: str | None = None) -> int:
     flags, remaining, rc = _parse_target_flags(args)
     if rc != 0:
-        _emit_usage_error(flags.as_json, "invalid flag combination")
+        _emit_usage_error("invalid flag combination")
         return 2
 
     # Parse positional + add-specific keyword args from `remaining`.
@@ -979,44 +986,44 @@ def _op_add(args: list[str], *, config_path: str | None = None) -> int:
         a = remaining[i]
         if a == "--model":
             if i + 1 >= len(remaining):
-                _emit_usage_error(flags.as_json, "--model requires a value")
+                _emit_usage_error("--model requires a value")
                 return 2
             model = remaining[i + 1]
             i += 2
         elif a == "--provider":
             if i + 1 >= len(remaining):
-                _emit_usage_error(flags.as_json, "--provider requires a value")
+                _emit_usage_error("--provider requires a value")
                 return 2
             provider = remaining[i + 1]
             i += 2
         elif a == "--description":
             if i + 1 >= len(remaining):
-                _emit_usage_error(flags.as_json, "--description requires a value")
+                _emit_usage_error("--description requires a value")
                 return 2
             description = remaining[i + 1]
             i += 2
         elif a == "--kind":
             if i + 1 >= len(remaining):
-                _emit_usage_error(flags.as_json, "--kind requires a value")
+                _emit_usage_error("--kind requires a value")
                 return 2
             kind = remaining[i + 1]
             i += 2
         elif a.startswith("--"):
-            _emit_usage_error(flags.as_json, f"unknown flag: {a}")
+            _emit_usage_error(f"unknown flag: {a}")
             return 2
         elif name is None:
             name = a
             i += 1
         else:
-            _emit_usage_error(flags.as_json, f"unexpected positional: {a}")
+            _emit_usage_error(f"unexpected positional: {a}")
             return 2
 
     if name is None or model is None:
-        _emit_usage_error(flags.as_json, "modes add takes NAME --model MODEL")
+        _emit_usage_error("modes add takes NAME --model MODEL")
         return 2
 
     if flags.from_profile is not None:
-        _emit_usage_error(flags.as_json, "--from-profile is only valid for `copy`")
+        _emit_usage_error("--from-profile is only valid for `copy`")
         return 2
 
     cli_config_path = flags.config_path or config_path
@@ -1031,28 +1038,19 @@ def _op_add(args: list[str], *, config_path: str | None = None) -> int:
         profile=flags.profile,
         override=flags.override,
     )
-    return _emit_envelope(data, flags.as_json)
+    return _emit_human_receipt(data)
 
 
-def _emit_usage_error(as_json: bool, message: str) -> None:
-    if as_json:
-        from thoth.json_output import emit_error
-
-        emit_error("USAGE_ERROR", message, exit_code=2)
-    else:
-        _get_console().print(f"[red]Error:[/red] {message}")
+def _emit_usage_error(message: str) -> None:
+    _get_console().print(f"[red]Error:[/red] {message}")
 
 
-def _emit_envelope(data: dict, as_json: bool) -> int:
-    """Emit either JSON envelope or human one-line confirmation; return exit code."""
-    if as_json:
-        from thoth.json_output import emit_error, emit_json
+def _emit_human_receipt(data: dict) -> int:
+    """Emit a human one-line confirmation; return exit code.
 
-        if data.get("error"):
-            exit_code = 2 if data["error"] in ("USAGE_ERROR", "PROJECT_CONFIG_CONFLICT") else 1
-            emit_error(data["error"], data.get("message", ""), exit_code=exit_code)
-        emit_json(data)
-
+    JSON emission belongs in cli_subcommands/modes.py via emit_json/emit_error.
+    Handler modules must stay JSON-agnostic per the repo JSON boundary.
+    """
     if data.get("error"):
         _get_console().print(f"[red]Error:[/red] {data.get('message', data['error'])}")
         return 2 if data["error"] in ("USAGE_ERROR", "PROJECT_CONFIG_CONFLICT") else 1
@@ -1070,6 +1068,13 @@ def _emit_envelope(data: dict, as_json: bool) -> int:
             print(f"Already exists: mode '{name}' (model={data['model']})")
         if target:
             print(f"# → {target['file']} [{target['tier']}.{name}]")
+    elif op == "set":
+        suffix = (
+            f" → {target['file']} [{target['tier']}.{name}]"
+            if target
+            else ""
+        )
+        print(f"Set {name}.{data['key']} = {data['value']!r}{suffix}")
     return 0
 ```
 
@@ -1229,7 +1234,7 @@ def test_add_with_profile_overlay(isolated_thoth_home: Path) -> None:  # TS01j b
     assert "[profiles.dev.modes.cheap]" in cfg.read_text()
 
 
-def test_add_override_required_for_builtin_in_overlay(
+def test_add_override_required_for_builtin(
     isolated_thoth_home: Path,
 ) -> None:  # TS01j
     from thoth.modes_cmd import modes_command
@@ -1241,7 +1246,21 @@ def test_add_override_required_for_builtin_in_overlay(
     )
     assert rc == 1
 
-    # With --override + --profile, allowed.
+    # With --override and no --profile, writes a base-tier override.
+    rc = modes_command(
+        "add",
+        ["deep_research", "--model", "gpt-4o-mini", "--override"],
+    )
+    assert rc == 0
+    cfg = Path(isolated_thoth_home) / "config" / "thoth" / "thoth.config.toml"
+    assert "[modes.deep_research]" in cfg.read_text()
+
+
+def test_add_override_allows_builtin_in_profile_tier(
+    isolated_thoth_home: Path,
+) -> None:  # TS01j
+    from thoth.modes_cmd import modes_command
+
     rc = modes_command(
         "add",
         [
@@ -1254,35 +1273,22 @@ def test_add_override_required_for_builtin_in_overlay(
         ],
     )
     assert rc == 0
+    cfg = Path(isolated_thoth_home) / "config" / "thoth" / "thoth.config.toml"
+    assert "[profiles.dev.modes.deep_research]" in cfg.read_text()
 
 
-def test_add_override_without_profile_rejected(
+def test_add_override_on_nonbuiltin_rejected(
     isolated_thoth_home: Path,
-) -> None:  # TS01j (negative)
+) -> None:  # TS01j (strict)
+    """`--override` is the builtin-shadow opt-in. Passing it on a
+    non-builtin name (where there's no guard to bypass) is a
+    USAGE_ERROR — surfaces typos like `--override` for `--provider`."""
     from thoth.modes_cmd import modes_command
 
     rc = modes_command(
-        "add", ["brief", "--model", "gpt-4o-mini", "--override"]
+        "add", ["my_brief", "--model", "gpt-4o-mini", "--override"]
     )
     assert rc == 2
-
-
-def test_add_json_envelope_shape(isolated_thoth_home: Path, capsys) -> None:  # TS01i
-    import json as _json
-
-    from thoth.modes_cmd import modes_command
-
-    rc = modes_command(
-        "add", ["brief", "--model", "gpt-4o-mini", "--json"]
-    )
-    captured = capsys.readouterr()
-    payload = _json.loads(captured.out)
-    assert payload["schema_version"] == "1"
-    assert payload["op"] == "add"
-    assert payload["mode"] == "brief"
-    assert payload["created"] is True
-    assert payload["target"]["tier"] == "modes"
-    assert "file" in payload["target"]
 ```
 
 - [ ] **Step 3.8: Run all `add` tests, verify green.**
@@ -1301,18 +1307,32 @@ _MODES_MUTATOR_HONOR: frozenset[str] = frozenset({"config_path", "profile"})
 
 @modes.command(name="add", context_settings=_PASSTHROUGH_CONTEXT)
 @click.argument("args", nargs=-1, type=click.UNPROCESSED)
+@click.option("--json", "as_json", is_flag=True, help="Emit JSON envelope")
 @click.pass_context
-def modes_add(ctx: click.Context, args: tuple[str, ...]) -> None:
+def modes_add(ctx: click.Context, args: tuple[str, ...], as_json: bool) -> None:
     """Create a new mode."""
     validate_inherited_options(ctx, "modes add", _MODES_MUTATOR_HONOR)
     config_path = inherited_value(ctx, "config_path")
     profile = inherited_value(ctx, "profile")
 
-    from thoth.modes_cmd import modes_command
+    from thoth.modes_cmd import get_modes_add_data_from_args, modes_command
+    from thoth.json_output import emit_error, emit_json
 
     rebuilt = list(args)
     if profile is not None and "--profile" not in rebuilt:
         rebuilt.extend(["--profile", profile])
+
+    if as_json:
+        # Parse add args in the data/helper layer, then emit from the wrapper.
+        # Do not call emit_json/emit_error from modes_cmd.py; the repo JSON
+        # boundary keeps handlers JSON-agnostic.
+        data, exit_code = get_modes_add_data_from_args(
+            rebuilt,
+            config_path=config_path,
+        )
+        if data.get("error"):
+            emit_error(data["error"], data.get("message", ""), exit_code=exit_code)
+        emit_json(data)
 
     if config_path is None:
         rc = modes_command("add", rebuilt)
@@ -1331,6 +1351,7 @@ Create `tests/test_modes_cli_integration.py`:
 from __future__ import annotations
 
 from pathlib import Path
+import json
 
 import pytest
 
@@ -1342,6 +1363,20 @@ def test_modes_add_via_subprocess(isolated_thoth_home: Path) -> None:
     assert res.returncode == 0
     cfg = Path(isolated_thoth_home) / "config" / "thoth" / "thoth.config.toml"
     assert "[modes.brief]" in cfg.read_text()
+
+
+def test_modes_add_json_via_subprocess(isolated_thoth_home: Path) -> None:
+    res = run_thoth(["modes", "add", "brief", "--model", "gpt-4o-mini", "--json"])
+    assert res.returncode == 0
+    payload = json.loads(res.stdout)
+    assert payload["status"] == "ok"
+    data = payload["data"]
+    assert data["schema_version"] == "1"
+    assert data["op"] == "add"
+    assert data["mode"] == "brief"
+    assert data["created"] is True
+    assert data["target"]["tier"] == "modes"
+    assert "file" in data["target"]
 ```
 
 - [ ] **Step 3.11: Run the integration test, verify green.**
@@ -1374,11 +1409,11 @@ Expected: all green. If red, fix before moving to T02.
 ## Task 4: `thoth modes set` (TS02a-g + T02)
 
 **Files:**
-- Modify: `src/thoth/modes_cmd.py` (add `get_modes_set_data`, `_op_set`, register in dispatch)
+- Modify: `src/thoth/modes_cmd.py` (add `get_modes_set_data`, `get_modes_set_data_from_args`, `_op_set`, register in dispatch)
 - Modify: `src/thoth/cli_subcommands/modes.py` (add `modes_set` click leaf)
 - Test: `tests/test_modes_mutations.py` (extend), `tests/test_modes_cli_integration.py` (extend)
 
-Mirror Task 3's structure. Key behavioral note: `set` IS allowed on builtin names — it implicitly creates an override in the chosen tier.
+Mirror Task 3's structure. Key behavioral note: `set` IS allowed on builtin names — it implicitly creates an override in the chosen tier. Absent non-builtin names are rejected with `MODE_NOT_FOUND`.
 
 - [ ] **Step 4.1: Write the happy-path test**
 
@@ -1412,10 +1447,12 @@ def get_modes_set_data(
 ) -> dict:
     """Pure data function for `thoth modes set`.
 
-    `set` ALWAYS allowed (no builtin guard) — setting on a builtin name
-    implicitly creates an overriding `[modes.<NAME>]` (or
-    `[profiles.<X>.modes.<NAME>]`) table.
+    Setting on a builtin name implicitly creates an overriding
+    `[modes.<NAME>]` (or `[profiles.<X>.modes.<NAME>]`) table.
+    Absent non-builtin names are rejected with MODE_NOT_FOUND.
     """
+    from thoth._secrets import _is_secret_key, _mask_secret
+    from thoth.config import BUILTIN_MODES
     from thoth.config_cmd import _parse_value
     from thoth.config_write_context import (
         ConfigTargetConflictError,
@@ -1437,15 +1474,28 @@ def get_modes_set_data(
 
     value = _parse_value(raw_value, force_string)
     doc = context.load_document()
+    target_segments = (
+        ("profiles", profile, "modes", name) if profile else ("modes", name)
+    )
+    if name not in BUILTIN_MODES and doc._table_at(target_segments) is None:  # type: ignore[attr-defined]
+        return {
+            "schema_version": SCHEMA_VERSION,
+            "op": "set",
+            "mode": name,
+            "error": "MODE_NOT_FOUND",
+            "message": f"mode {name!r} not found",
+        }
+
     doc.set_mode_value(name, key, value, profile=profile)
     doc.save()
+    receipt_value = _mask_secret(value) if _is_secret_key(key) else value
 
     return {
         "schema_version": SCHEMA_VERSION,
         "op": "set",
         "mode": name,
         "key": key,
-        "value": value,
+        "value": receipt_value,
         "wrote": True,
         "target": _target_descriptor(context.target_path, profile),
     }
@@ -1454,18 +1504,18 @@ def get_modes_set_data(
 def _op_set(args: list[str], *, config_path: str | None = None) -> int:
     flags, remaining, rc = _parse_target_flags(args)
     if rc != 0:
-        _emit_usage_error(flags.as_json, "invalid flag combination")
+        _emit_usage_error("invalid flag combination")
         return 2
 
     if flags.from_profile is not None:
-        _emit_usage_error(flags.as_json, "--from-profile is only valid for `copy`")
+        _emit_usage_error("--from-profile is only valid for `copy`")
         return 2
     if flags.override:
-        _emit_usage_error(flags.as_json, "--override is only valid for `add`")
+        _emit_usage_error("--override is only valid for `add` or `copy`")
         return 2
 
     if len(remaining) != 3:
-        _emit_usage_error(flags.as_json, "modes set takes NAME KEY VALUE")
+        _emit_usage_error("modes set takes NAME KEY VALUE")
         return 2
     name, key, raw_value = remaining
 
@@ -1479,30 +1529,7 @@ def _op_set(args: list[str], *, config_path: str | None = None) -> int:
         config_path=cli_config_path,
         profile=flags.profile,
     )
-    # Extend `_emit_envelope` for `set` — see step 4.4.
-    return _emit_envelope_set(data, flags.as_json)
-
-
-def _emit_envelope_set(data: dict, as_json: bool) -> int:
-    if as_json:
-        from thoth.json_output import emit_error, emit_json
-
-        if data.get("error"):
-            emit_error(data["error"], data.get("message", ""), exit_code=2)
-        emit_json(data)
-
-    if data.get("error"):
-        _get_console().print(f"[red]Error:[/red] {data.get('message')}")
-        return 2
-
-    target = data.get("target", {})
-    suffix = (
-        f" → {target['file']} [{target['tier']}.{data['mode']}]"
-        if target
-        else ""
-    )
-    print(f"Set {data['mode']}.{data['key']} = {data['value']!r}{suffix}")
-    return 0
+    return _emit_human_receipt(data)
 ```
 
 Register in dispatch:
@@ -1563,6 +1590,13 @@ def test_set_on_builtin_creates_override(isolated_thoth_home: Path) -> None:  # 
     assert "parallel = false" in cfg
 
 
+def test_set_absent_nonbuiltin_errors(isolated_thoth_home: Path) -> None:  # TS02e
+    from thoth.modes_cmd import modes_command
+
+    rc = modes_command("set", ["missing_mode", "model", "gpt-4o-mini"])
+    assert rc == 1
+
+
 def test_set_overlay_via_profile(isolated_thoth_home: Path) -> None:  # TS02f
     from thoth.modes_cmd import modes_command
 
@@ -1575,25 +1609,9 @@ def test_set_overlay_via_profile(isolated_thoth_home: Path) -> None:  # TS02f
     ).read_text()
     assert "[profiles.dev.modes.cheap]" in cfg
     assert 'model = "gpt-4o-mini"' in cfg
-
-
-def test_set_json_envelope(isolated_thoth_home: Path, capsys) -> None:  # TS02g
-    import json as _json
-
-    from thoth.modes_cmd import modes_command
-
-    modes_command("add", ["brief", "--model", "gpt-4o-mini"])
-    rc = modes_command("set", ["brief", "temperature", "0.2", "--json"])
-    captured = capsys.readouterr()
-    payload = _json.loads(captured.out)
-    assert payload["op"] == "set"
-    assert payload["mode"] == "brief"
-    assert payload["key"] == "temperature"
-    assert payload["value"] == 0.2
-    assert payload["wrote"] is True
 ```
 
-Note: TS02e (absent NAME → MODE_NOT_FOUND) is intentionally NOT in this list. `set` semantics are "implicitly create the table" — it does not refuse on absent names. The TS02e wording in PROJECTS.md was inherited from a draft that pre-dates the "implicit create" decision; treat the row as "absent NAME on a non-builtin auto-creates the table" and rephrase accordingly when ticking.
+TS02g (`--json`) belongs in `tests/test_modes_cli_integration.py` because JSON emission is owned by the Click wrapper. Add a subprocess test that asserts top-level `status == "ok"` and `data` fields for `schema_version`, `op`, `mode`, `key`, `value`, `wrote`, and `target`; include a secret-like key case that verifies `data["value"]` is masked.
 
 - [ ] **Step 4.6: Wire `set` click leaf in `cli_subcommands/modes.py`**
 
@@ -1602,17 +1620,28 @@ Add after the `modes_add` definition:
 ```python
 @modes.command(name="set", context_settings=_PASSTHROUGH_CONTEXT)
 @click.argument("args", nargs=-1, type=click.UNPROCESSED)
+@click.option("--json", "as_json", is_flag=True, help="Emit JSON envelope")
 @click.pass_context
-def modes_set(ctx: click.Context, args: tuple[str, ...]) -> None:
+def modes_set(ctx: click.Context, args: tuple[str, ...], as_json: bool) -> None:
     """Set a key on a mode."""
     validate_inherited_options(ctx, "modes set", _MODES_MUTATOR_HONOR)
     config_path = inherited_value(ctx, "config_path")
     profile = inherited_value(ctx, "profile")
-    from thoth.modes_cmd import modes_command
+    from thoth.modes_cmd import get_modes_set_data_from_args, modes_command
+    from thoth.json_output import emit_error, emit_json
 
     rebuilt = list(args)
     if profile is not None and "--profile" not in rebuilt:
         rebuilt.extend(["--profile", profile])
+
+    if as_json:
+        data, exit_code = get_modes_set_data_from_args(
+            rebuilt,
+            config_path=config_path,
+        )
+        if data.get("error"):
+            emit_error(data["error"], data.get("message", ""), exit_code=exit_code)
+        emit_json(data)
 
     if config_path is None:
         rc = modes_command("set", rebuilt)
@@ -1630,7 +1659,8 @@ uv run pytest tests/test_modes_mutations.py tests/test_modes_cli_integration.py 
 - [ ] **Step 4.8: Tick TS02a-g and T02 in PROJECTS.md, commit.**
 
 ```bash
-git add ... && git commit -m "feat(p12): thoth modes set — full surface + tests (T02)"
+git add src/thoth/modes_cmd.py src/thoth/cli_subcommands/modes.py tests/test_modes_mutations.py tests/test_modes_cli_integration.py PROJECTS.md
+git commit -m "feat(p12): thoth modes set — full surface + tests (T02)"
 ```
 
 ---
@@ -1639,9 +1669,13 @@ git add ... && git commit -m "feat(p12): thoth modes set — full surface + test
 
 Same pattern as Task 4. Six steps:
 
+For Tasks 5-8, keep the same JSON boundary as Tasks 3-4: add a
+`get_modes_<op>_data_from_args` helper for wrapper use, keep `_op_<op>` human
+only, and emit `emit_json` / `emit_error` only from `cli_subcommands/modes.py`.
+
 - [ ] **5.1:** Write happy-path TS03a test (`unset` drops a key, `cfg.read_text()` no longer contains it).
 - [ ] **5.2:** Verify FAIL.
-- [ ] **5.3:** Implement `get_modes_unset_data` / `_op_unset`. Use `ConfigDocument.unset_mode_value(profile=...)` which returns `(removed, table_pruned)`. Map to `{schema_version, op: "unset", mode, target, key, removed, table_pruned}`. Idempotent on absent KEY (returns `removed: False, exit 0`). Pure-builtin NAME → `MODE_NOT_FOUND` exit 1 (use `BUILTIN_MODES` membership check + `_table_at(...)` to disambiguate).
+- [ ] **5.3:** Implement `get_modes_unset_data` / `_op_unset`. Use `ConfigDocument.unset_mode_value(profile=...)` which returns `(removed, table_pruned)`. Map the data payload to `{schema_version, op: "unset", mode, target, key, removed, table_pruned}`; the Click wrapper adds the existing `status`/`data` JSON envelope. Idempotent on absent KEY (returns `removed: False, exit 0`). Pure-builtin NAME → `MODE_NOT_FOUND` exit 1 (use `BUILTIN_MODES` membership check + `_table_at(...)` to disambiguate).
 - [ ] **5.4:** Verify happy-path PASS. Commit T03 partial.
 - [ ] **5.5:** Add tests for TS03b-g:
   - **TS03b**: unset last key prunes empty `[modes.NAME]` table.
@@ -1660,7 +1694,7 @@ Same pattern as Task 4. Six steps:
 
 - [ ] **6.1:** Write TS04a happy-path test: `remove` drops `[modes.brief]` after a prior `add`.
 - [ ] **6.2:** Verify FAIL.
-- [ ] **6.3:** Implement `get_modes_remove_data` / `_op_remove`. Calls `ConfigDocument.remove_mode(profile=...)`. **Builtin guard applies**: pure-builtin NAME → `BUILTIN_NAME_RESERVED` exit 1. Overridden builtin → drops the override; envelope reports `removed=True, reverted_to_builtin=True`. Absent (non-builtin) NAME → no-op exit 0, `removed=False`.
+- [ ] **6.3:** Implement `get_modes_remove_data` / `_op_remove`. Calls `ConfigDocument.remove_mode(profile=...)`. **Builtin guard applies**: pure-builtin NAME → `BUILTIN_NAME_RESERVED` exit 1. Overridden builtin → drops the override; data payload reports `removed=True, reverted_to_builtin=True`. Absent (non-builtin) NAME → no-op exit 0, `removed=False`.
 - [ ] **6.4:** Happy-path PASS, commit partial.
 - [ ] **6.5:** Add tests for TS04b-f:
   - **TS04b**: remove a builtin override; `list_all_modes` post-check reports `source=builtin` again.
@@ -1717,9 +1751,9 @@ def test_copy_base_to_base(isolated_thoth_home: Path) -> None:  # TS06g1
 - [ ] **8.3:** Implement `get_modes_copy_data` / `_op_copy`. Behavior:
 
   - **SRC resolution**: read from `[modes.SRC]` if no `--from-profile`, else `[profiles.<X>.modes.SRC]`. If SRC is in `BUILTIN_MODES` AND no user-side override exists in the source tier, **layer with `BUILTIN_MODES`** before writing — pre-populate a temporary dict from the builtin and the user override (if any), and pass that dict's items to `ConfigDocument.set_mode_value` for each key on DST. (The primitive doesn't know about `BUILTIN_MODES`, so the CLI layer does the layering.)
-  - **DST validation**: `_table_at` for DST in destination tier; if exists, `DST_NAME_TAKEN`. If DST is a builtin name AND `to_profile is None`, also `DST_NAME_TAKEN` (can't copy into the builtin namespace).
+  - **DST validation**: `_table_at` for DST in destination tier; if exists, `DST_NAME_TAKEN`. If DST is a builtin name and `--override` is absent, also `DST_NAME_TAKEN`. If DST is a builtin name and `--override` is present, write a same-named override in the selected destination tier (base by default, or profile overlay with `--profile Y`).
   - **Refusal cases**: SRC absent → `MODE_NOT_FOUND` exit 1. DST conflict → `DST_NAME_TAKEN` exit 1.
-  - **Envelope**: `{schema_version, op: "copy", from, to, source_tier, target, copied}`.
+  - **Data payload**: `{schema_version, op: "copy", from, to, source_tier, target, copied}`; the Click wrapper adds the existing `status`/`data` JSON envelope.
 
 - [ ] **8.4:** TS06g1 PASS. Commit partial.
 
@@ -1728,7 +1762,7 @@ def test_copy_base_to_base(isolated_thoth_home: Path) -> None:  # TS06g1
   - **TS06a**: SRC is builtin (`deep_research`, no user override) → DST table contains the builtin's keys (`provider`, `model`, `kind`, `description`, `system_prompt`, etc.).
   - **TS06b**: SRC is user-only.
   - **TS06c**: SRC is overridden — DST gets the *effective* (builtin layered with override) keys.
-  - **TS06d-e**: DST refusals.
+  - **TS06d-e**: DST refusals, plus `copy SRC <builtin> --override` success for base and profile destination tiers. Symmetric with `add`'s strict-on-non-builtin rule: `copy src new_dst --override` (where `new_dst` is not a builtin) is rejected with `USAGE_ERROR` exit 2 — `--override` is the explicit builtin-shadow opt-in, not a no-op modifier.
   - **TS06f**: SRC absent.
   - **TS06g2**: base → overlay (`--profile dev` on DST).
   - **TS06g3**: overlay → base (`--from-profile dev`, no `--profile`).
@@ -1766,35 +1800,61 @@ import pytest
     ],
 )
 @pytest.mark.parametrize(
-    "targeting",
+    "case_name,targeting",
     [
-        [],
-        ["--profile", "dev"],
-        ["--project"],
-        ["--profile", "dev", "--project"],
+        ("user-base", []),
+        ("user-profile", ["--profile", "dev"]),
+        ("project-base", ["--project"]),
+        ("project-profile", ["--project", "--profile", "dev"]),
+        ("config-base", ["--config", "{custom_config}"]),
+        ("config-profile", ["--config", "{custom_config}", "--profile", "dev"]),
     ],
 )
 def test_tomlkit_preserves_top_comment(
     isolated_thoth_home: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
     op: str,
     args: list[str],
+    case_name: str,
     targeting: list[str],
 ) -> None:
     from thoth.modes_cmd import modes_command
 
-    cfg = Path(isolated_thoth_home) / "config" / "thoth" / "thoth.config.toml"
+    custom_config = tmp_path / "custom.toml"
+    resolved_targeting = [
+        str(custom_config) if token == "{custom_config}" else token
+        for token in targeting
+    ]
+    if "--project" in resolved_targeting:
+        monkeypatch.chdir(tmp_path)
+        cfg = tmp_path / "thoth.config.toml"
+    elif "--config" in resolved_targeting:
+        cfg = custom_config
+    else:
+        cfg = Path(isolated_thoth_home) / "config" / "thoth" / "thoth.config.toml"
+
     cfg.parent.mkdir(parents=True, exist_ok=True)
-    cfg.write_text('# preserved comment\nversion = "2.0"\n[modes.x]\nmodel = "gpt-4o-mini"\ntemperature = 0.5\n')
+    text = (
+        '# preserved comment\n'
+        'version = "2.0"\n'
+        "[modes.x]\n"
+        'model = "gpt-4o-mini"\n'
+        "temperature = 0.5\n"
+    )
+    if "--profile" in resolved_targeting:
+        text += (
+            "\n[profiles.dev.modes.x]\n"
+            'model = "gpt-4o-mini"\n'
+            "temperature = 0.5\n"
+        )
+    cfg.write_text(text)
 
-    # Add 'y' so rename/copy don't fail on missing dst.
-    if op in ("rename", "copy"):
-        modes_command("add", ["y_seed", "--model", "a"])
-        # Use y_seed → y target to avoid colliding with 'y' in the file.
-
-    rc = modes_command(op, args + targeting)
+    rc = modes_command(op, args + resolved_targeting)
+    assert rc == 0, f"op={op}, case={case_name}"
     text = cfg.read_text()
     assert "# preserved comment" in text, (
-        f"top comment lost by op={op}, targeting={targeting}"
+        f"top comment lost by op={op}, case={case_name}"
     )
 ```
 
@@ -1808,8 +1868,22 @@ def test_schema_version_constant_uniform() -> None:
     # Sanity: all envelope-emitting data functions stamp this constant.
     from thoth.modes_cmd import (
         get_modes_add_data,
+        get_modes_copy_data,
+        get_modes_remove_data,
+        get_modes_rename_data,
         get_modes_set_data,
-        # ... all 6
+        get_modes_unset_data,
+    )
+    assert all(
+        callable(fn)
+        for fn in (
+            get_modes_add_data,
+            get_modes_set_data,
+            get_modes_unset_data,
+            get_modes_remove_data,
+            get_modes_rename_data,
+            get_modes_copy_data,
+        )
     )
     # Each is exercised in earlier task tests. This is a regression
     # tripwire: if the constant changes, every test calling it should
@@ -1829,7 +1903,7 @@ Test that `thoth help modes` (or `thoth modes --help`) output mentions all six n
 ```python
 def test_layering_overlay_wins_when_active(isolated_thoth_home: Path) -> None:  # TS07e
     """When [modes.X] and [profiles.dev.modes.X] both exist:
-    `thoth modes --name X` reflects base; `--profile dev` reflects overlay."""
+    `thoth modes list --name X` reflects base; `--profile dev` reflects overlay."""
     from thoth.modes_cmd import modes_command, get_modes_list_data
 
     modes_command("add", ["mymode", "--model", "base-model"])
@@ -1864,10 +1938,10 @@ Edit `src/thoth/help.py:161` (the `format_epilog` of the modes group) to add a "
             "  thoth modes unset NAME KEY",
             "  thoth modes remove NAME",
             "  thoth modes rename OLD NEW",
-            "  thoth modes copy SRC DST [--from-profile X]",
+            "  thoth modes copy SRC DST [--from-profile X] [--override]",
             "",
             "All mutators support: --project | --config PATH | --profile X | --json.",
-            "Use --override (overlay-only) to add a builtin name in a profile.",
+            "Use --override with add/copy to create a builtin-name override in the selected tier.",
         ):
             formatter.write_text(line)
 ```
@@ -1895,12 +1969,12 @@ Expected: all green. If anything is red, fix at root cause and re-run before fli
 Manual smoke test (the `Manual Verification` checklist from PROJECTS.md):
 
 ```bash
-thoth modes
-thoth modes --json
-thoth modes --name deep_research
-thoth modes --source builtin
-thoth modes --kind background
-thoth modes --name deep_research --full
+thoth modes list
+thoth modes list --json
+thoth modes list --name deep_research
+thoth modes list --source builtin
+thoth modes list --kind background
+thoth modes list --name deep_research --full
 ```
 
 All must produce the same output as before P12 (the read paths are unchanged — TS08 confirms).
@@ -1930,14 +2004,14 @@ gh pr create --title "P12: CLI Mode Editing — thoth modes mutations (v2.12.0)"
 
 - Adds the mutation half of \`thoth modes\`: \`add\`, \`set\`, \`unset\`, \`remove\`, \`rename\`, \`copy\`
 - Mirrors \`thoth config profiles\` (P21b) precedent; diverges where mode semantics require (builtins, model-on-create, empty-table pruning)
-- Integrates with P18 \`kind\` field and P21* profile-overlay tier; root \`--profile X\` writes overlay; new \`--override\` (overlay-only) and \`--from-profile X\` (copy SRC tier) flags
+- Integrates with P18 \`kind\` field and P21* profile-overlay tier; root \`--profile X\` writes overlay; new \`--override\` (builtin-name override opt-in for add/copy) and \`--from-profile X\` (copy SRC tier) flags
 
 ## Test plan
 
 - [ ] \`uv run pytest tests/test_modes_mutations.py tests/test_modes_cli_integration.py tests/test_config_document_modes.py -v\`
 - [ ] \`./thoth_test -r --skip-interactive -q\`
-- [ ] Manual: \`thoth modes add my_brief --model gpt-4o-mini\` then \`thoth modes\` shows it as \`source=user\`
-- [ ] Manual: \`thoth modes set deep_research parallel false\` then \`thoth modes --name deep_research\` shows \`source=overridden\`
+- [ ] Manual: \`thoth modes add my_brief --model gpt-4o-mini\` then \`thoth modes list\` shows it as \`source=user\`
+- [ ] Manual: \`thoth modes set deep_research parallel false\` then \`thoth modes list --name deep_research\` shows \`source=overridden\`
 - [ ] Manual: \`thoth modes copy deep_research custom_research --profile dev\` writes to \`[profiles.dev.modes.custom_research]\`
 
 Closes P12.
@@ -1968,9 +2042,9 @@ This section is metadata for plan reviewers, not execution steps.
 - `SCHEMA_VERSION` is a module-level string `"1"` in `modes_cmd.py`; all data functions stamp it.
 - `_TargetFlags` dataclass owns the targeting/output-flag bag; `_parse_target_flags(args)` returns `(flags, remaining, rc)`.
 - `_target_descriptor(path, profile)` returns `{file, tier}`; every mutator's envelope has `target` of this shape.
-- `ConfigDocument` mode primitives all accept `profile: str | None = None` (kw-only) for tier selection, plus `from_profile` / `to_profile` on `copy_mode`.
+- `ConfigDocument` mode primitives all accept `profile: str | None = None` (kw-only) for destination tier selection, plus `from_profile` on `copy_mode`.
 - Click leaves use `_PASSTHROUGH_CONTEXT` and the new `_MODES_MUTATOR_HONOR` policy (`{"config_path", "profile"}`).
 
 **Placeholder scan:** No "TBD" / "fill in details" / "similar to Task N" — every step has its actual content. The condensed Tasks 5–8 (which abbreviate TS rows by reference rather than full code) explicitly call out the assertion the test must make and the implementation behavior, so the engineer can write each test from the spec without consulting another task.
 
-**Spec gaps surfaced:** None blocking. One ambiguity in TS02e (`absent NAME → MODE_NOT_FOUND`) was flagged in step 4.5 — the actual `set` semantics are implicit-create, so TS02e should be reinterpreted as "absent NAME on a non-builtin auto-creates the table" when ticking.
+**Spec gaps surfaced:** Resolved during review. TS02e is authoritative: absent non-builtin `set` returns `MODE_NOT_FOUND`; builtin-only names may still implicitly create overrides. `--override` is an add/copy builtin-name opt-in for both base and profile tiers.
