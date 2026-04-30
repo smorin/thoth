@@ -49,6 +49,8 @@ class AppContext:
     no_metadata: bool = False
     timeout_override: float | None = None
     cli_api_keys: dict[str, str | None] = field(default_factory=dict)
+    cancel_on_interrupt_override: bool | None = None
+    as_json: bool = False
 
 
 __all__ = ["AppContext"]

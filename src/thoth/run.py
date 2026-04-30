@@ -39,7 +39,7 @@ from thoth.models import OperationStatus
 from thoth.output import OutputManager
 from thoth.progress import run_with_spinner, should_show_spinner
 from thoth.providers import ResearchProvider, create_provider
-from thoth.signals import _raise_if_interrupted
+from thoth.signals import _interrupt_event
 from thoth.utils import check_disk_space, generate_operation_id, mask_api_key
 
 console = Console()
@@ -527,6 +527,64 @@ async def _execute_immediate(
         )
 
 
+async def _maybe_cancel_upstream_and_raise(
+    jobs: dict[str, dict[str, Any]],
+    completed_providers: set[str],
+    failed_providers: set[str],
+    ctx: AppContext,
+    config: ConfigManager,
+) -> None:
+    """If interrupted, attempt parallel upstream cancel then raise KeyboardInterrupt.
+
+    P18-T27: only the polling loop reaches this path, so the upstream-cancel
+    behavior fires for sync background runs and resume runs. ``--async``
+    submissions exit before Ctrl-C lands; immediate-kind runs never enter the
+    polling loop.
+
+    Resolution order for the toggle:
+      1. AppContext.cancel_on_interrupt_override (CLI flag, None if not given)
+      2. config[execution].cancel_upstream_on_interrupt (default True)
+
+    When the toggle is False and ``ctx.as_json`` is also False, prints a
+    one-line hint pointing at ``thoth cancel`` so the user knows the upstream
+    job is still billing.
+    """
+    if not _interrupt_event.is_set():
+        return
+
+    cli_override = ctx.cancel_on_interrupt_override
+    config_default = config.data.get("execution", {}).get("cancel_upstream_on_interrupt", True)
+    should_cancel = cli_override if cli_override is not None else config_default
+
+    if should_cancel:
+        in_flight = [
+            (name, info)
+            for name, info in jobs.items()
+            if name not in completed_providers and name not in failed_providers
+        ]
+        if in_flight:
+            tasks = [info["provider"].cancel(info["job_id"]) for _, info in in_flight]
+            try:
+                results = await asyncio.wait_for(
+                    asyncio.gather(*tasks, return_exceptions=True),
+                    timeout=5,
+                )
+                for (name, _), result in zip(in_flight, results, strict=False):
+                    if isinstance(result, BaseException):
+                        # Swallow NotImplementedError / network failures; best-effort.
+                        continue
+                    ctx.console.print(f"[yellow]Cancelled upstream:[/yellow] {name}")
+            except TimeoutError:
+                pass  # 5s envelope exceeded; exit anyway
+    elif not ctx.as_json:
+        op = ctx.current_operation
+        op_id = op.id if op is not None else None
+        target = f"`thoth cancel {op_id}`" if op_id else "`thoth cancel <op-id>`"
+        ctx.console.print(f"[dim]Upstream job still running; run {target} to stop billing.[/dim]")
+
+    raise KeyboardInterrupt
+
+
 async def _run_polling_loop(
     operation: OperationStatus,
     jobs: dict[str, dict[str, Any]],
@@ -581,7 +639,9 @@ async def _run_polling_loop(
     cached_statuses: dict[str, dict[str, Any]] = {}
 
     while len(completed_providers) < len(jobs):
-        _raise_if_interrupted()
+        await _maybe_cancel_upstream_and_raise(
+            jobs, completed_providers, failed_providers, ctx, config
+        )
         now = asyncio.get_running_loop().time()
         should_poll = now >= next_poll_at
 

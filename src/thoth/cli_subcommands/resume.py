@@ -31,6 +31,7 @@ _RESUME_HONOR = DEFAULT_HONOR | {
     "api_key_openai",
     "api_key_perplexity",
     "api_key_mock",
+    "cancel_on_interrupt",
 }
 
 
@@ -48,6 +49,16 @@ _RESUME_HONOR = DEFAULT_HONOR | {
 @click.option("--api-key-openai", help="API key for OpenAI provider")
 @click.option("--api-key-perplexity", help="API key for Perplexity provider")
 @click.option("--api-key-mock", help="API key for Mock provider")
+@click.option(
+    "--cancel-on-interrupt/--no-cancel-on-interrupt",
+    "cancel_on_interrupt",
+    default=None,
+    help=(
+        "On Ctrl-C during the resume polling loop, also cancel the upstream "
+        "provider job (default: per [execution].cancel_upstream_on_interrupt "
+        "config, default true)."
+    ),
+)
 @click.option("--json", "as_json", is_flag=True, help="Emit JSON snapshot envelope")
 @click.pass_context
 def resume(
@@ -61,6 +72,7 @@ def resume(
     api_key_openai: str | None,
     api_key_perplexity: str | None,
     api_key_mock: str | None,
+    cancel_on_interrupt: bool | None,
     as_json: bool,
 ) -> None:
     """Resume a previously-checkpointed operation by ID."""
@@ -100,6 +112,11 @@ def resume(
     effective_no_metadata = bool(no_metadata or inherited.get("no_metadata"))
     effective_timeout = timeout if timeout is not None else inherited.get("timeout")
     effective_config = config_path or inherited.get("config_path")
+    effective_cancel_on_interrupt = (
+        cancel_on_interrupt
+        if cancel_on_interrupt is not None
+        else inherited.get("cancel_on_interrupt")
+    )
     root_api_keys = inherited_api_keys(ctx)
     cli_api_keys = {
         "openai": api_key_openai or root_api_keys["openai"],
@@ -108,7 +125,9 @@ def resume(
     }
 
     _apply_config_path(effective_config)
-    app_ctx = _build_app_context(effective_verbose)
+    app_ctx = _build_app_context(
+        effective_verbose, cancel_on_interrupt=effective_cancel_on_interrupt
+    )
     _run_maybe_async(
         _thoth_run.resume_operation(
             operation_id,

@@ -39,6 +39,7 @@ ROOT_OPTION_LABELS: dict[str, str] = {
     "interactive": "--interactive",
     "clarify": "--clarify",
     "pick_model": "--pick-model",
+    "cancel_on_interrupt": "--cancel-on-interrupt/--no-cancel-on-interrupt",
 }
 
 ROOT_OPTION_ORDER: tuple[str, ...] = tuple(ROOT_OPTION_LABELS)

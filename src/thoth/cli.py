@@ -53,7 +53,12 @@ def _read_prompt_input(path_or_dash: str, max_bytes: int) -> str:
     return data.strip()
 
 
-def _build_app_context(verbose: bool) -> AppContext:
+def _build_app_context(
+    verbose: bool,
+    *,
+    cancel_on_interrupt: bool | None = None,
+    as_json: bool = False,
+) -> AppContext:
     """Construct the per-invocation AppContext.
 
     The returned ctx shares its `interrupt_event` with `thoth.signals` so that
@@ -64,6 +69,8 @@ def _build_app_context(verbose: bool) -> AppContext:
         console=console,
         interrupt_event=_thoth_signals._interrupt_event,
         verbose=verbose,
+        cancel_on_interrupt_override=cancel_on_interrupt,
+        as_json=as_json,
     )
 
 
@@ -431,6 +438,7 @@ def _dispatch_click_fallback(
         out=tuple(opts.get("out") or ()),
         append=bool(opts.get("append")),
         profile=opts.get("profile"),
+        cancel_on_interrupt=opts.get("cancel_on_interrupt"),
     )
 
 
@@ -478,6 +486,8 @@ def _run_research_default(
     out: tuple[str, ...] = (),
     append: bool = False,
     profile: str | None = None,
+    cancel_on_interrupt: bool | None = None,
+    as_json: bool = False,
 ) -> None:
     """Execute a research run with the given mode and prompt.
 
@@ -488,7 +498,16 @@ def _run_research_default(
     consulted by the immediate-kind streaming path. Background runs ignore
     them today (deferred to a future P18 follow-up).
     """
-    app_ctx = _build_app_context(verbose) if ctx_obj is None else ctx_obj
+    if ctx_obj is None:
+        app_ctx = _build_app_context(
+            verbose, cancel_on_interrupt=cancel_on_interrupt, as_json=as_json
+        )
+    else:
+        app_ctx = ctx_obj
+        if cancel_on_interrupt is not None:
+            app_ctx.cancel_on_interrupt_override = cancel_on_interrupt
+        if as_json:
+            app_ctx.as_json = True
     _result = _thoth_run.run_research(
         mode=mode,
         prompt=prompt,
@@ -548,6 +567,7 @@ def cli(
     interactive,
     clarify,
     pick_model,
+    cancel_on_interrupt,
 ):
     """thoth — research orchestration.
 
@@ -585,6 +605,7 @@ def cli(
     ctx.obj["interactive"] = interactive
     ctx.obj["clarify"] = clarify
     ctx.obj["pick_model"] = pick_model
+    ctx.obj["cancel_on_interrupt"] = cancel_on_interrupt
 
     if version:
         conflicts = _version_conflicts(ctx, ctx.obj)

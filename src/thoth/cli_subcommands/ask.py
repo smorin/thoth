@@ -38,6 +38,7 @@ _ASK_HONOR = DEFAULT_HONOR | {
     "timeout",
     "out",
     "append",
+    "cancel_on_interrupt",
 }
 
 
@@ -73,6 +74,7 @@ def ask(
     interactive: bool,
     clarify: bool,
     pick_model: bool,
+    cancel_on_interrupt: bool | None,
     as_json: bool,
 ) -> None:
     """Run a research operation with the given prompt."""
@@ -135,6 +137,7 @@ def ask(
     effective_timeout = pick_value(timeout, ctx, "timeout")
     effective_config = pick_value(config_path, ctx, "config_path")
     effective_profile = pick_value(profile, ctx, "profile")
+    effective_cancel_on_interrupt = pick_value(cancel_on_interrupt, ctx, "cancel_on_interrupt")
     root_api_keys = inherited_api_keys(ctx)
     cli_api_keys = {
         "openai": api_key_openai or root_api_keys["openai"],
@@ -224,6 +227,8 @@ def ask(
                     timeout_override=effective_timeout,
                     model_override=None,
                     profile=effective_profile,
+                    cancel_on_interrupt=effective_cancel_on_interrupt,
+                    as_json=True,
                 )
         except SystemExit as exc:
             if exc.code not in (None, 0):
@@ -281,6 +286,7 @@ def ask(
         out=out,
         append=append,
         profile=effective_profile,
+        cancel_on_interrupt=effective_cancel_on_interrupt,
     )
 
 

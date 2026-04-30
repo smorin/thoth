@@ -207,6 +207,177 @@ echo 1 | uv run thoth --pick-model default "noninteractive smoke" --provider moc
 
 ---
 
+## P18 Feature Tests
+
+> Covers the immediate-vs-background path split, streaming output, `thoth cancel`,
+> the `thoth modes --kind` filter, runtime kind/model mismatch detection, the
+> `mini_research` → `quick_research` rename, and the user-mode missing-`kind`
+> warn-once at config load.
+
+### I. Immediate vs background path
+
+```bash
+# I1. Immediate mode emits no operation ID, no spinner, no resume hint
+uv run thoth ask "what is X" --mode thinking --provider mock 2>&1 | tee /tmp/thoth-i1.txt
+# Expected: streams the answer to stdout in seconds, NO line beginning
+#           "Operation ID:", NO "thoth resume", NO spinner.
+grep -E "Operation ID|thoth resume" /tmp/thoth-i1.txt && echo "FAIL: leakage" || echo "ok"
+
+# I2. Background mode keeps the existing UX
+uv run thoth ask "topic" --mode deep_research --async --provider mock 2>&1 | head -8
+# Expected: prints "Operation ID: op_<id>" and submits without blocking.
+
+# I3. Immediate mode WITH --project still persists + emits op-id
+uv run thoth ask "test" --mode thinking --project demo --provider mock 2>&1 | grep -E "Operation ID"
+# Expected: an Operation ID line is present (persistence escape hatch).
+```
+
+### J. Streaming output (`--out`)
+
+```bash
+# J1. Stdout sink (default)
+uv run thoth ask "hello" --mode thinking --out - --provider mock
+# Expected: streamed chunks land on stdout; nothing written to disk.
+
+# J2. File sink
+uv run thoth ask "hello" --mode thinking --out /tmp/thoth-j2.md --provider mock
+test -s /tmp/thoth-j2.md && echo "ok: file written"
+# Expected: /tmp/thoth-j2.md exists and is non-empty.
+
+# J3. Tee sink (stdout + file)
+uv run thoth ask "hello" --mode thinking --out -,/tmp/thoth-j3.md --provider mock | head -5
+test -s /tmp/thoth-j3.md && echo "ok: file also written"
+# Expected: output appears on stdout AND in /tmp/thoth-j3.md.
+
+# J4. Append vs default-truncate
+uv run thoth ask "first"  --mode thinking --out /tmp/thoth-j4.md --provider mock
+uv run thoth ask "second" --mode thinking --out /tmp/thoth-j4.md --append --provider mock
+wc -l /tmp/thoth-j4.md
+# Expected: file contains both runs concatenated. Without --append, second run truncates.
+
+# J5. Lazy file open — aborted submit must not leave an empty file
+rm -f /tmp/thoth-j5.md
+uv run thoth ask "x" --mode quick_research --model o3 --out /tmp/thoth-j5.md --provider mock 2>&1 | head -3
+# Expected: ModeKindMismatchError (see section M), and /tmp/thoth-j5.md does NOT exist.
+test -e /tmp/thoth-j5.md && echo "FAIL: empty file left behind" || echo "ok: lazy open"
+```
+
+### K. `thoth cancel <op-id>`
+
+```bash
+# K1. Cancel an in-flight background op
+OPID=$(uv run thoth ask "long topic" --mode deep_research --async --provider mock --json | jq -r .operation_id)
+uv run thoth cancel "$OPID"
+# Expected: exit 0, summary line says "cancelled", local checkpoint updated.
+
+# K2. Status after cancel
+uv run thoth status "$OPID" --json | jq -r .state
+# Expected: "cancelled"
+
+# K3. Missing op-id exits 6 (matches `thoth resume`)
+uv run thoth cancel op_does_not_exist
+echo "exit=$?"
+# Expected exit: 6
+
+# K4. Provider that doesn't implement upstream cancel
+# (Perplexity / Gemini, when configured) — local checkpoint still flips to cancelled,
+# stderr notes "upstream cancel not supported, local checkpoint marked cancelled".
+
+# K5. Ctrl-C during a sync background run cancels upstream (P18-T27)
+# Default behavior: --cancel-on-interrupt is on per [execution].cancel_upstream_on_interrupt.
+uv run thoth ask "long topic" --mode deep_research --provider mock
+# (Wait a few seconds, then press Ctrl-C.)
+# Expected:
+#   - "Interrupt received. Saving checkpoint..." line from the signal handler
+#   - One "Cancelled upstream: <provider>" line per non-completed provider
+#   - Local checkpoint shows status=cancelled (verify via `thoth status <op-id>`)
+# With a real OpenAI key this also stops the deep-research bill on the OpenAI side.
+# K5 also works on `thoth resume <op-id>` — same shared polling loop.
+
+# K6. --no-cancel-on-interrupt opts out for one run (and a hint reminds you)
+uv run thoth ask "long topic" --mode deep_research --provider mock --no-cancel-on-interrupt
+# (Wait a few seconds, then press Ctrl-C.)
+# Expected:
+#   - "Upstream job still running; run `thoth cancel <op-id>` to stop billing."
+#   - No "Cancelled upstream:" lines (we did not call provider.cancel)
+# Equivalent persistent setting:
+#   thoth config set execution.cancel_upstream_on_interrupt false
+# When --json is also set, the hint is suppressed (would corrupt the envelope).
+```
+
+### L. `thoth modes --kind <immediate|background>` filter
+
+```bash
+# L1. Immediate-only listing
+uv run thoth modes list --kind immediate
+# Expected: only modes with kind=immediate (e.g. default, thinking, …).
+
+# L2. Background-only listing
+uv run thoth modes list --kind background
+# Expected: only modes with kind=background (e.g. deep_research, quick_research, …).
+
+# L3. Invalid value rejected
+uv run thoth modes list --kind sometimes 2>&1 | head -3
+echo "exit=$?"
+# Expected exit: 2 (BadParameter); message lists the valid choices.
+
+# L4. Tab-completion offers immediate/background
+# In a configured shell:  thoth modes list --kind <TAB>
+# Expected: completes to `immediate` and `background` only.
+```
+
+### M. ModeKindMismatchError fast-fail
+
+```bash
+# M1. Immediate kind + deep-research model -> rejected before any API call
+uv run thoth ask "test" --mode quick_research --model o3-deep-research --provider mock 2>&1 | head -8
+echo "exit=$?"
+# Expected: ModeKindMismatchError mentioning [modes.quick_research],
+#           the declared kind ("background"), the required kind ("background"),
+#           and a suggestion to either drop --model or change kind.
+# Expected exit: non-zero.
+
+# M2. Force-background on an immediate-only model is allowed
+uv run thoth ask "test" --mode deep_research --model o3 --provider mock 2>&1 | head -3
+# Expected: no ModeKindMismatchError; the run is treated as background.
+```
+
+### N. `quick_research` (renamed from `mini_research`) alias deprecation
+
+```bash
+# N1. Old name still works, prints a one-time deprecation warning
+uv run thoth ask "topic" --mode mini_research --provider mock 2>&1 | grep -i "deprecat"
+# Expected: a single warning line referencing `mini_research` and pointing at
+#           `quick_research`. Subsequent runs in the same process do NOT repeat it.
+
+# N2. Canonical name has no warning
+uv run thoth ask "topic" --mode quick_research --provider mock 2>&1 | grep -i "deprecat" \
+  && echo "FAIL: canonical name should not warn" \
+  || echo "ok: no warning on canonical name"
+```
+
+### O. User-mode missing-`kind` warn-once
+
+```bash
+# O1. Add a user mode without kind, then run
+mkdir -p ~/.config/thoth
+cat >> ~/.config/thoth/thoth.config.toml <<'TOML'
+
+[modes.test_no_kind]
+provider = "mock"
+model = "mock-default"
+TOML
+
+uv run thoth ask "ping" --mode test_no_kind --provider mock 2>&1 | grep -i "kind"
+# Expected: ONE warning line referencing `[modes.test_no_kind]` and recommending
+#           an explicit `kind` field. The run still proceeds (warn-only in v3.1.0;
+#           v4.0.0 will hard-error per the in-source TODO).
+
+# O2. Cleanup — remove the test mode block from your config when done.
+```
+
+---
+
 ## Recent Changes — Targeted Tests
 
 Files changed in the last 14 commits and the P14 feature each one covers. Use the matching feature section above to exercise them.

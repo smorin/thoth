@@ -113,6 +113,18 @@ _RESEARCH_OPTIONS: list[tuple[tuple, dict]] = [
             "help": "Interactively pick a model (only for modes with kind='immediate')",
         },
     ),
+    (
+        ("--cancel-on-interrupt/--no-cancel-on-interrupt", "cancel_on_interrupt"),
+        {
+            "default": None,
+            "help": (
+                "On Ctrl-C during a sync background or resume run, also cancel the "
+                "upstream provider job (default: per [execution]."
+                "cancel_upstream_on_interrupt config, default true). Pass "
+                "--no-cancel-on-interrupt to skip the upstream cancel for this run."
+            ),
+        },
+    ),
 ]
 
 

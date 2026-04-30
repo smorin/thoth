@@ -242,6 +242,7 @@ class ConfigSchema:
                 "max_transient_errors": 5,
                 "auto_input": True,
                 "prompt_max_bytes": 1024 * 1024,
+                "cancel_upstream_on_interrupt": True,
             },
             "output": {
                 "combine_reports": False,
