@@ -5,6 +5,29 @@
 **Status:** Approved (pending implementation plan)
 **Scope project name (PROJECTS.md):** `thoth-ergonomics-v1`
 
+## Implementation status
+
+This spec was round-tripped against `PROJECTS.md` under **P17**. Every §3
+in-scope item and §4 helper has either shipped or been explicitly retired.
+
+| Spec § | Item | Outcome | Where |
+|---|---|---|---|
+| 3.1 | `providers` subcommand group | ✅ Shipped | P14-T06 (`v2.13.0`) |
+| 3.2 | thothspinner sync-poll progress | ✅ Shipped | P14-T07/T08/T09 (`v2.13.0`) |
+| 3.3 | Mode-ladder help reorganization | ✅ Shipped (simplified per v9 plan) | P14-T04 (`v2.13.0`) — `help.py:127` workflow chain string |
+| **3.4** | **`thoth workflow` / `thoth guide` command** | **Dropped — superseded by `thoth modes` (P11)** | Decision: `planning/thoth.plan.v9.md:18`. Rationale: `thoth modes` already lists every mode with provider/model/`kind=immediate\|background`/source/description in one table, making a separate workflow-ladder command redundant. |
+| 3.5 | API-key documentation pass + `thoth help auth` | ✅ Shipped | P14-T05 (`v2.13.0`) |
+| 3.6 | `--input-file` vs `--auto` clearer help | ✅ Shipped | P14-T03 (`v2.13.0`) |
+| 3.7 | `-v` / `--verbose` worked example in help | ✅ Shipped (one-liner form) | P14-T04 (`v2.13.0`) — `help.py:135`; test at `tests/test_cli_help.py:29`. Per spec line 230 ("documentation follows behavior"), the realized form is a single example line, not the multi-line block originally drafted in §3.7. |
+| 3.8 | Surface config path on errors | ✅ Shipped | P14-T01/T02 (`v2.13.0`) — `format_config_context()` in `errors.py` |
+| 3.9 | `--pick-model` interactive flag | ✅ Shipped | P14-T11/T12 (`v2.13.0`); P15 follow-up bug fixes |
+| §4 | `is_deep_research_model` shared helper | ✅ Shipped (renamed) | P11 / P13 — became `is_background_mode` / `is_background_model` |
+| §4 | `format_config_context` helper | ✅ Shipped | P14-T01 |
+| §4 | Help rendering helpers | ✅ Shipped | P14-T04, P14-T05 |
+
+**Net:** 8 of 9 §3 items shipped + 3 of 3 §4 helpers shipped; 1 item (§3.4)
+explicitly retired with rationale.
+
 ## 1. Goal
 
 Reduce the friction a first-time thoth user hits between installation and a
