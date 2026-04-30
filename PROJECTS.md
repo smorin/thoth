@@ -1862,19 +1862,12 @@ Phase 6 — Cleanup
 - [x] [P01-T12] Create `.devcontainer/devcontainer.json`
 - [-] [P01-T13] Run all P01-TS01..06 verifications and check off each TS row as it passes — won't fix; verification rolled into lefthook + CI
 
-### Deliverable
-```bash
-make bump TYPE=patch       # bumps version in pyproject.toml, commits, tags
-make changelog             # regenerates CHANGELOG.md from git history
-make release TYPE=minor    # bump + changelog in one step
-make update-snapshots      # regenerate pytest snapshots
-```
-
-### Automated Verification
-- `make check` passes
-- `uvx yamllint .github/dependabot.yml` exits 0
-- `uvx bandit -r src/thoth/ -ll -q` exits 0
-- `make bump TYPE=patch` increments version in pyproject.toml
+### Deliverable & Automated Verification
+Superseded — see **Closeout** above. The original `make bump` / `make changelog` /
+`make release` / `make update-snapshots` / `make check` targets and `cliff.toml`
+were removed when the project switched to `just`, lefthook, and release-please.
+Their continuous-verification equivalents (yamllint, bandit, ruff/ty, release-please
+version bumps) now run on every commit via lefthook + CI.
 
 ### Manual Verification
 - Open repo in GitHub Codespaces — devcontainer auto-configures environment
