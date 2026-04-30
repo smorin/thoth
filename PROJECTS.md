@@ -624,7 +624,7 @@ Existing projects may use older labels such as `**Primary spec**`, `**Plan**`, o
 - [x] [P18-T25] Add `src/thoth/cli_subcommands/cancel.py` — `@click.command("cancel")`, `OP_ID` required positional, `--json` flag, delegates to a new `cancel_operation(op_id, ctx)` in `commands.py`. Mirror the `cli_subcommands/resume.py` pattern (already shipped).
 - [x] [P18-T25b] **(Reeval 2026-04-27)** Register `cancel` in `cli.py` via `cli.add_command(cancel)` and add to "Run research" help section in `ThothGroup.format_commands`. Add `shell_complete=operation_ids` to the `OP_ID` positional (using the existing completer from `completion/sources.py:26`).
 - [x] [P18-T26] Add `cancel_operation()` to `commands.py` — load operation, iterate non-completed providers, call `provider.cancel()` (catch `NotImplementedError` → emit "upstream cancel not supported, local checkpoint marked cancelled"), update checkpoint, emit user-facing summary. Returns enough data for `--json` envelope.
-- [ ] [P18-T27] Wire Ctrl-C signal path (`signals.py`) to call `cancel_operation()` best-effort with a 5s timeout before exiting
+- [ ] [P18-T27] Wire Ctrl-C upstream cancel into the **shared polling loop** (`run.py:_run_polling_loop`, used by both `_execute_background` and `resume_operation`). At the existing `_raise_if_interrupted()` site (`run.py:584`), when the interrupt event is set: resolve toggle (CLI `--cancel-on-interrupt`/`--no-cancel-on-interrupt` overrides config `[execution].cancel_upstream_on_interrupt`, default `true`); if on, call `provider.cancel(job_id)` for every non-completed provider in `jobs` via `asyncio.wait_for(asyncio.gather(*tasks, return_exceptions=True), timeout=5)` (parallel, single 5s envelope); per-provider `NotImplementedError` / `asyncio.TimeoutError` are swallowed; on success print "Cancelled upstream: {provider}". When toggle is off and `--json` is **not** set, print one-line hint "Upstream job still running; run `thoth cancel <op-id>` to stop billing". Then raise `KeyboardInterrupt`. **Out of scope:** `--async` submissions (process already exited), immediate-mode runs (no upstream job). `signals.py` unchanged — the handler keeps owning the local-checkpoint write.
 
 **Phase H — User-mode `kind` warning (warn-once now; v4.0.0 follow-up errors)**
 - [x] [P18-TS21] `tests/test_user_mode_kind_warning.py`: a user TOML with a `[modes.X]` table missing `kind` triggers a one-time warning at config load referencing the offending key
@@ -644,6 +644,7 @@ Existing projects may use older labels such as `**Primary spec**`, `**Plan**`, o
 - [-] [P18-T36] Remove the `if not job_info.get("background", False): return {"status": "completed"}` shortcut in `OpenAIProvider.check_status` (`providers/openai.py:269-270`). **Decided not to do** — commit `41455a3` deliberately deferred removal to v4.0.0/P19 and added an in-source TODO (`providers/openai.py:264-270`); leaving the shortcut as defense-in-depth for `--async` on non-deep-research models.
 - [x] [P18-T36b] **(Reeval 2026-04-27)** Update spec `docs/superpowers/specs/2026-04-26-p18-immediate-vs-background-design.md` Status field from "Draft" → "Shipped (v3.1.0, commit `<HASH>`)". Update plan with the same status note.
 - [x] [P18-T37] CHANGELOG entries (non-breaking — additive only) — release-please will pick these up for **v3.1.0**: `feat: explicit "kind" field on built-in modes`, `feat: streaming output for immediate modes (--out)`, `feat: thoth cancel <op-id>`, `feat: thoth modes --kind <immediate|background> filter`, `feat: rename mini_research mode to quick_research (alias kept)`, `chore: deprecate "async" mode-config key`
+- [ ] [P18-T38] Add `--async` flag to `thoth resume` for non-blocking status check + ready-file download. Behavior: do **one** `provider.check_status()` per non-completed provider, save results for any newly-completed ones via `OutputManager.save_result`, update the checkpoint, print a status summary (or JSON envelope when combined with `--json`), and exit without entering the polling loop. Distinct from `thoth resume --json` (pure read-only snapshot, no side effects) and from default `thoth resume` (blocks on full polling loop). Use case: drive-by progress check that also pulls down whatever's ready.
 
 - [ ] Regression Test Status
 
@@ -1258,12 +1259,12 @@ Existing projects may use older labels such as `**Primary spec**`, `**Plan**`, o
 
 Argument shape mirrors `thoth config profiles` (P21b) where applicable, with mode-specific deviations:
 
-- `thoth modes add NAME --model M [--provider P] [--description D] [--kind immediate|background]` — required `--model`; default `provider=openai`, default `kind=immediate`.
+- `thoth modes add NAME --model M [--provider P] [--description D] [--kind immediate|background] [--override]` — required `--model`; default `provider=openai`, default `kind=immediate`. `--override` is **valid only with `--profile X`** and opts in to creating an overlay entry whose NAME shadows a builtin.
 - `thoth modes set NAME KEY VALUE [--string]` — single-leaf write. `--string` forces string parsing for keys like `sk-...`.
 - `thoth modes unset NAME KEY` — single-leaf remove. **Never overloaded** — the no-key form is `remove`, not `unset`.
 - `thoth modes remove NAME` — whole-table delete (parallel to `config profiles remove`). Idempotent.
 - `thoth modes rename OLD NEW` — user-mode only.
-- `thoth modes copy SRC DST` — copies effective config (builtin layered with override) into a new user mode.
+- `thoth modes copy SRC DST [--from-profile X]` — copies effective config (builtin layered with override) into a new user mode. `--from-profile X` reads SRC from `[profiles.X.modes.SRC]` (default reads from base `[modes.SRC]`); composes with `--profile Y` (DST) to enable all four directions: base→base, base→overlay, overlay→base, overlay→overlay.
 
 ### Design Notes — targeting model (file × tier)
 
@@ -1290,7 +1291,7 @@ Examples:
 - **Secret masking**: never echo secret values. The default human confirmation masks; `--show-secrets` is read-only and not honored on mutators (nothing to reveal — the user just typed the value).
 - **Empty-table pruning** (divergence from B17 / `config profiles unset`): when `unset KEY` empties `[modes.NAME]` (or `[profiles.X.modes.NAME]`), the table is pruned. An empty mode table is meaningless. To delete a whole mode in one shot, use `remove`.
 - **Idempotency**:
-  - `add` is no-op exit 0 if mode exists with the same model/provider/kind. Different model on existing name → `MODE_EXISTS_DIFFERENT_MODEL` exit 1.
+  - `add` compares **`--model` only** for idempotency. Same NAME + same model → no-op exit 0 (other flags like `--description`, `--provider`, `--kind` are ignored on re-add; users update them via `set`). Different model on existing name → `MODE_EXISTS_DIFFERENT_MODEL` exit 1. Rationale: `add` reserves the name + locks the identity-bearing model; metadata adjustments are `set`'s job.
   - `remove` is no-op exit 0 if absent.
   - `unset KEY` is no-op exit 0 if KEY absent on a present mode.
 - **Writes go through `ConfigDocument`**: P12 adds `set_mode_value`, `unset_mode_value`, `ensure_mode`, `remove_mode`, `rename_mode`, `copy_mode` primitives, each accepting an optional `profile` argument that switches the target sub-tree to `profiles.<X>.modes.<NAME>`. No direct tomlkit in command code.
@@ -1314,20 +1315,23 @@ The `BUILTIN_MODES` constant defines built-in modes that ship in code (P11). The
 
 "Source"/"name-state" axis above refers to the *base* (`[modes.*]`) catalog. Per-profile overlay state is independent: `add cheap --profile dev` is allowed even if `cheap` exists in `[modes.*]` — the two tiers are separate namespaces.
 
+**`--override` exception (overlay-only):** `add NAME --profile X --override` is the *only* path to use `add` on a builtin name. It writes `[profiles.X.modes.NAME]` even when NAME exists in `BUILTIN_MODES`. Without `--override`, the builtin guard is absolute regardless of `--profile`. Without `--profile`, `--override` is rejected as `USAGE_ERROR` exit 2 — there is no path to `add` a builtin name in the base tier (use `copy <builtin> <new>` or edit the builtin via `set <builtin> KEY VALUE`).
+
 ### Tests & Tasks
 
 Per-command TS rows enumerate functional cases at single-case granularity. Per-command targeting cross-product (file × tier × `--json`) is consolidated into one "targeting matrix" TS row per mutator (the matrix is identical across mutators, so the test family is parameterized; this avoids a 6× explosion in trunk row count while preserving per-command coverage in the suite).
 
-#### `thoth modes add NAME --model M [--provider P] [--description D] [--kind K] [--project] [--config PATH] [--profile X] [--string] [--json]`
+#### `thoth modes add NAME --model M [--provider P] [--description D] [--kind K] [--override] [--project] [--config PATH] [--profile X] [--string] [--json]`
 - [ ] [P12-TS01a] Happy path: creates `[modes.NAME]` with `model = M`, default `provider = "openai"`, default `kind = "immediate"`; appears in `thoth modes --source user`
 - [ ] [P12-TS01b] `--provider P` writes the given provider key
 - [ ] [P12-TS01c] `--description D` writes the description key
 - [ ] [P12-TS01d] `--kind background` sets `kind = "background"`; default is `"immediate"`; invalid `--kind` value → `USAGE_ERROR` exit 2
-- [ ] [P12-TS01e] Same NAME + same model+provider+kind → no-op exit 0
+- [ ] [P12-TS01e] Idempotency is **model-only**: same NAME + same model → no-op exit 0 even if `--description` / `--provider` / `--kind` differ from existing entry (those flags are ignored on re-add; users update via `set`)
 - [ ] [P12-TS01f] Same NAME + different model → `MODE_EXISTS_DIFFERENT_MODEL` exit 1
-- [ ] [P12-TS01g] NAME is a builtin → `BUILTIN_NAME_RESERVED` exit 1; suggests `copy <name> <new>`
+- [ ] [P12-TS01g] NAME is a builtin (no `--override`) → `BUILTIN_NAME_RESERVED` exit 1; suggests `copy <name> <new>`
 - [ ] [P12-TS01h] Targeting matrix: `--project` → `./thoth.config.toml`; `--config PATH` → PATH; `--profile X` → `[profiles.X.modes.NAME]`; `--profile + --project` and `--profile + --config PATH` compose; `--project + --config PATH` rejected with `USAGE_ERROR` exit 2
 - [ ] [P12-TS01i] `--json` envelope: `{schema_version: "1", op: "add", mode, target: {file, tier}, created, model, provider, kind}`
+- [ ] [P12-TS01j] `--override` flag (overlay-only): `add deep_research --model gpt-4o-mini --profile dev --override` writes `[profiles.dev.modes.deep_research]` despite `deep_research` being a builtin; without `--profile`, `--override` is rejected as `USAGE_ERROR` exit 2; with `--override` but matching builtin still triggers normal idempotency check
 - [ ] [P12-T01] Implement `thoth modes add` — click command in `cli_subcommands/modes.py`, `get_modes_add_data` + `_op_add` in `modes_cmd.py`, `ConfigDocument.ensure_mode(profile=...)` primitive
 
 #### `thoth modes set NAME KEY VALUE [--project] [--config PATH] [--profile X] [--string] [--json]`
@@ -1370,22 +1374,27 @@ Per-command TS rows enumerate functional cases at single-case granularity. Per-c
 - [ ] [P12-TS05h] `--json` envelope: `{schema_version, op: "rename", from, to, target, renamed}`
 - [ ] [P12-T05] Implement `thoth modes rename` — click command, `get_modes_rename_data` + `_op_rename`, `ConfigDocument.rename_mode(profile=...)`
 
-#### `thoth modes copy SRC DST [--project] [--config PATH] [--profile X] [--json]`
+#### `thoth modes copy SRC DST [--from-profile X] [--project] [--config PATH] [--profile Y] [--json]`
 - [ ] [P12-TS06a] Builtin-only SRC: writes the destination mode with the builtin's effective keys
 - [ ] [P12-TS06b] User SRC: writes destination with SRC's keys; SRC unchanged
 - [ ] [P12-TS06c] Overridden SRC: writes the *effective* config (builtin layered with override) to DST
 - [ ] [P12-TS06d] DST is a builtin name → `DST_NAME_TAKEN` exit 1
 - [ ] [P12-TS06e] DST already exists in destination tier → `DST_NAME_TAKEN` exit 1
-- [ ] [P12-TS06f] Absent SRC → `MODE_NOT_FOUND` exit 1
-- [ ] [P12-TS06g] Targeting matrix (same shape as TS01h); SRC is read from its existing location, DST is written to the chosen tier (cross-tier copy is allowed and is the primary use case)
-- [ ] [P12-TS06h] `--json` envelope: `{schema_version, op: "copy", from, to, target, copied}`
-- [ ] [P12-T06] Implement `thoth modes copy` — click command, `get_modes_copy_data` + `_op_copy`, `ConfigDocument.copy_mode(profile=...)`
+- [ ] [P12-TS06f] Absent SRC in selected source tier → `MODE_NOT_FOUND` exit 1
+- [ ] [P12-TS06g1] Direction: **base → base** (no `--from-profile`, no `--profile`): reads `[modes.SRC]`, writes `[modes.DST]`
+- [ ] [P12-TS06g2] Direction: **base → overlay** (no `--from-profile`, `--profile dev`): reads `[modes.SRC]`, writes `[profiles.dev.modes.DST]`
+- [ ] [P12-TS06g3] Direction: **overlay → base** (`--from-profile dev`, no `--profile`): reads `[profiles.dev.modes.SRC]`, writes `[modes.DST]`
+- [ ] [P12-TS06g4] Direction: **overlay → overlay** cross-profile (`--from-profile dev --profile ci`): reads `[profiles.dev.modes.SRC]`, writes `[profiles.ci.modes.DST]`; same-profile overlay→overlay (`--from-profile dev --profile dev`) is also valid
+- [ ] [P12-TS06g5] Targeting matrix for the file axis (same shape as TS01h): `--project` and `--config PATH` apply to the DST file; `--from-profile` does not have a file-axis counterpart (SRC is always read from the same file as DST or, for cross-file reads, the user does it in two steps)
+- [ ] [P12-TS06h] `--json` envelope: `{schema_version, op: "copy", from, to, source_tier, target, copied}` — `source_tier` is `"modes"` or `"profiles.<X>.modes"`; `target.tier` likewise reflects DST
+- [ ] [P12-T06] Implement `thoth modes copy` — click command, `get_modes_copy_data` + `_op_copy`, `ConfigDocument.copy_mode(from_profile=..., profile=...)`
 
 #### Cross-cutting
 - [ ] [P12-TS07a] tomlkit round-trip preserves comments and trailing whitespace through every mutation across all targeting combinations (parameterized: 6 ops × 6 targeting combos)
 - [ ] [P12-TS07b] All `--json` envelopes share a single `SCHEMA_VERSION` constant; `target` sub-object shape is uniform across ops
 - [ ] [P12-TS07c] Subprocess tests through the click CLI (relies on `ignore_unknown_options=True` from P11) for every op, including `--profile X` flag passing
 - [ ] [P12-TS07d] `thoth help modes` epilog and `show_modes_help()` list every new op with examples covering `--project`, `--config PATH`, and `--profile`
+- [ ] [P12-TS07e] Layering: when both `[modes.X]` and `[profiles.dev.modes.X]` exist, `thoth modes --name X --profile dev` reflects overlay value and `thoth modes --name X` reflects base value. Validates that P12 mutators land in the right tier and P21*'s overlay reader still resolves correctly across the full set of P12-introduced primitives.
 - [ ] [P12-T07] Help integration — extend `show_modes_help()` and the click group epilog; keep `thoth help modes` in sync
 
 #### Removed-from-scope (already shipped under P13)
