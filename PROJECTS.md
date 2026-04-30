@@ -1242,6 +1242,7 @@ Existing projects may use older labels such as `**Primary spec**`, `**Plan**`, o
 
 **References**
 - **Trunk:** [PROJECTS.md](#) (this file)
+- **Plan:** [projects/P12-cli-mode-editing.md](projects/P12-cli-mode-editing.md) — implementation plan (TDD task-by-task)
 - **Depends on:** P11 (read paths), P13 (secret helpers), P18 (kind field), P21b (config profiles precedent)
 - **Related:** P21* (profile-overlay tier)
 - **Code:** `src/thoth/config_profiles.py:107` (overlay-modes semantics)
