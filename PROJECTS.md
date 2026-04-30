@@ -640,10 +640,10 @@ Existing projects may use older labels such as `**Primary spec**`, `**Plan**`, o
 
 **Phase J — Documentation + cleanup**
 - [x] [P18-T34] Update `README.md` with `--out` flag examples; document the `kind` field for user-defined modes; document `thoth cancel`; document `thoth modes --kind <immediate|background>` filter
-- [ ] [P18-T35] Update `manual_testing_instructions.md` with immediate-vs-background streaming/cancel/modes-filter scenarios
-- [ ] [P18-T36] Remove the `if not job_info.get("background", False): return {"status": "completed"}` shortcut in `OpenAIProvider.check_status` (`providers/openai.py:232-233`) — unreachable post-Phase C. Run `uv run pytest tests/` first to confirm no test depends on the shortcut implicitly.
-- [ ] [P18-T36b] **(Reeval 2026-04-27)** Update spec `docs/superpowers/specs/2026-04-26-p18-immediate-vs-background-design.md` Status field from "Draft" → "Shipped (v3.1.0, commit `<HASH>`)". Update plan with the same status note.
-- [ ] [P18-T37] CHANGELOG entries (non-breaking — additive only) — release-please will pick these up for **v3.1.0**: `feat: explicit "kind" field on built-in modes`, `feat: streaming output for immediate modes (--out)`, `feat: thoth cancel <op-id>`, `feat: thoth modes --kind <immediate|background> filter`, `feat: rename mini_research mode to quick_research (alias kept)`, `chore: deprecate "async" mode-config key`
+- [x] [P18-T35] Update `manual_testing_instructions.md` with immediate-vs-background streaming/cancel/modes-filter scenarios
+- [-] [P18-T36] Remove the `if not job_info.get("background", False): return {"status": "completed"}` shortcut in `OpenAIProvider.check_status` (`providers/openai.py:269-270`). **Decided not to do** — commit `41455a3` deliberately deferred removal to v4.0.0/P19 and added an in-source TODO (`providers/openai.py:264-270`); leaving the shortcut as defense-in-depth for `--async` on non-deep-research models.
+- [x] [P18-T36b] **(Reeval 2026-04-27)** Update spec `docs/superpowers/specs/2026-04-26-p18-immediate-vs-background-design.md` Status field from "Draft" → "Shipped (v3.1.0, commit `<HASH>`)". Update plan with the same status note.
+- [x] [P18-T37] CHANGELOG entries (non-breaking — additive only) — release-please will pick these up for **v3.1.0**: `feat: explicit "kind" field on built-in modes`, `feat: streaming output for immediate modes (--out)`, `feat: thoth cancel <op-id>`, `feat: thoth modes --kind <immediate|background> filter`, `feat: rename mini_research mode to quick_research (alias kept)`, `chore: deprecate "async" mode-config key`
 
 - [ ] Regression Test Status
 
@@ -1243,32 +1243,40 @@ Existing projects may use older labels such as `**Primary spec**`, `**Plan**`, o
 **Out of Scope**
 - GUI/TUI editor (keep it CLI-only)
 - Validating `system_prompt` content (any string accepted)
-- Adding new mode-level fields beyond what `ModeInfo` already surfaces (provider, providers, model, async, system_prompt, description, temperature, parallel, auto_input, previous, next)
+- Adding new mode-level fields beyond what `ModeInfo` already surfaces and `BUILTIN_MODES` actually uses today (provider, providers, model, kind, system_prompt, description, auto_input, previous, next). `temperature` and `parallel` are accepted as freeform keys but not in any builtin. The legacy `async` key is deprecated by P18's `kind` field — `kind` is canonical.
 - Schema migration for `[modes.*]` (same version as P11)
 
 ### Design Notes
-- Subcommand shape mirrors `config`: `thoth modes set <name> <key> <value>`, `thoth modes unset <name> [<key>]`, `thoth modes add <name> --model M [--provider P] [--description D]`, `thoth modes rename <old> <new>`, `thoth modes copy <src> <dst>`.
-- `--project` flag writes to `./thoth.toml` instead of user config, matching `config set --project`.
+- **Refresh (2026-04-30)**: design folds in two post-P12-draft features — P18's explicit `kind` field, and P21*'s `--profile` overlay layer + `thoth.config.toml` rename. Original design predates both.
+- Subcommand shape mirrors `config`: `thoth modes set <name> <key> <value>`, `thoth modes unset <name> [<key>]`, `thoth modes add <name> --model M [--provider P] [--description D] [--kind immediate|background]`, `thoth modes rename <old> <new>`, `thoth modes copy <src> <dst>`.
+- **Targeting flags mirror `thoth config set` exactly** — three orthogonal axes:
+  - `--project` writes to `./thoth.config.toml` (or `./.thoth.config.toml`) — same as today's `config set --project`. Mutually exclusive with `--config`.
+  - `--config PATH` writes to an arbitrary TOML file. Mutually exclusive with `--project`.
+  - `--profile <name>` selects the overlay tier inside the chosen file: writes to `[profiles.<name>.modes.<mode>]` instead of `[modes.<mode>]`. Composes with both file flags above. Default file when only `--profile` is given is the user TOML.
+  - No flags = `~/.thoth/thoth.config.toml` `[modes.<name>]` (user default, today's no-flag behavior for `config set`).
+- `--config` + `--project` together → reject with `USAGE_ERROR` (same rule as `config_cmd._reject_config_project_conflict`).
 - Type coercion reuses `_parse_value` pattern from `config_cmd.py` (bool/int/float/string).
 - Protected keys: cannot `unset` a builtin mode's own entry (but CAN override its keys via a user-side `[modes.<builtin>]` table — that's already how overrides work).
 - Secrets: same masking rules; `--string` flag forces string parsing so `sk-...` keys aren't coerced to numbers.
-- After each write, print the effective `ModeInfo` so the user sees what changed end-to-end (reuses `list_all_modes` + `_render_detail`).
-- Extract the shared secret-masking helpers (`_mask_secret`, `_is_secret_key`, `_mask_tree`) from `config_cmd.py` + `modes_cmd.py` into `thoth/_secrets.py` as part of this work — third caller incoming makes the duplication no longer tolerable.
+- After each write, print the effective `ModeInfo` so the user sees what changed end-to-end (reuses `list_all_modes` + `_render_detail`). Resolution honours the `--profile` overlay so `add ... --profile dev` echoes the dev-overlay view.
+- ~~Extract the shared secret-masking helpers~~ — **already done** under P13: `src/thoth/_secrets.py` exists; `config_cmd.py` and `modes_cmd.py` both route through it. P12-T05 / P12-TS05 correctly marked `[>]`.
 
 ### Tests & Tasks
-- [ ] [P12-TS01] Tests for `thoth modes add <name> --model M`: creates `[modes.<name>]` in user TOML with model + provider=openai default; appears in `thoth modes --source user` afterward
-- [ ] [P12-T01] Implement `_op_add` in `modes_cmd.py` with tomlkit round-trip
-- [ ] [P12-TS02] Tests for `thoth modes set <name> <key> <value>`: updates existing user mode; creating a key on a builtin-only name implicitly creates an overriding `[modes.<name>]` table (source becomes "overridden"); --project writes to project TOML
-- [ ] [P12-T02] Implement `_op_set` with type coercion + `--string` + `--project`
-- [ ] [P12-TS03] Tests for `thoth modes unset <name> <key>`: removes a single key (prunes empty table); `thoth modes unset <name>` (no key) removes entire user table; refuses to touch `BUILTIN_MODES` (but allows dropping a user override)
-- [ ] [P12-T03] Implement `_op_unset` with empty-table pruning (mirrors `config_cmd._unset_in_doc`)
-- [ ] [P12-TS04] Tests for `thoth modes rename <old> <new>` (user modes only) and `thoth modes copy <src> <dst>` (copies from any mode — builtin or user — into a new user mode)
+- [ ] [P12-TS01] Tests for `thoth modes add <name> --model M`: creates `[modes.<name>]` in user `thoth.config.toml` with `model`, `provider=openai` default, and `kind=immediate` default; appears in `thoth modes --source user` afterward
+- [ ] [P12-T01] Implement `_op_add` in `modes_cmd.py` with tomlkit round-trip; defaults `kind` to `immediate` unless `--kind background` is passed
+- [ ] [P12-TS02] Tests for `thoth modes set <name> <key> <value>`: updates existing user mode; creating a key on a builtin-only name implicitly creates an overriding `[modes.<name>]` table (source becomes "overridden"); `--project` writes to `./thoth.config.toml`; `--config PATH` writes to PATH; `--config` + `--project` together rejected with `USAGE_ERROR` exit 2
+- [ ] [P12-T02] Implement `_op_set` with type coercion + `--string` + `--project` + `--config` plumbing (reuse `ConfigWriteContext.resolve`)
+- [ ] [P12-TS02b] **NEW** Tests for `--profile <name>` writes: `add cheap --profile dev` writes to `[profiles.dev.modes.cheap]` in user TOML; `add ci_only --project --profile ci` writes to `[profiles.ci.modes.ci_only]` in `./thoth.config.toml`; mode is hidden from `thoth modes` unless `--profile dev`/`THOTH_PROFILE=dev` is active
+- [ ] [P12-T02b] **NEW** Plumb `--profile` through `_op_add` / `_op_set` / `_op_unset`: when set, write to `profiles.<name>.modes.<mode>` instead of `modes.<mode>` in the chosen file
+- [ ] [P12-TS03] Tests for `thoth modes unset <name> <key>`: removes a single key (prunes empty table); `thoth modes unset <name>` (no key) removes entire user table; refuses to touch `BUILTIN_MODES` (but allows dropping a user override); `--profile` removes from `[profiles.<name>.modes.<mode>]`
+- [ ] [P12-T03] Implement `_op_unset` with empty-table pruning (mirrors `config_cmd._unset_in_doc`); honours `--profile` for overlay-scoped removal
+- [ ] [P12-TS04] Tests for `thoth modes rename <old> <new>` (user modes only) and `thoth modes copy <src> <dst>` (copies from any mode — builtin or user — into a new user mode); both honour `--project` / `--config` / `--profile`
 - [ ] [P12-T04] Implement `_op_rename` and `_op_copy`
 - [>] [P12-TS05] Proceeded to P13-TS03 — shared-secrets tests already exist in `tests/test_secrets.py`
 - [>] [P12-T05] Proceeded to P13-T04 — `src/thoth/_secrets.py` already extracted; `config_cmd.py` and `modes_cmd.py` already route through it
-- [ ] [P12-TS06] Subprocess tests: `thoth modes add / set / unset / rename / copy` through the click CLI (now that `ignore_unknown_options=True` from P11 makes flags work)
+- [ ] [P12-TS06] Subprocess tests: `thoth modes add / set / unset / rename / copy` through the click CLI (now that `ignore_unknown_options=True` from P11 makes flags work), including `--project` / `--config PATH` / `--profile <name>` combinations
 - [ ] [P12-T06] Wire new ops into `modes_command` dispatch (`list | add | set | unset | rename | copy`)
-- [ ] [P12-T07] Update `show_modes_help()` in `help.py` with the new ops + examples; update `thoth help modes` epilog
+- [ ] [P12-T07] Update `show_modes_help()` in `help.py` with the new ops + examples (including `--profile`); update `thoth help modes` epilog
 - [ ] [P12-TS07] Regression: full `uv run pytest tests/` + `./thoth_test -r` still green; existing `thoth modes list/--json/--name/--source` unchanged
 - [ ] Regression Test Status
 
@@ -1276,9 +1284,18 @@ Existing projects may use older labels such as `**Primary spec**`, `**Plan**`, o
 ```bash
 $ thoth modes add my_brief --model gpt-4o-mini --description "terse daily brief"
 Added mode 'my_brief' (source=user, kind=immediate, model=gpt-4o-mini)
+# → ~/.thoth/thoth.config.toml [modes.my_brief]
 
 $ thoth modes set my_brief temperature 0.2
 Updated my_brief.temperature = 0.2
+
+$ thoth modes add team_review --model o1-preview --project
+Added mode 'team_review' (source=project, kind=immediate, model=o1-preview)
+# → ./thoth.config.toml [modes.team_review]
+
+$ thoth modes add cheap_test --model gpt-4o-mini --profile dev
+Added mode 'cheap_test' under profile 'dev' (kind=immediate)
+# → ~/.thoth/thoth.config.toml [profiles.dev.modes.cheap_test]
 
 $ thoth modes copy deep_research custom_research
 Copied builtin 'deep_research' to user mode 'custom_research'
@@ -1294,12 +1311,14 @@ Removed user mode 'my_brief'
 - `just check` passes
 - `uv run pytest tests/` passes
 - `./thoth_test -r` passes
-- `thoth modes add` / `set` / `unset` round-trip through user TOML without losing comments (tomlkit fidelity)
+- `thoth modes add` / `set` / `unset` round-trip through user / project / `--config PATH` / `--profile` targets without losing comments (tomlkit fidelity)
 
 ### Manual Verification
 - Adding a mode then running `thoth modes` shows it with `source=user`
 - Overriding a builtin then running `thoth modes --name <mode>` shows `source=overridden` with the diff
-- `--project` flag writes to `./thoth.toml` not `~/.thoth/config.toml`
+- `--project` flag writes to `./thoth.config.toml` not `~/.thoth/thoth.config.toml`
+- `--config PATH` writes to PATH
+- `--profile dev` writes to `[profiles.dev.modes.<name>]`; the mode is invisible without `--profile dev` / `THOTH_PROFILE=dev`
 
 ---
 
