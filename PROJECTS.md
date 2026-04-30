@@ -51,7 +51,7 @@ Keep this summary list updated whenever a project is added, renamed, completed, 
 - [x] P03 — Fix BUG-03 OpenAI Poll Interval Scheduling
 - [x] P02 — Fix BUG-01 OpenAI Background Status Handling
 - [x] P04 — GAP-01 — max_tool_calls safeguard and tool-selection config
-- [~] P01 — Developer Tooling & Automation
+- [x] P01 — Developer Tooling & Automation
 
 ## Project References
 
