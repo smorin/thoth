@@ -125,7 +125,8 @@ def test_resume_honors_config_path(monkeypatch, tmp_path):
         "--combined",
         "--project=p",
         "--output-dir=o",
-        "--async",
+        # `--async` is now a LOCAL flag on resume (P18-T38) — was previously
+        # rejected as inherited-only on the cli group.
         "--pick-model",
         "--interactive",
         "--clarify",

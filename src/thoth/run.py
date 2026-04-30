@@ -997,6 +997,69 @@ def get_resume_snapshot_data(operation_id: str) -> dict | None:
     }
 
 
+async def _resume_one_tick(
+    operation: OperationStatus,
+    provider_instances: dict[str, ResearchProvider],
+    output_manager: OutputManager,
+    checkpoint_manager: CheckpointManager,
+    mode_config: dict,
+    ctx: AppContext,
+    verbose: bool,
+) -> dict[str, Any]:
+    """P18-T38: single status-check tick for `thoth resume --async`.
+
+    For each already-reconnected provider, call ``check_status`` once. If a
+    provider returns ``"completed"``, fetch and save its result, mark its
+    per-provider status, and append its name to ``newly_completed``. Save the
+    checkpoint exactly once at the end. Never enters the polling loop.
+
+    The aggregate ``operation.status`` flips to ``"completed"`` only when
+    every provider reports completed (locked design decision); otherwise it
+    is left untouched.
+
+    Returns a dict ``{"newly_completed": list[str], "all_done": bool}``.
+    """
+    newly_completed: list[str] = []
+    for provider_name, provider in provider_instances.items():
+        job_id = operation.providers[provider_name]["job_id"]
+        status = await provider.check_status(job_id)
+        provider_status = status.get("status")
+
+        if provider_status == "completed":
+            result_content = await provider.get_result(job_id, verbose=verbose)
+            provider_model = getattr(provider, "model", None)
+            system_prompt = mode_config.get("system_prompt", "")
+            output_path = await output_manager.save_result(
+                operation,
+                provider_name,
+                result_content,
+                None,
+                model=provider_model,
+                system_prompt=system_prompt,
+            )
+            operation.output_paths[provider_name] = output_path
+            operation.providers[provider_name]["status"] = "completed"
+            operation.providers[provider_name].pop("failure_type", None)
+            operation.providers[provider_name].pop("error", None)
+            newly_completed.append(provider_name)
+        elif provider_status in ("permanent_error", "failed"):
+            # Locked decision: partial success — record the failure on the
+            # affected provider but keep going. Caller exits 0; user can
+            # re-run plain `thoth resume` for recoverable retries.
+            operation.providers[provider_name]["status"] = "failed"
+            operation.providers[provider_name]["error"] = status.get("error", "unknown")
+        # `running` / `queued` / anything else: leave checkpoint state untouched.
+
+    all_done = all(
+        operation.providers[name].get("status") == "completed" for name in operation.providers
+    )
+    if all_done:
+        operation.transition_to("completed")
+
+    await checkpoint_manager.save(operation)
+    return {"newly_completed": newly_completed, "all_done": all_done}
+
+
 async def resume_operation(
     operation_id: str,
     verbose: bool = False,
@@ -1006,6 +1069,7 @@ async def resume_operation(
     no_metadata: bool = False,
     timeout_override: float | None = None,
     cli_api_keys: dict[str, str | None] | None = None,
+    async_check: bool = False,
 ):
     """Resume an existing operation by reconnecting to its providers.
 
@@ -1014,6 +1078,13 @@ async def resume_operation(
     arguments. The legacy `--resume` flag callsite (cli.py until Task 5)
     passes only the first three positional args; keyword-only defaults
     keep both callsites valid during the transition window.
+
+    P18-T38: when ``async_check=True``, perform exactly one
+    ``provider.check_status()`` per non-completed provider, save any
+    newly-completed results, update the checkpoint, and return WITHOUT
+    entering the polling loop. The return value is the
+    ``_resume_one_tick`` dict (``{"newly_completed": [...], "all_done": bool}``)
+    so the CLI layer can render either a Rich summary or a JSON envelope.
     """
 
     config = get_config()
@@ -1110,6 +1181,29 @@ async def resume_operation(
     ctx.current_operation = operation
     _thoth_signals._current_checkpoint_manager = checkpoint_manager
     _thoth_signals._current_operation = operation
+
+    if async_check:
+        # P18-T38: drive-by progress check + ready-file download. ONE
+        # check_status per provider; never enters the polling loop.
+        tick = await _resume_one_tick(
+            operation,
+            provider_instances,
+            output_manager,
+            checkpoint_manager,
+            mode_config,
+            ctx,
+            verbose,
+        )
+        if not quiet and not ctx.as_json:
+            if tick["newly_completed"]:
+                console.print(
+                    "[green]Saved results from:[/green] " + ", ".join(tick["newly_completed"])
+                )
+            else:
+                console.print("[dim]No providers completed since last check.[/dim]")
+            if tick["all_done"]:
+                console.print(f"[green]Operation {operation.id} fully completed.[/green]")
+        return tick
 
     resume_mode_model = mode_config.get("model")
     with _poll_display(

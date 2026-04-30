@@ -59,6 +59,17 @@ _RESUME_HONOR = DEFAULT_HONOR | {
         "config, default true)."
     ),
 )
+@click.option(
+    "--async",
+    "-A",
+    "async_check",
+    is_flag=True,
+    help=(
+        "Do one status check per provider, save any newly-completed results, "
+        "and exit without entering the polling loop. Combine with --json to "
+        "emit a snapshot envelope including a `newly_completed` field."
+    ),
+)
 @click.option("--json", "as_json", is_flag=True, help="Emit JSON snapshot envelope")
 @click.pass_context
 def resume(
@@ -73,6 +84,7 @@ def resume(
     api_key_perplexity: str | None,
     api_key_mock: str | None,
     cancel_on_interrupt: bool | None,
+    async_check: bool,
     as_json: bool,
 ) -> None:
     """Resume a previously-checkpointed operation by ID."""
@@ -83,11 +95,17 @@ def resume(
     from thoth.cli import _apply_config_path, _build_app_context, _run_maybe_async
 
     if as_json:
+        import asyncio as _asyncio
+        import contextlib as _ctx_mod
+        import io as _io
+
         from thoth.json_output import emit_error, emit_json
 
         effective_config = config_path or (ctx.obj or {}).get("config_path")
         _apply_config_path(effective_config)
 
+        # Verify the operation exists BEFORE doing any work (envelope path
+        # for missing-op exits 6 same as the non-json path).
         data = _thoth_run.get_resume_snapshot_data(operation_id)
         if data is None:
             emit_error(
@@ -103,6 +121,49 @@ def resume(
                 data,
                 exit_code=7,
             )
+
+        if async_check:
+            # P18-T38: do one tick, then emit snapshot + newly_completed.
+            inherited = ctx.obj or {}
+            root_api_keys_local = inherited_api_keys(ctx)
+            tick_app_ctx = _build_app_context(False, as_json=True)
+            tick_cli_keys = {
+                "openai": api_key_openai or root_api_keys_local["openai"],
+                "perplexity": api_key_perplexity or root_api_keys_local["perplexity"],
+                "mock": api_key_mock or root_api_keys_local["mock"],
+            }
+            sink = _io.StringIO()
+            tick: dict | None = None
+            try:
+                with _ctx_mod.redirect_stdout(sink), _ctx_mod.redirect_stderr(sink):
+                    tick = _asyncio.run(
+                        _thoth_run.resume_operation(
+                            operation_id,
+                            False,
+                            ctx=tick_app_ctx,
+                            quiet=True,
+                            no_metadata=bool(no_metadata or inherited.get("no_metadata")),
+                            timeout_override=(
+                                timeout if timeout is not None else inherited.get("timeout")
+                            ),
+                            cli_api_keys=tick_cli_keys,
+                            async_check=True,
+                        )
+                    )
+            except SystemExit as exc:
+                if exc.code not in (None, 0):
+                    emit_error(
+                        "RESUME_FAILED",
+                        f"resume --async failed (exit {exc.code})",
+                        {"operation_id": operation_id, "exit_code": exc.code},
+                        exit_code=exc.code if isinstance(exc.code, int) else 1,
+                    )
+            # Re-snapshot to pick up checkpoint changes from the tick.
+            data = _thoth_run.get_resume_snapshot_data(operation_id) or data
+            data["newly_completed"] = (
+                list(tick.get("newly_completed", [])) if tick is not None else []
+            )
+
         emit_json(data)
 
     # Group-level inheritance for honored values per Q1-PR2-C
@@ -137,6 +198,7 @@ def resume(
             no_metadata=effective_no_metadata,
             timeout_override=effective_timeout,
             cli_api_keys=cli_api_keys,
+            async_check=async_check,
         )
     )
 

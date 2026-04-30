@@ -376,6 +376,41 @@ uv run thoth ask "ping" --mode test_no_kind --provider mock 2>&1 | grep -i "kind
 # O2. Cleanup — remove the test mode block from your config when done.
 ```
 
+### P. `thoth resume --async`
+
+> Drive-by progress check: one status tick per provider, downloads any
+> newly-completed results, exits without polling. Distinct from
+> `thoth resume --json` (pure read-only snapshot) and from default
+> `thoth resume` (full polling loop).
+
+```bash
+# P1. Drive-by check on a still-running op
+OPID=$(uv run thoth ask "long topic" --mode deep_research --async --provider mock --json | jq -r .data.operation_id)
+uv run thoth resume "$OPID" --async
+# Expected: prints "No providers completed since last check." and exits 0.
+# NO new files written; checkpoint statuses unchanged. Did exactly ONE
+# `provider.check_status()` call per non-completed provider.
+
+# P2. Partial-completion download (one provider done, one still running)
+# (use --combined openai,perplexity if you have both keys; or simulate with mock)
+uv run thoth resume "$OPID" --async
+# Expected: prints "Saved results from: openai" (or whichever flipped).
+# That provider's result file is now on disk; the other is still pending.
+# operation.status STAYS "running" (locked decision: aggregate flips only
+# when ALL providers report completed).
+
+# P3. Already-completed op is a no-op
+uv run thoth resume "$COMPLETED_OPID" --async
+# Expected: "Operation X already completed." Exits 0. Zero API calls.
+
+# P4. JSON envelope shape
+uv run thoth resume "$OPID" --async --json | jq
+# Expected: {"status": "ok", "data": {operation_id, status, mode, providers,
+#   newly_completed: [...], ...}}
+# `newly_completed` is the list of provider names that flipped THIS tick.
+# Stdout contains ONLY the JSON envelope; no Rich prose.
+```
+
 ---
 
 ## Recent Changes — Targeted Tests
