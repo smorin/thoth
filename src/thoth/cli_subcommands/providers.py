@@ -110,13 +110,13 @@ def providers_list_cmd(ctx: click.Context, filter_provider: str | None, as_json:
 
     from thoth import commands as _commands
     from thoth.config import get_config
-    from thoth.json_output import emit_error, emit_json
+    from thoth.json_output import emit_error, emit_json, run_json_thoth_boundary
 
     effective_provider = pick_value(filter_provider, ctx, "provider")
     profile = inherited_value(ctx, "profile")
 
     if as_json:
-        config_manager = get_config(profile=profile)
+        config_manager = run_json_thoth_boundary(lambda: get_config(profile=profile))
         data = _commands.get_providers_list_data(config_manager, filter_provider=effective_provider)
         if data.get("unknown"):
             emit_error(
@@ -181,13 +181,13 @@ def providers_models_cmd(
         )
     from thoth import commands as _commands
     from thoth.config import get_config
-    from thoth.json_output import emit_json
+    from thoth.json_output import emit_json, run_json_thoth_boundary
 
     effective_provider = pick_value(filter_provider, ctx, "provider")
     profile = inherited_value(ctx, "profile")
 
     if as_json:
-        config_manager = get_config(profile=profile)
+        config_manager = run_json_thoth_boundary(lambda: get_config(profile=profile))
         emit_json(
             _commands.get_providers_models_data(config_manager, filter_provider=effective_provider)
         )
@@ -251,13 +251,13 @@ def providers_check_cmd(ctx: click.Context, filter_provider: str | None, as_json
 
     from thoth import commands as _commands
     from thoth.config import get_config
-    from thoth.json_output import emit_json
+    from thoth.json_output import emit_json, run_json_thoth_boundary
 
     effective_provider = pick_value(filter_provider, ctx, "provider")
     profile = inherited_value(ctx, "profile")
 
     if as_json:
-        config_manager = get_config(profile=profile)
+        config_manager = run_json_thoth_boundary(lambda: get_config(profile=profile))
         # Honor `--provider` by narrowing the providers view before checking.
         if effective_provider is not None:
             full = config_manager.data["providers"]

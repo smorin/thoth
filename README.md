@@ -354,7 +354,7 @@ thoth config profiles remove fast         # delete the entire profile
 thoth config profiles unset-default       # clear the persisted pointer
 ```
 
-`--profile` is honored only by `list`, `show`, and `current`. Mutator commands reject `--profile` because the profile they operate on is the positional argument.
+`--profile` is honored only by `list` and `current`. `show NAME` and mutator commands reject `--profile` because the profile they inspect or operate on is the positional argument.
 
 ### Migrating from earlier Thoth versions
 

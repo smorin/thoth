@@ -242,11 +242,11 @@ class CommandHandler:
 
     def status_command(self, operation_id: str, **params):
         """Check status of a research operation"""
-        return asyncio.run(show_status(operation_id))
+        return asyncio.run(show_status(operation_id, config=self.config))
 
     def list_command(self, show_all: bool = False, **params):
         """List research operations"""
-        return asyncio.run(list_operations(show_all=show_all))
+        return asyncio.run(list_operations(show_all=show_all, config=self.config))
 
     def providers_command(self, **params):
         """Show provider information - delegate to existing function"""
@@ -348,15 +348,15 @@ def list_command(show_all):
     return list_operations(show_all=show_all)
 
 
-async def get_status_data(operation_id: str) -> dict | None:
+async def get_status_data(operation_id: str, config: ConfigManager | None = None) -> dict | None:
     """Pure data function for `thoth status OP_ID`.
 
     Returns a dict describing the operation, or None if not found.
     Per spec §7.2, this function NEVER takes an `as_json` flag — the
     JSON-vs-Rich choice lives at the subcommand-wrapper layer.
     """
-    config = get_config()
-    checkpoint_manager = CheckpointManager(config)
+    resolved_config = config if config is not None else get_config()
+    checkpoint_manager = CheckpointManager(resolved_config)
 
     operation = await checkpoint_manager.load(operation_id)
     if operation is None:
@@ -377,16 +377,16 @@ async def get_status_data(operation_id: str) -> dict | None:
     }
 
 
-async def show_status(operation_id: str):
+async def show_status(operation_id: str, config: ConfigManager | None = None):
     """Show status of a specific operation (Rich rendering)."""
-    data = await get_status_data(operation_id)
+    resolved_config = config if config is not None else get_config()
+    data = await get_status_data(operation_id, config=resolved_config)
     if data is None:
         console.print(f"[red]Error:[/red] Operation {operation_id} not found")
         sys.exit(6)
 
     # Re-load for the existing Rich rendering helpers (_print_status_hints).
-    config = get_config()
-    checkpoint_manager = CheckpointManager(config)
+    checkpoint_manager = CheckpointManager(resolved_config)
     operation = await checkpoint_manager.load(operation_id)  # already known to exist
     assert operation is not None  # data was non-None above
 
@@ -418,7 +418,7 @@ async def show_status(operation_id: str):
         console.print("\nOutput Files:")
         console.print("────────────")
         if data["project"]:
-            base_dir = Path(config.data["paths"]["base_output_dir"]) / data["project"]
+            base_dir = Path(resolved_config.data["paths"]["base_output_dir"]) / data["project"]
             console.print(f"{base_dir}/")
         else:
             console.print("./")
@@ -454,15 +454,15 @@ def _print_status_hints(operation: OperationStatus) -> None:
             print_hint(f"thoth resume {op_id}", "Retry from checkpoint")
 
 
-async def get_list_data(show_all: bool) -> dict:
+async def get_list_data(show_all: bool, config: ConfigManager | None = None) -> dict:
     """Pure data function for `thoth list`.
 
     Returns a dict with `count` and `operations` (list of dicts). Per spec
     §7.2, this function NEVER takes an `as_json` flag — the JSON-vs-Rich
     choice lives at the subcommand-wrapper layer.
     """
-    config = get_config()
-    checkpoint_manager = CheckpointManager(config)
+    resolved_config = config if config is not None else get_config()
+    checkpoint_manager = CheckpointManager(resolved_config)
 
     checkpoint_files = list(checkpoint_manager.checkpoint_dir.glob("*.json"))
     operations = []
@@ -498,10 +498,10 @@ async def get_list_data(show_all: bool) -> dict:
     }
 
 
-async def list_operations(show_all: bool):
+async def list_operations(show_all: bool, config: ConfigManager | None = None):
     """List all operations"""
-    config = get_config()
-    checkpoint_manager = CheckpointManager(config)
+    resolved_config = config if config is not None else get_config()
+    checkpoint_manager = CheckpointManager(resolved_config)
 
     checkpoint_files = list(checkpoint_manager.checkpoint_dir.glob("*.json"))
 

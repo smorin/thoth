@@ -4,7 +4,7 @@
 
 **Goal:** Add `thoth config profiles list/show/current/set-default/unset-default/add/set/unset/remove` so users can manage profiles from the CLI without hand-editing TOML.
 
-**Architecture:** Reuse `src/thoth/config_cmd.py` data-function patterns and `tomlkit` helpers. Add nine `get_config_profile_*_data` functions and a nested Click group `profiles` under `thoth config`. Read-only leaves (`list`/`show`/`current`) honor inherited `--profile`; mutator leaves (`add`/`set`/`unset`/`remove`/`set-default`/`unset-default`) reject it.
+**Architecture:** Reuse `src/thoth/config_cmd.py` data-function patterns and `tomlkit` helpers. Add nine `get_config_profile_*_data` functions and a nested Click group `profiles` under `thoth config`. Active-state readers (`list`/`current`) honor inherited `--profile`; raw lookup `show NAME` and mutator leaves (`add`/`set`/`unset`/`remove`/`set-default`/`unset-default`) reject it.
 
 **Tech Stack:** Python 3.11+, Click 8.x, tomlkit, pytest.
 
@@ -545,19 +545,31 @@ def test_config_profiles_mutators_reject_root_profile_flag(
         assert "--profile" in result.output
 
 
-def test_config_profiles_readers_honor_root_profile_flag(
+def test_config_profiles_state_readers_honor_root_profile_flag(
     isolated_thoth_home: Path,
 ) -> None:
-    """B7: --profile IS honored by read-only leaves."""
+    """B7: --profile is honored by active-state readers."""
     runner = CliRunner()
     assert runner.invoke(cli, ["config", "profiles", "add", "fast"]).exit_code == 0
     for op_args in (
         ["config", "profiles", "list"],
-        ["config", "profiles", "show", "fast"],
         ["config", "profiles", "current"],
     ):
         result = runner.invoke(cli, ["--profile", "fast", *op_args])
         assert result.exit_code == 0, f"{op_args} should accept --profile: {result.output}"
+
+
+def test_config_profiles_show_rejects_root_profile_flag(
+    isolated_thoth_home: Path,
+) -> None:
+    """show NAME is a raw profile lookup; root --profile is a conflicting selector."""
+    runner = CliRunner()
+    assert runner.invoke(cli, ["config", "profiles", "add", "fast"]).exit_code == 0
+
+    result = runner.invoke(cli, ["--profile", "fast", "config", "profiles", "show", "fast"])
+
+    assert result.exit_code != 0
+    assert "--profile" in result.output
 
 
 def test_config_profiles_current_reports_flag_source(
@@ -657,9 +669,9 @@ For `list --show-shadowed`, human output marks hidden lower-precedence rows with
 
 - [ ] **Step 4: Inherited-option policy by leaf (B7)**
 
-Read-only leaves (`list`, `show`, `current`) honor `DEFAULT_HONOR` (which already includes both `"config_path"` and `"profile"` from P21).
+Active-state readers (`list`, `current`) honor `DEFAULT_HONOR` (which already includes both `"config_path"` and `"profile"` from P21).
 
-Mutator leaves (`add`, `set`, `unset`, `remove`, `set-default`, `unset-default`) call `validate_inherited_options(ctx, "config profiles <op>", honored_options={"config_path"})` — explicitly drop `"profile"` from honored options. This makes `thoth --profile foo config profiles add bar` error with the standard "no such option" message rather than silently ignoring `--profile foo`. Mutators forward only `config_path` via `inherited_value(ctx, "config_path")`.
+`show NAME` and mutator leaves (`add`, `set`, `unset`, `remove`, `set-default`, `unset-default`) call `validate_inherited_options(ctx, "config profiles <op>", honored_options={"config_path"})` — explicitly drop `"profile"` from honored options. This makes `thoth --profile foo config profiles show bar` and `thoth --profile foo config profiles add bar` error with the standard "no such option" message rather than silently ignoring `--profile foo`. These leaves forward only `config_path` via `inherited_value(ctx, "config_path")`.
 
 - [ ] **Step 5: Add JSON envelope rows**
 
@@ -764,7 +776,7 @@ thoth config profiles remove fast         # delete the entire profile
 thoth config profiles unset-default       # clear the persisted pointer
 ```
 
-`--profile` is honored only by `list`, `show`, and `current`. Mutator commands reject `--profile` because the profile they operate on is the positional argument.
+`--profile` is honored only by `list` and `current`. `show NAME` and mutator commands reject `--profile` because the profile they inspect or operate on is the positional argument.
 ````
 
 - [ ] **Step 5: Update manual testing instructions**

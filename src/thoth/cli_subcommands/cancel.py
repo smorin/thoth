@@ -19,9 +19,11 @@ import sys
 
 import click
 
+from thoth.cli_subcommands._config_context import load_config
 from thoth.cli_subcommands._option_policy import (
     DEFAULT_HONOR,
     inherited_api_keys,
+    inherited_value,
     validate_inherited_options,
 )
 from thoth.completion.sources import operation_ids as _operation_ids_completer
@@ -68,12 +70,11 @@ def cancel(
     # Local imports to avoid cli.py → cli_subcommands → cli.py circular.
     import asyncio
 
-    from thoth.cli import _apply_config_path
     from thoth.commands import cancel_operation
-    from thoth.config import get_config
 
     inherited = ctx.obj or {}
     effective_config = config_path or inherited.get("config_path")
+    effective_profile = inherited_value(ctx, "profile")
     effective_quiet = bool(quiet or inherited.get("quiet"))
     root_api_keys = inherited_api_keys(ctx)
     cli_api_keys = {
@@ -82,13 +83,14 @@ def cancel(
         "mock": api_key_mock or root_api_keys["mock"],
     }
 
-    _apply_config_path(effective_config)
-    cm = get_config()
-
-    result = asyncio.run(cancel_operation(operation_id, config=cm, cli_api_keys=cli_api_keys))
+    def _cancel_with_config() -> dict:
+        cm = load_config(config_path=effective_config, profile=effective_profile)
+        return asyncio.run(cancel_operation(operation_id, config=cm, cli_api_keys=cli_api_keys))
 
     if as_json:
-        from thoth.json_output import emit_error, emit_json
+        from thoth.json_output import emit_error, emit_json, run_json_thoth_boundary
+
+        result = run_json_thoth_boundary(_cancel_with_config)
 
         if result["status"] == "not_found":
             emit_error(
@@ -98,6 +100,8 @@ def cancel(
                 exit_code=6,
             )
         emit_json(result)
+
+    result = _cancel_with_config()
 
     # Rich rendering
     if result["status"] == "not_found":

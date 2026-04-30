@@ -76,3 +76,23 @@ def test_emit_json_honors_exit_code_override(capsys):
         emit_json({"x": 1}, exit_code=130)
 
     assert excinfo.value.code == 130
+
+
+def test_thoth_error_code_maps_known_errors():
+    from thoth.errors import (
+        ConfigAmbiguousError,
+        ConfigNotFoundError,
+        ConfigProfileError,
+        ThothError,
+    )
+    from thoth.json_output import thoth_error_code
+
+    cases = [
+        (ConfigAmbiguousError("ambiguous"), "CONFIG_AMBIGUOUS"),
+        (ConfigNotFoundError("missing"), "CONFIG_NOT_FOUND"),
+        (ConfigProfileError("bad profile"), "CONFIG_PROFILE_ERROR"),
+        (ThothError("generic"), "THOTH_ERROR"),
+    ]
+
+    for exc, code in cases:
+        assert thoth_error_code(exc) == code

@@ -1,0 +1,6 @@
+interface:
+  display_name: "Code Review Process"
+  short_description: "Structured bug review and fix workflow"
+  default_prompt: >-
+    Use $code-review-process to review recent changes for bugs, validate findings,
+    and fix approved issues with regression tests.

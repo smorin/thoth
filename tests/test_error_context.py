@@ -1,3 +1,6 @@
+from pathlib import Path
+
+from thoth.config_legacy import LEGACY_PROJECT_PATHS
 from thoth.errors import APIKeyError, format_config_context
 
 
@@ -34,10 +37,30 @@ def test_context_no_env_vars(tmp_path):
     assert "Env checked:" not in out
 
 
-def test_api_key_error_includes_config_path(monkeypatch):
+def test_api_key_error_includes_config_path(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     err = APIKeyError("openai")
     assert err.suggestion is not None
     assert "thoth.config.toml" in err.suggestion
     assert "OPENAI_API_KEY" in err.suggestion
     assert "(unset)" in err.suggestion
+    assert "Detected legacy" not in err.suggestion
+
+
+def test_api_key_error_includes_legacy_config_guidance(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    legacy_path = Path(LEGACY_PROJECT_PATHS[0])
+    (tmp_path / legacy_path).write_text(
+        'version = "2.0"\n[providers.openai]\napi_key = "sk-legacy"\n'
+    )
+
+    err = APIKeyError("openai")
+
+    assert err.suggestion is not None
+    assert f"Detected legacy file: {legacy_path}" in err.suggestion
+    assert "These filenames are no longer read" in err.suggestion
+    assert "Rename to thoth.config.toml" in err.suggestion

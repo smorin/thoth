@@ -3,15 +3,14 @@
 from __future__ import annotations
 
 import asyncio
-from pathlib import Path
 
 import click
 
+from thoth.cli_subcommands._config_context import load_config_from_ctx
 from thoth.cli_subcommands._option_policy import DEFAULT_HONOR, validate_inherited_options
 from thoth.commands import CommandHandler, get_status_data
 from thoth.completion.sources import operation_ids as _operation_ids_completer
-from thoth.config import ConfigManager
-from thoth.json_output import emit_error, emit_json
+from thoth.json_output import emit_error, emit_json, run_json_thoth_boundary
 
 
 @click.command(name="status")
@@ -38,7 +37,8 @@ def status(ctx: click.Context, operation_id: str | None, as_json: bool) -> None:
         ctx.exit(2)
 
     if as_json:
-        data = asyncio.run(get_status_data(operation_id))
+        config_manager = run_json_thoth_boundary(lambda: load_config_from_ctx(ctx))
+        data = asyncio.run(get_status_data(operation_id, config=config_manager))
         if data is None:
             emit_error(
                 "OPERATION_NOT_FOUND",
@@ -49,14 +49,6 @@ def status(ctx: click.Context, operation_id: str | None, as_json: bool) -> None:
         emit_json(data)
 
     # Default Rich path
-    config_path = ctx.obj.get("config_path") if ctx.obj else None
-    profile = ctx.obj.get("profile") if ctx.obj else None
-    config_manager = ConfigManager(
-        Path(config_path).expanduser().resolve() if config_path else None
-    )
-    cli_args: dict[str, object] = {}
-    if profile:
-        cli_args["_profile"] = profile
-    config_manager.load_all_layers(cli_args)
+    config_manager = load_config_from_ctx(ctx)
     handler = CommandHandler(config_manager)
     handler.status_command(operation_id=operation_id)

@@ -4,14 +4,13 @@ keyword shadow; the registered command name is "list"."""
 from __future__ import annotations
 
 import asyncio
-from pathlib import Path
 
 import click
 
+from thoth.cli_subcommands._config_context import load_config_from_ctx
 from thoth.cli_subcommands._option_policy import DEFAULT_HONOR, validate_inherited_options
 from thoth.commands import CommandHandler, get_list_data
-from thoth.config import ConfigManager
-from thoth.json_output import emit_json
+from thoth.json_output import emit_json, run_json_thoth_boundary
 
 
 @click.command(name="list")
@@ -22,18 +21,10 @@ def list_cmd(ctx: click.Context, show_all: bool, as_json: bool) -> None:
     """List research operations."""
     validate_inherited_options(ctx, "list", DEFAULT_HONOR)
 
-    config_path = ctx.obj.get("config_path") if ctx.obj else None
-    profile = ctx.obj.get("profile") if ctx.obj else None
-    config_manager = ConfigManager(
-        Path(config_path).expanduser().resolve() if config_path else None
-    )
-    cli_args: dict[str, object] = {}
-    if profile:
-        cli_args["_profile"] = profile
-    config_manager.load_all_layers(cli_args)
-
     if as_json:
-        emit_json(asyncio.run(get_list_data(show_all=show_all)))
+        config_manager = run_json_thoth_boundary(lambda: load_config_from_ctx(ctx))
+        emit_json(asyncio.run(get_list_data(show_all=show_all, config=config_manager)))
 
+    config_manager = load_config_from_ctx(ctx)
     handler = CommandHandler(config_manager)
     handler.list_command(show_all=show_all)

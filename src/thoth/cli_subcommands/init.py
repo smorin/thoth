@@ -6,14 +6,12 @@ from the pre-P16 imperative dispatch (cli.py:298-300).
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import click
 
 from thoth.cli_subcommands._option_policy import DEFAULT_HONOR, validate_inherited_options
 from thoth.commands import CommandHandler, get_init_data
 from thoth.config import ConfigManager
-from thoth.json_output import emit_error, emit_json
+from thoth.json_output import emit_error, emit_json, run_json_thoth_boundary
 
 
 @click.command(name="init")
@@ -73,8 +71,8 @@ def init(
                 "thoth init --json requires --non-interactive",
                 exit_code=2,
             )
-        emit_json(
-            get_init_data(
+        data = run_json_thoth_boundary(
+            lambda: get_init_data(
                 non_interactive=True,
                 config_path=config_path,
                 user=user,
@@ -82,16 +80,12 @@ def init(
                 force=force,
             )
         )
+        emit_json(data)
 
-    profile = ctx.obj.get("profile") if ctx.obj else None
-    config_manager = ConfigManager(
-        Path(config_path).expanduser().resolve() if config_path else None
-    )
-    cli_args: dict[str, object] = {}
-    if profile:
-        cli_args["_profile"] = profile
-    config_manager.load_all_layers(cli_args)
-    handler = CommandHandler(config_manager)
+    # `init` writes a target file and must not pre-load user/project config:
+    # `init --user` should still repair or create the XDG config when the
+    # current project has an unrelated config ambiguity.
+    handler = CommandHandler(ConfigManager())
     # Only thread the new flags through when they're set, so monkeypatched
     # init_command stubs that predate P21c (signature `(self, config_path=None)`)
     # keep working.

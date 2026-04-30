@@ -11,18 +11,20 @@ Coverage:
 - A1-A5  user-tier loading
 - B1-B8  project-tier loading
 - C1-C3  legacy detection helper contract
-- D1-D11 `thoth init` flag combinations
+- D1-D14 `thoth init` flag combinations
 - E1-E3  source-tree string-sweep regression guards
 """
 
 from __future__ import annotations
 
+import json
 import re
 from pathlib import Path
 
 import pytest
 from click.testing import CliRunner
 
+from thoth.cli import cli
 from thoth.cli_subcommands.init import init as init_cmd
 from thoth.config import (
     ConfigManager,
@@ -198,6 +200,62 @@ def test_b3_both_project_files_raises_ambiguity(isolated_xdg: Path) -> None:
     assert ".thoth.config.toml" in msg
     # Direct user to delete one — no precedence.
     assert "delete" in msg.lower()
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ["config", "get", "general.default_mode", "--json"],
+        ["config", "list", "--json"],
+    ],
+)
+def test_b9_config_json_ambiguous_project_config_emits_error_envelope(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    argv: list[str],
+) -> None:
+    """B9: JSON config commands wrap project config ambiguity in JSON."""
+    from thoth import config as thoth_config
+
+    monkeypatch.setattr(thoth_config, "_config_path", None)
+    runner = CliRunner()
+    with runner.isolated_filesystem(temp_dir=tmp_path):
+        Path("thoth.config.toml").write_text(_MIN_CONFIG_TOML + "# visible\n")
+        Path(".thoth.config.toml").write_text(_MIN_CONFIG_TOML + "# hidden\n")
+
+        result = runner.invoke(cli, argv, env=_xdg_env(tmp_path))
+
+    assert result.exit_code == 1
+    assert result.output.startswith("{"), result.output or repr(result.exception)
+    payload = json.loads(result.output)
+    assert payload["status"] == "error"
+    assert payload["error"]["code"] == "CONFIG_AMBIGUOUS"
+    assert "thoth.config.toml" in payload["error"]["message"]
+    assert ".thoth.config.toml" in payload["error"]["message"]
+    assert "Delete one" in payload["error"]["message"]
+
+
+def test_b10_runtime_api_key_error_mentions_legacy_project_config(
+    isolated_xdg: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """B10: runtime missing-key guidance names ignored legacy project config."""
+    from thoth import config as thoth_config
+
+    monkeypatch.setattr(thoth_config, "_config_path", None)
+    monkeypatch.setenv("XDG_STATE_HOME", str(isolated_xdg / "state"))
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    project = _project_dir(isolated_xdg)
+    legacy = project / "thoth.toml"
+    legacy.write_text('version = "2.0"\n[providers.openai]\napi_key = "sk-legacy"\n')
+
+    result = CliRunner().invoke(cli, ["test", "legacy", "prompt"])
+
+    assert result.exit_code == 1
+    assert "openai API key not found" in result.output
+    assert "Detected legacy file: thoth.toml" in result.output
+    assert "These filenames are no longer read" in result.output
+    assert "Rename to thoth.config.toml" in result.output
 
 
 def test_b4_neither_project_file_optional(isolated_xdg: Path) -> None:
@@ -386,6 +444,22 @@ def test_d3_user_writes_xdg_canonical(tmp_path: Path) -> None:
         assert target.exists(), f"expected {target} to exist; output:\n{result.output}"
 
 
+def test_d12_user_init_ignores_project_config_ambiguity(tmp_path: Path) -> None:
+    """D12: `thoth init --user` writes XDG config even if project configs conflict."""
+    runner = CliRunner()
+    with runner.isolated_filesystem(temp_dir=tmp_path):
+        Path("thoth.config.toml").write_text(_MIN_CONFIG_TOML + "# visible\n")
+        Path(".thoth.config.toml").write_text(_MIN_CONFIG_TOML + "# hidden\n")
+
+        result = runner.invoke(init_cmd, ["--user"], env=_xdg_env(tmp_path))
+
+        assert result.exit_code == 0, result.output
+        target = tmp_path / "xdg" / "thoth" / "thoth.config.toml"
+        assert target.exists(), f"expected {target} to exist; output:\n{result.output}"
+        assert "visible" in Path("thoth.config.toml").read_text()
+        assert "hidden" in Path(".thoth.config.toml").read_text()
+
+
 def test_d4_user_and_hidden_mutually_exclusive(tmp_path: Path) -> None:
     """D4: `thoth init --user --hidden` is rejected at the Click layer."""
     runner = CliRunner()
@@ -485,6 +559,54 @@ def test_d11_json_envelope_reflects_target(tmp_path: Path) -> None:
         payload = _json.loads(result.output)
         target = tmp_path / "xdg" / "thoth" / "thoth.config.toml"
         assert Path(payload["data"]["config_path"]).resolve() == target.resolve()
+
+
+def test_d13_json_no_force_refuses_overwrite_with_error_envelope(
+    tmp_path: Path,
+) -> None:
+    """D13: JSON init preserves no-force overwrite semantics in an error envelope."""
+    import json as _json
+
+    runner = CliRunner()
+    with runner.isolated_filesystem(temp_dir=tmp_path):
+        Path("thoth.config.toml").write_text(_MIN_CONFIG_TOML + "# preexisting\n")
+
+        result = runner.invoke(
+            init_cmd,
+            ["--json", "--non-interactive"],
+            env=_xdg_env(tmp_path),
+        )
+
+        assert result.exit_code == 1
+        assert result.exception is not None
+        payload = _json.loads(result.output)
+        assert payload["status"] == "error"
+        assert payload["error"]["code"] == "THOTH_ERROR"
+        assert "refusing to overwrite existing" in payload["error"]["message"]
+        assert "Pass --force" in payload["error"]["message"]
+        assert "preexisting" in Path("thoth.config.toml").read_text()
+
+
+def test_d14_json_force_overwrites_existing_project_file(tmp_path: Path) -> None:
+    """D14: JSON init --force still reaches the intended project-file target."""
+    import json as _json
+
+    runner = CliRunner()
+    with runner.isolated_filesystem(temp_dir=tmp_path):
+        Path("thoth.config.toml").write_text(_MIN_CONFIG_TOML + "# preexisting\n")
+
+        result = runner.invoke(
+            init_cmd,
+            ["--json", "--non-interactive", "--force"],
+            env=_xdg_env(tmp_path),
+        )
+
+        assert result.exit_code == 0, result.output
+        payload = _json.loads(result.output)
+        assert payload["status"] == "ok"
+        assert payload["data"]["created"] is False
+        assert Path(payload["data"]["config_path"]).resolve() == Path("thoth.config.toml").resolve()
+        assert "preexisting" not in Path("thoth.config.toml").read_text()
 
 
 # ---------------------------------------------------------------------------

@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 
 import tomlkit
 from rich.console import Console
@@ -13,7 +13,7 @@ from rich.console import Console
 from thoth._secrets import _is_secret_key, _mask_secret
 from thoth._secrets import _mask_tree as _mask_in_tree
 from thoth.config import ConfigManager
-from thoth.paths import user_config_file
+from thoth.config_write_context import ConfigWriteContext
 
 console = Console()
 
@@ -190,12 +190,11 @@ def _parse_value(raw: str, force_string: bool) -> Any:
 
 
 def _target_path(project: bool, config_path: str | Path | None = None) -> Path:
-    if project:
-        return Path.cwd() / "thoth.config.toml"
-    custom = _normalize_config_path(config_path)
-    if custom is not None:
-        return custom
-    return user_config_file()
+    return ConfigWriteContext.resolve(project=project, config_path=config_path).target_path
+
+
+def _write_context(project: bool, config_path: str | Path | None = None) -> ConfigWriteContext:
+    return ConfigWriteContext.resolve(project=project, config_path=config_path)
 
 
 def _reject_config_project_conflict(project: bool, config_path: str | Path | None) -> bool:
@@ -203,55 +202,6 @@ def _reject_config_project_conflict(project: bool, config_path: str | Path | Non
         console.print("[red]Error:[/red] --config cannot be used with --project")
         return True
     return False
-
-
-def _load_toml_doc(path: Path) -> tomlkit.TOMLDocument:
-    if path.exists():
-        return tomlkit.parse(path.read_text())
-    doc = tomlkit.document()
-    doc["version"] = "2.0"
-    return doc
-
-
-def _profiles_table(doc: tomlkit.TOMLDocument) -> Any:
-    if "profiles" not in doc:
-        doc["profiles"] = tomlkit.table()
-    return doc["profiles"]
-
-
-def _profile_table(doc: tomlkit.TOMLDocument, name: str, *, create: bool) -> Any | None:
-    profiles = _profiles_table(doc)
-    if name not in profiles:
-        if not create:
-            return None
-        profiles[name] = tomlkit.table()
-    table = profiles[name]
-    return table if hasattr(table, "keys") else None
-
-
-def _unset_leaf_no_prune_in_doc(doc: tomlkit.TOMLDocument, key: str) -> bool:
-    """Delete the named leaf only; do NOT prune empty parent tables.
-
-    Profile commands (`unset` and `unset-default`) require this no-prune
-    behavior: empty parent tables and their comments are part of the
-    P21b contract. The companion `_unset_in_doc` prunes empty ancestors
-    for the top-level `thoth config unset` and is intentionally separate.
-    """
-    parts = key.split(".")
-    current = cast(Any, doc)
-    for part in parts[:-1]:
-        if part not in current:
-            return False
-        child = current[part]
-        if not hasattr(child, "keys"):
-            return False
-        current = cast(Any, child)
-
-    leaf = parts[-1]
-    if leaf not in current:
-        return False
-    del current[leaf]
-    return True
 
 
 def _warn_on_validation(key: str, value: Any) -> None:
@@ -278,20 +228,6 @@ def _warn_on_validation(key: str, value: Any) -> None:
         )
 
 
-def _set_in_doc(doc: tomlkit.TOMLDocument, key: str, value: Any) -> None:
-    parts = key.split(".")
-    current = cast(Any, doc)
-    for part in parts[:-1]:
-        existing = current[part] if part in current else None
-        if existing is None or not hasattr(existing, "keys"):
-            new_table = tomlkit.table()
-            current[part] = new_table
-            current = cast(Any, new_table)
-        else:
-            current = cast(Any, existing)
-    current[parts[-1]] = value
-
-
 def get_config_set_data(
     key: str,
     raw_value: str,
@@ -311,12 +247,11 @@ def get_config_set_data(
         }
 
     value = _parse_value(raw_value, force_string)
-    path = _target_path(project, config_path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    doc = _load_toml_doc(path)
-    _set_in_doc(doc, key, value)
-    path.write_text(tomlkit.dumps(doc))
-    return {"key": key, "value": value, "wrote": True, "path": str(path)}
+    context = _write_context(project, config_path)
+    doc = context.load_document()
+    doc.set_config_value(key, value)
+    doc.save()
+    return {"key": key, "value": value, "wrote": True, "path": str(context.target_path)}
 
 
 def _op_set(args: list[str], *, config_path: str | Path | None = None) -> int:
@@ -354,33 +289,6 @@ def _op_set(args: list[str], *, config_path: str | Path | None = None) -> int:
     return 0
 
 
-def _unset_in_doc(doc: tomlkit.TOMLDocument, key: str) -> bool:
-    parts = key.split(".")
-    stack: list[Any] = [cast(Any, doc)]
-    current = cast(Any, doc)
-    for part in parts[:-1]:
-        if part not in current:
-            return False
-        child = current[part]
-        if not hasattr(child, "keys"):
-            return False
-        current = cast(Any, child)
-        stack.append(current)
-
-    leaf = parts[-1]
-    if leaf not in current:
-        return False
-    del current[leaf]
-
-    for container, part in zip(reversed(stack[:-1]), reversed(parts[:-1]), strict=True):
-        child = container[part]
-        if hasattr(child, "keys") and len(child) == 0:
-            del container[part]
-        else:
-            break
-    return True
-
-
 def get_config_unset_data(
     key: str, *, project: bool, config_path: str | Path | None = None
 ) -> dict:
@@ -393,16 +301,17 @@ def get_config_unset_data(
             "error": "PROJECT_CONFIG_CONFLICT",
         }
 
-    path = _target_path(project, config_path)
+    context = _write_context(project, config_path)
+    path = context.target_path
     if not path.exists():
         return {"key": key, "removed": False, "path": str(path), "reason": "NO_FILE"}
 
-    doc = tomlkit.parse(path.read_text())
-    removed = _unset_in_doc(doc, key)
+    doc = context.load_document()
+    removed = doc.unset_config_value(key, prune_empty=True)
     if not removed:
         return {"key": key, "removed": False, "path": str(path), "reason": "NOT_FOUND"}
 
-    path.write_text(tomlkit.dumps(doc))
+    doc.save()
     return {"key": key, "removed": True, "path": str(path)}
 
 
@@ -609,12 +518,11 @@ def get_config_edit_data(*, project: bool, config_path: str | Path | None) -> di
     if project and config_path is not None:
         return {"editor_exit_code": 2, "path": None, "error": "PROJECT_CONFIG_CONFLICT"}
 
-    path = _target_path(project, config_path)
+    context = _write_context(project, config_path)
+    path = context.target_path
     path.parent.mkdir(parents=True, exist_ok=True)
     if not path.exists():
-        doc = tomlkit.document()
-        doc["version"] = "2.0"
-        path.write_text(tomlkit.dumps(doc))
+        context.load_document().save()
 
     editor = os.environ.get("EDITOR") or shutil.which("vi") or "vi"
     rc = subprocess.call([editor, str(path)])  # noqa: S603
@@ -677,15 +585,14 @@ def get_config_profile_add_data(
             "error": "PROJECT_CONFIG_CONFLICT",
         }
 
-    path = _target_path(project, config_path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    doc = _load_toml_doc(path)
-    if _profile_table(doc, name, create=False) is not None:
-        return {"profile": name, "created": False, "path": str(path)}
+    context = _write_context(project, config_path)
+    doc = context.load_document()
+    created = doc.ensure_profile(name)
+    if not created:
+        return {"profile": name, "created": False, "path": str(context.target_path)}
 
-    _profile_table(doc, name, create=True)
-    path.write_text(tomlkit.dumps(doc))
-    return {"profile": name, "created": True, "path": str(path)}
+    doc.save()
+    return {"profile": name, "created": True, "path": str(context.target_path)}
 
 
 def get_config_profile_remove_data(
@@ -707,18 +614,34 @@ def get_config_profile_remove_data(
             "error": "PROJECT_CONFIG_CONFLICT",
         }
 
-    path = _target_path(project, config_path)
+    context = _write_context(project, config_path)
+    path = context.target_path
     if not path.exists():
-        return {"profile": name, "removed": False, "path": str(path)}
+        return {
+            "profile": name,
+            "removed": False,
+            "unset_default_profile": False,
+            "path": str(path),
+        }
 
-    doc = _load_toml_doc(path)
-    if _profile_table(doc, name, create=False) is None:
-        return {"profile": name, "removed": False, "path": str(path)}
+    doc = context.load_document()
+    removed = doc.remove_profile(name)
+    if not removed:
+        return {
+            "profile": name,
+            "removed": False,
+            "unset_default_profile": False,
+            "path": str(path),
+        }
 
-    profiles = _profiles_table(doc)
-    del profiles[name]
-    path.write_text(tomlkit.dumps(doc))
-    return {"profile": name, "removed": True, "path": str(path)}
+    unset_default = doc.unset_default_profile_if(name)
+    doc.save()
+    return {
+        "profile": name,
+        "removed": True,
+        "unset_default_profile": unset_default,
+        "path": str(path),
+    }
 
 
 def get_config_profile_set_data(
@@ -742,20 +665,16 @@ def get_config_profile_set_data(
         }
 
     value = _parse_value(raw_value, force_string)
-    path = _target_path(project, config_path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    doc = _load_toml_doc(path)
-    # Ensure the profile table exists so the nested write lands beneath it.
-    _profile_table(doc, name, create=True)
-    profile_key = f"profiles.{name}.{key}"
-    _set_in_doc(doc, profile_key, value)
-    path.write_text(tomlkit.dumps(doc))
+    context = _write_context(project, config_path)
+    doc = context.load_document()
+    doc.set_profile_value(name, key, value)
+    doc.save()
     return {
         "profile": name,
         "key": key,
         "value": value,
         "wrote": True,
-        "path": str(path),
+        "path": str(context.target_path),
     }
 
 
@@ -769,7 +688,8 @@ def get_config_profile_unset_data(
     """Pure data function for `thoth config profiles unset NAME KEY`.
 
     Removes only the named leaf; empty parent tables are left in place
-    (B17). Uses `_unset_leaf_no_prune_in_doc`, NOT `_unset_in_doc`.
+    (B17). The ConfigDocument profile API keeps the profile name literal
+    and only treats KEY as a dotted config path.
     """
     if project and config_path is not None:
         return {
@@ -780,7 +700,8 @@ def get_config_profile_unset_data(
             "error": "PROJECT_CONFIG_CONFLICT",
         }
 
-    path = _target_path(project, config_path)
+    context = _write_context(project, config_path)
+    path = context.target_path
     if not path.exists():
         return {
             "profile": name,
@@ -790,9 +711,8 @@ def get_config_profile_unset_data(
             "reason": "NO_FILE",
         }
 
-    doc = _load_toml_doc(path)
-    profile_key = f"profiles.{name}.{key}"
-    removed = _unset_leaf_no_prune_in_doc(doc, profile_key)
+    doc = context.load_document()
+    removed = doc.unset_profile_value(name, key)
     if not removed:
         return {
             "profile": name,
@@ -802,7 +722,7 @@ def get_config_profile_unset_data(
             "reason": "NOT_FOUND",
         }
 
-    path.write_text(tomlkit.dumps(doc))
+    doc.save()
     return {"profile": name, "key": key, "removed": True, "path": str(path)}
 
 
@@ -887,8 +807,8 @@ def get_config_profile_set_default_data(
     # Build a transient ConfigManager pointed at the same target view the
     # command will write. We pass `config_path` to the constructor (NOT
     # through `load_all_layers`, which intentionally rejects metadata keys).
-    cm = _load_manager(config_path)
-    catalog_names = {entry.name for entry in cm.profile_catalog}
+    context = _write_context(project, config_path)
+    catalog_names = {entry.name for entry in context.raw_profile_catalog()}
     if name not in catalog_names:
         raise ConfigProfileError(
             f"Profile {name!r} not found",
@@ -896,15 +816,13 @@ def get_config_profile_set_default_data(
             source="thoth config profiles set-default",
         )
 
-    path = _target_path(project, config_path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    doc = _load_toml_doc(path)
-    _set_in_doc(doc, "general.default_profile", name)
-    path.write_text(tomlkit.dumps(doc))
+    doc = context.load_document()
+    doc.set_default_profile(name)
+    doc.save()
     return {
         "default_profile": name,
         "wrote": True,
-        "path": str(path),
+        "path": str(context.target_path),
     }
 
 
@@ -925,16 +843,17 @@ def get_config_profile_unset_default_data(
             "error": "PROJECT_CONFIG_CONFLICT",
         }
 
-    path = _target_path(project, config_path)
+    context = _write_context(project, config_path)
+    path = context.target_path
     if not path.exists():
         return {"removed": False, "path": str(path), "reason": "NO_FILE"}
 
-    doc = _load_toml_doc(path)
-    removed = _unset_leaf_no_prune_in_doc(doc, "general.default_profile")
+    doc = context.load_document()
+    removed = doc.unset_default_profile()
     if not removed:
         return {"removed": False, "path": str(path), "reason": "NOT_FOUND"}
 
-    path.write_text(tomlkit.dumps(doc))
+    doc.save()
     return {"removed": True, "path": str(path)}
 
 

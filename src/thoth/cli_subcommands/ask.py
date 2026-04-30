@@ -147,25 +147,30 @@ def ask(
         _apply_config_path,
         _config_default_mode,
         _config_default_project,
-        _prompt_max_bytes,
+        _prompt_max_bytes_from_config,
         _read_prompt_input,
         _run_research_default,
     )
     from thoth.config import get_config
 
-    _apply_config_path(effective_config)
-    config = get_config(profile=effective_profile)
-    effective_mode = pick_value(mode_opt, ctx, "mode_opt") or _config_default_mode(config)
-    effective_project = pick_value(project, ctx, "project")
-    if effective_project is None:
-        effective_project = _config_default_project(config)
+    def _prepare_request() -> tuple[str, str | None, str]:
+        _apply_config_path(effective_config)
+        config = get_config(profile=effective_profile)
+        selected_mode = pick_value(mode_opt, ctx, "mode_opt") or _config_default_mode(config)
+        selected_project = pick_value(project, ctx, "project")
+        if selected_project is None:
+            selected_project = _config_default_project(config)
 
-    if effective_prompt_file:
-        effective_prompt = _read_prompt_input(str(effective_prompt_file), _prompt_max_bytes())
-    elif effective_prompt_opt:
-        effective_prompt = effective_prompt_opt
-    else:
-        effective_prompt = positional or ""
+        if effective_prompt_file:
+            selected_prompt = _read_prompt_input(
+                str(effective_prompt_file),
+                _prompt_max_bytes_from_config(config),
+            )
+        elif effective_prompt_opt:
+            selected_prompt = effective_prompt_opt
+        else:
+            selected_prompt = positional or ""
+        return selected_mode, selected_project, selected_prompt
 
     if as_json:
         # Option E (spec §6.7, §8.4): background mode → submit envelope;
@@ -181,9 +186,18 @@ def ask(
 
         from thoth.completion.sources import operation_ids
         from thoth.config import BUILTIN_MODES, mode_kind
-        from thoth.json_output import emit_error, emit_json
+        from thoth.errors import ThothError
+        from thoth.json_output import (
+            emit_error,
+            emit_json,
+            emit_thoth_error,
+            run_json_thoth_boundary,
+        )
         from thoth.run import get_resume_snapshot_data
 
+        effective_mode, effective_project, effective_prompt = run_json_thoth_boundary(
+            _prepare_request
+        )
         mode_config = BUILTIN_MODES.get(effective_mode, {})
         # P18: resolution-path migration — `mode_kind(cfg) == "background"`
         # replaces the legacy `is_background_mode(cfg)` substring branch.
@@ -219,6 +233,8 @@ def ask(
                     {"exit_code": exc.code},
                     exit_code=1,
                 )
+        except ThothError as exc:
+            emit_thoth_error(exc)
         except Exception as exc:  # noqa: BLE001 — wrap any provider error in envelope
             emit_error(
                 "PROVIDER_FAILURE",
@@ -245,6 +261,7 @@ def ask(
                 emit_json({"status": "no_checkpoint", "mode": effective_mode})
             emit_json(data)
 
+    effective_mode, effective_project, effective_prompt = _prepare_request()
     _run_research_default(
         mode=effective_mode,
         prompt=effective_prompt,

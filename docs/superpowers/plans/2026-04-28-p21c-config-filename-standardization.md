@@ -81,6 +81,9 @@ Every scenario below maps to a named test in `tests/test_config_filename.py`. Th
 | D9 | `thoth init --hidden` when `./thoth.config.toml` already exists (no `--force`) | Writes `./.thoth.config.toml`. The next `thoth` invocation hits B3 ambiguity — this is documented but is **not** prevented at `init` time (B3 catches it on next load, with a clearer error than `init` could give pre-write). |
 | D10 | `thoth init --hidden --force` when `./.thoth.config.toml` exists | Overwrites `./.thoth.config.toml`. |
 | D11 | `thoth init --json --non-interactive` | Honors `--user` and `--hidden` selection in the JSON envelope (`config_path` field reflects target). |
+| D12 | `thoth init --user` when both project config filenames exist | Writes `$XDG_CONFIG_HOME/thoth/thoth.config.toml`. `init --user` is a user-tier target write and does not pre-load project config. |
+| D13 | `thoth init --json --non-interactive` when `./thoth.config.toml` exists, no `--force` | Refuses to overwrite and emits a JSON error envelope. |
+| D14 | `thoth init --json --non-interactive --force` when `./thoth.config.toml` exists | Overwrites the visible project file and emits a success envelope with `created=false`. |
 
 ### E. String sweep regression guards
 
@@ -129,7 +132,7 @@ def isolated_xdg(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 - [ ] **Step 2: Write A1–A5 user-tier tests** (failing — module/symbols don't exist yet).
 - [ ] **Step 3: Write B1–B8 project-tier tests** including the `ConfigAmbiguousError` assertions.
 - [ ] **Step 4: Write C1–C3 legacy-detection helper tests.** C2 uses `monkeypatch.setattr` on `thoth.config.detect_legacy_paths` to assert zero calls during a successful load.
-- [ ] **Step 5: Write D1–D11 init-flag tests** using `click.testing.CliRunner`. D4 asserts `result.exit_code != 0` and `"mutually exclusive"` in stderr.
+- [ ] **Step 5: Write D1–D14 init-flag tests** using `click.testing.CliRunner`. D4 asserts `result.exit_code != 0` and `"mutually exclusive"` in stderr. D12 asserts `init --user` still writes the user-tier file when both project config filenames exist. D13/D14 assert JSON init preserves the same no-force/force overwrite behavior as the human path while staying inside JSON envelopes.
 - [ ] **Step 6: Write E1–E3 string-sweep tests** that walk `src/` and `tests/` and assert forbidden tokens appear only on allowlisted lines.
 
 - [ ] **Step 7: Verify all tests fail** with `ImportError` / `AttributeError` (symbols don't exist yet) or `AssertionError`. This is the red phase.
@@ -396,7 +399,7 @@ def init(
 
 The `click.UsageError` raise is what makes D4 pass cleanly with a non-zero exit code and a clear message.
 
-- [ ] **Step 3: Run D1–D11**
+- [ ] **Step 3: Run D1–D14**
 
 ```bash
 uv run pytest tests/test_config_filename.py -k "test_d" -v
@@ -533,7 +536,7 @@ git commit -m "chore(p21c): mark implementation tasks complete in PROJECTS.md"
   - `thoth init` in an empty dir → file at `./thoth.config.toml`.
   - `thoth init --hidden` in another empty dir → file at `./.thoth.config.toml`.
   - Touch both files in the same dir → next `thoth config get general.default_mode` (or any config-loading command) errors with `ConfigAmbiguousError`.
-  - `thoth init --user` → file at `~/.config/thoth/thoth.config.toml`.
+  - `thoth init --user` → file at `~/.config/thoth/thoth.config.toml`, even when the current directory contains both project config filenames.
   - `thoth init --user --hidden` → `UsageError: --user and --hidden are mutually exclusive`.
   - Place a legacy `./thoth.toml`, no canonical → command requiring config errors with the canonical paths listed AND the legacy file named in the suggestion.
 

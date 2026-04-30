@@ -105,18 +105,22 @@ def modes_list(
     validate_inherited_options(ctx, "modes list", DEFAULT_HONOR)
 
     config_path = inherited_value(ctx, "config_path")
+    profile = inherited_value(ctx, "profile")
 
     if as_json:
-        from thoth.json_output import emit_json
+        from thoth.json_output import emit_json, run_json_thoth_boundary
         from thoth.modes_cmd import get_modes_list_data
 
         emit_json(
-            get_modes_list_data(
-                name=name,
-                source=source,
-                show_secrets=show_secrets,
-                config_path=config_path,
-                kind=kind,
+            run_json_thoth_boundary(
+                lambda: get_modes_list_data(
+                    name=name,
+                    source=source,
+                    show_secrets=show_secrets,
+                    config_path=config_path,
+                    profile=profile,
+                    kind=kind,
+                )
             )
         )
 

@@ -22,6 +22,10 @@ from typing import Any
 from rich.console import Console
 
 from thoth import __version__
+from thoth.config_legacy import (
+    detect_legacy_paths,
+    format_legacy_config_guidance,
+)
 from thoth.config_profiles import (
     ProfileLayer,
     ProfileSelection,
@@ -31,7 +35,7 @@ from thoth.config_profiles import (
     without_profiles,
 )
 from thoth.errors import ConfigAmbiguousError, ConfigNotFoundError, ThothError
-from thoth.paths import user_checkpoints_dir, user_config_dir, user_config_file
+from thoth.paths import user_checkpoints_dir, user_config_file
 
 # Console used for config-warning output only.
 # Distinct from the CLI's main console instance; both write to the same stdout.
@@ -610,31 +614,12 @@ def get_config(profile: str | None = None) -> ConfigManager:
 
 
 # ---------------------------------------------------------------------------
-# P21c: legacy config detection + ConfigNotFoundError formatter.
+# P21c: legacy config ConfigNotFoundError formatter.
 #
-# These helpers exist solely to enrich the "no Thoth config found" error
-# message. They are NEVER called from a successful load path — see
+# This helper exists solely to enrich the "no Thoth config found" error
+# message. Legacy detection is NEVER called from a successful load path - see
 # tests/test_config_filename.py::test_c2_successful_load_does_not_call_legacy_detector.
 # ---------------------------------------------------------------------------
-
-LEGACY_USER_FILENAME = "config.toml"
-LEGACY_PROJECT_PATHS: tuple[str, ...] = ("./thoth.toml", "./.thoth/config.toml")
-
-
-def detect_legacy_paths() -> list[Path]:
-    """Return any legacy Thoth config files that exist on disk.
-
-    Used to enrich 'config not found' error messages — never to load.
-    """
-    found: list[Path] = []
-    legacy_user = user_config_dir() / LEGACY_USER_FILENAME
-    if legacy_user.exists():
-        found.append(legacy_user)
-    for rel in LEGACY_PROJECT_PATHS:
-        p = Path(rel)
-        if p.exists():
-            found.append(p)
-    return found
 
 
 def _format_config_not_found() -> ConfigNotFoundError:
@@ -647,16 +632,8 @@ def _format_config_not_found() -> ConfigNotFoundError:
     lines = ["No Thoth config found.", "  Looked for:"]
     for path in canonical:
         lines.append(f"    {path}")
-    if legacy:
+    guidance = format_legacy_config_guidance(legacy)
+    if guidance:
         lines.append("")
-        if len(legacy) == 1:
-            lines.append(f"  Detected legacy file: {legacy[0]}")
-        else:
-            lines.append("  Detected legacy files:")
-            for p in legacy:
-                lines.append(f"    {p}")
-        lines.append(
-            "  These filenames are no longer read. Rename to "
-            "thoth.config.toml (or .thoth.config.toml in the project root)."
-        )
+        lines.append(guidance)
     return ConfigNotFoundError("\n".join(lines))

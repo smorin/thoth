@@ -111,7 +111,7 @@ default_mode = "thinking"
 
 By **hand-editing TOML.** P21 ships no CLI commands for adding, setting, or removing profile keys. Users open `~/.config/thoth/thoth.config.toml` (or the project `./thoth.config.toml` / `./.thoth.config.toml`) and write `[profiles.<name>.<section>]` tables directly. Selection (`--profile`, `THOTH_PROFILE`, `general.default_profile`) works the moment P21 lands.
 
-CLI management commands ship in **P21b** (`thoth config profiles list/show/current/use/clear/add/set/unset/remove`). The split is intentional: P21 delivers the runtime feature; P21b delivers the convenience UI. Hand-editing remains supported even after P21b ships — the CLI is additive.
+CLI management commands ship in **P21b** (`thoth config profiles list/show/current/set-default/unset-default/add/set/unset/remove`). The split is intentional: P21 delivers the runtime feature; P21b delivers the convenience UI. Hand-editing remains supported even after P21b ships — the CLI is additive.
 
 **`--profile` and `THOTH_PROFILE` are read-only runtime inputs (B12, B20).** Neither writes back to `general.default_profile`. With persisted `general.default_profile = "fast"` and a `--profile bar` invocation:
 

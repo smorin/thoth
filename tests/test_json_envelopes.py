@@ -8,6 +8,7 @@ src/thoth/cli_subcommands/ to assert this list stays complete.
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import pytest
 from click.testing import CliRunner
@@ -72,6 +73,19 @@ JSON_COMMANDS: list[tuple[str, list[str], int]] = [
         0,
     ),
     ("config_profiles_remove", ["config", "profiles", "remove", "fast", "--json"], 0),
+]
+
+AMBIGUOUS_CONFIG_JSON_COMMANDS: list[tuple[str, list[str]]] = [
+    ("config_get", ["config", "get", "paths.base_output_dir", "--json"]),
+    ("config_list", ["config", "list", "--json"]),
+    ("providers_list", ["providers", "list", "--json"]),
+    ("providers_models", ["providers", "models", "--json"]),
+    ("providers_check", ["providers", "check", "--json"]),
+    ("modes_list", ["modes", "list", "--json"]),
+    ("list", ["list", "--json"]),
+    ("status", ["status", "research-MISSING", "--json"]),
+    ("cancel", ["cancel", "research-MISSING", "--json"]),
+    ("ask", ["ask", "--json", "--provider", "mock", "--api-key-mock", "test", "hello"]),
 ]
 
 
@@ -170,3 +184,23 @@ def test_config_edit_json_with_editor_true_emits_success_envelope(
     assert result.exit_code == 0
     payload = json.loads(result.output)
     assert payload["status"] == "ok"
+
+
+@pytest.mark.parametrize(
+    "label,argv",
+    AMBIGUOUS_CONFIG_JSON_COMMANDS,
+    ids=[c[0] for c in AMBIGUOUS_CONFIG_JSON_COMMANDS],
+)
+def test_json_commands_emit_config_ambiguous_envelope(label, argv, cli, isolated_thoth_home):
+    runner = CliRunner()
+    with runner.isolated_filesystem(temp_dir=isolated_thoth_home) as cwd:
+        Path(cwd, "thoth.config.toml").write_text('version = "2.0"\n')
+        Path(cwd, ".thoth.config.toml").write_text('version = "2.0"\n')
+
+        result = runner.invoke(cli, argv, catch_exceptions=False)
+
+    assert result.exit_code == 1, f"{label}: output={result.output}"
+    payload = json.loads(result.output)
+    assert payload["status"] == "error"
+    assert payload["error"]["code"] == "CONFIG_AMBIGUOUS"
+    assert "Traceback" not in result.output

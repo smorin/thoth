@@ -852,7 +852,7 @@ Selection precedence is `--profile` → `THOTH_PROFILE` → `general.default_pro
 
 `thoth config get general.default_profile` reflects the **persisted pointer** in the file. `--profile` and `THOTH_PROFILE` are read-only runtime inputs — they never write back to `general.default_profile`. With persisted `general.default_profile = "fast"`, running `thoth --profile bar config get general.default_profile` returns `"fast"`; the runtime active selection is `bar`.
 
-> **CLI management coming in P21b.** Today, manage profiles by editing `~/.config/thoth/thoth.config.toml` (or `./thoth.config.toml`/`./.thoth.config.toml` for project-scoped profiles) directly. The next project (P21b) adds `thoth config profiles list/show/current/use/clear/add/set/unset/remove` so you don't have to hand-edit.
+> **CLI management coming in P21b.** Today, manage profiles by editing `~/.config/thoth/thoth.config.toml` (or `./thoth.config.toml`/`./.thoth.config.toml` for project-scoped profiles) directly. The next project (P21b) adds `thoth config profiles list/show/current/set-default/unset-default/add/set/unset/remove` so you don't have to hand-edit.
 ````
 
 - [ ] **Step 3: Add concrete README examples**

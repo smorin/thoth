@@ -14,31 +14,25 @@ from thoth.cli_subcommands._option_policy import (
     validate_inherited_options,
 )
 from thoth.completion.sources import config_keys as _config_keys_completer
-from thoth.errors import (
-    ConfigAmbiguousError,
-    ConfigNotFoundError,
-    ConfigProfileError,
-    ThothError,
-)
-from thoth.json_output import emit_error
+from thoth.errors import ConfigProfileError, ThothError
+from thoth.json_output import emit_error, emit_thoth_error
 
 _PASSTHROUGH_CONTEXT = {"ignore_unknown_options": True, "allow_extra_args": True}
 _VALID_LAYERS = ("defaults", "user", "project", "profile", "env", "cli")
 
 
-def _thoth_error_code(exc: ThothError) -> str:
-    if isinstance(exc, ConfigAmbiguousError):
-        return "CONFIG_AMBIGUOUS"
-    if isinstance(exc, ConfigNotFoundError):
-        return "CONFIG_NOT_FOUND"
-    if isinstance(exc, ConfigProfileError):
-        return "CONFIG_PROFILE_ERROR"
-    return "THOTH_ERROR"
-
-
-def _emit_thoth_error(exc: ThothError) -> NoReturn:
-    details = {"suggestion": exc.suggestion} if exc.suggestion else None
-    emit_error(_thoth_error_code(exc), exc.message, details, exit_code=exc.exit_code)
+def _emit_thoth_error_for_output_mode(
+    ctx: click.Context,
+    exc: ThothError,
+    *,
+    as_json: bool,
+) -> NoReturn:
+    if as_json:
+        emit_thoth_error(exc)
+    click.echo(f"Error: {exc.message}", err=True)
+    if exc.suggestion:
+        click.echo(f"Suggestion: {exc.suggestion}", err=True)
+    ctx.exit(exc.exit_code)
 
 
 @click.group(name="config", invoke_without_command=True)
@@ -124,7 +118,7 @@ def config_get(
                 profile=profile,
             )
         except ThothError as exc:
-            _emit_thoth_error(exc)
+            emit_thoth_error(exc)
         if data.get("error") == "INVALID_LAYER":
             emit_error(
                 "INVALID_LAYER",
@@ -269,7 +263,7 @@ def config_list(ctx: click.Context, args: tuple[str, ...], as_json: bool) -> Non
                 profile=profile,
             )
         except ThothError as exc:
-            _emit_thoth_error(exc)
+            emit_thoth_error(exc)
         if data.get("error") == "INVALID_LAYER":
             emit_error(
                 "INVALID_LAYER",
@@ -385,7 +379,7 @@ def config_profiles_list(ctx: click.Context, show_shadowed: bool, as_json: bool)
             show_shadowed=show_shadowed,
         )
     except ThothError as exc:
-        _emit_thoth_error(exc)
+        _emit_thoth_error_for_output_mode(ctx, exc, as_json=as_json)
 
     if as_json:
         from thoth.json_output import emit_json
@@ -419,7 +413,7 @@ def config_profiles_show(ctx: click.Context, name: str, show_secrets: bool, as_j
     from thoth.config_cmd import get_config_profile_show_data
     from thoth.json_output import emit_error
 
-    validate_inherited_options(ctx, "config profiles show", DEFAULT_HONOR)
+    validate_inherited_options(ctx, "config profiles show", _MUTATOR_HONOR)
     config_path_inh = inherited_value(ctx, "config_path")
     try:
         data = get_config_profile_show_data(
@@ -428,7 +422,7 @@ def config_profiles_show(ctx: click.Context, name: str, show_secrets: bool, as_j
             config_path=config_path_inh,
         )
     except ThothError as exc:
-        _emit_thoth_error(exc)
+        _emit_thoth_error_for_output_mode(ctx, exc, as_json=as_json)
 
     if as_json:
         from thoth.json_output import emit_json
@@ -466,7 +460,7 @@ def config_profiles_current(ctx: click.Context, as_json: bool) -> None:
             profile=profile,
         )
     except ThothError as exc:
-        _emit_thoth_error(exc)
+        _emit_thoth_error_for_output_mode(ctx, exc, as_json=as_json)
 
     if as_json:
         from thoth.json_output import emit_json
@@ -508,13 +502,13 @@ def config_profiles_set_default(
         )
     except ConfigProfileError as exc:
         if as_json:
-            _emit_thoth_error(exc)
+            emit_thoth_error(exc)
         click.echo(f"Error: {exc.message}", err=True)
         if exc.suggestion:
             click.echo(f"Suggestion: {exc.suggestion}", err=True)
         ctx.exit(exc.exit_code)
     except ThothError as exc:
-        _emit_thoth_error(exc)
+        emit_thoth_error(exc)
 
     if as_json:
         from thoth.json_output import emit_json
@@ -604,19 +598,15 @@ def config_profiles_add(ctx: click.Context, name: str, project: bool, as_json: b
         click.echo(f"Already exists: profile '{name}'")
 
 
-@config_profiles.command(name="set")
-@click.argument("name")
-@click.argument("key")
-@click.argument("value")
+@config_profiles.command(name="set", context_settings=_PASSTHROUGH_CONTEXT)
+@click.argument("args", nargs=-1, type=click.UNPROCESSED)
 @click.option("--project", "project", is_flag=True, help="Write to project config")
 @click.option("--string", "force_string", is_flag=True, help="Treat VALUE as a string")
 @click.option("--json", "as_json", is_flag=True, help="Emit JSON envelope")
 @click.pass_context
 def config_profiles_set(
     ctx: click.Context,
-    name: str,
-    key: str,
-    value: str,
+    args: tuple[str, ...],
     project: bool,
     force_string: bool,
     as_json: bool,
@@ -627,6 +617,15 @@ def config_profiles_set(
 
     validate_inherited_options(ctx, "config profiles set", _MUTATOR_HONOR)
     config_path_inh = inherited_value(ctx, "config_path")
+
+    if len(args) != 3:
+        message = "config profiles set takes NAME KEY VALUE"
+        if as_json:
+            emit_error("USAGE_ERROR", message, exit_code=2)
+        click.echo(f"Error: {message}", err=True)
+        ctx.exit(2)
+    name, key, value = args
+
     data = get_config_profile_set_data(
         name,
         key,

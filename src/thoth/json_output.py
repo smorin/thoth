@@ -19,7 +19,17 @@ from __future__ import annotations
 
 import json
 import sys
-from typing import Any, NoReturn
+from collections.abc import Callable
+from typing import Any, NoReturn, TypeVar
+
+from thoth.errors import (
+    ConfigAmbiguousError,
+    ConfigNotFoundError,
+    ConfigProfileError,
+    ThothError,
+)
+
+T = TypeVar("T")
 
 
 def emit_json(data: dict[str, Any], *, exit_code: int = 0) -> NoReturn:
@@ -71,4 +81,35 @@ def emit_error(
     sys.exit(exit_code)
 
 
-__all__ = ["emit_error", "emit_json"]
+def thoth_error_code(exc: ThothError) -> str:
+    """Map Thoth exceptions to stable JSON error codes."""
+    if isinstance(exc, ConfigAmbiguousError):
+        return "CONFIG_AMBIGUOUS"
+    if isinstance(exc, ConfigNotFoundError):
+        return "CONFIG_NOT_FOUND"
+    if isinstance(exc, ConfigProfileError):
+        return "CONFIG_PROFILE_ERROR"
+    return "THOTH_ERROR"
+
+
+def emit_thoth_error(exc: ThothError) -> NoReturn:
+    """Emit a ThothError using the shared JSON error contract."""
+    details = {"suggestion": exc.suggestion} if exc.suggestion else None
+    emit_error(thoth_error_code(exc), exc.message, details, exit_code=exc.exit_code)
+
+
+def run_json_thoth_boundary(build: Callable[[], T]) -> T:
+    """Run JSON command work and convert ThothError failures to envelopes."""
+    try:
+        return build()
+    except ThothError as exc:
+        emit_thoth_error(exc)
+
+
+__all__ = [
+    "emit_error",
+    "emit_json",
+    "emit_thoth_error",
+    "run_json_thoth_boundary",
+    "thoth_error_code",
+]

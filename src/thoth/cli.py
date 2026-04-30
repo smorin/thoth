@@ -134,8 +134,7 @@ def _invoke_group_callback(ctx: click.Context) -> None:
     ctx.meta["thoth_group_callback_invoked"] = True
 
 
-def _prompt_max_bytes() -> int:
-    config = _thoth_config.get_config()
+def _prompt_max_bytes_from_config(config: ConfigManager) -> int:
     raw = config.data.get("execution", {}).get("prompt_max_bytes", 1024 * 1024)
     try:
         max_bytes = int(raw)
@@ -144,6 +143,10 @@ def _prompt_max_bytes() -> int:
     if max_bytes < 1:
         raise click.BadParameter("execution.prompt_max_bytes must be positive")
     return max_bytes
+
+
+def _prompt_max_bytes() -> int:
+    return _prompt_max_bytes_from_config(_thoth_config.get_config())
 
 
 def _config_default_mode(config: ConfigManager) -> str:
@@ -449,6 +452,11 @@ def handle_error(error: Exception):
         sys.exit(127)
 
 
+def _argv_requests_json(argv: list[str] | None = None) -> bool:
+    """Return whether the raw process args asked for a JSON envelope."""
+    return "--json" in (sys.argv[1:] if argv is None else argv)
+
+
 def _run_research_default(
     mode: str,
     prompt: str,
@@ -674,9 +682,10 @@ def main():
     try:
         cli()
     except Exception as e:
-        import traceback
+        if isinstance(e, ThothError) and _argv_requests_json():
+            from thoth.json_output import emit_thoth_error
 
-        traceback.print_exc()
+            emit_thoth_error(e)
         handle_error(e)
 
 

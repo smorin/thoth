@@ -51,11 +51,11 @@ The two persisted-default mutators are named **`set-default NAME`** and **`unset
 - `use` reads as shell-style "activate for this session" but the actual behavior is a persistent file write to `general.default_profile`. The naming mismatch is a typo trap.
 - `clear` does not say *what* it clears (the persisted default pointer? a profile's contents? the runtime selection?). `unset-default` mirrors the persisted key (`general.default_profile`) and pairs symmetrically with the existing `config set` / `config unset`.
 
-### Q2. How are read-only leaves vs mutator leaves treated for inherited `--profile`?
+### Q2. How are profile inspection leaves vs mutator leaves treated for inherited `--profile`?
 
-**Read-only leaves** (`list`, `show`, `current`) honor the inherited root `--profile` because they read merged config; the active profile changes the values they report. They include `"profile"` in `honored_options` (i.e. `DEFAULT_HONOR`).
+**Active-state readers** (`list`, `current`) honor the inherited root `--profile` because their output includes runtime active-profile state. `list` can mark the selected row active; `current` reports the selected profile and source. They include `"profile"` in `honored_options` (i.e. `DEFAULT_HONOR`).
 
-**Mutator leaves** (`add`, `set`, `unset`, `remove`, `set-default`, `unset-default`) reject the inherited root `--profile`. They omit `"profile"` from `honored_options`. Click rejects `thoth --profile foo config profiles add bar` with the standard "no such option" error. Mutators operate on the positional `NAME` argument only; the runtime active profile is irrelevant to a mutation target. Accepting `--profile` here would be a typo trap with no useful behavior.
+**Raw lookup and mutator leaves** reject the inherited root `--profile`. `show NAME` is a raw profile-definition lookup; the positional `NAME` is the only profile being inspected, so accepting a second profile selector such as `thoth --profile fast config profiles show potato` is ambiguous. Mutators (`add`, `set`, `unset`, `remove`, `set-default`, `unset-default`) operate on the positional `NAME` argument only; the runtime active profile is irrelevant to a mutation target. These leaves omit `"profile"` from `honored_options`. Click rejects inherited `--profile` with the standard "no such option" error.
 
 ### Q3. How does `set-default NAME` validate the target?
 
@@ -211,8 +211,8 @@ def config_profiles(ctx: click.Context) -> None:
 
 Leaf commands:
 
-- `list`, `show`, `current`: `validate_inherited_options(ctx, ..., DEFAULT_HONOR)` — honor both `config_path` and `profile`. The `list` leaf also has a typed `--show-shadowed` flag.
-- `add`, `set`, `unset`, `remove`, `set-default`, `unset-default`: `validate_inherited_options(ctx, ..., honored_options={"config_path"})` — drop `profile` so Click rejects `thoth --profile foo config profiles add bar`.
+- `list`, `current`: `validate_inherited_options(ctx, ..., DEFAULT_HONOR)` — honor both `config_path` and `profile`. The `list` leaf also has a typed `--show-shadowed` flag.
+- `show`, `add`, `set`, `unset`, `remove`, `set-default`, `unset-default`: `validate_inherited_options(ctx, ..., honored_options={"config_path"})` — drop `profile` so Click rejects forms like `thoth --profile foo config profiles show bar` and `thoth --profile foo config profiles add bar`.
 
 JSON output uses the existing envelope helpers (`emit_json`).
 
@@ -242,7 +242,7 @@ Tests live in `tests/test_config_profiles_cmd.py`.
 - Deep-path coverage: `set fast general.default_mode thinking` produces `[profiles.fast.general]` at depth 4; `unset` removes only the leaf and leaves `[profiles.fast.general] = {}` in place.
 - tomlkit comment preservation: a comment above `[profiles.fast]` and a comment on `default_mode` line both survive a `set` then `unset` round-trip (asserted via `Path.read_text()` containing the comment text).
 - `set-default ghost` raises `ConfigProfileError` (catalog rejection); `set-default prod` succeeds when `prod` lives only in the project tier; inherited `--config PATH` succeeds when the profile exists only in that custom file.
-- Mutator leaves reject `--profile foo`; read-only leaves accept it.
+- `show` and mutator leaves reject `--profile foo`; `list` and `current` accept it.
 - `list` hides shadowed same-name user profiles by default and includes them with `shadowed=true` plus `shadowed_by` metadata when `--show-shadowed` is passed.
 - `current` reports the runtime active selection plus its source for `flag`, `env`, `config`, and `none`.
 - B20 end-to-end: persisted `fast` + `--profile bar` → `config get general.default_profile` returns `fast`, `config profiles current` returns `bar` from source `flag`, the file is unchanged after the flag invocation.
@@ -264,7 +264,7 @@ Docs updated in P21b:
 
 - All nine `get_config_profile_*_data` functions exist with singular naming, are exported in `__all__`, and round-trip via `tomlkit`.
 - All nine Click leaves under `thoth config profiles` exist and are wired into the `config` group.
-- Read-only leaves (`list`, `show`, `current`) honor inherited `--profile`; mutator leaves (`add`/`set`/`unset`/`remove`/`set-default`/`unset-default`) reject it with the standard "no such option" Click error.
+- Active-state readers (`list`, `current`) honor inherited `--profile`; raw lookup `show NAME` and mutator leaves (`add`/`set`/`unset`/`remove`/`set-default`/`unset-default`) reject it with the standard "no such option" Click error.
 - `list --show-shadowed` includes same-name lower-precedence rows with stable `shadowed` / `shadowed_by` JSON metadata; default `list` hides those rows.
 - `set-default NAME` rejects unknown names against the resolved catalog; cross-tier and inherited `--config PATH` profile definitions are valid.
 - `unset` removes only the named leaf; empty parent tables are left in place.

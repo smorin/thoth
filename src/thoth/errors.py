@@ -46,6 +46,7 @@ class APIKeyError(ThothError):
     """Missing or invalid API key"""
 
     def __init__(self, provider: str):
+        from thoth.config_legacy import format_legacy_config_guidance
         from thoth.paths import user_config_file  # local import to avoid cycles
 
         env_var = f"{provider.upper()}_API_KEY"
@@ -53,6 +54,9 @@ class APIKeyError(ThothError):
         suggestion = f"Set {env_var} (or edit {cfg_path})\n" + format_config_context(
             cfg_path, env_vars=[env_var]
         )
+        legacy_guidance = format_legacy_config_guidance()
+        if legacy_guidance:
+            suggestion = f"{suggestion}\n\n{legacy_guidance}"
         super().__init__(
             f"{provider} API key not found",
             suggestion,

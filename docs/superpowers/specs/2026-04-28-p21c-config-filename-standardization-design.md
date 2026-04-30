@@ -215,7 +215,7 @@ Option 1 is recommended unless P21 is already mid-implementation when P21c is ap
 - Legacy filenames (`config.toml` in user dir, `thoth.toml`, `.thoth/config.toml`) are **not** read.
 - When no canonical config is found and a legacy file exists at one of the legacy paths, the "config not found" error names the detected legacy file(s) and the rename target.
 - When both `./thoth.config.toml` and `./.thoth.config.toml` exist in the project root, Thoth raises `ConfigAmbiguousError` and asks the user to delete one. No precedence is applied.
-- `thoth init` writes `./thoth.config.toml`. The dotfile-form flag writes `./.thoth.config.toml`. `thoth init --user` writes `$XDG_CONFIG_HOME/thoth/thoth.config.toml`. `--user` and the dotfile-form flag are mutually exclusive.
+- `thoth init` writes `./thoth.config.toml`. The dotfile-form flag writes `./.thoth.config.toml`. `thoth init --user` writes `$XDG_CONFIG_HOME/thoth/thoth.config.toml`. `--user` and the dotfile-form flag are mutually exclusive. `init --user` is a target-file write and must not pre-load project config, so it still works when the current directory has both project-tier config filenames. `--json --non-interactive` preserves the same overwrite policy: existing targets are refused without `--force` via a JSON error envelope, and overwritten with `--force` via a JSON success envelope.
 - README, manual_testing_instructions, help text, error messages, and P21/P21b spec/plan docs all reference `thoth.config.toml`.
 - Successful config loads do **not** call the legacy detection helper (regression guard for inadvertent fallback).
 - `git diff --check`, `just check`, `./thoth_test -r --skip-interactive -q`, `just test-lint`, `just test-typecheck` all pass.

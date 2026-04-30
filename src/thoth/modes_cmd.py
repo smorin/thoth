@@ -269,6 +269,7 @@ def get_modes_list_data(
     source: str,
     show_secrets: bool,
     config_path: str | None = None,
+    profile: str | None = None,
     kind: str | None = None,
 ) -> dict:
     """Pure data function for `thoth modes list`.
@@ -283,7 +284,10 @@ def get_modes_list_data(
     JSON-vs-Rich choice lives at the subcommand-wrapper layer.
     """
     cm = ConfigManager(Path(config_path).expanduser().resolve() if config_path else None)
-    cm.load_all_layers({})
+    cli_args: dict[str, object] = {}
+    if profile:
+        cli_args["_profile"] = profile
+    cm.load_all_layers(cli_args)
     infos = list_all_modes(cm)
 
     if source != "all":
