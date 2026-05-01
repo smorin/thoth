@@ -9,6 +9,7 @@
 - **External (Responses API):** https://platform.openai.com/docs/api-reference/responses
 - **External (Chat Completions, comparison only):** https://platform.openai.com/docs/api-reference/chat
 - **External (Deep-research cookbook, for kind-boundary checks):** https://cookbook.openai.com/examples/deep_research_api/introduction_to_deep_research_api
+- **Closed-by:** P34 — finding F1 (offline-test coverage for `OpenAIProvider.stream()`) is superseded / closed by [Offline testing for OpenAIProvider.stream() (VCR or alternative)](P34-offline-testing-openai-stream-.md).
 
 **Status:** `[x]` Completed.
 
