@@ -8,6 +8,7 @@ override a builtin (present in both).
 
 from __future__ import annotations
 
+import inspect
 import json
 from collections.abc import Callable
 from dataclasses import asdict, dataclass
@@ -342,10 +343,6 @@ def get_modes_add_data(
     project: bool = False,
     config_path: str | None = None,
     profile: str | None = None,
-    # Following kwargs are spread by get_modes_data_from_args even though
-    # they're not all relevant to `add`. Accept them to match the contract.
-    from_profile: str | None = None,
-    force_string: bool = False,
     override: bool = False,
 ) -> dict:
     """Pure data function for `thoth modes add`. Returns a receipt dict.
@@ -402,11 +399,22 @@ def get_modes_add_data(
 
     assert context is not None  # guaranteed by err is None
     doc = context.load_document()
-    target_segments = ("profiles", profile, "modes", name) if profile else ("modes", name)
-    existing = doc._table_at(target_segments)
+    existing = doc.get_mode(name, profile=profile)
 
     if existing is not None:
         existing_model = existing.get("model")
+        if existing_model is None:
+            return {
+                "schema_version": SCHEMA_VERSION,
+                "op": "add",
+                "mode": name,
+                "error": "MODE_EXISTS_NO_MODEL",
+                "message": (
+                    f"mode {name!r} already exists in TOML but has no `model` field "
+                    f"(possibly mid-edit). Use `thoth modes set {name} model {model}` "
+                    f"to repair, or `thoth modes remove {name}` to delete and re-add."
+                ),
+            }
         if existing_model == model:
             return {
                 "schema_version": SCHEMA_VERSION,
@@ -835,15 +843,22 @@ def get_modes_data_from_args(
             "message": f"op {op_name!r} has no registered data function",
         }
         return envelope, 2
-    data = data_fn(
+    # Build the full kwarg dict the dispatcher would inject, then filter
+    # by what the data fn actually accepts. Keeps per-command data fns
+    # free to omit kwargs they don't use (force_string for non-set ops,
+    # from_profile for non-copy ops, override for non-add/copy ops).
+    all_kwargs = {
         **op_kwargs,
-        project=target_flags.project,
-        config_path=target_flags.config_path or config_path,
-        profile=target_flags.profile,
-        from_profile=target_flags.from_profile if target_flags.from_profile else None,
-        force_string=target_flags.force_string,
-        override=target_flags.override,
-    )
+        "project": target_flags.project,
+        "config_path": target_flags.config_path or config_path,
+        "profile": target_flags.profile,
+        "from_profile": target_flags.from_profile,
+        "force_string": target_flags.force_string,
+        "override": target_flags.override,
+    }
+    sig = inspect.signature(data_fn)
+    accepted = {k: v for k, v in all_kwargs.items() if k in sig.parameters}
+    data = data_fn(**accepted)
     if data.get("error"):
         exit_code = 2 if data["error"] in ("USAGE_ERROR", "PROJECT_CONFIG_CONFLICT") else 1
     else:

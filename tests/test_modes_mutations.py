@@ -444,3 +444,41 @@ def test_add_override_on_nonbuiltin_rejected(
 
     rc = modes_command("add", ["my_brief", "--model", "gpt-4o-mini", "--override"])
     assert rc == 2
+
+
+def test_add_existing_mode_with_no_model_returns_clear_error(
+    isolated_thoth_home: Path,
+) -> None:
+    """A mode table that exists but lacks a `model` field is a degenerate
+    state (mid-edit). Surface a specific error rather than the misleading
+    'MODE_EXISTS_DIFFERENT_MODEL with model None'."""
+    from thoth.config_document import ConfigDocument
+    from thoth.modes_cmd import modes_command
+
+    cfg = Path(isolated_thoth_home) / "config" / "thoth" / "thoth.config.toml"
+    cfg.parent.mkdir(parents=True, exist_ok=True)
+    # Manually create a degenerate [modes.brief] with no model key
+    doc = ConfigDocument.load(cfg)
+    doc.ensure_mode("brief")
+    doc.set_mode_value("brief", "description", "no model yet")
+    doc.save()
+
+    rc = modes_command("add", ["brief", "--model", "gpt-4o-mini"])
+    assert rc == 1  # MODE_EXISTS_NO_MODEL → exit 1 via _emit_human_receipt
+
+
+def test_get_modes_data_from_args_filters_by_signature(
+    isolated_thoth_home: Path,
+) -> None:
+    """The dispatcher should only spread kwargs that the data fn accepts.
+    `add` doesn't accept `from_profile` or `force_string` after this fix;
+    passing them via the dispatcher must not cause a TypeError."""
+    from thoth.modes_cmd import get_modes_data_from_args
+
+    # Add doesn't take --from-profile (rejected by parser via spec gating)
+    # but the inner spread filter independently ensures the data fn isn't
+    # called with kwargs it doesn't accept. Smoke-test happy path:
+    data, exit_code = get_modes_data_from_args("add", ["brief", "--model", "gpt-4o-mini"])
+    assert exit_code == 0
+    assert data["created"] is True
+    assert data["mode"] == "brief"

@@ -231,3 +231,41 @@ def test_copy_mode_when_src_absent_falls_back_to_caller_provided_data(
     p = tmp_path / "thoth.config.toml"
     doc = _doc(p)
     assert doc.copy_mode("missing", "dst") is False
+
+
+def test_get_mode_returns_dict_when_present(tmp_path: Path) -> None:
+    p = tmp_path / "thoth.config.toml"
+    doc = _doc(p)
+    doc.set_mode_value("brief", "model", "gpt-4o-mini")
+    doc.set_mode_value("brief", "temperature", 0.2)
+    snapshot = doc.get_mode("brief")
+    assert snapshot == {"model": "gpt-4o-mini", "temperature": 0.2}
+
+
+def test_get_mode_returns_none_when_absent(tmp_path: Path) -> None:
+    p = tmp_path / "thoth.config.toml"
+    doc = _doc(p)
+    assert doc.get_mode("nonexistent") is None
+
+
+def test_get_mode_in_overlay_tier(tmp_path: Path) -> None:
+    p = tmp_path / "thoth.config.toml"
+    doc = _doc(p)
+    doc.set_mode_value("cheap", "model", "gpt-4o-mini", profile="dev")
+    snapshot = doc.get_mode("cheap", profile="dev")
+    assert snapshot == {"model": "gpt-4o-mini"}
+    # Base tier is empty
+    assert doc.get_mode("cheap") is None
+
+
+def test_get_mode_returns_independent_snapshot(tmp_path: Path) -> None:
+    p = tmp_path / "thoth.config.toml"
+    doc = _doc(p)
+    doc.set_mode_value("brief", "model", "gpt-4o-mini")
+    snapshot = doc.get_mode("brief")
+    assert snapshot is not None
+    snapshot["model"] = "mutated"
+    # Mutating the snapshot must not propagate back.
+    reread = doc.get_mode("brief")
+    assert reread is not None
+    assert reread["model"] == "gpt-4o-mini"

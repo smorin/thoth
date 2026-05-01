@@ -99,6 +99,21 @@ class ConfigDocument:
         self._ensure_table(segments)
         return True
 
+    def get_mode(self, name: str, *, profile: str | None = None) -> dict[str, Any] | None:
+        """Return the mode's TOML table as a plain dict, or None if absent
+        in the chosen tier.
+
+        Public read-only accessor used by CLI data functions to detect mode
+        existence and inspect current values (e.g. for idempotency checks).
+        Returns a snapshot dict — modifications do NOT propagate back to the
+        document.
+        """
+        segments = self._mode_segments(name, profile)
+        table = self._table_at(segments)
+        if table is None:
+            return None
+        return dict(table)
+
     def set_mode_value(
         self, name: str, key: str, value: Any, *, profile: str | None = None
     ) -> None:
