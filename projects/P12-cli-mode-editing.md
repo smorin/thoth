@@ -111,14 +111,14 @@ Per-command TS rows enumerate functional cases at single-case granularity. Per-c
 - [x] [P12-T02] Implement `thoth modes set` — click command, `get_modes_set_data` + `_op_set`, `ConfigDocument.set_mode_value(profile=...)`
 
 #### `thoth modes unset NAME KEY [--project] [--config PATH] [--profile X] [--json]`
-- [ ] [P12-TS03a] Drops a single user-table key in the chosen tier
-- [ ] [P12-TS03b] Empty `[modes.NAME]` (or `[profiles.X.modes.NAME]`) is pruned after the last key is removed (divergence from B17)
-- [ ] [P12-TS03c] On overridden mode: pruning fully reverts the override; post `thoth modes list --name NAME` → `source=builtin`
-- [ ] [P12-TS03d] Idempotent: KEY absent on present mode → no-op exit 0
-- [ ] [P12-TS03e] Pure-builtin NAME (no user-side override in chosen tier) → `MODE_NOT_FOUND` exit 1
-- [ ] [P12-TS03f] Targeting matrix (same shape as TS01h)
-- [ ] [P12-TS03g] `--json` envelope follows the existing wrapper contract with data `{schema_version, op: "unset", mode, target, key, removed, table_pruned}`
-- [ ] [P12-T03] Implement `thoth modes unset` — click command, `get_modes_unset_data` + `_op_unset`, `ConfigDocument.unset_mode_value(profile=..., prune_empty=True)`
+- [x] [P12-TS03a] Drops a single user-table key in the chosen tier
+- [x] [P12-TS03b] Empty `[modes.NAME]` (or `[profiles.X.modes.NAME]`) is pruned after the last key is removed (divergence from B17)
+- [x] [P12-TS03c] On overridden mode: pruning fully reverts the override; post `thoth modes list --name NAME` → `source=builtin`
+- [x] [P12-TS03d] Idempotent: KEY absent on present mode → no-op exit 0
+- [x] [P12-TS03e] Pure-builtin NAME (no user-side override in chosen tier) → `MODE_NOT_FOUND` exit 1
+- [x] [P12-TS03f] Targeting matrix (same shape as TS01h)
+- [x] [P12-TS03g] `--json` envelope follows the existing wrapper contract with data `{schema_version, op: "unset", mode, target, key, removed, table_pruned}`
+- [x] [P12-T03] Implement `thoth modes unset` — click command, `get_modes_unset_data` + `_op_unset`, `ConfigDocument.unset_mode_value(profile=..., prune_empty=True)`
 
 #### `thoth modes remove NAME [--project] [--config PATH] [--profile X] [--json]`
 - [ ] [P12-TS04a] Drops a user-only mode in the chosen tier; gone from `thoth modes list [--profile X]`

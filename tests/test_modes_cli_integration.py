@@ -85,3 +85,23 @@ def test_modes_set_json_masks_secret_value(
     # File still has the real value (TOML round-trip preserves it)
     cfg = Path(isolated_thoth_home) / "config" / "thoth" / "thoth.config.toml"
     assert "sk-supersecret123" in cfg.read_text()
+
+
+def test_modes_unset_json_via_subprocess(isolated_thoth_home: Path) -> None:  # TS03g
+    """JSON envelope shape for `unset`."""
+    rc, _, _ = run_thoth(["modes", "add", "brief", "--model", "gpt-4o-mini"])
+    assert rc == 0
+    rc, _, _ = run_thoth(["modes", "set", "brief", "temperature", "0.2"])
+    assert rc == 0
+    rc, stdout, _ = run_thoth(["modes", "unset", "brief", "temperature", "--json"])
+    assert rc == 0
+    payload = json.loads(stdout)
+    assert payload["status"] == "ok"
+    data = payload["data"]
+    assert data["schema_version"] == "1"
+    assert data["op"] == "unset"
+    assert data["mode"] == "brief"
+    assert data["key"] == "temperature"
+    assert data["removed"] is True
+    assert data["table_pruned"] is False
+    assert data["target"]["tier"] == "modes"

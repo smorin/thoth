@@ -551,3 +551,84 @@ def test_set_overlay_via_profile(isolated_thoth_home: Path) -> None:  # TS02f
     cfg = (Path(isolated_thoth_home) / "config" / "thoth" / "thoth.config.toml").read_text()
     assert "[profiles.dev.modes.deep_research]" in cfg
     assert "parallel = false" in cfg
+
+
+# ---------------------------------------------------------------------------
+# TS03a-f — `thoth modes unset` (P12 Task 6)
+# ---------------------------------------------------------------------------
+
+
+def test_unset_drops_key_from_user_mode(isolated_thoth_home: Path) -> None:  # TS03a
+    from thoth.modes_cmd import modes_command
+
+    modes_command("add", ["brief", "--model", "gpt-4o-mini"])
+    modes_command("set", ["brief", "temperature", "0.2"])
+    rc = modes_command("unset", ["brief", "temperature"])
+    assert rc == 0
+    cfg = (Path(isolated_thoth_home) / "config" / "thoth" / "thoth.config.toml").read_text()
+    assert "temperature" not in cfg
+    assert "[modes.brief]" in cfg  # mode itself remains
+
+
+def test_unset_last_key_prunes_empty_table(isolated_thoth_home: Path) -> None:  # TS03b
+    from thoth.modes_cmd import modes_command
+
+    # Build a mode with only model + provider + kind (the defaults)
+    modes_command("add", ["brief", "--model", "gpt-4o-mini"])
+    modes_command("unset", ["brief", "model"])
+    modes_command("unset", ["brief", "provider"])
+    rc = modes_command("unset", ["brief", "kind"])
+    assert rc == 0
+    cfg = (Path(isolated_thoth_home) / "config" / "thoth" / "thoth.config.toml").read_text()
+    # Empty [modes.brief] should have been pruned
+    assert "[modes.brief]" not in cfg
+
+
+def test_unset_override_reverts_to_builtin(isolated_thoth_home: Path) -> None:  # TS03c
+    """`set` on a builtin creates [modes.<builtin>] override; unset of
+    every key prunes the table; `list_all_modes` then reports source=builtin again."""
+    from thoth.config import ConfigManager
+    from thoth.modes_cmd import list_all_modes, modes_command
+
+    # Create override
+    modes_command("set", ["deep_research", "parallel", "false"])
+    cm = ConfigManager()
+    cm.load_all_layers({})
+    info = next(m for m in list_all_modes(cm) if m.name == "deep_research")
+    assert info.source == "overridden"
+
+    # Drop the only override key — should prune the table and revert
+    modes_command("unset", ["deep_research", "parallel"])
+    cm = ConfigManager()
+    cm.load_all_layers({})
+    info = next(m for m in list_all_modes(cm) if m.name == "deep_research")
+    assert info.source == "builtin"
+
+
+def test_unset_idempotent_on_absent_key(isolated_thoth_home: Path) -> None:  # TS03d
+    """Absent KEY on a present mode → exit 0 with `removed: False`."""
+    from thoth.modes_cmd import modes_command
+
+    modes_command("add", ["brief", "--model", "gpt-4o-mini"])
+    rc = modes_command("unset", ["brief", "nonexistent_key"])
+    assert rc == 0
+
+
+def test_unset_pure_builtin_errors(isolated_thoth_home: Path) -> None:  # TS03e
+    """Pure-builtin NAME (no user-side override in chosen tier) → MODE_NOT_FOUND."""
+    from thoth.modes_cmd import modes_command
+
+    rc = modes_command("unset", ["deep_research", "parallel"])
+    assert rc == 1
+
+
+def test_unset_overlay_via_profile(isolated_thoth_home: Path) -> None:  # TS03f
+    """Unset on a profile-overlay mode."""
+    from thoth.modes_cmd import modes_command
+
+    modes_command("set", ["deep_research", "parallel", "false", "--profile", "dev"])
+    rc = modes_command("unset", ["deep_research", "parallel", "--profile", "dev"])
+    assert rc == 0
+    cfg = (Path(isolated_thoth_home) / "config" / "thoth" / "thoth.config.toml").read_text()
+    # The overlay table should be pruned (was the only key)
+    assert "profiles.dev.modes.deep_research" not in cfg

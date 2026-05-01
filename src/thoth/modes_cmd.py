@@ -558,6 +558,80 @@ _OP_SPECS["set"] = _ModesOpSpec(
 _OP_DATA_FNS["set"] = get_modes_set_data
 
 
+# ---------------------------------------------------------------------------
+# `thoth modes unset` — P12 Task 6
+# ---------------------------------------------------------------------------
+
+
+def get_modes_unset_data(
+    name: str,
+    key: str,
+    *,
+    project: bool = False,
+    config_path: str | None = None,
+    profile: str | None = None,
+) -> dict:
+    """Pure data function for `thoth modes unset`. Returns receipt dict.
+
+    Removes a single key from the mode's table in the chosen tier. Empty
+    parent table is pruned automatically (Task 2's `unset_mode_value`
+    handles this — divergence from `unset_profile_value` per B17).
+
+    Pure-builtin NAME (no user-side override in chosen tier) →
+    MODE_NOT_FOUND. Absent KEY on a present mode → no-op exit 0
+    (`removed: False`).
+    """
+    flags = _TargetFlags(project=project, config_path=config_path)
+    context, err = _resolve_write_target(flags, config_path=None)
+    if err is not None:
+        return {
+            "schema_version": SCHEMA_VERSION,
+            "op": "unset",
+            "mode": name,
+            **err,
+        }
+    assert context is not None
+
+    doc = context.load_document()
+
+    # Pure-builtin NAME (no user-side override in chosen tier) → MODE_NOT_FOUND.
+    # Builtin names that have an override in the chosen tier are valid targets.
+    if doc.get_mode(name, profile=profile) is None:
+        return {
+            "schema_version": SCHEMA_VERSION,
+            "op": "unset",
+            "mode": name,
+            "error": "MODE_NOT_FOUND",
+            "message": (
+                f"mode {name!r} has no user-side table to unset from"
+                + (f" (in profile {profile!r})" if profile else "")
+            ),
+        }
+
+    removed, table_pruned = doc.unset_mode_value(name, key, profile=profile)
+    if removed or table_pruned:
+        doc.save()
+
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "op": "unset",
+        "mode": name,
+        "key": key,
+        "removed": removed,
+        "table_pruned": table_pruned,
+        "target": _target_descriptor(context.target_path, profile),
+    }
+
+
+_OP_SPECS["unset"] = _ModesOpSpec(
+    name="unset",
+    positionals=("NAME", "KEY"),
+    op_flags={},
+    required_op_flags=frozenset(),
+)
+_OP_DATA_FNS["unset"] = get_modes_unset_data
+
+
 Source = Literal["builtin", "user", "overridden"]
 Kind = Literal["immediate", "background", "unknown"]
 
