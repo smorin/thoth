@@ -73,3 +73,15 @@ def test_parse_target_flags_override_without_profile_allowed() -> None:
     assert flags.profile is None
     # Operation-specific parsers decide whether --override is accepted.
     # P12 accepts it for add/copy and rejects it for set/unset/remove/rename.
+
+
+def test_op_specs_registry_starts_empty() -> None:
+    """The registry is populated by per-command tasks (4-9). Task 3 lays
+    the type only — entries land later."""
+    from thoth.modes_cmd import _OP_SPECS, _ModesOpSpec
+
+    assert isinstance(_OP_SPECS, dict)
+    # Per-command tasks register their specs; at infra-task time the
+    # registry can be empty or partial — we only check the type.
+    for spec in _OP_SPECS.values():
+        assert isinstance(spec, _ModesOpSpec)

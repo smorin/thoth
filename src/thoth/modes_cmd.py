@@ -9,6 +9,7 @@ override a builtin (present in both).
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Literal, cast
@@ -89,6 +90,32 @@ def _parse_target_flags(
         return flags, remaining, 2
 
     return flags, remaining, 0
+
+
+@dataclass(frozen=True)
+class _ModesOpSpec:
+    """Static CLI-surface description of one `thoth modes <op>` mutator.
+
+    Drives both `get_modes_data_from_args` (JSON path) and the click-leaf
+    factory `_make_modes_leaf` (human path). Per-command tasks register
+    their spec via `_OP_SPECS[op_name] = _ModesOpSpec(...)`.
+    """
+
+    name: str
+    positionals: tuple[str, ...]
+    # Op-specific keyword flags: maps `--flag-name` to attribute name on the
+    # parsed-kwargs dict. Example for `add`: {"--model": "model",
+    # "--provider": "provider", "--description": "description", "--kind":
+    # "kind"}.
+    op_flags: dict[str, str]
+    required_op_flags: frozenset[str]
+    accepts_from_profile: bool = False  # only `copy`
+    accepts_override: bool = False  # only `add` and `copy`
+    accepts_string: bool = False  # only `set`
+
+
+_OP_SPECS: dict[str, _ModesOpSpec] = {}
+_OP_DATA_FNS: dict[str, Callable[..., dict]] = {}
 
 
 Source = Literal["builtin", "user", "overridden"]
