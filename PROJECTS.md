@@ -43,7 +43,7 @@ Keep this summary list updated whenever a project is added, renamed, completed, 
 - [x] P13 — P11 Follow-up — is_background_model overload + shared secrets + regression tests
 - [ ] P12 — CLI Mode Editing — `thoth modes set` / `thoth modes add`
 - [x] P11 — `thoth modes` Discovery Command
-- [x] P10 — Config Subcommand + XDG Layout
+- [x] **P10** — [Config Subcommand + XDG Layout](projects/P10-config-subcommand-xdg.md)
 - [x] **P09** — [Decompose __main__.py + AppContext DI + Provider Registry](projects/P09-decompose-main-appcontext-di.md)
 - [x] **P08** — [Typed Exceptions, Unified API Key Resolution, Drop Legacy Config Shim](projects/P08-typed-exceptions-api-key-resolution.md)
 - [x] **P06** — [Hybrid Transient/Permanent Error Handling with Resumable Recovery](projects/P06-hybrid-error-handling-resumable.md)
