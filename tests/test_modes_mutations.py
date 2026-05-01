@@ -156,3 +156,108 @@ def test_parse_modes_args_unknown_op_returns_usage_error() -> None:
     assert err is not None
     assert err["error"] == "USAGE_ERROR"
     assert "unknown" in err["message"].lower()
+
+
+def test_parse_modes_args_with_temp_spec_validates_arity(monkeypatch) -> None:
+    """Coverage for parse_modes_args's positional-arity check using a
+    scratch spec, independent of any per-command task registration."""
+    from thoth.modes_cmd import _OP_SPECS, _ModesOpSpec, parse_modes_args
+
+    monkeypatch.setitem(
+        _OP_SPECS,
+        "_test_op",
+        _ModesOpSpec(
+            name="_test_op",
+            positionals=("NAME",),
+            op_flags={"--model": "model"},
+            required_op_flags=frozenset({"model"}),
+        ),
+    )
+    # No positional args — arity mismatch
+    _, _, err = parse_modes_args("_test_op", ["--model", "x"])
+    assert err is not None
+    assert err["error"] == "USAGE_ERROR"
+    assert "NAME" in err["message"]
+
+
+def test_parse_modes_args_with_temp_spec_validates_required_op_flag(monkeypatch) -> None:
+    """Coverage for required-op-flags missing branch."""
+    from thoth.modes_cmd import _OP_SPECS, _ModesOpSpec, parse_modes_args
+
+    monkeypatch.setitem(
+        _OP_SPECS,
+        "_test_op",
+        _ModesOpSpec(
+            name="_test_op",
+            positionals=("NAME",),
+            op_flags={"--model": "model"},
+            required_op_flags=frozenset({"model"}),
+        ),
+    )
+    # Has positional, missing required --model
+    _, _, err = parse_modes_args("_test_op", ["alpha"])
+    assert err is not None
+    assert err["error"] == "USAGE_ERROR"
+    assert "model" in err["message"]
+
+
+def test_parse_modes_args_rejects_from_profile_when_not_accepted(monkeypatch) -> None:
+    """Coverage for per-spec gating of --from-profile."""
+    from thoth.modes_cmd import _OP_SPECS, _ModesOpSpec, parse_modes_args
+
+    monkeypatch.setitem(
+        _OP_SPECS,
+        "_test_op",
+        _ModesOpSpec(
+            name="_test_op",
+            positionals=(),
+            op_flags={},
+            required_op_flags=frozenset(),
+            accepts_from_profile=False,
+        ),
+    )
+    _, _, err = parse_modes_args("_test_op", ["--from-profile", "dev"])
+    assert err is not None
+    assert err["error"] == "USAGE_ERROR"
+    assert "from-profile" in err["message"]
+
+
+def test_parse_modes_args_rejects_override_when_not_accepted(monkeypatch) -> None:
+    """Coverage for per-spec gating of --override."""
+    from thoth.modes_cmd import _OP_SPECS, _ModesOpSpec, parse_modes_args
+
+    monkeypatch.setitem(
+        _OP_SPECS,
+        "_test_op",
+        _ModesOpSpec(
+            name="_test_op",
+            positionals=(),
+            op_flags={},
+            required_op_flags=frozenset(),
+            accepts_override=False,
+        ),
+    )
+    _, _, err = parse_modes_args("_test_op", ["--override"])
+    assert err is not None
+    assert err["error"] == "USAGE_ERROR"
+    assert "override" in err["message"]
+
+
+def test_parse_modes_args_op_flag_missing_value(monkeypatch) -> None:
+    """Coverage for `--flag requires a value` branch."""
+    from thoth.modes_cmd import _OP_SPECS, _ModesOpSpec, parse_modes_args
+
+    monkeypatch.setitem(
+        _OP_SPECS,
+        "_test_op",
+        _ModesOpSpec(
+            name="_test_op",
+            positionals=("NAME",),
+            op_flags={"--model": "model"},
+            required_op_flags=frozenset(),
+        ),
+    )
+    _, _, err = parse_modes_args("_test_op", ["alpha", "--model"])
+    assert err is not None
+    assert err["error"] == "USAGE_ERROR"
+    assert "--model" in err["message"]

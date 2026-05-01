@@ -189,12 +189,13 @@ def _check_override_strict(name: str, *, override: bool, op_name: str) -> dict |
     }
 
 
-def _check_dst_taken(dst: str, *, profile: str | None, op_name: str) -> dict | None:
-    """Return error envelope if DST already exists in the destination tier.
+def _dst_taken_envelope(dst: str, *, profile: str | None, op_name: str) -> dict:
+    """Return the standard DST_NAME_TAKEN error envelope.
 
-    Used by `rename` and `copy` after their op-specific guard checks.
-    The actual `_table_at` lookup is in the per-op data function (which
-    has the loaded `ConfigDocument`); this helper only formats the error.
+    Used by `rename` and `copy` after the caller has confirmed via
+    `_table_at` that DST already exists in the destination tier. This
+    helper only formats the error — the existence check is the caller's
+    responsibility (per-command tasks 8 and 9).
     """
     return {
         "error": "DST_NAME_TAKEN",
@@ -686,7 +687,15 @@ def get_modes_data_from_args(
         }
         return envelope, 2 if err["error"] == "USAGE_ERROR" else 1
 
-    data_fn = _OP_DATA_FNS[op_name]
+    data_fn = _OP_DATA_FNS.get(op_name)
+    if data_fn is None:
+        envelope = {
+            "schema_version": SCHEMA_VERSION,
+            "op": op_name,
+            "error": "USAGE_ERROR",
+            "message": f"op {op_name!r} has no registered data function",
+        }
+        return envelope, 2
     data = data_fn(
         **op_kwargs,
         project=target_flags.project,
@@ -762,6 +771,9 @@ def _emit_human_receipt(data: dict, exit_code: int) -> int:
         print(f"Renamed '{data['from']}' → '{data['to']}'{suffix}")
     elif op == "copy":
         print(f"Copied '{data['from']}' → '{data['to']}'{suffix}")
+    else:
+        _emit_usage_error(f"internal error: unknown op {op!r} in receipt emitter")
+        return 1
     return 0
 
 
