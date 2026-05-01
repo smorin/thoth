@@ -29,7 +29,7 @@ Keep this summary list updated whenever a project is added, renamed, completed, 
 - [ ] **P28** — [Gemini — Background Deep Research](projects/P28-gemini-background-deep-research.md)
 - [ ] **P29** — [Architecture Review & Cleanup — Background Deep Research Providers](projects/P29-arch-review-background-deep-research.md)
 - [ ] **P30** — [Claude Code Skills Support](projects/P30-claude-code-skills-support.md)
-- [ ] P31 — Interactive Init Command
+- [ ] **P31** — [Interactive Init Command](projects/P31-interactive-init-command.md)
 - [ ] P32 — Interactive Prompt Refiner
 - [ ] P33 — Schema-Driven Config Defaults (typed source for `thoth init` and `ConfigSchema`)
 - [ ] P20 — Extended Real-API Workflow Coverage — Mirror Mock Contracts
@@ -83,18 +83,6 @@ Existing projects may use older labels such as `**Primary spec**`, `**Plan**`, o
 - Planning tasks may be checked when the plan/spec exists; implementation tasks stay unchecked until the code or docs they describe have actually landed.
 - Mark checkboxes as work lands.
 - When adding a new project, preserve the order requested by the user, then adapt numbering to the current file.
-
----
-
-## [ ] Project P31: Interactive Init Command
-**Goal**: Add an interactive `init` command.
-
-**Status**: Placeholder — requirements still need to be fleshed out before this can be worked on.
-
-### Tests & Tasks
-- [ ] [P31-TS01] Design tests for the interactive `init` flow before implementation.
-- [ ] [P31-T01] Flesh out requirements for the interactive `init` command.
-- [ ] [P31-T02] Implement the interactive `init` command.
 
 ---
 
