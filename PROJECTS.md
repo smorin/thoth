@@ -97,7 +97,7 @@ Older entries may use `**Primary spec**`, `**Plan**`, or
 - [x] **P15** — [P14 Bug Fixes — pick-model gating, spinner-progress conflict, prompt-file caps](projects/P15-p14-bug-fixes.md)
 - [x] **P14** — [Thoth CLI Ergonomics v1](projects/P14-thoth-cli-ergonomics-v1.md)
 - [x] **P13** — [P11 Follow-up — is_background_model overload + shared secrets + regression tests](projects/P13-p11-followup-is-background-model.md)
-- [~] **P12** — [CLI Mode Editing — `thoth modes` mutations](projects/P12-cli-mode-editing.md)
+- [x] **P12** — [CLI Mode Editing — `thoth modes` mutations](projects/P12-cli-mode-editing.md)
 - [x] **P11** — [`thoth modes` Discovery Command](projects/P11-thoth-modes-discovery.md)
 - [x] **P10** — [Config Subcommand + XDG Layout](projects/P10-config-subcommand-xdg.md)
 - [x] **P09** — [Decompose __main__.py + AppContext DI + Provider Registry](projects/P09-decompose-main-appcontext-di.md)

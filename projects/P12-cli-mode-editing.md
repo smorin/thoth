@@ -8,7 +8,7 @@
 - **Related:** P21* (profile-overlay tier)
 - **Code:** `src/thoth/config_profiles.py:107` (overlay-modes semantics)
 
-**Status:** `[~]` In progress.
+**Status:** `[x]` Done.
 
 **Goal**: Let users create, edit, rename, copy, and remove mode definitions from the CLI instead of hand-editing TOML. Adds the mutation half of the `thoth modes` surface (P11 shipped read-only `list`), mirroring the `thoth config profiles` precedent (P21b) where applicable and diverging deliberately where mode semantics require it (builtins, `--model`-on-create, empty-table pruning). Integrates with P18's canonical `kind` field and P21*'s profile-overlay tier.
 
@@ -170,8 +170,8 @@ under P13 — see P13-TS03 (shared-secrets tests) and P13-T04 (secrets
 helper extraction).
 
 #### Regression
-- [ ] [P12-TS08] Full `uv run pytest tests/` + `./thoth_test -r` green; existing P11 read paths (`thoth modes list`, `--json`, `--name`, `--source`, `--full`, `--profile`) unchanged
-- [ ] Regression Test Status
+- [x] [P12-TS08] Full `uv run pytest tests/` + `./thoth_test -r` green; existing P11 read paths (`thoth modes list`, `--json`, `--name`, `--source`, `--full`, `--profile`) unchanged
+- [x] Regression Test Status
 
 ### Deliverable
 ```bash
