@@ -23,7 +23,7 @@ Keep this summary list updated whenever a project is added, renamed, completed, 
 - [x] **P22** — [OpenAI — Immediate (Synchronous) Calls — closed: validation passed, 4 minor findings routed to P20, refactor outcome (a) (no refactor)](projects/P22-openai-immediate-sync.md)
 - [ ] **P23** — [Perplexity — Immediate (Synchronous) Calls](projects/P23-perplexity-immediate-sync.md)
 - [ ] **P24** — [Gemini — Immediate (Synchronous) Calls](projects/P24-gemini-immediate-sync.md)
-- [ ] P25 — Architecture Review & Cleanup — Immediate Providers
+- [ ] **P25** — [Architecture Review & Cleanup — Immediate Providers](projects/P25-arch-review-immediate-providers.md)
 - [ ] P26 — OpenAI — Background Deep Research
 - [ ] P27 — Perplexity — Background Deep Research
 - [ ] P28 — Gemini — Background Deep Research
@@ -83,20 +83,6 @@ Existing projects may use older labels such as `**Primary spec**`, `**Plan**`, o
 - Planning tasks may be checked when the plan/spec exists; implementation tasks stay unchecked until the code or docs they describe have actually landed.
 - Mark checkboxes as work lands.
 - When adding a new project, preserve the order requested by the user, then adapt numbering to the current file.
-
----
-
-## [ ] Project P25: Architecture Review & Cleanup — Immediate Providers
-**Goal**: Conduct a cross-provider architecture review across the three immediate-call providers once all three are in place.
-
-**Status**: Placeholder — requirements still need to be fleshed out before this can be worked on.
-
-### Tests & Tasks
-- [ ] [P25-TS01] Define review criteria and any regression tests needed before architecture changes are proposed.
-- [ ] [P25-T01] Flesh out requirements for the immediate-provider architecture review.
-- [ ] [P25-T02] Analyze whether shared infrastructure is feasible across the three immediate providers.
-- [ ] [P25-T03] Document if no shared abstraction is warranted.
-- [ ] [P25-T04] If applicable, recommend architecture enhancements that reduce duplication and improve stability, uniformity, and maintainability.
 
 ---
 
