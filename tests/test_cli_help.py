@@ -26,6 +26,11 @@ def test_help_has_resume_example():
     assert "thoth resume" in out
 
 
+def test_help_lists_cancel_command():
+    out = _help()
+    assert "cancel  Cancel an in-flight operation by ID." in out
+
+
 def test_help_has_verbose_example():
     out = _help()
     assert "Debug API issues" in out

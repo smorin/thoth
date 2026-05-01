@@ -66,6 +66,7 @@ All notable changes to Thoth are documented here.
 ### Added
 - `thoth providers list`, `thoth providers models`, `thoth providers check` — explicit subcommands replace `thoth providers -- --list`.
 - `thoth help auth` — in-CLI authentication guidance.
+- `thoth cancel OP_ID` — cancels an in-flight background operation where the provider supports upstream cancellation and marks the local checkpoint cancelled.
 - `--pick-model` / `-M` flag for interactively selecting a model on immediate (non-background) modes.
 - Progress spinner during sync background-mode runs (via `thothspinner`).
 - Config file path surfaced in `APIKeyError` messages.

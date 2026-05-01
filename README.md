@@ -256,10 +256,11 @@ Interactive mode features:
   - **Option+Return** (Mac) or **Alt+Enter** (Linux/Windows) - Traditional fallback
 - **Slash commands**:
   - `/help` - Show available commands
-  - `/keybindings` - Show keyboard shortcuts
+  - `/keybindings` - Show keyboard shortcuts (full-screen prompt UI)
   - `/mode [<name>]` - Change research mode or list available modes
   - `/provider [<name>]` - Set provider or list available providers
   - `/async` - Toggle async mode on/off
+  - `/multiline` - Toggle multiline input mode (basic fallback prompt)
   - `/status` - Check last operation status
   - `/exit` or `/quit` - Exit interactive mode
 - **Tab completion**: Start typing a slash command and press Tab for auto-completion
@@ -335,11 +336,14 @@ Selection precedence is `--profile` → `THOTH_PROFILE` → `general.default_pro
 
 `thoth config get general.default_profile` reflects the **persisted pointer** in the file. `--profile` and `THOTH_PROFILE` are read-only runtime inputs — they never write back to `general.default_profile`. With persisted `general.default_profile = "fast"`, running `thoth --profile bar config get general.default_profile` returns `"fast"`; the runtime active selection is `bar`.
 
-> **CLI management coming in P21b.** Today, manage profiles by editing `~/.config/thoth/thoth.config.toml` (or `./thoth.config.toml`/`./.thoth.config.toml` for project-scoped profiles) directly. The next project (P21b) adds `thoth config profiles list/show/current/set-default/unset-default/add/set/unset/remove` so you don't have to hand-edit.
+Profile CLI management is available through `thoth config profiles ...`.
+Manual editing of `~/.config/thoth/thoth.config.toml` (or project-scoped
+`./thoth.config.toml` / `./.thoth.config.toml`) still works when you need to
+make larger structural changes.
 
 #### Managing profiles from the CLI
 
-Once P21b ships, you no longer need to hand-edit `[profiles.<name>]` blocks. The same profile from the hand-edit example above can be created end-to-end with:
+The same profile from the hand-edit example above can be created end-to-end with:
 
 ```bash
 thoth config profiles add fast
@@ -819,10 +823,16 @@ API keys are resolved in the following order (highest to lowest priority):
 | Command | Description | Example |
 |---------|-------------|---------|
 | (default) | Run research with prompt | `thoth "your research prompt"` |
+| ask | Run research with an explicit subcommand | `thoth ask "your research prompt"` |
+| resume | Resume a checkpointed operation | `thoth resume research-20240803-143022-xxx` |
+| cancel | Cancel an in-flight background operation | `thoth cancel research-20240803-143022-xxx` |
 | init | Setup wizard for API keys | `thoth init` |
 | status | Show operation details | `thoth status research-20240803-143022-xxx` |
 | list | Show recent operations | `thoth list` |
+| config | Inspect and edit configuration | `thoth config get general.default_mode` |
+| modes | List research modes | `thoth modes list` |
 | providers | Manage providers and models | `thoth providers list` |
+| completion | Generate shell completion scripts | `thoth completion zsh` |
 | help | Show help information | `thoth help [COMMAND]` |
 
 ### Providers Subcommands
@@ -864,6 +874,7 @@ Every data/action admin command supports `--json`:
 
 ```bash
 thoth status OP_ID --json | jq '.data.status'
+thoth cancel OP_ID --json | jq '.data.status'
 thoth providers list --json | jq '.data.providers[].name'
 thoth list --json | jq '.data.operations[]'
 ```

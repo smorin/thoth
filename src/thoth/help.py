@@ -12,7 +12,7 @@ console = Console()
 
 
 # Two-section split for the Click group help renderer.
-RUN_COMMANDS: tuple[str, ...] = ("ask", "resume", "status", "list")
+RUN_COMMANDS: tuple[str, ...] = ("ask", "resume", "cancel", "status", "list")
 ADMIN_COMMANDS: tuple[str, ...] = (
     "init",
     "config",
@@ -180,6 +180,7 @@ class ThothGroup(click.Group):
             formatter.write_text('thoth clarification "k8s networking" --project k8s')
             formatter.write_text("thoth deep_research --auto --project k8s --async")
             formatter.write_text("thoth resume op_abc123")
+            formatter.write_text("thoth cancel op_abc123")
             formatter.write_text('Debug API issues: thoth deep_research "topic" -v')
 
         super().format_epilog(ctx, formatter)

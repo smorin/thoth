@@ -21,7 +21,7 @@ indicates success (0) or failure (non-zero).
 
 | Code | Used by | Exit | Meaning |
 |---|---|---|---|
-| `OPERATION_NOT_FOUND` | `status`, `resume` | 6 | Op ID not in checkpoint store |
+| `OPERATION_NOT_FOUND` | `status`, `resume`, `cancel` | 6 | Op ID not in checkpoint store |
 | `OPERATION_FAILED_PERMANENTLY` | `resume` | 7 | Permanent failure |
 | `JSON_REQUIRES_NONINTERACTIVE` | `init` | 2 | `init --json` without `--non-interactive` |
 | `EDITOR_FAILED` | `config edit` | 1 | `$EDITOR` exited non-zero |
@@ -35,6 +35,21 @@ indicates success (0) or failure (non-zero).
 | `INTERRUPTED` | any | 130 | SIGINT during `--json` run |
 
 ## Per-command schemas (sketch)
+
+**`init --json --non-interactive`:**
+
+    {"status": "ok",
+     "data": {"path": "...", "created": true|false, "target": "project"|"user"|"hidden"}}
+
+**`ask --json`:**
+
+Immediate-mode runs return the result inline. Background-mode runs submit and
+return an operation ID without blocking.
+
+    {"status": "ok",
+     "data": {"status": "completed"|"submitted",
+              "operation_id": "..."?,
+              "result": "..."?}}
 
 **`status OP_ID --json`:**
 
@@ -54,6 +69,71 @@ indicates success (0) or failure (non-zero).
     {"status": "ok",
      "data": {"providers": [{"name": "openai", "key_set": true}, ...]}}
 
+**`providers models --json`:**
+
+    {"status": "ok",
+     "data": {"providers": {"openai": {"models": ["o3", ...]}}}}
+
+**`providers check --json`:**
+
+    {"status": "ok",
+     "data": {"complete": true|false, "missing": ["openai", ...]}}
+
+**`config get KEY --json`:**
+
+    {"status": "ok",
+     "data": {"key": "general.default_mode", "value": "thinking", "source": "user"}}
+
+**`config set KEY VALUE --json` / `config unset KEY --json`:**
+
+    {"status": "ok",
+     "data": {"key": "test.key", "path": "...", "changed": true|false}}
+
+**`config list --json`:**
+
+    {"status": "ok",
+     "data": {"config": {...}, "layer": "merged"}}
+
+**`config path --json`:**
+
+    {"status": "ok",
+     "data": {"path": "...", "exists": true|false}}
+
+**`config edit --json`:**
+
+    {"status": "ok",
+     "data": {"path": "...", "editor": "..."}}
+
+**`config profiles list --json`:**
+
+    {"status": "ok",
+     "data": {"profiles": [{"name": "fast", "active": true|false, ...}, ...]}}
+
+**`config profiles show NAME --json` / `config profiles current --json`:**
+
+    {"status": "ok",
+     "data": {"name": "fast", "profile": {...}, "source": "user"}}
+
+**`config profiles add NAME --json` / `config profiles remove NAME --json`:**
+
+    {"status": "ok",
+     "data": {"name": "fast", "path": "...", "changed": true|false}}
+
+**`config profiles set NAME KEY VALUE --json` / `config profiles unset NAME KEY --json`:**
+
+    {"status": "ok",
+     "data": {"name": "fast", "key": "general.default_mode", "changed": true|false}}
+
+**`config profiles set-default NAME --json` / `config profiles unset-default --json`:**
+
+    {"status": "ok",
+     "data": {"default_profile": "fast"|null, "changed": true|false}}
+
+**`modes list --json`:**
+
+    {"status": "ok",
+     "data": {"modes": [{"name": "thinking", "kind": "immediate", ...}, ...]}}
+
 **`completion <shell> --install --json`:**
 
     {"status": "ok",
@@ -71,6 +151,19 @@ indicates success (0) or failure (non-zero).
 `status="failed"` + `failure_type` not equal to `"permanent"`. The
 COMMAND succeeded (`status:"ok"`); `data.status` describes the
 operation. To advance/retry, run `thoth resume OP_ID` WITHOUT `--json`.
+
+**`cancel OP_ID --json`:**
+
+    {"status": "ok",
+     "data": {"status": "ok",
+              "operation_id": "...",
+              "providers": {"openai": {"status": "cancelled"|"completed"|...}}}}
+
+Already-terminal operations return the same outer envelope with
+`data.status="already_terminal"` and a `data.previous` terminal state.
+
+Missing operations emit `OPERATION_NOT_FOUND` with exit 6, matching `status`
+and `resume`.
 
 ## Non-blocking guarantee (Option E)
 
