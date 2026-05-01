@@ -147,3 +147,12 @@ def test_check_override_strict_allows_nonbuiltin_without_override() -> None:
     from thoth.modes_cmd import _check_override_strict
 
     assert _check_override_strict("my_brief", override=False, op_name="add") is None
+
+
+def test_parse_modes_args_unknown_op_returns_usage_error() -> None:
+    from thoth.modes_cmd import parse_modes_args
+
+    parsed_kwargs, target_flags, err = parse_modes_args("nonexistent_op", [])
+    assert err is not None
+    assert err["error"] == "USAGE_ERROR"
+    assert "unknown" in err["message"].lower()

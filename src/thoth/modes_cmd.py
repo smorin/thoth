@@ -213,6 +213,119 @@ def _target_descriptor(path: Path, profile: str | None) -> dict[str, str]:
     }
 
 
+def parse_modes_args(
+    op_name: str, args: list[str]
+) -> tuple[dict[str, Any], _TargetFlags, dict | None]:
+    """Parse `args` against `_OP_SPECS[op_name]`.
+
+    Returns (op_kwargs, target_flags, error_envelope_or_none).
+    `op_kwargs` is a dict of op-specific values (positionals + op flags),
+    keyed by the spec's positional names and op_flags values.
+
+    Validates: targeting flags via `_parse_target_flags`; positional
+    arity matches spec; only spec-allowed op-specific flags appear;
+    required op-flags are present; --from-profile / --override / --string
+    only appear on ops that accept them.
+    """
+    spec = _OP_SPECS.get(op_name)
+    if spec is None:
+        return (
+            {},
+            _TargetFlags(),
+            {"error": "USAGE_ERROR", "message": f"unknown op: {op_name}"},
+        )
+
+    target_flags, remaining, rc = _parse_target_flags(args)
+    if rc != 0:
+        return (
+            {},
+            target_flags,
+            {"error": "USAGE_ERROR", "message": "invalid flag combination"},
+        )
+
+    # Per-spec gating of targeting flags that aren't universally accepted.
+    if target_flags.from_profile is not None and not spec.accepts_from_profile:
+        return (
+            {},
+            target_flags,
+            {
+                "error": "USAGE_ERROR",
+                "message": f"--from-profile is not valid for `{op_name}`",
+            },
+        )
+    if target_flags.override and not spec.accepts_override:
+        return (
+            {},
+            target_flags,
+            {
+                "error": "USAGE_ERROR",
+                "message": f"--override is not valid for `{op_name}`",
+            },
+        )
+    if target_flags.force_string and not spec.accepts_string:
+        return (
+            {},
+            target_flags,
+            {
+                "error": "USAGE_ERROR",
+                "message": f"--string is not valid for `{op_name}`",
+            },
+        )
+
+    # Parse op-specific flags + positionals from `remaining`.
+    op_kwargs: dict[str, Any] = {}
+    positionals: list[str] = []
+    i = 0
+    while i < len(remaining):
+        a = remaining[i]
+        if a in spec.op_flags:
+            if i + 1 >= len(remaining):
+                return (
+                    {},
+                    target_flags,
+                    {"error": "USAGE_ERROR", "message": f"{a} requires a value"},
+                )
+            op_kwargs[spec.op_flags[a]] = remaining[i + 1]
+            i += 2
+        elif a.startswith("--"):
+            return (
+                {},
+                target_flags,
+                {
+                    "error": "USAGE_ERROR",
+                    "message": f"unknown flag for `{op_name}`: {a}",
+                },
+            )
+        else:
+            positionals.append(a)
+            i += 1
+
+    if len(positionals) != len(spec.positionals):
+        return (
+            {},
+            target_flags,
+            {
+                "error": "USAGE_ERROR",
+                "message": f"`modes {op_name}` takes {' '.join(spec.positionals)}",
+            },
+        )
+    for pname, pvalue in zip(spec.positionals, positionals, strict=True):
+        op_kwargs[pname.lower()] = pvalue
+
+    missing = spec.required_op_flags - set(op_kwargs.keys())
+    if missing:
+        return (
+            {},
+            target_flags,
+            {
+                "error": "USAGE_ERROR",
+                "message": f"`modes {op_name}` requires {', '.join(sorted(missing))}",
+            },
+        )
+
+    return op_kwargs, target_flags, None
+
+
 Source = Literal["builtin", "user", "overridden"]
 Kind = Literal["immediate", "background", "unknown"]
 
