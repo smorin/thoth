@@ -8,7 +8,7 @@
 - **Related:** P21* (profile-overlay tier)
 - **Code:** `src/thoth/config_profiles.py:107` (overlay-modes semantics)
 
-**Status:** `[ ]` Scoped, not started.
+**Status:** `[~]` In progress.
 
 **Goal**: Let users create, edit, rename, copy, and remove mode definitions from the CLI instead of hand-editing TOML. Adds the mutation half of the `thoth modes` surface (P11 shipped read-only `list`), mirroring the `thoth config profiles` precedent (P21b) where applicable and diverging deliberately where mode semantics require it (builtins, `--model`-on-create, empty-table pruning). Integrates with P18's canonical `kind` field and P21*'s profile-overlay tier.
 
