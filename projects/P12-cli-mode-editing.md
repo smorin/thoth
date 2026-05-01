@@ -141,19 +141,19 @@ Per-command TS rows enumerate functional cases at single-case granularity. Per-c
 - [x] [P12-T05] Implement `thoth modes rename` — click command, `get_modes_rename_data` + `_op_rename`, `ConfigDocument.rename_mode(profile=...)`
 
 #### `thoth modes copy SRC DST [--from-profile X] [--override] [--project] [--config PATH] [--profile Y] [--json]`
-- [ ] [P12-TS06a] Builtin-only SRC: writes the destination mode with the builtin's effective keys
-- [ ] [P12-TS06b] User SRC: writes destination with SRC's keys; SRC unchanged
-- [ ] [P12-TS06c] Overridden SRC: writes the *effective* config (builtin layered with override) to DST
-- [ ] [P12-TS06d] DST is a builtin name without `--override` → `DST_NAME_TAKEN` exit 1; with `--override`, writes the same-named override in the selected destination tier; `--override` on a non-builtin DST (e.g. `copy src new_dst --override`) is rejected with `USAGE_ERROR` exit 2 (symmetric with `add`'s strict-on-non-builtin rule)
-- [ ] [P12-TS06e] DST already exists in destination tier → `DST_NAME_TAKEN` exit 1
-- [ ] [P12-TS06f] Absent SRC in selected source tier → `MODE_NOT_FOUND` exit 1
-- [ ] [P12-TS06g1] Direction: **base → base** (no `--from-profile`, no `--profile`): reads `[modes.SRC]`, writes `[modes.DST]`
-- [ ] [P12-TS06g2] Direction: **base → overlay** (no `--from-profile`, `--profile dev`): reads `[modes.SRC]`, writes `[profiles.dev.modes.DST]`
-- [ ] [P12-TS06g3] Direction: **overlay → base** (`--from-profile dev`, no `--profile`): reads `[profiles.dev.modes.SRC]`, writes `[modes.DST]`
-- [ ] [P12-TS06g4] Direction: **overlay → overlay** cross-profile (`--from-profile dev --profile ci`): reads `[profiles.dev.modes.SRC]`, writes `[profiles.ci.modes.DST]`; same-profile overlay→overlay (`--from-profile dev --profile dev`) is also valid
-- [ ] [P12-TS06g5] Targeting matrix for the file axis (same shape as TS01h): `--project` and `--config PATH` apply to the DST file; `--from-profile` does not have a file-axis counterpart (SRC is always read from the same file as DST or, for cross-file reads, the user does it in two steps)
-- [ ] [P12-TS06h] `--json` envelope follows the existing wrapper contract with data `{schema_version, op: "copy", from, to, source_tier, target, copied}` — `source_tier` is `"modes"` or `"profiles.<X>.modes"`; `target.tier` likewise reflects DST
-- [ ] [P12-T06] Implement `thoth modes copy` — click command, `get_modes_copy_data` + `_op_copy`, `ConfigDocument.copy_mode(from_profile=..., profile=...)`
+- [x] [P12-TS06a] Builtin-only SRC: writes the destination mode with the builtin's effective keys
+- [x] [P12-TS06b] User SRC: writes destination with SRC's keys; SRC unchanged
+- [x] [P12-TS06c] Overridden SRC: writes the *effective* config (builtin layered with override) to DST
+- [x] [P12-TS06d] DST is a builtin name without `--override` → `DST_NAME_TAKEN` exit 1; with `--override`, writes the same-named override in the selected destination tier; `--override` on a non-builtin DST (e.g. `copy src new_dst --override`) is rejected with `USAGE_ERROR` exit 2 (symmetric with `add`'s strict-on-non-builtin rule)
+- [x] [P12-TS06e] DST already exists in destination tier → `DST_NAME_TAKEN` exit 1
+- [x] [P12-TS06f] Absent SRC in selected source tier → `MODE_NOT_FOUND` exit 1
+- [x] [P12-TS06g1] Direction: **base → base** (no `--from-profile`, no `--profile`): reads `[modes.SRC]`, writes `[modes.DST]`
+- [x] [P12-TS06g2] Direction: **base → overlay** (no `--from-profile`, `--profile dev`): reads `[modes.SRC]`, writes `[profiles.dev.modes.DST]`
+- [x] [P12-TS06g3] Direction: **overlay → base** (`--from-profile dev`, no `--profile`): reads `[profiles.dev.modes.SRC]`, writes `[modes.DST]`
+- [x] [P12-TS06g4] Direction: **overlay → overlay** cross-profile (`--from-profile dev --profile ci`): reads `[profiles.dev.modes.SRC]`, writes `[profiles.ci.modes.DST]`; same-profile overlay→overlay (`--from-profile dev --profile dev`) is also valid
+- [x] [P12-TS06g5] Targeting matrix for the file axis (same shape as TS01h): `--project` and `--config PATH` apply to the DST file; `--from-profile` does not have a file-axis counterpart (SRC is always read from the same file as DST or, for cross-file reads, the user does it in two steps)
+- [x] [P12-TS06h] `--json` envelope follows the existing wrapper contract with data `{schema_version, op: "copy", from, to, source_tier, target, copied}` — `source_tier` is `"modes"` or `"profiles.<X>.modes"`; `target.tier` likewise reflects DST
+- [x] [P12-T06] Implement `thoth modes copy` — click command, `get_modes_copy_data` + `_op_copy`, `ConfigDocument.copy_mode(from_profile=..., profile=...)`
 
 #### Cross-cutting
 - [ ] [P12-TS07a] tomlkit round-trip preserves comments and trailing whitespace through every mutation across all targeting combinations (parameterized: 6 ops × 6 targeting combos)

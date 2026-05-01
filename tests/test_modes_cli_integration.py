@@ -134,3 +134,19 @@ def test_modes_rename_json_via_subprocess(isolated_thoth_home: Path) -> None:  #
     assert data["from"] == "alpha"
     assert data["to"] == "beta"
     assert data["renamed"] is True
+
+
+def test_modes_copy_json_via_subprocess(isolated_thoth_home: Path) -> None:  # TS06h
+    rc, _, _ = run_thoth(["modes", "add", "src", "--model", "gpt-4o-mini"])
+    assert rc == 0
+    rc, stdout, _ = run_thoth(["modes", "copy", "src", "dst", "--json"])
+    assert rc == 0
+    payload = json.loads(stdout)
+    assert payload["status"] == "ok"
+    data = payload["data"]
+    assert data["op"] == "copy"
+    assert data["from"] == "src"
+    assert data["to"] == "dst"
+    assert data["copied"] is True
+    assert data["source_tier"] == "modes"
+    assert data["target"]["tier"] == "modes"

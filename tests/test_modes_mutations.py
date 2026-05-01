@@ -746,3 +746,147 @@ def test_rename_overlay_via_profile(isolated_thoth_home: Path) -> None:  # TS05g
     cfg = (Path(isolated_thoth_home) / "config" / "thoth" / "thoth.config.toml").read_text()
     assert "profiles.dev.modes.old_o" not in cfg
     assert "profiles.dev.modes.new_o" in cfg
+
+
+def test_copy_base_to_base(isolated_thoth_home: Path) -> None:  # TS06g1
+    from thoth.modes_cmd import modes_command
+
+    modes_command("add", ["src", "--model", "gpt-4o-mini"])
+    assert modes_command("copy", ["src", "dst"]) == 0
+    cfg = (Path(isolated_thoth_home) / "config" / "thoth" / "thoth.config.toml").read_text()
+    assert "[modes.src]" in cfg
+    assert "[modes.dst]" in cfg
+
+
+def test_copy_builtin_src_writes_effective_config(
+    isolated_thoth_home: Path,
+) -> None:  # TS06a
+    """SRC = builtin (deep_research, no override). DST should contain the
+    builtin's keys (provider, model, kind, etc.)."""
+    from thoth.modes_cmd import modes_command
+
+    assert modes_command("copy", ["deep_research", "my_research"]) == 0
+    cfg = (Path(isolated_thoth_home) / "config" / "thoth" / "thoth.config.toml").read_text()
+    assert "[modes.my_research]" in cfg
+    # deep_research's model is o3-deep-research per BUILTIN_MODES
+    assert 'model = "o3-deep-research"' in cfg
+
+
+def test_copy_user_only_src(isolated_thoth_home: Path) -> None:  # TS06b
+    from thoth.modes_cmd import modes_command
+
+    modes_command("add", ["src", "--model", "gpt-4o-mini"])
+    assert modes_command("copy", ["src", "dst"]) == 0
+    cfg = (Path(isolated_thoth_home) / "config" / "thoth" / "thoth.config.toml").read_text()
+    assert "[modes.src]" in cfg  # SRC unchanged
+    assert "[modes.dst]" in cfg
+    # DST should have SRC's keys
+    assert cfg.count('model = "gpt-4o-mini"') == 2
+
+
+def test_copy_overridden_src_writes_effective(
+    isolated_thoth_home: Path,
+) -> None:  # TS06c
+    """SRC is overridden builtin: DST should get effective (builtin layered with override)."""
+    from thoth.modes_cmd import modes_command
+
+    # Override deep_research's `parallel` field
+    modes_command("set", ["deep_research", "parallel", "false"])
+    assert modes_command("copy", ["deep_research", "my_research"]) == 0
+    cfg = (Path(isolated_thoth_home) / "config" / "thoth" / "thoth.config.toml").read_text()
+    assert "[modes.my_research]" in cfg
+    # DST should have the override value, not the builtin default
+    assert "parallel = false" in cfg
+    # And the builtin's other keys (model)
+    assert 'model = "o3-deep-research"' in cfg
+
+
+def test_copy_dst_builtin_without_override_dst_taken(
+    isolated_thoth_home: Path,
+) -> None:  # TS06d (no --override)
+    from thoth.modes_cmd import modes_command
+
+    modes_command("add", ["src", "--model", "gpt-4o-mini"])
+    assert modes_command("copy", ["src", "deep_research"]) == 1
+
+
+def test_copy_dst_builtin_with_override_succeeds(
+    isolated_thoth_home: Path,
+) -> None:  # TS06d (with --override)
+    from thoth.modes_cmd import modes_command
+
+    modes_command("add", ["src", "--model", "gpt-4o-mini"])
+    assert modes_command("copy", ["src", "deep_research", "--override"]) == 0
+    cfg = (Path(isolated_thoth_home) / "config" / "thoth" / "thoth.config.toml").read_text()
+    assert "[modes.deep_research]" in cfg
+    assert 'model = "gpt-4o-mini"' in cfg  # The override value, not the builtin
+
+
+def test_copy_override_on_nonbuiltin_dst_rejected(
+    isolated_thoth_home: Path,
+) -> None:  # TS06d (BQ-strict)
+    from thoth.modes_cmd import modes_command
+
+    modes_command("add", ["src", "--model", "gpt-4o-mini"])
+    assert modes_command("copy", ["src", "new_dst", "--override"]) == 2
+
+
+def test_copy_dst_already_exists_dst_taken(
+    isolated_thoth_home: Path,
+) -> None:  # TS06e
+    from thoth.modes_cmd import modes_command
+
+    modes_command("add", ["src", "--model", "gpt-4o-mini"])
+    modes_command("add", ["dst", "--model", "gpt-5"])
+    assert modes_command("copy", ["src", "dst"]) == 1
+
+
+def test_copy_src_absent_mode_not_found(isolated_thoth_home: Path) -> None:  # TS06f
+    from thoth.modes_cmd import modes_command
+
+    assert modes_command("copy", ["never_existed", "dst"]) == 1
+
+
+def test_copy_base_to_overlay(isolated_thoth_home: Path) -> None:  # TS06g2
+    from thoth.modes_cmd import modes_command
+
+    modes_command("add", ["src", "--model", "gpt-4o-mini"])
+    assert modes_command("copy", ["src", "dst", "--profile", "dev"]) == 0
+    cfg = (Path(isolated_thoth_home) / "config" / "thoth" / "thoth.config.toml").read_text()
+    assert "[modes.src]" in cfg
+    assert "[profiles.dev.modes.dst]" in cfg
+
+
+def test_copy_overlay_to_base(isolated_thoth_home: Path) -> None:  # TS06g3
+    from thoth.modes_cmd import modes_command
+
+    modes_command("add", ["src", "--model", "gpt-4o-mini", "--profile", "dev"])
+    assert modes_command("copy", ["src", "dst", "--from-profile", "dev"]) == 0
+    cfg = (Path(isolated_thoth_home) / "config" / "thoth" / "thoth.config.toml").read_text()
+    assert "[profiles.dev.modes.src]" in cfg
+    assert "[modes.dst]" in cfg
+
+
+def test_copy_overlay_to_overlay_cross_profile(
+    isolated_thoth_home: Path,
+) -> None:  # TS06g4
+    from thoth.modes_cmd import modes_command
+
+    modes_command("add", ["src", "--model", "gpt-4o-mini", "--profile", "dev"])
+    assert modes_command("copy", ["src", "dst", "--from-profile", "dev", "--profile", "ci"]) == 0
+    cfg = (Path(isolated_thoth_home) / "config" / "thoth" / "thoth.config.toml").read_text()
+    assert "[profiles.dev.modes.src]" in cfg
+    assert "[profiles.ci.modes.dst]" in cfg
+
+
+def test_copy_with_project_flag(
+    isolated_thoth_home: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:  # TS06g5
+    monkeypatch.chdir(tmp_path)
+    from thoth.modes_cmd import modes_command
+
+    modes_command("add", ["src", "--model", "gpt-4o-mini", "--project"])
+    assert modes_command("copy", ["src", "dst", "--project"]) == 0
+    proj_cfg = tmp_path / "thoth.config.toml"
+    assert proj_cfg.exists()
+    assert "[modes.dst]" in proj_cfg.read_text()

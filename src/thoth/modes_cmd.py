@@ -790,6 +790,117 @@ _OP_SPECS["rename"] = _ModesOpSpec(
 _OP_DATA_FNS["rename"] = get_modes_rename_data
 
 
+# ---------------------------------------------------------------------------
+# `thoth modes copy` — P12 Task 9
+# ---------------------------------------------------------------------------
+
+
+def get_modes_copy_data(
+    src: str,
+    dst: str,
+    *,
+    project: bool = False,
+    config_path: str | None = None,
+    profile: str | None = None,
+    from_profile: str | None = None,
+    override: bool = False,
+) -> dict:
+    """Copy mode SRC → DST. Supports 4 directions: base→base, base→overlay,
+    overlay→base, overlay→overlay (incl. cross-profile via --from-profile X
+    --profile Y).
+
+    SRC layering: if SRC is in BUILTIN_MODES and has no user-side override
+    in source tier, use the builtin's effective config. If SRC has both
+    builtin and user-override, the user-override takes precedence (read
+    via doc.get_mode which returns the user table snapshot).
+
+    DST guards: builtin DST without --override → BUILTIN_NAME_RESERVED.
+    Non-builtin DST with --override → USAGE_ERROR (BQ-strict). DST already
+    in destination tier → DST_NAME_TAKEN. SRC absent → MODE_NOT_FOUND.
+    """
+    base = {
+        "schema_version": SCHEMA_VERSION,
+        "op": "copy",
+        "mode": dst,
+        "from": src,
+        "to": dst,
+    }
+
+    # BQ-strict: --override on non-builtin DST → USAGE_ERROR.
+    err = _check_override_strict(dst, override=override, op_name="copy")
+    if err is not None:
+        return {**base, **err}
+
+    # Builtin guard on DST (override bypasses for copy).
+    err = _check_builtin_guard(dst, override=override, op_name="copy")
+    if err is not None:
+        return {**base, **err}
+
+    flags = _TargetFlags(project=project, config_path=config_path)
+    context, err = _resolve_write_target(flags, config_path=None)
+    if err is not None:
+        return {**base, **err}
+    assert context is not None
+
+    doc = context.load_document()
+
+    # Read SRC effective config:
+    # 1. doc.get_mode(src, profile=from_profile) gives the user table snapshot (if any)
+    # 2. If SRC is in BUILTIN_MODES, layer the builtin's keys under any user override.
+    #    BUILTIN_MODES only applies to base tier; profile-overlay reads ignore it.
+    src_user_table = doc.get_mode(src, profile=from_profile)
+    src_builtin = BUILTIN_MODES.get(src) if from_profile is None else None
+
+    if src_user_table is None and src_builtin is None:
+        return {
+            **base,
+            "error": "MODE_NOT_FOUND",
+            "message": (
+                f"mode {src!r} not found"
+                + (f" in profile {from_profile!r}" if from_profile else "")
+            ),
+        }
+
+    # Layer: builtin first, user override on top
+    effective: dict[str, Any] = dict(src_builtin) if src_builtin is not None else {}
+    if src_user_table is not None:
+        effective.update(src_user_table)
+
+    # Check DST availability in destination tier
+    if doc.get_mode(dst, profile=profile) is not None:
+        return {
+            **base,
+            **_dst_taken_envelope(dst, profile=profile, op_name="copy"),
+        }
+
+    # Write each key from `effective` to DST. We can't use copy_mode here
+    # because it would only copy a tomlkit table (not the layered dict).
+    # Use set_mode_value per key (which handles both base and overlay tiers).
+    for key, value in effective.items():
+        doc.set_mode_value(dst, key, value, profile=profile)
+    doc.save()
+
+    source_tier = f"profiles.{from_profile}.modes" if from_profile else "modes"
+
+    return {
+        **base,
+        "copied": True,
+        "source_tier": source_tier,
+        "target": _target_descriptor(context.target_path, profile),
+    }
+
+
+_OP_SPECS["copy"] = _ModesOpSpec(
+    name="copy",
+    positionals=("SRC", "DST"),
+    op_flags={},
+    required_op_flags=frozenset(),
+    accepts_from_profile=True,
+    accepts_override=True,
+)
+_OP_DATA_FNS["copy"] = get_modes_copy_data
+
+
 Source = Literal["builtin", "user", "overridden"]
 Kind = Literal["immediate", "background", "unknown"]
 
