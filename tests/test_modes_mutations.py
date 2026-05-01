@@ -915,7 +915,7 @@ def test_copy_default_builtin_handles_none_system_prompt(
 @pytest.mark.parametrize(
     "op,args",
     [
-        ("add", ["x", "--model", "gpt-4o-mini"]),
+        ("add", ["new_x", "--model", "gpt-4o-mini"]),
         ("set", ["x", "temperature", "0.2"]),
         ("unset", ["x", "temperature"]),
         ("remove", ["x"]),
@@ -946,10 +946,9 @@ def test_tomlkit_preserves_top_comment(  # TS07a
     """tomlkit round-trip preserves the file-level header comment across
     all 6 mutators × all 6 targeting combinations.
 
-    NOTE: The `add` cases are no-ops (same model on existing entry),
-    so they trivially preserve comments because the file is not
-    rewritten. The other 30 cases (set/unset/remove/rename/copy ×
-    6 targeting combos) actually exercise the tomlkit roundtrip.
+    The `add` op uses a fresh name (`new_x`) so it actually creates a
+    new entry and writes to disk, exercising the tomlkit roundtrip
+    just like the other 5 mutators.
     """
     from thoth.modes_cmd import modes_command
 

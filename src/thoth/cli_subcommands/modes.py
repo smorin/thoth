@@ -37,7 +37,7 @@ _LEGACY_FLAG_TO_NEW_FORM: dict[str, str] = {
 }
 
 
-_MODES_EPILOG = """\
+_MODES_EPILOG = """\b
 Mutation operations:
   thoth modes add NAME --model MODEL [--description D] [--kind K]
   thoth modes set NAME KEY VALUE
