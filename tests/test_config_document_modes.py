@@ -126,3 +126,44 @@ def test_remove_mode_in_overlay_tier(tmp_path: Path) -> None:
     assert doc.remove_mode("cheap", profile="dev") is True
     doc.save()
     assert "profiles.dev.modes.cheap" not in p.read_text()
+
+
+def test_rename_mode_succeeds(tmp_path: Path) -> None:
+    p = tmp_path / "thoth.config.toml"
+    doc = _doc(p)
+    doc.set_mode_value("old", "model", "gpt-4o-mini")
+    doc.set_mode_value("old", "temperature", 0.2)
+    assert doc.rename_mode("old", "new") is True
+    doc.save()
+    text = p.read_text()
+    assert "[modes.new]" in text
+    assert "[modes.old]" not in text
+    assert 'model = "gpt-4o-mini"' in text
+    assert "temperature = 0.2" in text
+
+
+def test_rename_mode_when_old_absent(tmp_path: Path) -> None:
+    p = tmp_path / "thoth.config.toml"
+    doc = _doc(p)
+    assert doc.rename_mode("missing", "new") is False
+
+
+def test_rename_mode_when_new_already_exists(tmp_path: Path) -> None:
+    p = tmp_path / "thoth.config.toml"
+    doc = _doc(p)
+    doc.set_mode_value("old", "model", "a")
+    doc.set_mode_value("new", "model", "b")
+    # The CLI layer is responsible for the DST_NAME_TAKEN error code; the
+    # primitive returns False so the layer can map to the right error.
+    assert doc.rename_mode("old", "new") is False
+
+
+def test_rename_mode_in_overlay(tmp_path: Path) -> None:
+    p = tmp_path / "thoth.config.toml"
+    doc = _doc(p)
+    doc.set_mode_value("old", "model", "x", profile="dev")
+    assert doc.rename_mode("old", "new", profile="dev") is True
+    doc.save()
+    text = p.read_text()
+    assert "profiles.dev.modes.new" in text
+    assert "profiles.dev.modes.old" not in text

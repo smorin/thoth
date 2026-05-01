@@ -153,6 +153,41 @@ class ConfigDocument:
         del parent[leaf]
         return True
 
+    def rename_mode(self, old: str, new: str, *, profile: str | None = None) -> bool:
+        """Rename `[<tier>.modes.<OLD>]` to `[<tier>.modes.<NEW>]`.
+
+        Refuses (returns False) if OLD is absent or NEW already exists in
+        the same tier. The CLI layer is responsible for translating the
+        False return into MODE_NOT_FOUND vs DST_NAME_TAKEN by inspecting
+        which side existed.
+
+        Implementation note: tomlkit doesn't have an in-place rename for
+        super-tables, so we copy the table contents to a new table and
+        delete the old one. Inline-table comments survive; super-table
+        comments may not.
+        """
+        old_prefix = self._mode_segments(old, profile)
+        new_prefix = self._mode_segments(new, profile)
+        old_table = self._table_at(old_prefix)
+        if old_table is None:
+            return False
+        if self._table_at(new_prefix) is not None:
+            return False
+
+        # Materialise the new table and copy keys.
+        new_table = self._ensure_table(new_prefix)
+        for k in list(old_table.keys()):
+            new_table[k] = old_table[k]
+
+        # Delete the old leaf.
+        parent_segments = old_prefix[:-1]
+        leaf = old_prefix[-1]
+        parent = self._table_at(parent_segments) if parent_segments else self._document
+        if parent is None:
+            return False
+        del parent[leaf]
+        return True
+
     def _table_at(self, segments: tuple[str, ...]) -> Any | None:
         current: Any = self._document
         for segment in segments:
