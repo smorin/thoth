@@ -48,7 +48,7 @@ Keep this summary list updated whenever a project is added, renamed, completed, 
 - [x] P08 — Typed Exceptions, Unified API Key Resolution, Drop Legacy Config Shim
 - [x] P06 — Hybrid Transient/Permanent Error Handling with Resumable Recovery
 - [x] P05 — VCR Cassette Replay Tests
-- [x] P03 — Fix BUG-03 OpenAI Poll Interval Scheduling
+- [x] **P03** — [Fix BUG-03 OpenAI Poll Interval Scheduling](projects/P03-bug-03-openai-poll-interval.md)
 - [x] **P02** — [Fix BUG-01 OpenAI Background Status Handling](projects/P02-bug-01-openai-background-status.md)
 - [x] P04 — GAP-01 — max_tool_calls safeguard and tool-selection config
 - [x] **P01** — [Developer Tooling & Automation](projects/P01-developer-tooling.md)
@@ -1864,32 +1864,6 @@ Phase 6 — Cleanup
 ### Regression Test Status
 - [x] All existing thoth_test tests still pass
 - [x] VCR tests run in `record_mode="none"` — no live API calls
-
----
-
-## [x] Project P03: Fix BUG-03 OpenAI Poll Interval Scheduling (v2.5.1)
-**Goal**: Make the background polling loop respect the configured poll cadence, including bounded jitter and sub-second intervals, while keeping the progress countdown aligned with the next real network poll.
-
-**Out of Scope**
-- BUG-02 (citation parsing), GAP-01 through GAP-05
-
-### Tests & Tasks
-- [x] [P03-TS01] Add virtual-time fixture tests for jittered and sub-second poll intervals
-- [x] [P03-T01] Normalize poll interval math so jitter never truncates a 2s cadence into a 1s poll
-- [x] [P03-T02] Schedule polling with absolute deadlines instead of a fixed 1s sleep cap
-- [x] [P03-T03] Keep the progress countdown aligned with the next scheduled poll
-- [x] [P03-TS02] Keep a mock-provider CLI regression for the end-to-end fixed polling loop
-- [x] [P03-T04] Update OPENAI-BUGS.md and PROJECTS.md
-
-### Automated Verification
-- `make check` passes
-- `./thoth_test -r -t BUG03 --skip-interactive` → 3/3 pass
-- `./thoth_test -r -t OAI-BG --skip-interactive` → 14/14 pass
-
-### Regression Test Status
-- [x] BUG03-01 verifies -10% jitter still polls at 1.8s, not 1.0s
-- [x] BUG03-02 verifies a 0.25s poll interval is honored exactly
-- [x] BUG03-03 verifies the CLI still completes a mock-provider research run end to end
 
 ---
 
