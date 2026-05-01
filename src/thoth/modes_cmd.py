@@ -19,6 +19,78 @@ from rich.table import Table
 from thoth._secrets import _mask_tree
 from thoth.config import BUILTIN_MODES, ConfigManager, mode_kind
 
+SCHEMA_VERSION = "1"
+
+
+@dataclass
+class _TargetFlags:
+    """Resolved targeting flags shared by every modes mutator.
+
+    `project` and `config_path` form the file axis (mutually exclusive).
+    `profile` selects the destination tier (`[profiles.<X>.modes.<NAME>]`
+    when set, `[modes.<NAME>]` otherwise). `from_profile` is the SRC-tier
+    selector for `copy` only — every other op rejects it as USAGE_ERROR.
+    `override` is the builtin-shadow opt-in for add/copy; every other op
+    rejects it as USAGE_ERROR.
+    """
+
+    project: bool = False
+    config_path: str | None = None
+    profile: str | None = None
+    from_profile: str | None = None
+    force_string: bool = False
+    override: bool = False
+
+
+def _parse_target_flags(
+    args: list[str],
+) -> tuple[_TargetFlags, list[str], int]:
+    """Pull targeting flags out of `args`. Returns (flags, remaining, rc).
+
+    rc == 0 → ok; rc == 2 → USAGE_ERROR (caller emits the message).
+    Validates `--project` ⊥ `--config PATH`.
+    Does NOT validate that an op accepts `--from-profile` or `--override` —
+    that's per-op.
+    """
+    flags = _TargetFlags()
+    remaining: list[str] = []
+    i = 0
+    while i < len(args):
+        a = args[i]
+        if a == "--project":
+            flags.project = True
+            i += 1
+        elif a == "--config":
+            if i + 1 >= len(args):
+                return flags, remaining, 2
+            flags.config_path = args[i + 1]
+            i += 2
+        elif a == "--profile":
+            if i + 1 >= len(args):
+                return flags, remaining, 2
+            flags.profile = args[i + 1]
+            i += 2
+        elif a == "--from-profile":
+            if i + 1 >= len(args):
+                return flags, remaining, 2
+            flags.from_profile = args[i + 1]
+            i += 2
+        elif a == "--string":
+            flags.force_string = True
+            i += 1
+        elif a == "--override":
+            flags.override = True
+            i += 1
+        else:
+            remaining.append(a)
+            i += 1
+
+    if flags.project and flags.config_path is not None:
+        return flags, remaining, 2
+
+    return flags, remaining, 0
+
+
 Source = Literal["builtin", "user", "overridden"]
 Kind = Literal["immediate", "background", "unknown"]
 
