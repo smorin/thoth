@@ -771,8 +771,8 @@ def get_modes_rename_data(
         }
 
     renamed = doc.rename_mode(old, new, profile=profile)
-    if renamed:
-        doc.save()
+    assert renamed, "rename_mode should return True after pre-checks (OLD exists, NEW free)"
+    doc.save()
 
     return {
         **base,
