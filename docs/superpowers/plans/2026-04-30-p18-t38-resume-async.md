@@ -8,7 +8,7 @@
 
 **Tech Stack:** Python 3.11+, Click (`is_flag=True` local option on `resume`), pytest with monkey-patched provider stubs, the existing `_fixture_helpers.MockProvider` patterns from `tests/test_provider_cancel.py` and `tests/test_sigint_upstream_cancel.py`.
 
-**Source of truth:** The P18 row `[P18-T38]` in `/Users/stevemorin/c/thoth/PROJECTS.md` (line ~647). If this plan and PROJECTS.md disagree, PROJECTS.md wins. The plan implements the row; the row defines the contract.
+**Source of truth:** [projects/P18-immediate-vs-background-kind.md](../../../projects/P18-immediate-vs-background-kind.md), task `[P18-T38]`. If this plan and the project file disagree, the project file wins. The plan implements the row; the row defines the contract.
 
 **Locked design decisions (from upstream conversation):**
 
