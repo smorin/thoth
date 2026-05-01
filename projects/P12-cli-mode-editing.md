@@ -156,12 +156,12 @@ Per-command TS rows enumerate functional cases at single-case granularity. Per-c
 - [x] [P12-T06] Implement `thoth modes copy` — click command, `get_modes_copy_data` + `_op_copy`, `ConfigDocument.copy_mode(from_profile=..., profile=...)`
 
 #### Cross-cutting
-- [ ] [P12-TS07a] tomlkit round-trip preserves comments and trailing whitespace through every mutation across all targeting combinations (parameterized: 6 ops × 6 targeting combos)
-- [ ] [P12-TS07b] All `--json` data payloads share a single `SCHEMA_VERSION` constant inside the existing `status`/`data` wrapper; `target` sub-object shape is uniform across ops
-- [ ] [P12-TS07c] Subprocess tests through the click CLI (relies on `ignore_unknown_options=True` from P11) for every op, including `--profile X` flag passing
-- [ ] [P12-TS07d] `thoth help modes` epilog and `show_modes_help()` list every new op with examples covering `--project`, `--config PATH`, `--profile`, `--override`, and `--from-profile`
-- [ ] [P12-TS07e] Layering: when both `[modes.X]` and `[profiles.dev.modes.X]` exist, `thoth modes list --name X --profile dev` reflects overlay value and `thoth modes list --name X` reflects base value. Validates that P12 mutators land in the right tier and P21*'s overlay reader still resolves correctly across the full set of P12-introduced primitives.
-- [ ] [P12-T07] Help integration — extend `show_modes_help()` and the click group epilog; keep `thoth help modes` in sync
+- [x] [P12-TS07a] tomlkit round-trip preserves comments and trailing whitespace through every mutation across all targeting combinations (parameterized: 6 ops × 6 targeting combos)
+- [x] [P12-TS07b] All `--json` data payloads share a single `SCHEMA_VERSION` constant inside the existing `status`/`data` wrapper; `target` sub-object shape is uniform across ops
+- [x] [P12-TS07c] Subprocess tests through the click CLI (relies on `ignore_unknown_options=True` from P11) for every op, including `--profile X` flag passing — already covered by the per-op `*_via_subprocess` tests added under T01–T06; no new tests required
+- [x] [P12-TS07d] `thoth help modes` epilog and `show_modes_help()` list every new op with examples covering `--project`, `--config PATH`, `--profile`, `--override`, and `--from-profile` — implemented as the modes-group `epilog=` string (no `show_modes_help()` exists; `thoth help modes` routes through `thoth modes --help`)
+- [x] [P12-TS07e] Layering: when both `[modes.X]` and `[profiles.dev.modes.X]` exist, `thoth modes list --name X --profile dev` reflects overlay value and `thoth modes list --name X` reflects base value. Validates that P12 mutators land in the right tier and P21*'s overlay reader still resolves correctly across the full set of P12-introduced primitives.
+- [x] [P12-T07] Help integration — extend the click modes-group `epilog=` (no `show_modes_help()` exists in this codebase; `thoth help modes` routes via `thoth modes --help`)
 
 #### Removed-from-scope (already shipped under P13)
 

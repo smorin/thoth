@@ -150,3 +150,35 @@ def test_modes_copy_json_via_subprocess(isolated_thoth_home: Path) -> None:  # T
     assert data["copied"] is True
     assert data["source_tier"] == "modes"
     assert data["target"]["tier"] == "modes"
+
+
+def test_modes_help_lists_all_six_mutators() -> None:  # TS07d
+    """`thoth modes --help` lists all six mutator subcommands (auto-generated
+    by Click from the registered leaves)."""
+    rc, stdout, _ = run_thoth(["modes", "--help"])
+    assert rc == 0
+    for op in ("add", "set", "unset", "remove", "rename", "copy"):
+        assert op in stdout, f"{op!r} missing from `thoth modes --help`"
+
+
+def test_modes_help_mentions_targeting_flags() -> None:  # TS07d (extended)
+    """The Mutation operations epilog block (added in T07) documents the
+    --override, --from-profile, --profile, --project flags and lists the
+    six mutator usages."""
+    rc, stdout, _ = run_thoth(["modes", "--help"])
+    assert rc == 0
+    assert "Mutation operations:" in stdout
+    assert "--override" in stdout
+    assert "--from-profile" in stdout
+    assert "--profile" in stdout
+    assert "--project" in stdout
+
+
+def test_thoth_help_modes_routes_to_modes_help() -> None:  # TS07d (alias)
+    """`thoth help modes` is an alias for `thoth modes --help` and shows
+    the same epilog content."""
+    rc, stdout, _ = run_thoth(["help", "modes"])
+    assert rc == 0
+    assert "Mutation operations:" in stdout
+    for op in ("add", "set", "unset", "remove", "rename", "copy"):
+        assert op in stdout

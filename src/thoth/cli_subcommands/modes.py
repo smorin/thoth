@@ -37,10 +37,26 @@ _LEGACY_FLAG_TO_NEW_FORM: dict[str, str] = {
 }
 
 
+_MODES_EPILOG = """\
+Mutation operations:
+  thoth modes add NAME --model MODEL [--description D] [--kind K]
+  thoth modes set NAME KEY VALUE
+  thoth modes unset NAME KEY
+  thoth modes remove NAME
+  thoth modes rename OLD NEW
+  thoth modes copy SRC DST [--from-profile X] [--override]
+
+All mutators support: --project | --config PATH | --profile X | --json.
+Use --override with add/copy to create a builtin-name override in the
+selected tier.
+"""
+
+
 @click.group(
     name="modes",
     invoke_without_command=True,
     context_settings={"ignore_unknown_options": True},
+    epilog=_MODES_EPILOG,
 )
 @click.pass_context
 def modes(ctx: click.Context) -> None:

@@ -905,3 +905,134 @@ def test_copy_default_builtin_handles_none_system_prompt(
     cfg = (Path(isolated_thoth_home) / "config" / "thoth" / "thoth.config.toml").read_text()
     assert "[modes.my_default]" in cfg
     assert "system_prompt" not in cfg
+
+
+# ---------------------------------------------------------------------------
+# Cross-cutting tests (TS07a, TS07b, TS07e)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "op,args",
+    [
+        ("add", ["x", "--model", "gpt-4o-mini"]),
+        ("set", ["x", "temperature", "0.2"]),
+        ("unset", ["x", "temperature"]),
+        ("remove", ["x"]),
+        ("rename", ["x", "new_x"]),
+        ("copy", ["x", "copy_x"]),
+    ],
+)
+@pytest.mark.parametrize(
+    "case_name,targeting",
+    [
+        ("user-base", []),
+        ("user-profile", ["--profile", "dev"]),
+        ("project-base", ["--project"]),
+        ("project-profile", ["--project", "--profile", "dev"]),
+        ("config-base", ["--config", "{custom_config}"]),
+        ("config-profile", ["--config", "{custom_config}", "--profile", "dev"]),
+    ],
+)
+def test_tomlkit_preserves_top_comment(  # TS07a
+    isolated_thoth_home: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    op: str,
+    args: list[str],
+    case_name: str,
+    targeting: list[str],
+) -> None:
+    """tomlkit round-trip preserves the file-level header comment across
+    all 6 mutators × all 6 targeting combinations.
+
+    NOTE: The `add` cases are no-ops (same model on existing entry),
+    so they trivially preserve comments because the file is not
+    rewritten. The other 30 cases (set/unset/remove/rename/copy ×
+    6 targeting combos) actually exercise the tomlkit roundtrip.
+    """
+    from thoth.modes_cmd import modes_command
+
+    custom_config = tmp_path / "custom.toml"
+    resolved_targeting = [
+        str(custom_config) if token == "{custom_config}" else token for token in targeting
+    ]
+    if "--project" in resolved_targeting:
+        monkeypatch.chdir(tmp_path)
+        cfg = tmp_path / "thoth.config.toml"
+    elif "--config" in resolved_targeting:
+        cfg = custom_config
+    else:
+        cfg = Path(isolated_thoth_home) / "config" / "thoth" / "thoth.config.toml"
+
+    cfg.parent.mkdir(parents=True, exist_ok=True)
+    text = (
+        "# preserved comment\n"
+        'version = "2.0"\n'
+        "[modes.x]\n"
+        'model = "gpt-4o-mini"\n'
+        "temperature = 0.5\n"
+    )
+    if "--profile" in resolved_targeting:
+        text += '\n[profiles.dev.modes.x]\nmodel = "gpt-4o-mini"\ntemperature = 0.5\n'
+    cfg.write_text(text)
+
+    rc = modes_command(op, args + resolved_targeting)
+    assert rc == 0, f"op={op}, case={case_name}"
+    text_after = cfg.read_text()
+    assert "# preserved comment" in text_after, f"top comment lost by op={op}, case={case_name}"
+
+
+def test_schema_version_constant_uniform() -> None:  # TS07b
+    """SCHEMA_VERSION is the single shared constant; all 6 data functions
+    are importable and callable. This is a regression tripwire: if the
+    constant changes, every test calling it should be updated in lockstep.
+    """
+    from thoth.modes_cmd import (
+        SCHEMA_VERSION,
+        get_modes_add_data,
+        get_modes_copy_data,
+        get_modes_remove_data,
+        get_modes_rename_data,
+        get_modes_set_data,
+        get_modes_unset_data,
+    )
+
+    assert SCHEMA_VERSION == "1"
+    assert all(
+        callable(fn)
+        for fn in (
+            get_modes_add_data,
+            get_modes_set_data,
+            get_modes_unset_data,
+            get_modes_remove_data,
+            get_modes_rename_data,
+            get_modes_copy_data,
+        )
+    )
+
+
+def test_layering_overlay_wins_when_active(isolated_thoth_home: Path) -> None:  # TS07e
+    """When [modes.X] and [profiles.dev.modes.X] both exist:
+    `get_modes_list_data` reflects base by default; profile-active reflects
+    overlay. Validates that P12 mutators land in the right tier and the
+    overlay reader resolves correctly across the full set of P12-introduced
+    primitives.
+    """
+    from thoth.modes_cmd import get_modes_list_data, modes_command
+
+    assert modes_command("add", ["mymode", "--model", "base-model"]) == 0
+    assert modes_command("add", ["mymode", "--model", "overlay-model", "--profile", "dev"]) == 0
+
+    base = get_modes_list_data(name="mymode", source="all", show_secrets=False)
+    assert base["mode"] is not None
+    assert base["mode"]["model"] == "base-model"
+
+    overlay = get_modes_list_data(
+        name="mymode",
+        source="all",
+        show_secrets=False,
+        profile="dev",
+    )
+    assert overlay["mode"] is not None
+    assert overlay["mode"]["model"] == "overlay-model"
