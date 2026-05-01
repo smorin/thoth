@@ -1,0 +1,4 @@
+interface:
+  display_name: "Bug Fix Process"
+  short_description: "Revalidate and fix reviewed bugs"
+  default_prompt: "Use $bug-fix-process to revalidate BUG-001, choose a fix strategy, and implement it with regression tests."

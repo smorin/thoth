@@ -70,6 +70,7 @@ openai.env
 !research/*.md
 !MILESTONES.md
 !thoth_vcr.md
+!.codex/skills/**/*.md
 
 # Logs
 *.log
