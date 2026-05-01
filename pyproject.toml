@@ -70,6 +70,7 @@ testpaths = ["tests"]
 # explicitly with `uv run pytest -m extended` or `just test-extended`.
 markers = [
     "extended: real-API contract tests; gated, not run by default",
+    "extended_slow: slower real-API contract tests that intentionally run live jobs to completion",
 ]
 addopts = "-m 'not extended'"
 
@@ -111,4 +112,3 @@ line-ending = "auto"
 [tool.codespell]
 skip = ".git,.venv,htmlcov,uv.lock,bun.lock,requirements.txt,archive,planning,research,node_modules"
 ignore-words-list = "thoth,perplexity,sonar,pplx,openai,hel"
-
