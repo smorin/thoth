@@ -133,6 +133,26 @@ class ConfigDocument:
         table_pruned = self._table_at(prefix) is None
         return True, table_pruned
 
+    def remove_mode(self, name: str, *, profile: str | None = None) -> bool:
+        """Drop `[<tier>.modes.<NAME>]` entirely. Idempotent.
+
+        Returns True when the table existed and was removed; False when it
+        was already absent. Like `remove_profile`, leaves any sibling
+        tables (and the parent `profiles.<X>.modes` table) intact.
+        """
+        prefix = self._mode_segments(name, profile)
+        if self._table_at(prefix) is None:
+            return False
+
+        # Walk to the parent and delete the leaf key.
+        parent_segments = prefix[:-1]
+        leaf = prefix[-1]
+        parent = self._table_at(parent_segments) if parent_segments else self._document
+        if parent is None or leaf not in parent:
+            return False
+        del parent[leaf]
+        return True
+
     def _table_at(self, segments: tuple[str, ...]) -> Any | None:
         current: Any = self._document
         for segment in segments:

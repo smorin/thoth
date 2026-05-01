@@ -101,3 +101,28 @@ def test_unset_mode_value_in_overlay_tier(tmp_path: Path) -> None:
     assert doc.unset_mode_value("cheap", "model", profile="dev") == (True, True)
     doc.save()
     assert "cheap" not in p.read_text()
+
+
+def test_remove_mode_drops_table(tmp_path: Path) -> None:
+    p = tmp_path / "thoth.config.toml"
+    doc = _doc(p)
+    doc.set_mode_value("brief", "model", "gpt-4o-mini")
+    doc.set_mode_value("brief", "temperature", 0.2)
+    assert doc.remove_mode("brief") is True
+    doc.save()
+    assert "modes.brief" not in p.read_text()
+
+
+def test_remove_mode_idempotent_when_absent(tmp_path: Path) -> None:
+    p = tmp_path / "thoth.config.toml"
+    doc = _doc(p)
+    assert doc.remove_mode("nonexistent") is False
+
+
+def test_remove_mode_in_overlay_tier(tmp_path: Path) -> None:
+    p = tmp_path / "thoth.config.toml"
+    doc = _doc(p)
+    doc.set_mode_value("cheap", "model", "gpt-4o-mini", profile="dev")
+    assert doc.remove_mode("cheap", profile="dev") is True
+    doc.save()
+    assert "profiles.dev.modes.cheap" not in p.read_text()
