@@ -702,6 +702,94 @@ _OP_SPECS["remove"] = _ModesOpSpec(
 _OP_DATA_FNS["remove"] = get_modes_remove_data
 
 
+# ---------------------------------------------------------------------------
+# `thoth modes rename` — P12 Task 8
+# ---------------------------------------------------------------------------
+
+
+def get_modes_rename_data(
+    old: str,
+    new: str,
+    *,
+    project: bool = False,
+    config_path: str | None = None,
+    profile: str | None = None,
+) -> dict:
+    """Rename OLD → NEW within the chosen tier. No --override; rename
+    on builtins is always refused. NEW must be a free non-builtin."""
+    from thoth.config import BUILTIN_MODES
+
+    base = {
+        "schema_version": SCHEMA_VERSION,
+        "op": "rename",
+        "mode": new,
+        "from": old,
+        "to": new,
+    }
+
+    if old in BUILTIN_MODES:
+        return {
+            **base,
+            "error": "BUILTIN_NAME_RESERVED",
+            "message": (
+                f"'{old}' is a builtin mode and cannot be renamed. "
+                f"Drop any user-side override first (`thoth modes remove {old}`) "
+                f"and create a new mode at {new!r} via `thoth modes add`."
+            ),
+        }
+    if new in BUILTIN_MODES:
+        return {
+            **base,
+            "error": "DST_NAME_TAKEN",
+            "message": (
+                f"destination {new!r} is a builtin mode name; "
+                f"rename does not accept --override. Use a different name."
+            ),
+        }
+
+    flags = _TargetFlags(project=project, config_path=config_path)
+    context, err = _resolve_write_target(flags, config_path=None)
+    if err is not None:
+        return {**base, **err}
+    assert context is not None
+
+    doc = context.load_document()
+
+    if doc.get_mode(old, profile=profile) is None:
+        return {
+            **base,
+            "error": "MODE_NOT_FOUND",
+            "message": (
+                f"mode {old!r} not found" + (f" in profile {profile!r}" if profile else "")
+            ),
+        }
+
+    if doc.get_mode(new, profile=profile) is not None:
+        return {
+            **base,
+            **_dst_taken_envelope(new, profile=profile, op_name="rename"),
+        }
+
+    renamed = doc.rename_mode(old, new, profile=profile)
+    if renamed:
+        doc.save()
+
+    return {
+        **base,
+        "renamed": renamed,
+        "target": _target_descriptor(context.target_path, profile),
+    }
+
+
+_OP_SPECS["rename"] = _ModesOpSpec(
+    name="rename",
+    positionals=("OLD", "NEW"),
+    op_flags={},
+    required_op_flags=frozenset(),
+)
+_OP_DATA_FNS["rename"] = get_modes_rename_data
+
+
 Source = Literal["builtin", "user", "overridden"]
 Kind = Literal["immediate", "background", "unknown"]
 

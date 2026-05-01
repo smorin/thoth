@@ -692,3 +692,57 @@ def test_remove_overlay_via_profile(isolated_thoth_home: Path) -> None:  # TS04e
     assert rc == 0
     cfg = (Path(isolated_thoth_home) / "config" / "thoth" / "thoth.config.toml").read_text()
     assert "profiles.dev.modes.deep_research" not in cfg
+
+
+def test_rename_user_only_mode(isolated_thoth_home: Path) -> None:  # TS05a
+    from thoth.modes_cmd import modes_command
+
+    modes_command("add", ["old_name", "--model", "gpt-4o-mini"])
+    assert modes_command("rename", ["old_name", "new_name"]) == 0
+    cfg = (Path(isolated_thoth_home) / "config" / "thoth" / "thoth.config.toml").read_text()
+    assert "[modes.old_name]" not in cfg
+    assert "[modes.new_name]" in cfg
+
+
+def test_rename_builtin_old_reserved(isolated_thoth_home: Path) -> None:  # TS05b
+    from thoth.modes_cmd import modes_command
+
+    assert modes_command("rename", ["deep_research", "my_research"]) == 1
+
+
+def test_rename_overridden_builtin_old_reserved(isolated_thoth_home: Path) -> None:  # TS05c
+    from thoth.modes_cmd import modes_command
+
+    modes_command("set", ["deep_research", "parallel", "false"])
+    assert modes_command("rename", ["deep_research", "my_research"]) == 1
+
+
+def test_rename_new_is_builtin_dst_taken(isolated_thoth_home: Path) -> None:  # TS05d
+    from thoth.modes_cmd import modes_command
+
+    modes_command("add", ["my_brief", "--model", "gpt-4o-mini"])
+    assert modes_command("rename", ["my_brief", "deep_research"]) == 1
+
+
+def test_rename_new_already_exists_dst_taken(isolated_thoth_home: Path) -> None:  # TS05e
+    from thoth.modes_cmd import modes_command
+
+    modes_command("add", ["alpha", "--model", "gpt-4o-mini"])
+    modes_command("add", ["beta", "--model", "gpt-5"])
+    assert modes_command("rename", ["alpha", "beta"]) == 1
+
+
+def test_rename_old_absent_mode_not_found(isolated_thoth_home: Path) -> None:  # TS05f
+    from thoth.modes_cmd import modes_command
+
+    assert modes_command("rename", ["never_existed", "new_name"]) == 1
+
+
+def test_rename_overlay_via_profile(isolated_thoth_home: Path) -> None:  # TS05g
+    from thoth.modes_cmd import modes_command
+
+    modes_command("add", ["old_o", "--model", "gpt-4o-mini", "--profile", "dev"])
+    assert modes_command("rename", ["old_o", "new_o", "--profile", "dev"]) == 0
+    cfg = (Path(isolated_thoth_home) / "config" / "thoth" / "thoth.config.toml").read_text()
+    assert "profiles.dev.modes.old_o" not in cfg
+    assert "profiles.dev.modes.new_o" in cfg

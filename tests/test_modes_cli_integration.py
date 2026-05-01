@@ -120,3 +120,17 @@ def test_modes_remove_json_via_subprocess(isolated_thoth_home: Path) -> None:  #
     assert data["removed"] is True
     assert data["reverted_to_builtin"] is False
     assert data["target"]["tier"] == "modes"
+
+
+def test_modes_rename_json_via_subprocess(isolated_thoth_home: Path) -> None:  # TS05h
+    rc, _, _ = run_thoth(["modes", "add", "alpha", "--model", "gpt-4o-mini"])
+    assert rc == 0
+    rc, stdout, _ = run_thoth(["modes", "rename", "alpha", "beta", "--json"])
+    assert rc == 0
+    payload = json.loads(stdout)
+    assert payload["status"] == "ok"
+    data = payload["data"]
+    assert data["op"] == "rename"
+    assert data["from"] == "alpha"
+    assert data["to"] == "beta"
+    assert data["renamed"] is True

@@ -130,15 +130,15 @@ Per-command TS rows enumerate functional cases at single-case granularity. Per-c
 - [x] [P12-T04] Implement `thoth modes remove` — click command, `get_modes_remove_data` + `_op_remove`, `ConfigDocument.remove_mode(profile=...)`
 
 #### `thoth modes rename OLD NEW [--project] [--config PATH] [--profile X] [--json]`
-- [ ] [P12-TS05a] Renames a user-only mode in the chosen tier; OLD gone, NEW present with same keys
-- [ ] [P12-TS05b] OLD is builtin → `BUILTIN_NAME_RESERVED` exit 1
-- [ ] [P12-TS05c] OLD is overridden → refuses (must drop override first)
-- [ ] [P12-TS05d] NEW is a builtin name → `DST_NAME_TAKEN` exit 1
-- [ ] [P12-TS05e] NEW already exists in the destination tier → `DST_NAME_TAKEN` exit 1
-- [ ] [P12-TS05f] Absent OLD in chosen tier → `MODE_NOT_FOUND` exit 1
-- [ ] [P12-TS05g] Targeting matrix (same shape as TS01h); rename targets the SAME tier (no cross-tier rename)
-- [ ] [P12-TS05h] `--json` envelope follows the existing wrapper contract with data `{schema_version, op: "rename", from, to, target, renamed}`
-- [ ] [P12-T05] Implement `thoth modes rename` — click command, `get_modes_rename_data` + `_op_rename`, `ConfigDocument.rename_mode(profile=...)`
+- [x] [P12-TS05a] Renames a user-only mode in the chosen tier; OLD gone, NEW present with same keys
+- [x] [P12-TS05b] OLD is builtin → `BUILTIN_NAME_RESERVED` exit 1
+- [x] [P12-TS05c] OLD is overridden → refuses (must drop override first)
+- [x] [P12-TS05d] NEW is a builtin name → `DST_NAME_TAKEN` exit 1
+- [x] [P12-TS05e] NEW already exists in the destination tier → `DST_NAME_TAKEN` exit 1
+- [x] [P12-TS05f] Absent OLD in chosen tier → `MODE_NOT_FOUND` exit 1
+- [x] [P12-TS05g] Targeting matrix (same shape as TS01h); rename targets the SAME tier (no cross-tier rename)
+- [x] [P12-TS05h] `--json` envelope follows the existing wrapper contract with data `{schema_version, op: "rename", from, to, target, renamed}`
+- [x] [P12-T05] Implement `thoth modes rename` — click command, `get_modes_rename_data` + `_op_rename`, `ConfigDocument.rename_mode(profile=...)`
 
 #### `thoth modes copy SRC DST [--from-profile X] [--override] [--project] [--config PATH] [--profile Y] [--json]`
 - [ ] [P12-TS06a] Builtin-only SRC: writes the destination mode with the builtin's effective keys
