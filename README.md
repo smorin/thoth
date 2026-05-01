@@ -683,7 +683,7 @@ Use `thoth_test` for the actual regression suite. It mixes provider-agnostic CLI
 | `./thoth_test -r --provider mock` | Provider-agnostic tests plus mock-provider coverage | Fastest broad regression run with no real API keys |
 | `./thoth_test -r --provider openai` | Provider-agnostic tests plus OpenAI-specific cases | Validating OpenAI integration with a real key |
 | `./thoth_test -r --all-providers` | Every provider test the suite knows about | Full provider matrix validation |
-| `just test-extended` | Real-API model-kind drift watch (`pytest -m extended`) | Nightly job; manual when investigating provider-API changes |
+| `just test-extended` | Real-API OpenAI contract tests (`pytest -m extended`) | Nightly job; manual when investigating provider-API changes |
 | `just test-live-api` | Real-API CLI workflow regression suite (`pytest -m live_api`) | Weekly job (Sat 7pm PDT); manual when verifying user-visible streaming/file/secret behavior |
 
 `thoth_test -r` behaves like this:
@@ -721,6 +721,51 @@ just test-skip-interactive
 # Save stdout/stderr and metadata for each test under test_outputs/
 ./thoth_test -r --provider mock --save-output
 ```
+
+### Real OpenAI Extended Tests
+
+The `extended` pytest marker is for live OpenAI calls that mock tests cannot
+prove. The default pytest selection excludes these tests, so they only run when
+you ask for them explicitly.
+
+Fast extended tests should stay minimal because they spend real API budget. The
+current required live scenarios are:
+
+| Scenario ID | What it proves | Cost behavior |
+|------|---------|---------|
+| `EXT-OAI-IMM-STREAM-TEE` | Immediate OpenAI streaming writes the same live text to stdout and an `--out` file | Completes immediately |
+| `EXT-OAI-BG-JSON-AUTO-ASYNC` | Background `ask --json` auto-submits asynchronously without explicit `--async` | Cancels in cleanup |
+| `EXT-OAI-BG-JSON-EXPLICIT-ASYNC` | Background `ask --async --json` returns the expected submit envelope | Cancels in cleanup |
+| `EXT-OAI-BG-CANCEL-CMD` | `thoth cancel <op-id> --json` cancels a live OpenAI background job through the user-facing CLI | Cancels in test |
+| `EXT-OAI-BG-ASYNC-BLOCKING-RESUME-COMPLETE` | Full lifecycle: async submit, blocking `resume`, completed checkpoint, and output file metadata | Runs to completion; opt-in with `THOTH_EXTENDED_SLOW=1` |
+
+To run the fast live OpenAI extended set manually:
+
+```bash
+# If openai.env contains shell-style assignments:
+set -a
+source openai.env
+set +a
+
+# If openai.env is just the raw key instead:
+export OPENAI_API_KEY="$(cat openai.env)"
+
+uv run pytest -m "extended and not extended_slow" tests/extended -v
+```
+
+To run only the slow full lifecycle test:
+
+```bash
+THOTH_EXTENDED_SLOW=1 uv run pytest \
+  -m "extended and extended_slow" \
+  tests/extended/test_openai_real_workflows.py::test_ext_oai_bg_async_blocking_resume_complete_lifecycle \
+  -v
+```
+
+The slow test intentionally lets one background job finish so it can validate
+blocking resume, final checkpoint state, result extraction, and output-file
+metadata. Keep it out of routine local validation unless you are explicitly
+checking that lifecycle.
 
 Verification workflow used in this repo:
 
