@@ -1,5 +1,11 @@
 # P12: CLI Mode Editing Implementation Plan
 
+**References**
+- **Trunk:** [PROJECTS.md](../PROJECTS.md) — P12 inline section is canonical
+- **Spec:** [PROJECTS.md](../PROJECTS.md) — the P12 section (lines ~1240–1466)
+- **Supersedes:** [docs/superpowers/plans/2026-04-30-p12-cli-mode-editing.md](../docs/superpowers/plans/2026-04-30-p12-cli-mode-editing.md) — stale earlier draft (banner-marked superseded)
+- **Code:** `src/thoth/config_profiles.py:107` (overlay-modes semantics that P12's `--profile X` integrates with)
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:subagent-driven-development` (recommended) or `superpowers:executing-plans` to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Add the mutation half of `thoth modes` — `add`, `set`, `unset`, `remove`, `rename`, `copy` — so users can author and edit research-mode definitions from the CLI instead of hand-editing TOML, with full `--project` / `--config PATH` / `--profile X` targeting parity with `thoth config set` and `thoth config profiles ...`.
