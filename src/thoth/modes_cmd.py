@@ -671,15 +671,110 @@ def _op_list(args: list[str], *, config_path: str | None = None) -> int:
     return 0
 
 
+def get_modes_data_from_args(
+    op_name: str, args: list[str], *, config_path: str | None = None
+) -> tuple[dict, int]:
+    """Single JSON-path entry point: parse `args`, call op data fn, return
+    `(data_envelope, exit_code)`. Used by Click wrappers.
+    """
+    op_kwargs, target_flags, err = parse_modes_args(op_name, args)
+    if err is not None:
+        envelope = {
+            "schema_version": SCHEMA_VERSION,
+            "op": op_name,
+            **err,
+        }
+        return envelope, 2 if err["error"] == "USAGE_ERROR" else 1
+
+    data_fn = _OP_DATA_FNS[op_name]
+    data = data_fn(
+        **op_kwargs,
+        project=target_flags.project,
+        config_path=target_flags.config_path or config_path,
+        profile=target_flags.profile,
+        from_profile=target_flags.from_profile if target_flags.from_profile else None,
+        force_string=target_flags.force_string,
+        override=target_flags.override,
+    )
+    if data.get("error"):
+        exit_code = 2 if data["error"] in ("USAGE_ERROR", "PROJECT_CONFIG_CONFLICT") else 1
+    else:
+        exit_code = 0
+    return data, exit_code
+
+
+def _op(op_name: str, args: list[str], *, config_path: str | None = None) -> int:
+    """Single human-path entry point. Calls `get_modes_data_from_args` and
+    emits a one-line confirmation via `_emit_human_receipt`. Returns
+    process exit code.
+    """
+    data, exit_code = get_modes_data_from_args(op_name, args, config_path=config_path)
+    return _emit_human_receipt(data, exit_code)
+
+
+def _emit_usage_error(message: str) -> None:
+    _get_console().print(f"[red]Error:[/red] {message}")
+
+
+def _emit_human_receipt(data: dict, exit_code: int) -> int:
+    """Emit a one-line confirmation. JSON emission is owned by
+    cli_subcommands/modes.py via emit_json/emit_error — this helper is
+    human-only.
+
+    Per-op confirmation strings are extended in each per-command task:
+    - add → `Added mode '{name}' (model={model}, kind={kind})`
+    - set → `Set {name}.{key} = {value!r}`
+    - unset → `Unset {name}.{key}` (+ "(table pruned)" if applicable)
+    - remove → `Removed mode '{name}'` (+ "(reverted to builtin)" if applicable)
+    - rename → `Renamed '{from}' → '{to}'`
+    - copy → `Copied '{from}' → '{to}'`
+    """
+    if data.get("error"):
+        _emit_usage_error(data.get("message", data["error"]))
+        return exit_code
+
+    op = data.get("op")
+    name = data.get("mode")
+    target = data.get("target", {})
+    suffix = f" → {target['file']} [{target['tier']}.{name}]" if target else ""
+
+    # Per-op switch — extended by per-command tasks (4-9).
+    if op == "add":
+        if data.get("created"):
+            print(f"Added mode '{name}' (model={data['model']}, kind={data['kind']}){suffix}")
+        else:
+            print(f"Already exists: mode '{name}' (model={data['model']}){suffix}")
+    elif op == "set":
+        print(f"Set {name}.{data['key']} = {data['value']!r}{suffix}")
+    elif op == "unset":
+        pruned = " (table pruned)" if data.get("table_pruned") else ""
+        if data.get("removed"):
+            print(f"Unset {name}.{data['key']}{pruned}{suffix}")
+        else:
+            print(f"No-op: {name}.{data['key']} not present")
+    elif op == "remove":
+        reverted = " (reverted to builtin)" if data.get("reverted_to_builtin") else ""
+        if data.get("removed"):
+            print(f"Removed mode '{name}'{reverted}")
+        else:
+            print(f"No-op: mode '{name}' not present")
+    elif op == "rename":
+        print(f"Renamed '{data['from']}' → '{data['to']}'{suffix}")
+    elif op == "copy":
+        print(f"Copied '{data['from']}' → '{data['to']}'{suffix}")
+    return 0
+
+
 def modes_command(op: str | None, args: list[str], *, config_path: str | None = None) -> int:
     """Dispatch `thoth modes <op>`. Returns a process exit code."""
     if op is None:
         return _op_list(args, config_path=config_path)
-    ops = {"list": _op_list}
-    if op not in ops:
-        _get_console().print(f"[red]Error:[/red] unknown modes op: {op}")
-        return 2
-    return ops[op](args, config_path=config_path)
+    if op == "list":
+        return _op_list(args, config_path=config_path)
+    if op in _OP_SPECS:
+        return _op(op, args, config_path=config_path)
+    _get_console().print(f"[red]Error:[/red] unknown modes op: {op}")
+    return 2
 
 
 __all__ = ["ModeInfo", "get_modes_list_data", "list_all_modes", "modes_command"]
