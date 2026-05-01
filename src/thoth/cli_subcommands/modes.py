@@ -145,4 +145,64 @@ def modes_list(
     sys.exit(rc)
 
 
-# Future: P12 adds `add`, `set`, `unset` leaves here.
+_MODES_MUTATOR_HONOR: frozenset[str] = frozenset({"config_path", "profile"})
+
+
+def _make_modes_leaf(op_name: str):
+    """Generate a click leaf for `thoth modes <op_name>` driven by
+    _OP_SPECS. Mirrors the existing _make_legacy_gate factory pattern.
+
+    The leaf:
+    - Uses _PASSTHROUGH_CONTEXT so positional args + op-specific flags
+      flow through to modes_cmd's parser
+    - Validates inherited options against _MODES_MUTATOR_HONOR (root
+      --profile IS honored — overlay-tier writes)
+    - Branches on --json: JSON path uses get_modes_data_from_args +
+      emit_json/emit_error; human path uses modes_command (which calls
+      _op which calls _emit_human_receipt)
+    - Inherits root --profile by appending to args when present
+    """
+
+    @modes.command(
+        name=op_name,
+        context_settings=_PASSTHROUGH_CONTEXT,
+        help=f"`thoth modes {op_name}` — see `thoth help modes` for examples.",
+    )
+    @click.argument("args", nargs=-1, type=click.UNPROCESSED)
+    @click.option("--json", "as_json", is_flag=True, help="Emit JSON envelope")
+    @click.pass_context
+    def _leaf(ctx: click.Context, args: tuple[str, ...], as_json: bool) -> None:
+        validate_inherited_options(ctx, f"modes {op_name}", _MODES_MUTATOR_HONOR)
+        config_path = inherited_value(ctx, "config_path")
+        profile = inherited_value(ctx, "profile")
+
+        rebuilt = list(args)
+        if profile is not None and "--profile" not in rebuilt:
+            rebuilt.extend(["--profile", profile])
+
+        if as_json:
+            from thoth.json_output import emit_error, emit_json
+            from thoth.modes_cmd import get_modes_data_from_args
+
+            data, exit_code = get_modes_data_from_args(op_name, rebuilt, config_path=config_path)
+            if data.get("error"):
+                emit_error(data["error"], data.get("message", ""), exit_code=exit_code)
+            emit_json(data)  # NoReturn
+            return  # unreachable; emit_json calls sys.exit
+        else:
+            from thoth.modes_cmd import modes_command
+
+            if config_path is None:
+                rc = modes_command(op_name, rebuilt)
+            else:
+                rc = modes_command(op_name, rebuilt, config_path=config_path)
+            sys.exit(rc)
+
+    return _leaf
+
+
+# Generate all six mutator leaves at import time. Per-command tasks
+# (4-9) register their _OP_SPECS entries; this loop instantiates the
+# matching click leaf for each.
+for _op_name in ("add", "set", "unset", "remove", "rename", "copy"):
+    _make_modes_leaf(_op_name)
