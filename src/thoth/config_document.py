@@ -82,6 +82,162 @@ class ConfigDocument:
             return False
         return self.unset_default_profile()
 
+    # ------------------------------------------------------------------
+    # Mode primitives (P12) — base tier `[modes.<NAME>]` or overlay
+    # tier `[profiles.<X>.modes.<NAME>]` when `profile` is set.
+    # ------------------------------------------------------------------
+
+    def _mode_segments(self, name: str, profile: str | None) -> tuple[str, ...]:
+        if profile is not None:
+            return ("profiles", profile, "modes", name)
+        return ("modes", name)
+
+    def ensure_mode(self, name: str, *, profile: str | None = None) -> bool:
+        segments = self._mode_segments(name, profile)
+        if self._table_at(segments) is not None:
+            return False
+        self._ensure_table(segments)
+        return True
+
+    def get_mode(self, name: str, *, profile: str | None = None) -> dict[str, Any] | None:
+        """Return the mode's TOML table as a plain dict, or None if absent
+        in the chosen tier.
+
+        Public read-only accessor used by CLI data functions to detect mode
+        existence and inspect current values (e.g. for idempotency checks).
+        Returns a snapshot dict — modifications do NOT propagate back to the
+        document.
+        """
+        segments = self._mode_segments(name, profile)
+        table = self._table_at(segments)
+        if table is None:
+            return None
+        return dict(table)
+
+    def set_mode_value(
+        self, name: str, key: str, value: Any, *, profile: str | None = None
+    ) -> None:
+        """Set `[<tier>.modes.<NAME>.<KEY>]`. Dotted KEY creates nested tables."""
+        prefix = self._mode_segments(name, profile)
+        self._set_segments((*prefix, *_parse_config_key(key)), value)
+
+    def unset_mode_value(
+        self, name: str, key: str, *, profile: str | None = None
+    ) -> tuple[bool, bool]:
+        """Unset `[<tier>.modes.<NAME>.<KEY>]` with empty-table pruning.
+
+        Returns (removed, table_pruned). `removed` is False when KEY was
+        absent. `table_pruned` is True when removing KEY emptied the
+        `[modes.<NAME>]` (or `[profiles.<X>.modes.<NAME>]`) table and that
+        table was deleted as a result. Pruning is intentional divergence
+        from `unset_profile_value` (B17) — empty mode tables are
+        meaningless; users delete a whole mode via `remove_mode`.
+        """
+        prefix = self._mode_segments(name, profile)
+        if self._table_at(prefix) is None:
+            return False, False
+
+        removed = self._unset_segments(
+            (*prefix, *_parse_config_key(key)),
+            prune_empty=True,
+        )
+        if not removed:
+            return False, False
+
+        # Did the prune cascade up and remove the mode table?
+        table_pruned = self._table_at(prefix) is None
+        return True, table_pruned
+
+    def remove_mode(self, name: str, *, profile: str | None = None) -> bool:
+        """Drop `[<tier>.modes.<NAME>]` entirely. Idempotent.
+
+        Returns True when the table existed and was removed; False when it
+        was already absent. Like `remove_profile`, leaves any sibling
+        tables (and the parent `profiles.<X>.modes` table) intact.
+        """
+        prefix = self._mode_segments(name, profile)
+        if self._table_at(prefix) is None:
+            return False
+
+        # Walk to the parent and delete the leaf key. parent_segments is
+        # non-empty (prefix has length 2 or 4) and _table_at(prefix)
+        # already succeeded above, so the parent must exist.
+        parent_segments = prefix[:-1]
+        leaf = prefix[-1]
+        parent = self._table_at(parent_segments)
+        assert parent is not None
+        del parent[leaf]
+        return True
+
+    def rename_mode(self, old: str, new: str, *, profile: str | None = None) -> bool:
+        """Rename `[<tier>.modes.<OLD>]` to `[<tier>.modes.<NEW>]`.
+
+        Refuses (returns False) if OLD is absent or NEW already exists in
+        the same tier. The CLI layer is responsible for translating the
+        False return into MODE_NOT_FOUND vs DST_NAME_TAKEN by inspecting
+        which side existed.
+
+        Implementation note: tomlkit doesn't have an in-place rename for
+        super-tables, so we copy the table contents to a new table and
+        delete the old one. Inline-table comments survive; super-table
+        comments may not.
+        """
+        old_prefix = self._mode_segments(old, profile)
+        new_prefix = self._mode_segments(new, profile)
+        old_table = self._table_at(old_prefix)
+        if old_table is None:
+            return False
+        if self._table_at(new_prefix) is not None:
+            return False
+
+        # Materialise the new table and copy keys.
+        new_table = self._ensure_table(new_prefix)
+        for k in list(old_table.keys()):
+            new_table[k] = old_table[k]
+
+        # Delete the old leaf. parent_segments is non-empty (old_prefix
+        # has length 2 or 4) and the parent table was just walked to find
+        # old_table, so _table_at can't return None here.
+        parent_segments = old_prefix[:-1]
+        leaf = old_prefix[-1]
+        parent = self._table_at(parent_segments)
+        assert parent is not None
+        del parent[leaf]
+        return True
+
+    def copy_mode(
+        self,
+        src: str,
+        dst: str,
+        *,
+        from_profile: str | None = None,
+        profile: str | None = None,
+    ) -> bool:
+        """Copy mode SRC → DST in raw tomlkit-table form (no layering).
+
+        Direct table-to-table copy; does NOT layer with BUILTIN_MODES.
+        Returns True on success, False if SRC is absent or DST exists.
+
+        Note: the `thoth modes copy` CLI does NOT use this primitive —
+        it iterates `effective.items()` and writes via `set_mode_value`
+        per key in order to layer BUILTIN_MODES with any user override
+        (see `get_modes_copy_data` in `modes_cmd.py`). This primitive
+        is retained for any future use case that needs a non-layered
+        raw copy (e.g., scripting, migration tools).
+        """
+        src_prefix = self._mode_segments(src, from_profile)
+        dst_prefix = self._mode_segments(dst, profile)
+        src_table = self._table_at(src_prefix)
+        if src_table is None:
+            return False
+        if self._table_at(dst_prefix) is not None:
+            return False
+
+        new_table = self._ensure_table(dst_prefix)
+        for k in list(src_table.keys()):
+            new_table[k] = src_table[k]
+        return True
+
     def _table_at(self, segments: tuple[str, ...]) -> Any | None:
         current: Any = self._document
         for segment in segments:
