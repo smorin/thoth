@@ -57,13 +57,18 @@ just check && uv run pytest -q && ./thoth_test -r --skip-interactive -q
 
 Expected: all green. If anything is red, stop and fix on `main` first; do not start P12 on a red baseline.
 
-- [ ] **P0.3: Flip P12 to in-progress in PROJECTS.md**
+- [ ] **P0.3: Flip P12 to in-progress (PROJECTS.md trunk row + project-file Status)**
 
-Edit `PROJECTS.md` line 1241: change `## [ ] Project P12:` → `## [~] Project P12:`. Commit:
+Two single-character edits, one commit:
+
+1. `PROJECTS.md` — find the line `- [ ] **P12** — [CLI Mode Editing — \`thoth modes\` mutations](projects/P12-cli-mode-editing.md)` (currently around line 100; verify with `grep -n "\\*\\*P12\\*\\*" PROJECTS.md`) and change `[ ]` → `[~]`.
+2. `projects/P12-cli-mode-editing.md` — find the line `**Status:** \`[ ]\` Scoped, not started.` (currently around line 11) and change to `**Status:** \`[~]\` In progress.`
+
+Both files reflect the same state — the trunk index and the per-project file's self-described status must agree (per the `glyph-matches-state` audit check).
 
 ```bash
-git add PROJECTS.md
-git commit -m "chore(p12): start P12 — flip trunk glyph [ ] to [~]"
+git add PROJECTS.md projects/P12-cli-mode-editing.md
+git commit -m "chore(p12): start P12 — flip trunk glyph and Status to [~]"
 ```
 
 ---
@@ -2652,16 +2657,19 @@ thoth modes list --name deep_research --full
 
 All must produce the same output as before P12 (the read paths are unchanged — TS08 confirms).
 
-- [ ] **11.3: Tick TS08 and "Regression Test Status" in PROJECTS.md.**
+- [ ] **11.3: Tick TS08 and "Regression Test Status" in `projects/P12-cli-mode-editing.md`.** (Per-project tasks live in the project file under `### Tests & Tasks`, not in PROJECTS.md — the trunk is now a thin index.)
 
-- [ ] **11.4: Flip P12 trunk glyph `[~]` → `[x]`**
+- [ ] **11.4: Flip P12 status to done (trunk row + project-file Status)**
 
-Edit `PROJECTS.md` line 1241: change `## [~] Project P12:` → `## [x] Project P12:`.
+Two single-character edits in lockstep:
+
+1. `PROJECTS.md` — change the P12 trunk row glyph from `[~]` to `[x]`.
+2. `projects/P12-cli-mode-editing.md` — change the Status line to `**Status:** \`[x]\` Done.`
 
 - [ ] **11.5: Final commit**
 
 ```bash
-git add PROJECTS.md
+git add PROJECTS.md projects/P12-cli-mode-editing.md
 git commit -m "feat(p12): close P12 — full mutation surface for thoth modes (v2.12.0)"
 ```
 
