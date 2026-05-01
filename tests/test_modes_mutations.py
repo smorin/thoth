@@ -632,3 +632,63 @@ def test_unset_overlay_via_profile(isolated_thoth_home: Path) -> None:  # TS03f
     cfg = (Path(isolated_thoth_home) / "config" / "thoth" / "thoth.config.toml").read_text()
     # The overlay table should be pruned (was the only key)
     assert "profiles.dev.modes.deep_research" not in cfg
+
+
+# ---------------------------------------------------------------------------
+# TS04a-e — `thoth modes remove` (P12 Task 7)
+# ---------------------------------------------------------------------------
+
+
+def test_remove_drops_user_only_mode(isolated_thoth_home: Path) -> None:  # TS04a
+    from thoth.modes_cmd import modes_command
+
+    modes_command("add", ["brief", "--model", "gpt-4o-mini"])
+    rc = modes_command("remove", ["brief"])
+    assert rc == 0
+    cfg = (Path(isolated_thoth_home) / "config" / "thoth" / "thoth.config.toml").read_text()
+    assert "[modes.brief]" not in cfg
+
+
+def test_remove_overridden_builtin_reverts(isolated_thoth_home: Path) -> None:  # TS04b
+    """`set` on builtin creates override; `remove` drops the override
+    and the mode reverts to source=builtin."""
+    from thoth.config import ConfigManager
+    from thoth.modes_cmd import list_all_modes, modes_command
+
+    modes_command("set", ["deep_research", "parallel", "false"])
+    cm = ConfigManager()
+    cm.load_all_layers({})
+    info = next(m for m in list_all_modes(cm) if m.name == "deep_research")
+    assert info.source == "overridden"
+
+    rc = modes_command("remove", ["deep_research"])
+    assert rc == 0
+    cm = ConfigManager()
+    cm.load_all_layers({})
+    info = next(m for m in list_all_modes(cm) if m.name == "deep_research")
+    assert info.source == "builtin"
+
+
+def test_remove_pure_builtin_reserved(isolated_thoth_home: Path) -> None:  # TS04c
+    """Pure-builtin (no user override) → BUILTIN_NAME_RESERVED exit 1."""
+    from thoth.modes_cmd import modes_command
+
+    rc = modes_command("remove", ["deep_research"])
+    assert rc == 1
+
+
+def test_remove_idempotent_on_absent_nonbuiltin(isolated_thoth_home: Path) -> None:  # TS04d
+    from thoth.modes_cmd import modes_command
+
+    rc = modes_command("remove", ["never_existed"])
+    assert rc == 0
+
+
+def test_remove_overlay_via_profile(isolated_thoth_home: Path) -> None:  # TS04e
+    from thoth.modes_cmd import modes_command
+
+    modes_command("set", ["deep_research", "parallel", "false", "--profile", "dev"])
+    rc = modes_command("remove", ["deep_research", "--profile", "dev"])
+    assert rc == 0
+    cfg = (Path(isolated_thoth_home) / "config" / "thoth" / "thoth.config.toml").read_text()
+    assert "profiles.dev.modes.deep_research" not in cfg

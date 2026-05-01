@@ -632,6 +632,76 @@ _OP_SPECS["unset"] = _ModesOpSpec(
 _OP_DATA_FNS["unset"] = get_modes_unset_data
 
 
+# ---------------------------------------------------------------------------
+# `thoth modes remove` — P12 Task 7
+# ---------------------------------------------------------------------------
+
+
+def get_modes_remove_data(
+    name: str,
+    *,
+    project: bool = False,
+    config_path: str | None = None,
+    profile: str | None = None,
+) -> dict:
+    """Pure data function for `thoth modes remove`. Returns receipt dict.
+
+    Builtin guard is absolute — `--override` does NOT bypass remove.
+    Pure-builtin (no user-side override) → BUILTIN_NAME_RESERVED.
+    Overridden builtin → drops the override and reports
+    `reverted_to_builtin=True`. User-only mode → drops the table.
+    Absent (non-builtin) → idempotent no-op exit 0.
+    """
+    from thoth.config import BUILTIN_MODES
+
+    flags = _TargetFlags(project=project, config_path=config_path)
+    context, err = _resolve_write_target(flags, config_path=None)
+    if err is not None:
+        return {
+            "schema_version": SCHEMA_VERSION,
+            "op": "remove",
+            "mode": name,
+            **err,
+        }
+    assert context is not None
+
+    doc = context.load_document()
+    has_user_table = doc.get_mode(name, profile=profile) is not None
+
+    # Pure-builtin guard: builtin name with no user-side override → reserved.
+    if name in BUILTIN_MODES and not has_user_table:
+        return {
+            "schema_version": SCHEMA_VERSION,
+            "op": "remove",
+            "mode": name,
+            "error": "BUILTIN_NAME_RESERVED",
+            "message": (f"'{name}' is a builtin mode and has no user-side override to remove."),
+        }
+
+    was_builtin_override = name in BUILTIN_MODES and has_user_table
+    removed = doc.remove_mode(name, profile=profile)
+    if removed:
+        doc.save()
+
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "op": "remove",
+        "mode": name,
+        "removed": removed,
+        "reverted_to_builtin": removed and was_builtin_override,
+        "target": _target_descriptor(context.target_path, profile),
+    }
+
+
+_OP_SPECS["remove"] = _ModesOpSpec(
+    name="remove",
+    positionals=("NAME",),
+    op_flags={},
+    required_op_flags=frozenset(),
+)
+_OP_DATA_FNS["remove"] = get_modes_remove_data
+
+
 Source = Literal["builtin", "user", "overridden"]
 Kind = Literal["immediate", "background", "unknown"]
 

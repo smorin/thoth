@@ -105,3 +105,18 @@ def test_modes_unset_json_via_subprocess(isolated_thoth_home: Path) -> None:  # 
     assert data["removed"] is True
     assert data["table_pruned"] is False
     assert data["target"]["tier"] == "modes"
+
+
+def test_modes_remove_json_via_subprocess(isolated_thoth_home: Path) -> None:  # TS04f
+    rc, _, _ = run_thoth(["modes", "add", "brief", "--model", "gpt-4o-mini"])
+    assert rc == 0
+    rc, stdout, _ = run_thoth(["modes", "remove", "brief", "--json"])
+    assert rc == 0
+    payload = json.loads(stdout)
+    assert payload["status"] == "ok"
+    data = payload["data"]
+    assert data["op"] == "remove"
+    assert data["mode"] == "brief"
+    assert data["removed"] is True
+    assert data["reverted_to_builtin"] is False
+    assert data["target"]["tier"] == "modes"

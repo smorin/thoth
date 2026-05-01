@@ -121,13 +121,13 @@ Per-command TS rows enumerate functional cases at single-case granularity. Per-c
 - [x] [P12-T03] Implement `thoth modes unset` — click command, `get_modes_unset_data` + `_op_unset`, `ConfigDocument.unset_mode_value(profile=..., prune_empty=True)`
 
 #### `thoth modes remove NAME [--project] [--config PATH] [--profile X] [--json]`
-- [ ] [P12-TS04a] Drops a user-only mode in the chosen tier; gone from `thoth modes list [--profile X]`
-- [ ] [P12-TS04b] On overridden mode: drops override; post → `source=builtin`
-- [ ] [P12-TS04c] Builtin-only NAME → `BUILTIN_NAME_RESERVED` exit 1
-- [ ] [P12-TS04d] Idempotent: absent NAME in chosen tier → no-op exit 0
-- [ ] [P12-TS04e] Targeting matrix (same shape as TS01h)
-- [ ] [P12-TS04f] `--json` envelope follows the existing wrapper contract with data `{schema_version, op: "remove", mode, target, removed, reverted_to_builtin}`
-- [ ] [P12-T04] Implement `thoth modes remove` — click command, `get_modes_remove_data` + `_op_remove`, `ConfigDocument.remove_mode(profile=...)`
+- [x] [P12-TS04a] Drops a user-only mode in the chosen tier; gone from `thoth modes list [--profile X]`
+- [x] [P12-TS04b] On overridden mode: drops override; post → `source=builtin`
+- [x] [P12-TS04c] Builtin-only NAME → `BUILTIN_NAME_RESERVED` exit 1
+- [x] [P12-TS04d] Idempotent: absent NAME in chosen tier → no-op exit 0
+- [x] [P12-TS04e] Targeting matrix (same shape as TS01h)
+- [x] [P12-TS04f] `--json` envelope follows the existing wrapper contract with data `{schema_version, op: "remove", mode, target, removed, reverted_to_builtin}`
+- [x] [P12-T04] Implement `thoth modes remove` — click command, `get_modes_remove_data` + `_op_remove`, `ConfigDocument.remove_mode(profile=...)`
 
 #### `thoth modes rename OLD NEW [--project] [--config PATH] [--profile X] [--json]`
 - [ ] [P12-TS05a] Renames a user-only mode in the chosen tier; OLD gone, NEW present with same keys
