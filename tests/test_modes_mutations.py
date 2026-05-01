@@ -482,3 +482,72 @@ def test_get_modes_data_from_args_filters_by_signature(
     assert exit_code == 0
     assert data["created"] is True
     assert data["mode"] == "brief"
+
+
+# ---------------------------------------------------------------------------
+# TS02a-f — `thoth modes set` (P12 Task 5)
+# ---------------------------------------------------------------------------
+
+
+def test_set_updates_existing_user_mode(isolated_thoth_home: Path) -> None:  # TS02a
+    from thoth.modes_cmd import modes_command
+
+    modes_command("add", ["brief", "--model", "gpt-4o-mini"])
+    rc = modes_command("set", ["brief", "temperature", "0.2"])
+    assert rc == 0
+    cfg = Path(isolated_thoth_home) / "config" / "thoth" / "thoth.config.toml"
+    assert "temperature = 0.2" in cfg.read_text()
+
+
+def test_set_string_flag_keeps_string(isolated_thoth_home: Path) -> None:  # TS02b
+    from thoth.modes_cmd import modes_command
+
+    modes_command("add", ["brief", "--model", "gpt-4o-mini"])
+    rc = modes_command("set", ["brief", "secret_key", "12345", "--string"])
+    assert rc == 0
+    cfg = Path(isolated_thoth_home) / "config" / "thoth" / "thoth.config.toml"
+    assert 'secret_key = "12345"' in cfg.read_text()
+
+
+def test_set_type_coercion(isolated_thoth_home: Path) -> None:  # TS02c
+    from thoth.modes_cmd import modes_command
+
+    modes_command("add", ["brief", "--model", "gpt-4o-mini"])
+    modes_command("set", ["brief", "verbose", "true"])
+    modes_command("set", ["brief", "max_tokens", "1000"])
+    modes_command("set", ["brief", "temperature", "0.2"])
+    cfg = (Path(isolated_thoth_home) / "config" / "thoth" / "thoth.config.toml").read_text()
+    assert "verbose = true" in cfg
+    assert "max_tokens = 1000" in cfg
+    assert "temperature = 0.2" in cfg
+
+
+def test_set_on_builtin_creates_override(isolated_thoth_home: Path) -> None:  # TS02d
+    from thoth.modes_cmd import modes_command
+
+    rc = modes_command("set", ["deep_research", "parallel", "false"])
+    assert rc == 0
+    cfg = (Path(isolated_thoth_home) / "config" / "thoth" / "thoth.config.toml").read_text()
+    assert "[modes.deep_research]" in cfg
+    assert "parallel = false" in cfg
+
+
+def test_set_absent_nonbuiltin_errors(isolated_thoth_home: Path) -> None:  # TS02e
+    from thoth.modes_cmd import modes_command
+
+    rc = modes_command("set", ["missing_mode", "model", "gpt-4o-mini"])
+    assert rc == 1
+
+
+def test_set_overlay_via_profile(isolated_thoth_home: Path) -> None:  # TS02f
+    """`set` on a non-existent name + --profile dev should be MODE_NOT_FOUND
+    (because absent in the chosen tier) UNLESS the name is a builtin
+    (then implicit override). For this test, use a builtin name to
+    confirm overlay-tier write works."""
+    from thoth.modes_cmd import modes_command
+
+    rc = modes_command("set", ["deep_research", "parallel", "false", "--profile", "dev"])
+    assert rc == 0
+    cfg = (Path(isolated_thoth_home) / "config" / "thoth" / "thoth.config.toml").read_text()
+    assert "[profiles.dev.modes.deep_research]" in cfg
+    assert "parallel = false" in cfg

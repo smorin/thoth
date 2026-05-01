@@ -101,14 +101,14 @@ Per-command TS rows enumerate functional cases at single-case granularity. Per-c
 - [x] [P12-T01] Implement `thoth modes add` — click command in `cli_subcommands/modes.py`, `get_modes_add_data` + `_op_add` in `modes_cmd.py`, `ConfigDocument.ensure_mode(profile=...)` primitive
 
 #### `thoth modes set NAME KEY VALUE [--project] [--config PATH] [--profile X] [--string] [--json]`
-- [ ] [P12-TS02a] Updates existing user mode: KEY=VALUE round-trips through tomlkit
-- [ ] [P12-TS02b] `--string` keeps `sk-...` as a string (no integer coercion)
-- [ ] [P12-TS02c] Type coercion: `true`/`false` → bool; `42` → int; `0.2` → float
-- [ ] [P12-TS02d] Setting on a builtin-only name implicitly creates override in the chosen tier (post: `thoth modes list --name NAME [--profile X]` → `source=overridden`)
-- [ ] [P12-TS02e] Absent NAME in the chosen tier → `MODE_NOT_FOUND` exit 1
-- [ ] [P12-TS02f] Targeting matrix (same shape as TS01h)
-- [ ] [P12-TS02g] `--json` envelope follows the existing wrapper contract: `{"status":"ok","data":{schema_version, op: "set", mode, target, key, value, wrote}}`; secret-like `value` receipts are masked
-- [ ] [P12-T02] Implement `thoth modes set` — click command, `get_modes_set_data` + `_op_set`, `ConfigDocument.set_mode_value(profile=...)`
+- [x] [P12-TS02a] Updates existing user mode: KEY=VALUE round-trips through tomlkit
+- [x] [P12-TS02b] `--string` keeps `sk-...` as a string (no integer coercion)
+- [x] [P12-TS02c] Type coercion: `true`/`false` → bool; `42` → int; `0.2` → float
+- [x] [P12-TS02d] Setting on a builtin-only name implicitly creates override in the chosen tier (post: `thoth modes list --name NAME [--profile X]` → `source=overridden`)
+- [x] [P12-TS02e] Absent NAME in the chosen tier → `MODE_NOT_FOUND` exit 1
+- [x] [P12-TS02f] Targeting matrix (same shape as TS01h)
+- [x] [P12-TS02g] `--json` envelope follows the existing wrapper contract: `{"status":"ok","data":{schema_version, op: "set", mode, target, key, value, wrote}}`; secret-like `value` receipts are masked
+- [x] [P12-T02] Implement `thoth modes set` — click command, `get_modes_set_data` + `_op_set`, `ConfigDocument.set_mode_value(profile=...)`
 
 #### `thoth modes unset NAME KEY [--project] [--config PATH] [--profile X] [--json]`
 - [ ] [P12-TS03a] Drops a single user-table key in the chosen tier

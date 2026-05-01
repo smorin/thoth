@@ -474,6 +474,90 @@ _OP_SPECS["add"] = _ModesOpSpec(
 _OP_DATA_FNS["add"] = get_modes_add_data
 
 
+# ---------------------------------------------------------------------------
+# `thoth modes set` — P12 Task 5
+# ---------------------------------------------------------------------------
+
+
+def get_modes_set_data(
+    name: str,
+    key: str,
+    value: str,
+    *,
+    project: bool = False,
+    force_string: bool = False,
+    config_path: str | None = None,
+    profile: str | None = None,
+) -> dict:
+    """Pure data function for `thoth modes set`. Returns a receipt dict.
+
+    Setting on a builtin name implicitly creates an overriding mode
+    table in the chosen tier (`[modes.<NAME>]` or `[profiles.<X>.modes.<NAME>]`).
+    Absent non-builtin names are rejected with MODE_NOT_FOUND.
+
+    Type coercion via `_parse_value` (bool/int/float/string). `--string`
+    flag forces string parsing. Secret-like keys are masked in the JSON
+    receipt (`value` field) but written verbatim to the TOML file.
+
+    The `value` parameter is the raw string from the CLI; coercion happens
+    inside this function via `_parse_value`. (The kwarg name matches the
+    `VALUE` positional in `_OP_SPECS["set"]` so the dispatcher can spread
+    parsed positionals directly.)
+    """
+    from thoth._secrets import _is_secret_key, _mask_secret
+    from thoth.config import BUILTIN_MODES
+    from thoth.config_cmd import _parse_value
+
+    flags = _TargetFlags(project=project, config_path=config_path)
+    context, err = _resolve_write_target(flags, config_path=None)
+    if err is not None:
+        return {
+            "schema_version": SCHEMA_VERSION,
+            "op": "set",
+            "mode": name,
+            **err,
+        }
+    assert context is not None  # err is None ⇒ context is not None
+
+    doc = context.load_document()
+
+    # Builtin names always allowed (implicit override creation).
+    # Non-builtin names must already exist in the chosen tier.
+    if name not in BUILTIN_MODES and doc.get_mode(name, profile=profile) is None:
+        return {
+            "schema_version": SCHEMA_VERSION,
+            "op": "set",
+            "mode": name,
+            "error": "MODE_NOT_FOUND",
+            "message": f"mode {name!r} not found",
+        }
+
+    parsed_value = _parse_value(value, force_string)
+    doc.set_mode_value(name, key, parsed_value, profile=profile)
+    doc.save()
+    receipt_value = _mask_secret(parsed_value) if _is_secret_key(key) else parsed_value
+
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "op": "set",
+        "mode": name,
+        "key": key,
+        "value": receipt_value,
+        "wrote": True,
+        "target": _target_descriptor(context.target_path, profile),
+    }
+
+
+_OP_SPECS["set"] = _ModesOpSpec(
+    name="set",
+    positionals=("NAME", "KEY", "VALUE"),
+    op_flags={},
+    required_op_flags=frozenset(),
+    accepts_string=True,
+)
+_OP_DATA_FNS["set"] = get_modes_set_data
+
+
 Source = Literal["builtin", "user", "overridden"]
 Kind = Literal["immediate", "background", "unknown"]
 
