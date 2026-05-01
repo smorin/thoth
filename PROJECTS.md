@@ -28,7 +28,7 @@ Keep this summary list updated whenever a project is added, renamed, completed, 
 - [ ] **P27** — [Perplexity — Background Deep Research](projects/P27-perplexity-background-deep-research.md)
 - [ ] **P28** — [Gemini — Background Deep Research](projects/P28-gemini-background-deep-research.md)
 - [ ] **P29** — [Architecture Review & Cleanup — Background Deep Research Providers](projects/P29-arch-review-background-deep-research.md)
-- [ ] P30 — Claude Code Skills Support
+- [ ] **P30** — [Claude Code Skills Support](projects/P30-claude-code-skills-support.md)
 - [ ] P31 — Interactive Init Command
 - [ ] P32 — Interactive Prompt Refiner
 - [ ] P33 — Schema-Driven Config Defaults (typed source for `thoth init` and `ConfigSchema`)
@@ -83,20 +83,6 @@ Existing projects may use older labels such as `**Primary spec**`, `**Plan**`, o
 - Planning tasks may be checked when the plan/spec exists; implementation tasks stay unchecked until the code or docs they describe have actually landed.
 - Mark checkboxes as work lands.
 - When adding a new project, preserve the order requested by the user, then adapt numbering to the current file.
-
----
-
-## [ ] Project P30: Claude Code Skills Support
-**Goal**: Add support for Claude Code skills, similar to what Codex provides.
-
-**Reference**: https://github.com/openai/codex-plugin-cc
-
-**Status**: Placeholder — requirements still need to be fleshed out before this can be worked on.
-
-### Tests & Tasks
-- [ ] [P30-TS01] Design tests for Claude Code skill discovery, loading, and execution before implementation.
-- [ ] [P30-T01] Flesh out requirements for Claude Code skills support.
-- [ ] [P30-T02] Implement Claude Code skills support using the reference plugin as input.
 
 ---
 
