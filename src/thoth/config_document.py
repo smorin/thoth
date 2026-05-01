@@ -144,12 +144,13 @@ class ConfigDocument:
         if self._table_at(prefix) is None:
             return False
 
-        # Walk to the parent and delete the leaf key.
+        # Walk to the parent and delete the leaf key. parent_segments is
+        # non-empty (prefix has length 2 or 4) and _table_at(prefix)
+        # already succeeded above, so the parent must exist.
         parent_segments = prefix[:-1]
         leaf = prefix[-1]
-        parent = self._table_at(parent_segments) if parent_segments else self._document
-        if parent is None or leaf not in parent:
-            return False
+        parent = self._table_at(parent_segments)
+        assert parent is not None
         del parent[leaf]
         return True
 
@@ -179,12 +180,13 @@ class ConfigDocument:
         for k in list(old_table.keys()):
             new_table[k] = old_table[k]
 
-        # Delete the old leaf.
+        # Delete the old leaf. parent_segments is non-empty (old_prefix
+        # has length 2 or 4) and the parent table was just walked to find
+        # old_table, so _table_at can't return None here.
         parent_segments = old_prefix[:-1]
         leaf = old_prefix[-1]
-        parent = self._table_at(parent_segments) if parent_segments else self._document
-        if parent is None:
-            return False
+        parent = self._table_at(parent_segments)
+        assert parent is not None
         del parent[leaf]
         return True
 
