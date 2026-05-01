@@ -890,3 +890,18 @@ def test_copy_with_project_flag(
     proj_cfg = tmp_path / "thoth.config.toml"
     assert proj_cfg.exists()
     assert "[modes.dst]" in proj_cfg.read_text()
+
+
+def test_copy_default_builtin_handles_none_system_prompt(
+    isolated_thoth_home: Path,
+) -> None:  # TS06i (regression)
+    """`default` builtin has system_prompt=None which tomlkit refuses to
+    write. The per-key copy loop must skip None values, treating them as
+    absent fields (their semantic meaning in BUILTIN_MODES)."""
+    from thoth.modes_cmd import modes_command
+
+    rc = modes_command("copy", ["default", "my_default"])
+    assert rc == 0
+    cfg = (Path(isolated_thoth_home) / "config" / "thoth" / "thoth.config.toml").read_text()
+    assert "[modes.my_default]" in cfg
+    assert "system_prompt" not in cfg

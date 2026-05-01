@@ -213,21 +213,17 @@ class ConfigDocument:
         from_profile: str | None = None,
         profile: str | None = None,
     ) -> bool:
-        """Copy mode SRC (read from `from_profile`'s tier or base) into
-        DST (written to `profile`'s tier or base) within the same file.
+        """Copy mode SRC → DST in raw tomlkit-table form (no layering).
 
-        The four directions are:
+        Direct table-to-table copy; does NOT layer with BUILTIN_MODES.
+        Returns True on success, False if SRC is absent or DST exists.
 
-        - from_profile=None, profile=None  → base→base
-        - from_profile=None, profile="X"   → base→overlay
-        - from_profile="X",  profile=None  → overlay→base
-        - from_profile="X",  profile="Y"   → overlay→overlay (incl. X==Y)
-
-        Returns False if SRC is absent in its tier or DST already exists
-        in its tier. The primitive does NOT layer with BUILTIN_MODES — the
-        CLI caller is responsible for resolving "effective" config when
-        SRC is a builtin without a user-side override (it pre-populates
-        `[modes.<SRC>]` from `BUILTIN_MODES` before calling).
+        Note: the `thoth modes copy` CLI does NOT use this primitive —
+        it iterates `effective.items()` and writes via `set_mode_value`
+        per key in order to layer BUILTIN_MODES with any user override
+        (see `get_modes_copy_data` in `modes_cmd.py`). This primitive
+        is retained for any future use case that needs a non-layered
+        raw copy (e.g., scripting, migration tools).
         """
         src_prefix = self._mode_segments(src, from_profile)
         dst_prefix = self._mode_segments(dst, profile)

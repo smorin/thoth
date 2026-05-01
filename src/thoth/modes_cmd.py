@@ -876,7 +876,11 @@ def get_modes_copy_data(
     # Write each key from `effective` to DST. We can't use copy_mode here
     # because it would only copy a tomlkit table (not the layered dict).
     # Use set_mode_value per key (which handles both base and overlay tiers).
+    # Skip None values — in BUILTIN_MODES (e.g. default's system_prompt)
+    # None semantically means "absent", and tomlkit refuses to write None.
     for key, value in effective.items():
+        if value is None:
+            continue
         doc.set_mode_value(dst, key, value, profile=profile)
     doc.save()
 
