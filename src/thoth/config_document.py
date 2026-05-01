@@ -106,6 +106,33 @@ class ConfigDocument:
         prefix = self._mode_segments(name, profile)
         self._set_segments((*prefix, *_parse_config_key(key)), value)
 
+    def unset_mode_value(
+        self, name: str, key: str, *, profile: str | None = None
+    ) -> tuple[bool, bool]:
+        """Unset `[<tier>.modes.<NAME>.<KEY>]` with empty-table pruning.
+
+        Returns (removed, table_pruned). `removed` is False when KEY was
+        absent. `table_pruned` is True when removing KEY emptied the
+        `[modes.<NAME>]` (or `[profiles.<X>.modes.<NAME>]`) table and that
+        table was deleted as a result. Pruning is intentional divergence
+        from `unset_profile_value` (B17) — empty mode tables are
+        meaningless; users delete a whole mode via `remove_mode`.
+        """
+        prefix = self._mode_segments(name, profile)
+        if self._table_at(prefix) is None:
+            return False, False
+
+        removed = self._unset_segments(
+            (*prefix, *_parse_config_key(key)),
+            prune_empty=True,
+        )
+        if not removed:
+            return False, False
+
+        # Did the prune cascade up and remove the mode table?
+        table_pruned = self._table_at(prefix) is None
+        return True, table_pruned
+
     def _table_at(self, segments: tuple[str, ...]) -> Any | None:
         current: Any = self._document
         for segment in segments:

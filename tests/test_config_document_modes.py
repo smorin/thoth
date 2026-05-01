@@ -62,3 +62,42 @@ def test_set_mode_value_dotted_key(tmp_path: Path) -> None:
     text = p.read_text()
     assert "[modes.brief.limits]" in text
     assert "max_tokens = 1000" in text
+
+
+def test_unset_mode_value_drops_key(tmp_path: Path) -> None:
+    p = tmp_path / "thoth.config.toml"
+    doc = _doc(p)
+    doc.set_mode_value("brief", "model", "gpt-4o-mini")
+    doc.set_mode_value("brief", "temperature", 0.2)
+    assert doc.unset_mode_value("brief", "temperature") == (True, False)
+    doc.save()
+    text = p.read_text()
+    assert "model" in text
+    assert "temperature" not in text
+
+
+def test_unset_mode_value_prunes_empty_table(tmp_path: Path) -> None:
+    p = tmp_path / "thoth.config.toml"
+    doc = _doc(p)
+    doc.set_mode_value("brief", "model", "gpt-4o-mini")
+    # Removing the only key should prune the empty [modes.brief] table.
+    assert doc.unset_mode_value("brief", "model") == (True, True)
+    doc.save()
+    text = p.read_text()
+    assert "modes.brief" not in text
+
+
+def test_unset_mode_value_idempotent_when_absent(tmp_path: Path) -> None:
+    p = tmp_path / "thoth.config.toml"
+    doc = _doc(p)
+    doc.set_mode_value("brief", "model", "gpt-4o-mini")
+    assert doc.unset_mode_value("brief", "missing_key") == (False, False)
+
+
+def test_unset_mode_value_in_overlay_tier(tmp_path: Path) -> None:
+    p = tmp_path / "thoth.config.toml"
+    doc = _doc(p)
+    doc.set_mode_value("cheap", "model", "gpt-4o-mini", profile="dev")
+    assert doc.unset_mode_value("cheap", "model", profile="dev") == (True, True)
+    doc.save()
+    assert "cheap" not in p.read_text()
