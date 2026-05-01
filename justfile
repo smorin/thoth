@@ -126,6 +126,13 @@ test-serial:
 test-extended:
     uv run pytest -m extended -v
 
+# Run live-API workflow regression tests. Gated by `pytest -m live_api`;
+# requires OPENAI_API_KEY. P20 — runs weekly via
+# .github/workflows/live-api.yml (Sat 7pm PDT).
+[group: 'testing']
+test-live-api:
+    uv run pytest -m live_api -v
+
 # Run tests skipping interactive mode (fast, CI-safe)
 [group: 'testing']
 test-skip-interactive:
