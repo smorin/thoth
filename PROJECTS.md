@@ -27,7 +27,7 @@ Keep this summary list updated whenever a project is added, renamed, completed, 
 - [ ] **P26** — [OpenAI — Background Deep Research](projects/P26-openai-background-deep-research.md)
 - [ ] **P27** — [Perplexity — Background Deep Research](projects/P27-perplexity-background-deep-research.md)
 - [ ] **P28** — [Gemini — Background Deep Research](projects/P28-gemini-background-deep-research.md)
-- [ ] P29 — Architecture Review & Cleanup — Background Deep Research Providers
+- [ ] **P29** — [Architecture Review & Cleanup — Background Deep Research Providers](projects/P29-arch-review-background-deep-research.md)
 - [ ] P30 — Claude Code Skills Support
 - [ ] P31 — Interactive Init Command
 - [ ] P32 — Interactive Prompt Refiner
@@ -83,20 +83,6 @@ Existing projects may use older labels such as `**Primary spec**`, `**Plan**`, o
 - Planning tasks may be checked when the plan/spec exists; implementation tasks stay unchecked until the code or docs they describe have actually landed.
 - Mark checkboxes as work lands.
 - When adding a new project, preserve the order requested by the user, then adapt numbering to the current file.
-
----
-
-## [ ] Project P29: Architecture Review & Cleanup — Background Deep Research Providers
-**Goal**: Conduct a cross-provider architecture review across the three background deep research providers once all three are in place.
-
-**Status**: Placeholder — requirements still need to be fleshed out before this can be worked on.
-
-### Tests & Tasks
-- [ ] [P29-TS01] Define review criteria and any regression tests needed before architecture changes are proposed.
-- [ ] [P29-T01] Flesh out requirements for the background-provider architecture review.
-- [ ] [P29-T02] Analyze whether shared infrastructure is feasible across the three background deep research providers.
-- [ ] [P29-T03] Document if no shared abstraction is warranted.
-- [ ] [P29-T04] If applicable, recommend architecture enhancements that reduce duplication and improve stability, uniformity, and maintainability.
 
 ---
 
