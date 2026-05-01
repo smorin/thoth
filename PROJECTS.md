@@ -21,7 +21,7 @@ Keep this summary list updated whenever a project is added, renamed, completed, 
 - [x] **P21b** — [Configuration Profile CRUD Commands (depends on P21)](projects/P21b-configuration-profile-crud.md)
 - [x] **P21c** — [Config Filename Standardization (`thoth.config.toml` everywhere)](projects/P21c-config-filename-standardization.md)
 - [x] **P22** — [OpenAI — Immediate (Synchronous) Calls — closed: validation passed, 4 minor findings routed to P20, refactor outcome (a) (no refactor)](projects/P22-openai-immediate-sync.md)
-- [ ] P23 — Perplexity — Immediate (Synchronous) Calls
+- [ ] **P23** — [Perplexity — Immediate (Synchronous) Calls](projects/P23-perplexity-immediate-sync.md)
 - [ ] P24 — Gemini — Immediate (Synchronous) Calls
 - [ ] P25 — Architecture Review & Cleanup — Immediate Providers
 - [ ] P26 — OpenAI — Background Deep Research
@@ -83,20 +83,6 @@ Existing projects may use older labels such as `**Primary spec**`, `**Plan**`, o
 - Planning tasks may be checked when the plan/spec exists; implementation tasks stay unchecked until the code or docs they describe have actually landed.
 - Mark checkboxes as work lands.
 - When adding a new project, preserve the order requested by the user, then adapt numbering to the current file.
-
----
-
-## [ ] Project P23: Perplexity — Immediate (Synchronous) Calls
-**Goal**: Add standard, single-shot synchronous LLM completion calls via Perplexity.
-
-**Status**: Placeholder — requirements still need to be fleshed out before this can be worked on.
-
-### Tests & Tasks
-- [ ] [P23-TS01] Design tests for Perplexity immediate-call behavior, cassette replay, and live-test gating before implementation.
-- [ ] [P23-T01] Flesh out requirements for Perplexity immediate calls.
-- [ ] [P23-T02] Implement normal synchronous LLM completion calls.
-- [ ] [P23-T03] Add VCR recording/replay coverage for local testing.
-- [ ] [P23-T04] Add live testing capability disabled by default.
 
 ---
 
