@@ -25,7 +25,7 @@ Keep this summary list updated whenever a project is added, renamed, completed, 
 - [ ] **P24** — [Gemini — Immediate (Synchronous) Calls](projects/P24-gemini-immediate-sync.md)
 - [ ] **P25** — [Architecture Review & Cleanup — Immediate Providers](projects/P25-arch-review-immediate-providers.md)
 - [ ] **P26** — [OpenAI — Background Deep Research](projects/P26-openai-background-deep-research.md)
-- [ ] P27 — Perplexity — Background Deep Research
+- [ ] **P27** — [Perplexity — Background Deep Research](projects/P27-perplexity-background-deep-research.md)
 - [ ] P28 — Gemini — Background Deep Research
 - [ ] P29 — Architecture Review & Cleanup — Background Deep Research Providers
 - [ ] P30 — Claude Code Skills Support
@@ -83,20 +83,6 @@ Existing projects may use older labels such as `**Primary spec**`, `**Plan**`, o
 - Planning tasks may be checked when the plan/spec exists; implementation tasks stay unchecked until the code or docs they describe have actually landed.
 - Mark checkboxes as work lands.
 - When adding a new project, preserve the order requested by the user, then adapt numbering to the current file.
-
----
-
-## [ ] Project P27: Perplexity — Background Deep Research
-**Goal**: Add long-running deep research operations via Perplexity, submitted and polled to completion.
-
-**Status**: Placeholder — requirements still need to be fleshed out before this can be worked on.
-
-### Tests & Tasks
-- [ ] [P27-TS01] Design tests for Perplexity background submission, polling, cassette replay, and live-test gating before implementation.
-- [ ] [P27-T01] Flesh out requirements for Perplexity background deep research.
-- [ ] [P27-T02] Implement async deep research submission and polling.
-- [ ] [P27-T03] Add VCR recording/replay coverage for local testing.
-- [ ] [P27-T04] Add live testing capability disabled by default.
 
 ---
 
