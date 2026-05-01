@@ -88,7 +88,7 @@ Older entries may use `**Primary spec**`, `**Plan**`, or
 - [x] **P21c** — [Config Filename Standardization](projects/P21c-config-filename-standardization.md)
 - [x] **P21b** — [Configuration Profile CRUD Commands](projects/P21b-configuration-profile-crud.md)
 - [x] **P21** — [Configuration Profile Resolution & Overlay](projects/P21-configuration-profile-resolution.md)
-- [~] **P20** — [Live-API Workflow Regression Suite](projects/P20-live-api-workflow.md)
+- [x] **P20** — [Live-API Workflow Regression Suite](projects/P20-live-api-workflow.md)
 - [x] **P18** — [Immediate vs Background — Explicit `kind`, Runtime Mismatch, Path Split, Streaming, Cancel](projects/P18-immediate-vs-background-kind.md)
 - [x] **P17** — [thoth-ergonomics-v1 Spec Round-Trip — Annotate Implementation Status](projects/P17-ergonomics-spec-round-trip.md)
 - [x] **P16 PR3** — [Automation Polish — `completion` subcommand + universal `--json`](projects/P16-PR3-automation-polish.md)
