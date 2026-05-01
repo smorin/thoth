@@ -118,6 +118,101 @@ _OP_SPECS: dict[str, _ModesOpSpec] = {}
 _OP_DATA_FNS: dict[str, Callable[..., dict]] = {}
 
 
+def _resolve_write_target(
+    flags: _TargetFlags, *, config_path: str | None
+) -> tuple[Any | None, dict | None]:
+    """Resolve the file write target. Returns (context, error_envelope).
+
+    Caller-supplied `config_path` (from inherited root flag) overrides
+    `flags.config_path` only when the latter is None — this matches
+    `cli_subcommands/_config_context` semantics.
+    """
+    from thoth.config_write_context import (
+        ConfigTargetConflictError,
+        ConfigWriteContext,
+    )
+
+    target_path = flags.config_path or config_path
+    try:
+        context = ConfigWriteContext.resolve(project=flags.project, config_path=target_path)
+    except ConfigTargetConflictError as e:
+        return None, {
+            "error": "PROJECT_CONFIG_CONFLICT",
+            "message": str(e),
+        }
+    return context, None
+
+
+def _check_builtin_guard(name: str, *, override: bool, op_name: str) -> dict | None:
+    """Return an error envelope if NAME is reserved for the op, else None.
+
+    `add`: refuse builtin unless `override`. `copy(dst)`: refuse builtin
+    DST unless `override`. `remove` / `rename`: refuse builtin period
+    (override does not bypass — those ops are not "shadow-create" ops).
+    `set` / `unset`: never refuses on name; this helper isn't called.
+    """
+    from thoth.config import BUILTIN_MODES
+
+    if name not in BUILTIN_MODES:
+        return None
+
+    if op_name in ("add", "copy") and override:
+        return None
+
+    return {
+        "error": "BUILTIN_NAME_RESERVED",
+        "message": f"'{name}' is a builtin mode and cannot be {op_name}'d directly.",
+    }
+
+
+def _check_override_strict(name: str, *, override: bool, op_name: str) -> dict | None:
+    """Return an error envelope if `--override` is passed on a non-builtin.
+
+    Per BQ resolution: `--override` exists only to bypass the builtin
+    guard. Passing it where there's no guard to bypass is a USAGE_ERROR.
+    Applies symmetrically to `add NAME --override` (where NAME isn't
+    builtin) and `copy SRC DST --override` (where DST isn't builtin).
+    """
+    from thoth.config import BUILTIN_MODES
+
+    if not override:
+        return None
+    if name in BUILTIN_MODES:
+        return None
+    return {
+        "error": "USAGE_ERROR",
+        "message": (
+            f"--override is only valid when {op_name.upper()}'s target name "
+            f"shadows a builtin mode ({name!r} is not a builtin; "
+            f"remove --override or use a different name)."
+        ),
+    }
+
+
+def _check_dst_taken(dst: str, *, profile: str | None, op_name: str) -> dict | None:
+    """Return error envelope if DST already exists in the destination tier.
+
+    Used by `rename` and `copy` after their op-specific guard checks.
+    The actual `_table_at` lookup is in the per-op data function (which
+    has the loaded `ConfigDocument`); this helper only formats the error.
+    """
+    return {
+        "error": "DST_NAME_TAKEN",
+        "message": (
+            f"destination {dst!r} already exists "
+            f"in {'profile ' + profile if profile else 'base'} tier"
+        ),
+    }
+
+
+def _target_descriptor(path: Path, profile: str | None) -> dict[str, str]:
+    """Standard `target: {file, tier}` envelope sub-object."""
+    return {
+        "file": str(path),
+        "tier": f"profiles.{profile}.modes" if profile else "modes",
+    }
+
+
 Source = Literal["builtin", "user", "overridden"]
 Kind = Literal["immediate", "background", "unknown"]
 

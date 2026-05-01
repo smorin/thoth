@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 
 def test_parse_target_flags_defaults() -> None:
     from thoth.modes_cmd import _parse_target_flags
@@ -85,3 +87,63 @@ def test_op_specs_registry_starts_empty() -> None:
     # registry can be empty or partial — we only check the type.
     for spec in _OP_SPECS.values():
         assert isinstance(spec, _ModesOpSpec)
+
+
+def test_resolve_write_target_default(isolated_thoth_home: Path) -> None:
+    from thoth.modes_cmd import _resolve_write_target, _TargetFlags
+
+    flags = _TargetFlags()
+    context, err = _resolve_write_target(flags, config_path=None)
+    assert err is None
+    assert context is not None
+    assert context.target_path.name == "thoth.config.toml"
+
+
+def test_resolve_write_target_project_config_conflict() -> None:
+    from thoth.modes_cmd import _resolve_write_target, _TargetFlags
+
+    flags = _TargetFlags(project=True, config_path="/tmp/x.toml")
+    context, err = _resolve_write_target(flags, config_path=None)
+    assert context is None
+    assert err is not None
+    assert err["error"] == "PROJECT_CONFIG_CONFLICT"
+
+
+def test_check_builtin_guard_refuses_builtin_for_add_without_override() -> None:
+    from thoth.modes_cmd import _check_builtin_guard
+
+    err = _check_builtin_guard("deep_research", override=False, op_name="add")
+    assert err is not None
+    assert err["error"] == "BUILTIN_NAME_RESERVED"
+
+
+def test_check_builtin_guard_allows_builtin_for_add_with_override() -> None:
+    from thoth.modes_cmd import _check_builtin_guard
+
+    assert _check_builtin_guard("deep_research", override=True, op_name="add") is None
+
+
+def test_check_builtin_guard_refuses_builtin_for_remove_regardless_of_override() -> None:
+    """`remove` and `rename` builtin guards are absolute — `--override`
+    doesn't bypass them. Only `add` and `copy` (DST-side) honor override."""
+    from thoth.modes_cmd import _check_builtin_guard
+
+    err = _check_builtin_guard("deep_research", override=True, op_name="remove")
+    assert err is not None
+    assert err["error"] == "BUILTIN_NAME_RESERVED"
+
+
+def test_check_override_strict_rejects_nonbuiltin_with_override() -> None:
+    """BQ resolution: `--override` on a non-builtin name is USAGE_ERROR
+    (the flag is the explicit shadow opt-in, not a no-op modifier)."""
+    from thoth.modes_cmd import _check_override_strict
+
+    err = _check_override_strict("my_brief", override=True, op_name="add")
+    assert err is not None
+    assert err["error"] == "USAGE_ERROR"
+
+
+def test_check_override_strict_allows_nonbuiltin_without_override() -> None:
+    from thoth.modes_cmd import _check_override_strict
+
+    assert _check_override_strict("my_brief", override=False, op_name="add") is None
