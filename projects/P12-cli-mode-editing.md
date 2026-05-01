@@ -88,17 +88,17 @@ The `BUILTIN_MODES` constant defines built-in modes that ship in code (P11). The
 Per-command TS rows enumerate functional cases at single-case granularity. Per-command targeting cross-product (file × tier × `--json`) is consolidated into one "targeting matrix" TS row per mutator (the matrix is identical across mutators, so the test family is parameterized; this avoids a 6× explosion in trunk row count while preserving per-command coverage in the suite).
 
 #### `thoth modes add NAME --model M [--provider P] [--description D] [--kind K] [--override] [--project] [--config PATH] [--profile X] [--string] [--json]`
-- [ ] [P12-TS01a] Happy path: creates `[modes.NAME]` with `model = M`, default `provider = "openai"`, default `kind = "immediate"`; appears in `thoth modes list --source user`
-- [ ] [P12-TS01b] `--provider P` writes the given provider key
-- [ ] [P12-TS01c] `--description D` writes the description key
-- [ ] [P12-TS01d] `--kind background` sets `kind = "background"`; default is `"immediate"`; invalid `--kind` value → `USAGE_ERROR` exit 2
-- [ ] [P12-TS01e] Idempotency is **model-only**: same NAME + same model → no-op exit 0 even if `--description` / `--provider` / `--kind` differ from existing entry (those flags are ignored on re-add; users update via `set`)
-- [ ] [P12-TS01f] Same NAME + different model → `MODE_EXISTS_DIFFERENT_MODEL` exit 1
-- [ ] [P12-TS01g] NAME is a builtin (no `--override`) → `BUILTIN_NAME_RESERVED` exit 1; suggests `copy <name> <new>`
-- [ ] [P12-TS01h] Targeting matrix: `--project` → `./thoth.config.toml`; `--config PATH` → PATH; `--profile X` → `[profiles.X.modes.NAME]`; `--profile + --project` and `--profile + --config PATH` compose; `--project + --config PATH` rejected with `USAGE_ERROR` exit 2
-- [ ] [P12-TS01i] `--json` envelope follows the existing wrapper contract: `{"status":"ok","data":{schema_version: "1", op: "add", mode, target: {file, tier}, created, model, provider, kind}}`
-- [ ] [P12-TS01j] `--override` flag: `add deep_research --model gpt-4o-mini --override` writes `[modes.deep_research]`; `--profile dev --override` writes `[profiles.dev.modes.deep_research]`; without `--override`, builtin names are rejected with `BUILTIN_NAME_RESERVED`; existing overrides still use normal model-only idempotency / different-model checks; `--override` on a non-builtin name (e.g. `add my_brief --model M --override`) is rejected with `USAGE_ERROR` exit 2 — the flag is the explicit builtin-shadow opt-in, not a no-op modifier
-- [ ] [P12-T01] Implement `thoth modes add` — click command in `cli_subcommands/modes.py`, `get_modes_add_data` + `_op_add` in `modes_cmd.py`, `ConfigDocument.ensure_mode(profile=...)` primitive
+- [x] [P12-TS01a] Happy path: creates `[modes.NAME]` with `model = M`, default `provider = "openai"`, default `kind = "immediate"`; appears in `thoth modes list --source user`
+- [x] [P12-TS01b] `--provider P` writes the given provider key
+- [x] [P12-TS01c] `--description D` writes the description key
+- [x] [P12-TS01d] `--kind background` sets `kind = "background"`; default is `"immediate"`; invalid `--kind` value → `USAGE_ERROR` exit 2
+- [x] [P12-TS01e] Idempotency is **model-only**: same NAME + same model → no-op exit 0 even if `--description` / `--provider` / `--kind` differ from existing entry (those flags are ignored on re-add; users update via `set`)
+- [x] [P12-TS01f] Same NAME + different model → `MODE_EXISTS_DIFFERENT_MODEL` exit 1
+- [x] [P12-TS01g] NAME is a builtin (no `--override`) → `BUILTIN_NAME_RESERVED` exit 1; suggests `copy <name> <new>`
+- [x] [P12-TS01h] Targeting matrix: `--project` → `./thoth.config.toml`; `--config PATH` → PATH; `--profile X` → `[profiles.X.modes.NAME]`; `--profile + --project` and `--profile + --config PATH` compose; `--project + --config PATH` rejected with `USAGE_ERROR` exit 2
+- [x] [P12-TS01i] `--json` envelope follows the existing wrapper contract: `{"status":"ok","data":{schema_version: "1", op: "add", mode, target: {file, tier}, created, model, provider, kind}}`
+- [x] [P12-TS01j] `--override` flag: `add deep_research --model gpt-4o-mini --override` writes `[modes.deep_research]`; `--profile dev --override` writes `[profiles.dev.modes.deep_research]`; without `--override`, builtin names are rejected with `BUILTIN_NAME_RESERVED`; existing overrides still use normal model-only idempotency / different-model checks; `--override` on a non-builtin name (e.g. `add my_brief --model M --override`) is rejected with `USAGE_ERROR` exit 2 — the flag is the explicit builtin-shadow opt-in, not a no-op modifier
+- [x] [P12-T01] Implement `thoth modes add` — click command in `cli_subcommands/modes.py`, `get_modes_add_data` + `_op_add` in `modes_cmd.py`, `ConfigDocument.ensure_mode(profile=...)` primitive
 
 #### `thoth modes set NAME KEY VALUE [--project] [--config PATH] [--profile X] [--string] [--json]`
 - [ ] [P12-TS02a] Updates existing user mode: KEY=VALUE round-trips through tomlkit

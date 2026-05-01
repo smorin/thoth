@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 
 def test_parse_target_flags_defaults() -> None:
     from thoth.modes_cmd import _parse_target_flags
@@ -261,3 +263,184 @@ def test_parse_modes_args_op_flag_missing_value(monkeypatch) -> None:
     assert err is not None
     assert err["error"] == "USAGE_ERROR"
     assert "--model" in err["message"]
+
+
+# ---------------------------------------------------------------------------
+# TS01a-j — `thoth modes add` (P12 Task 4)
+# ---------------------------------------------------------------------------
+
+
+def test_add_happy_path_creates_mode(isolated_thoth_home: Path) -> None:  # TS01a
+    from thoth.modes_cmd import modes_command
+
+    rc = modes_command("add", ["brief", "--model", "gpt-4o-mini"])
+    assert rc == 0
+
+    cfg = Path(isolated_thoth_home) / "config" / "thoth" / "thoth.config.toml"
+    text = cfg.read_text()
+    assert "[modes.brief]" in text
+    assert 'model = "gpt-4o-mini"' in text
+    assert 'provider = "openai"' in text  # default
+    assert 'kind = "immediate"' in text  # default
+
+
+def test_add_writes_to_project_with_flag(
+    isolated_thoth_home: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:  # TS01h base
+    monkeypatch.chdir(tmp_path)
+    from thoth.modes_cmd import modes_command
+
+    rc = modes_command("add", ["brief", "--model", "gpt-4o-mini", "--project"])
+    assert rc == 0
+    proj_cfg = tmp_path / "thoth.config.toml"
+    assert proj_cfg.exists()
+    assert "[modes.brief]" in proj_cfg.read_text()
+
+
+def test_add_with_provider_flag(isolated_thoth_home: Path) -> None:  # TS01b
+    from thoth.modes_cmd import modes_command
+
+    rc = modes_command("add", ["brief", "--model", "gpt-4o-mini", "--provider", "perplexity"])
+    assert rc == 0
+    cfg = Path(isolated_thoth_home) / "config" / "thoth" / "thoth.config.toml"
+    assert 'provider = "perplexity"' in cfg.read_text()
+
+
+def test_add_with_description(isolated_thoth_home: Path) -> None:  # TS01c
+    from thoth.modes_cmd import modes_command
+
+    rc = modes_command(
+        "add",
+        ["brief", "--model", "gpt-4o-mini", "--description", "terse daily"],
+    )
+    assert rc == 0
+    cfg = Path(isolated_thoth_home) / "config" / "thoth" / "thoth.config.toml"
+    assert 'description = "terse daily"' in cfg.read_text()
+
+
+def test_add_kind_background(isolated_thoth_home: Path) -> None:  # TS01d
+    from thoth.modes_cmd import modes_command
+
+    rc = modes_command("add", ["brief", "--model", "gpt-4o-mini", "--kind", "background"])
+    assert rc == 0
+    cfg = Path(isolated_thoth_home) / "config" / "thoth" / "thoth.config.toml"
+    assert 'kind = "background"' in cfg.read_text()
+
+
+def test_add_invalid_kind_rejected(isolated_thoth_home: Path) -> None:  # TS01d (negative)
+    from thoth.modes_cmd import modes_command
+
+    rc = modes_command("add", ["brief", "--model", "gpt-4o-mini", "--kind", "weird"])
+    assert rc == 2
+
+
+def test_add_idempotent_same_model(isolated_thoth_home: Path) -> None:  # TS01e
+    from thoth.modes_cmd import modes_command
+
+    assert modes_command("add", ["brief", "--model", "gpt-4o-mini"]) == 0
+    assert modes_command("add", ["brief", "--model", "gpt-4o-mini"]) == 0
+
+
+def test_add_idempotency_ignores_other_flags(isolated_thoth_home: Path) -> None:  # TS01e (key)
+    from thoth.modes_cmd import modes_command
+
+    assert modes_command("add", ["brief", "--model", "gpt-4o-mini", "--description", "first"]) == 0
+    # Same model, different description → still no-op (model-only idempotency).
+    assert modes_command("add", ["brief", "--model", "gpt-4o-mini", "--description", "second"]) == 0
+    cfg = Path(isolated_thoth_home) / "config" / "thoth" / "thoth.config.toml"
+    assert 'description = "first"' in cfg.read_text()  # unchanged
+
+
+def test_add_different_model_errors(isolated_thoth_home: Path) -> None:  # TS01f
+    from thoth.modes_cmd import modes_command
+
+    assert modes_command("add", ["brief", "--model", "gpt-4o-mini"]) == 0
+    assert modes_command("add", ["brief", "--model", "gpt-5"]) == 1
+
+
+def test_add_builtin_name_reserved(isolated_thoth_home: Path) -> None:  # TS01g
+    from thoth.modes_cmd import modes_command
+
+    rc = modes_command("add", ["deep_research", "--model", "gpt-4o-mini"])
+    assert rc == 1
+
+
+def test_add_with_config_path(tmp_path: Path) -> None:  # TS01h
+    from thoth.modes_cmd import modes_command
+
+    target = tmp_path / "custom.toml"
+    rc = modes_command("add", ["brief", "--model", "gpt-4o-mini", "--config", str(target)])
+    assert rc == 0
+    assert "[modes.brief]" in target.read_text()
+
+
+def test_add_project_and_config_conflict(isolated_thoth_home: Path) -> None:  # TS01h
+    from thoth.modes_cmd import modes_command
+
+    rc = modes_command(
+        "add",
+        [
+            "brief",
+            "--model",
+            "gpt-4o-mini",
+            "--project",
+            "--config",
+            "/tmp/x.toml",
+        ],
+    )
+    assert rc == 2
+
+
+def test_add_with_profile_overlay(isolated_thoth_home: Path) -> None:  # TS01j base
+    from thoth.modes_cmd import modes_command
+
+    rc = modes_command("add", ["cheap", "--model", "gpt-4o-mini", "--profile", "dev"])
+    assert rc == 0
+    cfg = Path(isolated_thoth_home) / "config" / "thoth" / "thoth.config.toml"
+    assert "[profiles.dev.modes.cheap]" in cfg.read_text()
+
+
+def test_add_override_required_for_builtin(isolated_thoth_home: Path) -> None:  # TS01j
+    from thoth.modes_cmd import modes_command
+
+    # Without --override, even with --profile, builtin name is reserved.
+    rc = modes_command("add", ["deep_research", "--model", "gpt-4o-mini", "--profile", "dev"])
+    assert rc == 1
+
+    # With --override and no --profile, writes a base-tier override.
+    rc = modes_command("add", ["deep_research", "--model", "gpt-4o-mini", "--override"])
+    assert rc == 0
+    cfg = Path(isolated_thoth_home) / "config" / "thoth" / "thoth.config.toml"
+    assert "[modes.deep_research]" in cfg.read_text()
+
+
+def test_add_override_allows_builtin_in_profile_tier(
+    isolated_thoth_home: Path,
+) -> None:  # TS01j
+    from thoth.modes_cmd import modes_command
+
+    rc = modes_command(
+        "add",
+        [
+            "deep_research",
+            "--model",
+            "gpt-4o-mini",
+            "--profile",
+            "dev",
+            "--override",
+        ],
+    )
+    assert rc == 0
+    cfg = Path(isolated_thoth_home) / "config" / "thoth" / "thoth.config.toml"
+    assert "[profiles.dev.modes.deep_research]" in cfg.read_text()
+
+
+def test_add_override_on_nonbuiltin_rejected(
+    isolated_thoth_home: Path,
+) -> None:  # TS01j (strict)
+    """`--override` is the builtin-shadow opt-in. Passing it on a
+    non-builtin name (where there's no guard to bypass) is a USAGE_ERROR."""
+    from thoth.modes_cmd import modes_command
+
+    rc = modes_command("add", ["my_brief", "--model", "gpt-4o-mini", "--override"])
+    assert rc == 2

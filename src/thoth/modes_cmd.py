@@ -327,6 +327,145 @@ def parse_modes_args(
     return op_kwargs, target_flags, None
 
 
+# ---------------------------------------------------------------------------
+# `thoth modes add` — P12 Task 4
+# ---------------------------------------------------------------------------
+
+
+def get_modes_add_data(
+    name: str,
+    *,
+    model: str,
+    provider: str = "openai",
+    description: str | None = None,
+    kind: str = "immediate",
+    project: bool = False,
+    config_path: str | None = None,
+    profile: str | None = None,
+    # Following kwargs are spread by get_modes_data_from_args even though
+    # they're not all relevant to `add`. Accept them to match the contract.
+    from_profile: str | None = None,
+    force_string: bool = False,
+    override: bool = False,
+) -> dict:
+    """Pure data function for `thoth modes add`. Returns a receipt dict.
+
+    Idempotency: same NAME + same model = no-op exit 0; different model =
+    `MODE_EXISTS_DIFFERENT_MODEL` exit 1. Other flags ignored on re-add.
+
+    Builtin-name guard: refuses unless `--override` is set. `--override`
+    writes a builtin-name override in the selected tier (base by default,
+    profile overlay when `profile` is set). Strict-on-non-builtin rule
+    (BQ resolution): `--override` without a builtin guard to bypass is
+    USAGE_ERROR.
+    """
+    # Validate kind
+    if kind not in ("immediate", "background"):
+        return {
+            "schema_version": SCHEMA_VERSION,
+            "op": "add",
+            "mode": name,
+            "error": "USAGE_ERROR",
+            "message": f"--kind must be one of immediate, background (got {kind!r})",
+        }
+
+    # Strict-on-non-builtin: --override on a non-builtin name is USAGE_ERROR
+    err = _check_override_strict(name, override=override, op_name="add")
+    if err is not None:
+        return {
+            "schema_version": SCHEMA_VERSION,
+            "op": "add",
+            "mode": name,
+            **err,
+        }
+
+    # Builtin-name guard
+    err = _check_builtin_guard(name, override=override, op_name="add")
+    if err is not None:
+        return {
+            "schema_version": SCHEMA_VERSION,
+            "op": "add",
+            "mode": name,
+            **err,
+        }
+
+    # Resolve write target (handles --project + --config PATH conflict)
+    flags = _TargetFlags(project=project, config_path=config_path)
+    context, err = _resolve_write_target(flags, config_path=None)
+    if err is not None:
+        return {
+            "schema_version": SCHEMA_VERSION,
+            "op": "add",
+            "mode": name,
+            **err,
+        }
+
+    assert context is not None  # guaranteed by err is None
+    doc = context.load_document()
+    target_segments = ("profiles", profile, "modes", name) if profile else ("modes", name)
+    existing = doc._table_at(target_segments)
+
+    if existing is not None:
+        existing_model = existing.get("model")
+        if existing_model == model:
+            return {
+                "schema_version": SCHEMA_VERSION,
+                "op": "add",
+                "mode": name,
+                "created": False,
+                "model": model,
+                "provider": existing.get("provider"),
+                "kind": existing.get("kind"),
+                "target": _target_descriptor(context.target_path, profile),
+            }
+        return {
+            "schema_version": SCHEMA_VERSION,
+            "op": "add",
+            "mode": name,
+            "error": "MODE_EXISTS_DIFFERENT_MODEL",
+            "message": (
+                f"mode {name!r} already exists with model "
+                f"{existing_model!r} (you passed {model!r}). "
+                f"Use `thoth modes set {name} model {model}` to update."
+            ),
+        }
+
+    # Create
+    doc.ensure_mode(name, profile=profile)
+    doc.set_mode_value(name, "model", model, profile=profile)
+    doc.set_mode_value(name, "provider", provider, profile=profile)
+    doc.set_mode_value(name, "kind", kind, profile=profile)
+    if description is not None:
+        doc.set_mode_value(name, "description", description, profile=profile)
+    doc.save()
+
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "op": "add",
+        "mode": name,
+        "created": True,
+        "model": model,
+        "provider": provider,
+        "kind": kind,
+        "target": _target_descriptor(context.target_path, profile),
+    }
+
+
+_OP_SPECS["add"] = _ModesOpSpec(
+    name="add",
+    positionals=("NAME",),
+    op_flags={
+        "--model": "model",
+        "--provider": "provider",
+        "--description": "description",
+        "--kind": "kind",
+    },
+    required_op_flags=frozenset({"model"}),
+    accepts_override=True,
+)
+_OP_DATA_FNS["add"] = get_modes_add_data
+
+
 Source = Literal["builtin", "user", "overridden"]
 Kind = Literal["immediate", "background", "unknown"]
 
