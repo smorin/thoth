@@ -99,6 +99,13 @@ class ConfigDocument:
         self._ensure_table(segments)
         return True
 
+    def set_mode_value(
+        self, name: str, key: str, value: Any, *, profile: str | None = None
+    ) -> None:
+        """Set `[<tier>.modes.<NAME>.<KEY>]`. Dotted KEY creates nested tables."""
+        prefix = self._mode_segments(name, profile)
+        self._set_segments((*prefix, *_parse_config_key(key)), value)
+
     def _table_at(self, segments: tuple[str, ...]) -> Any | None:
         current: Any = self._document
         for segment in segments:
