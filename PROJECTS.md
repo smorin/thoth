@@ -72,6 +72,7 @@ Older entries may use `**Primary spec**`, `**Plan**`, or
 <!-- Descending P-number order. Scoped / in-progress / done first;
      ideas last. One row per file; one file per row. -->
 
+- [?] **P34** — [VCR cassette coverage for OpenAIProvider.stream()](projects/P34-vcr-cassette-openai-stream-.md)
 - [ ] **P33** — [Schema-Driven Config Defaults](projects/P33-schema-driven-config-defaults.md)
 - [ ] **P32** — [Interactive Prompt Refiner](projects/P32-interactive-prompt-refiner.md)
 - [ ] **P31** — [Interactive Init Command](projects/P31-interactive-init-command.md)
