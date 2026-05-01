@@ -49,7 +49,7 @@ Keep this summary list updated whenever a project is added, renamed, completed, 
 - [x] P06 — Hybrid Transient/Permanent Error Handling with Resumable Recovery
 - [x] P05 — VCR Cassette Replay Tests
 - [x] P03 — Fix BUG-03 OpenAI Poll Interval Scheduling
-- [x] P02 — Fix BUG-01 OpenAI Background Status Handling
+- [x] **P02** — [Fix BUG-01 OpenAI Background Status Handling](projects/P02-bug-01-openai-background-status.md)
 - [x] P04 — GAP-01 — max_tool_calls safeguard and tool-selection config
 - [x] **P01** — [Developer Tooling & Automation](projects/P01-developer-tooling.md)
 
@@ -1890,30 +1890,6 @@ Phase 6 — Cleanup
 - [x] BUG03-01 verifies -10% jitter still polls at 1.8s, not 1.0s
 - [x] BUG03-02 verifies a 0.25s poll interval is honored exactly
 - [x] BUG03-03 verifies the CLI still completes a mock-provider research run end to end
-
----
-
-## [x] Project P02: Fix BUG-01 OpenAI Background Status Handling (v2.5.0)
-**Goal**: Correctly handle all documented OpenAI Responses API background lifecycle states (`incomplete`, `cancelled`, `queued`, no-status-attr, stale-cache) so the CLI never silently misreports terminal failure states as success.
-
-**Out of Scope**
-- BUG-02 (citation parsing), GAP-01 through GAP-05
-
-### Tests & Tasks
-- [x] [P02-T01] Add `"fixture"` test_type dispatch + helpers to `thoth_test`
-- [x] [P02-TS01] Add OAI-BG-01–08 fixture tests for `check_status()` (queued, failed, incomplete, cancelled, no-status-attr, stale-cache, good-cache, in_progress regression)
-- [x] [P02-T02] Fix `check_status()` in `OpenAIProvider` — explicit branches for all 6 API statuses, fixed no-status-attr and stale-cache paths
-- [x] [P02-TS02] Add OAI-BG-09–14 polling loop fixture tests (queued no premature exit, failed/cancelled/error propagate, not_found/unknown normalize to error)
-- [x] [P02-T03] Fix polling loop in `_execute_research()` — queued keeps polling, terminal failures propagate
-- [x] [P02-T04] Update OPENAI-BUGS.md (BUG-01 status → Fixed) and PROJECTS.md
-
-### Automated Verification
-- `make check` passes
-- `./thoth_test -r -t OAI-BG --skip-interactive` → 14/14 pass
-- `./thoth_test -r --provider mock --skip-interactive` → 67 passed, 0 failed
-
-### Regression Test Status
-- [x] All 14 OAI-BG fixture tests pass
 
 ---
 
