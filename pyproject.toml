@@ -58,7 +58,7 @@ dev = [
     "ruff>=0.9",
     "ty>=0.0.32",
     "pexpect>=4.8",
-    "pytest>=8.0",
+    "pytest>=9.0.3",
     "pytest-xdist>=3.5",
     "vcrpy>=8.1.1",
 ]
