@@ -436,7 +436,7 @@ Existing projects may use older labels such as `**Primary spec**`, `**Plan**`, o
 
 ---
 
-## [ ] Project P20: Live-API Workflow Regression Suite (weekly)
+## [~] Project P20: Live-API Workflow Regression Suite (weekly)
 
 **References**
 - **Trunk:** [PROJECTS.md](#) (this file)
@@ -464,9 +464,9 @@ Existing projects may use older labels such as `**Primary spec**`, `**Plan**`, o
 - [ ] [P20-TS06] `--no-metadata`: written file is non-empty but has no YAML front-matter, no `operation_id:`, no `### Prompt` section.
 - [ ] [P20-TS07] `--api-key-openai sk-...` succeeds with `OPENAI_API_KEY` unset in the test env; assert exit 0 AND key not echoed in stdout/stderr.
 - [ ] [P20-TS08] Mismatch defense (no HTTP): real provider construction with an immediate-declared deep-research model raises `ModeKindMismatchError` before any network call.
-- [ ] [P20-T01] Register `live_api` marker in `pyproject.toml`; extend `addopts` to `-m 'not extended and not live_api'`; add `just test-live-api` recipe.
-- [ ] [P20-T02] Create `.github/workflows/live-api.yml` with cron `0 2 * * 0` (Sat 7pm PDT, Sun 02:00 UTC), `OPENAI_API_KEY` from secrets, `continue-on-error: true`, mirroring `extended.yml` shape.
-- [ ] [P20-T03] Update `CLAUDE.md` "Code Quality Assurance Workflow" section and `README.md` test-categories block (if present) to mention the new `live_api` marker, weekly cadence, and trigger command.
+- [x] [P20-T01] Register `live_api` marker in `pyproject.toml`; extend `addopts` to `-m 'not extended and not live_api'`; add `just test-live-api` recipe.
+- [x] [P20-T02] Create `.github/workflows/live-api.yml` with cron `0 2 * * 0` (Sat 7pm PDT, Sun 02:00 UTC), `OPENAI_API_KEY` from secrets, `continue-on-error: true`, mirroring `extended.yml` shape.
+- [x] [P20-T03] Update `CLAUDE.md` "Code Quality Assurance Workflow" section and `README.md` test-categories block (if present) to mention the new `live_api` marker, weekly cadence, and trigger command.
 
 ### Acceptance Criteria
 - `uv run pytest -q` deselects both `extended` and `live_api` (default + PR CI unchanged).
