@@ -168,6 +168,22 @@ Do not re-run the 8-step verification (`make env-check` → `just fix` →
 `just test-typecheck`) between edits. That's ~90s per cycle. Run it once
 at the end.
 
+### Real-API test suites (gated, NOT in the pre-commit gate)
+
+Two pytest markers gate tests that hit live provider APIs. Both are
+deselected by default (`addopts = "-m 'not extended and not live_api'"`)
+so `git commit` and PR CI never trigger real network calls or spend.
+
+| Marker | Trigger | Schedule | Purpose |
+|---|---|---|---|
+| `extended` | `just test-extended` / `pytest -m extended` | nightly via `.github/workflows/extended.yml` (09:00 UTC) | model-kind drift watch — every entry in `KNOWN_MODELS` matches upstream API behavior |
+| `live_api` | `just test-live-api` / `pytest -m live_api` | weekly via `.github/workflows/live-api.yml` (Sun 02:00 UTC = Sat 7pm PDT) | CLI workflow regression — streaming, file output, append, secret masking, mismatch defense |
+
+Both workflows run with `continue-on-error: true` (informational, not
+blocking) and require the `OPENAI_API_KEY` repo secret. To trigger
+manually: `gh workflow run "Extended Contract Tests (nightly)"` or
+`gh workflow run "Live-API Workflow Tests (weekly)"`.
+
 ## Planning Documents Management
 
 ### Location and Structure

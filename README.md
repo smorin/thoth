@@ -683,6 +683,8 @@ Use `thoth_test` for the actual regression suite. It mixes provider-agnostic CLI
 | `./thoth_test -r --provider mock` | Provider-agnostic tests plus mock-provider coverage | Fastest broad regression run with no real API keys |
 | `./thoth_test -r --provider openai` | Provider-agnostic tests plus OpenAI-specific cases | Validating OpenAI integration with a real key |
 | `./thoth_test -r --all-providers` | Every provider test the suite knows about | Full provider matrix validation |
+| `just test-extended` | Real-API model-kind drift watch (`pytest -m extended`) | Nightly job; manual when investigating provider-API changes |
+| `just test-live-api` | Real-API CLI workflow regression suite (`pytest -m live_api`) | Weekly job (Sat 7pm PDT); manual when verifying user-visible streaming/file/secret behavior |
 
 `thoth_test -r` behaves like this:
 - Always runs provider-agnostic tests.
