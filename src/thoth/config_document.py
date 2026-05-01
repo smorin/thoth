@@ -82,6 +82,23 @@ class ConfigDocument:
             return False
         return self.unset_default_profile()
 
+    # ------------------------------------------------------------------
+    # Mode primitives (P12) — base tier `[modes.<NAME>]` or overlay
+    # tier `[profiles.<X>.modes.<NAME>]` when `profile` is set.
+    # ------------------------------------------------------------------
+
+    def _mode_segments(self, name: str, profile: str | None) -> tuple[str, ...]:
+        if profile is not None:
+            return ("profiles", profile, "modes", name)
+        return ("modes", name)
+
+    def ensure_mode(self, name: str, *, profile: str | None = None) -> bool:
+        segments = self._mode_segments(name, profile)
+        if self._table_at(segments) is not None:
+            return False
+        self._ensure_table(segments)
+        return True
+
     def _table_at(self, segments: tuple[str, ...]) -> Any | None:
         current: Any = self._document
         for segment in segments:
