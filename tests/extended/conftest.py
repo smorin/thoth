@@ -77,6 +77,32 @@ def assert_no_secret_leaked(result: subprocess.CompletedProcess[str], env: dict[
         assert secret not in result.stderr
 
 
+def assert_nonempty_file(path: Path) -> None:
+    assert path.exists(), f"expected file at {path}, none found"
+    assert path.stat().st_size > 0, f"file at {path} is empty"
+
+
+def assert_metadata_present(
+    path: Path,
+    *,
+    prompt_fragment: str,
+    mode: str,
+    provider: str,
+) -> None:
+    text = path.read_text(encoding="utf-8")
+    assert text.startswith("---\n"), f"expected YAML front-matter at {path}"
+    assert f"mode: {mode}" in text, f"missing mode: {mode} in {path}"
+    assert f"provider: {provider}" in text, f"missing provider: {provider} in {path}"
+    assert prompt_fragment in text, f"missing prompt fragment in {path}"
+
+
+def assert_metadata_absent(path: Path) -> None:
+    text = path.read_text(encoding="utf-8")
+    assert not text.startswith("---\n"), f"unexpected YAML front-matter at {path}"
+    assert "operation_id:" not in text, f"unexpected operation_id metadata in {path}"
+    assert "### Prompt" not in text, f"unexpected ### Prompt section in {path}"
+
+
 def checkpoint_path(state_root: Path, operation_id: str) -> Path:
     return state_root / "state" / "thoth" / "checkpoints" / f"{operation_id}.json"
 
