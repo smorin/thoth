@@ -188,6 +188,43 @@ class ConfigDocument:
         del parent[leaf]
         return True
 
+    def copy_mode(
+        self,
+        src: str,
+        dst: str,
+        *,
+        from_profile: str | None = None,
+        profile: str | None = None,
+    ) -> bool:
+        """Copy mode SRC (read from `from_profile`'s tier or base) into
+        DST (written to `profile`'s tier or base) within the same file.
+
+        The four directions are:
+
+        - from_profile=None, profile=None  → base→base
+        - from_profile=None, profile="X"   → base→overlay
+        - from_profile="X",  profile=None  → overlay→base
+        - from_profile="X",  profile="Y"   → overlay→overlay (incl. X==Y)
+
+        Returns False if SRC is absent in its tier or DST already exists
+        in its tier. The primitive does NOT layer with BUILTIN_MODES — the
+        CLI caller is responsible for resolving "effective" config when
+        SRC is a builtin without a user-side override (it pre-populates
+        `[modes.<SRC>]` from `BUILTIN_MODES` before calling).
+        """
+        src_prefix = self._mode_segments(src, from_profile)
+        dst_prefix = self._mode_segments(dst, profile)
+        src_table = self._table_at(src_prefix)
+        if src_table is None:
+            return False
+        if self._table_at(dst_prefix) is not None:
+            return False
+
+        new_table = self._ensure_table(dst_prefix)
+        for k in list(src_table.keys()):
+            new_table[k] = src_table[k]
+        return True
+
     def _table_at(self, segments: tuple[str, ...]) -> Any | None:
         current: Any = self._document
         for segment in segments:

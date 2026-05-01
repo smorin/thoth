@@ -167,3 +167,67 @@ def test_rename_mode_in_overlay(tmp_path: Path) -> None:
     text = p.read_text()
     assert "profiles.dev.modes.new" in text
     assert "profiles.dev.modes.old" not in text
+
+
+def test_copy_mode_base_to_base(tmp_path: Path) -> None:
+    p = tmp_path / "thoth.config.toml"
+    doc = _doc(p)
+    doc.set_mode_value("src", "model", "gpt-4o-mini")
+    doc.set_mode_value("src", "temperature", 0.2)
+    assert doc.copy_mode("src", "dst") is True
+    doc.save()
+    text = p.read_text()
+    assert "[modes.src]" in text
+    assert "[modes.dst]" in text
+
+
+def test_copy_mode_base_to_overlay(tmp_path: Path) -> None:
+    p = tmp_path / "thoth.config.toml"
+    doc = _doc(p)
+    doc.set_mode_value("src", "model", "gpt-4o-mini")
+    assert doc.copy_mode("src", "dst", profile="dev") is True
+    doc.save()
+    text = p.read_text()
+    assert "[modes.src]" in text
+    assert "[profiles.dev.modes.dst]" in text
+
+
+def test_copy_mode_overlay_to_base(tmp_path: Path) -> None:
+    p = tmp_path / "thoth.config.toml"
+    doc = _doc(p)
+    doc.set_mode_value("src", "model", "gpt-4o-mini", profile="dev")
+    assert doc.copy_mode("src", "dst", from_profile="dev") is True
+    doc.save()
+    text = p.read_text()
+    assert "[profiles.dev.modes.src]" in text
+    assert "[modes.dst]" in text
+
+
+def test_copy_mode_overlay_to_overlay_cross_profile(tmp_path: Path) -> None:
+    p = tmp_path / "thoth.config.toml"
+    doc = _doc(p)
+    doc.set_mode_value("src", "model", "gpt-4o-mini", profile="dev")
+    assert doc.copy_mode("src", "dst", from_profile="dev", profile="ci") is True
+    doc.save()
+    text = p.read_text()
+    assert "profiles.dev.modes.src" in text
+    assert "profiles.ci.modes.dst" in text
+
+
+def test_copy_mode_when_dst_already_exists(tmp_path: Path) -> None:
+    p = tmp_path / "thoth.config.toml"
+    doc = _doc(p)
+    doc.set_mode_value("src", "model", "a")
+    doc.set_mode_value("dst", "model", "b")
+    assert doc.copy_mode("src", "dst") is False
+
+
+def test_copy_mode_when_src_absent_falls_back_to_caller_provided_data(
+    tmp_path: Path,
+) -> None:
+    """The primitive has no notion of BUILTIN_MODES; the CLI layer is
+    responsible for layering builtin+override before calling. When SRC is
+    truly absent in the file, the primitive returns False."""
+    p = tmp_path / "thoth.config.toml"
+    doc = _doc(p)
+    assert doc.copy_mode("missing", "dst") is False
