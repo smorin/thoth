@@ -26,13 +26,15 @@ profile selection.
 ## Surface
 
 ```
-thoth modes set-default NAME [--project | --config PATH] [--profile X] [--json]
-thoth modes unset-default       [--project | --config PATH] [--profile X] [--json]
+thoth [--config PATH] [--profile X] modes set-default NAME [--project] [--json]
+thoth [--config PATH] [--profile X] modes unset-default      [--project] [--json]
 ```
 
-Honored inherited options: `--config PATH`, `--profile X`. `--project`
-is a leaf-local flag (not inherited), matching the existing `modes`
-mutators. JSON envelope mirrors `config profiles set-default` shape.
+`--config PATH` and `--profile X` are root-level inherited options and
+must appear **before** the `modes` subcommand (matching every other
+`thoth modes` mutator). `--project` and `--json` are leaf-local flags
+on `set-default` / `unset-default`. JSON envelope mirrors
+`config profiles set-default` shape.
 
 ## Tier matrix
 
@@ -141,13 +143,13 @@ Given:
 | Command | Outcome |
 |---|---|
 | `thoth modes set-default deep-with-stats` | ✓ writes `general.default_mode = "deep-with-stats"` to user. NAME resolvable cross-tier (defined in project base modes). |
-| `thoth modes set-default deep-with-stats --profile work` | ✓ writes `profiles.work.default_mode = "deep-with-stats"` to user. Profile `work` exists in user (target tier). |
-| `thoth modes set-default deep-with-stats --profile work --project` | ✗ exit 1. Profile `work` not in project config. Error: "Profile 'work' not found in project config; pass `--project` only if work is defined there, or run `thoth config profiles add work --project` first." |
-| `thoth modes set-default deep-with-stats --profile demo` | ✗ exit 1. Profile `demo` not in user config. Error lists profiles found in user config. |
-| `thoth modes set-default deep --profile work` | ✓ writes `profiles.work.default_mode = "deep"` to user. NAME `deep` is a builtin. |
+| `thoth --profile work modes set-default deep-with-stats` | ✓ writes `profiles.work.default_mode = "deep-with-stats"` to user. Profile `work` exists in user (target tier). |
+| `thoth --profile work modes set-default deep-with-stats --project` | ✗ exit 1. Profile `work` not in project config. Error: "Profile 'work' not found in project config; pass `--project` only if work is defined there, or run `thoth config profiles add work --project` first." |
+| `thoth --profile demo modes set-default deep-with-stats` | ✗ exit 1. Profile `demo` not in user config. Error lists profiles found in user config. |
+| `thoth --profile work modes set-default deep_research` | ✓ writes `profiles.work.default_mode = "deep_research"` to user. NAME `deep_research` is a builtin. |
 | `thoth modes set-default not-a-mode` | ✗ exit 1. Mode `not-a-mode` not found. Error lists resolvable modes. |
-| `thoth modes unset-default --profile work --project` | ✓ no-op. Returns `removed=False, reason="NOT_FOUND"` (or `NO_FILE`). No same-tier check on unset. |
-| `thoth modes unset-default --profile demo` | ✓ no-op. Returns `removed=False, reason="NOT_FOUND"`. Profile `demo` doesn't exist anywhere; unset is idempotent. |
+| `thoth --profile work modes unset-default --project` | ✓ no-op. Returns `removed=False, reason="NOT_FOUND"` (or `NO_FILE`). No same-tier check on unset. |
+| `thoth --profile demo modes unset-default` | ✓ no-op. Returns `removed=False, reason="NOT_FOUND"`. Profile `demo` doesn't exist anywhere; unset is idempotent. |
 
 ## Resolution change
 
@@ -215,7 +217,7 @@ Tests land **before** implementation, per repo policy.
 
 - NAME not in catalog → exit 1; stderr lists available modes.
 - `--project --config PATH` → exit 2, `PROJECT_CONFIG_CONFLICT`.
-- NAME = a builtin (e.g. `"deep"`) → accepted, write succeeds.
+- NAME = a builtin (e.g. `"deep_research"` or `"default"`) → accepted, write succeeds.
 - NAME exists only as `[modes.NAME]` in user → accepted (general scope).
 - NAME exists only as `[profiles.Y.modes.NAME]`, writing `--profile X`
   (X ≠ Y) → rejected (mode not resolvable when X is active).
@@ -265,29 +267,31 @@ Cover all 7 rows of the matrix above:
 Each case uses an isolated `ConfigManager` fixture:
 
 - No env, no profile, no `general.default_mode` → `"default"`.
-- `general.default_mode = "deep"`, no profile, no env → `"deep"`.
-- `general.default_mode = "deep"`, active profile with no
-  `default_mode` → `"deep"`.
-- `general.default_mode = "deep"`, active profile with
-  `default_mode = "fast"` → `"fast"`.
-- `THOTH_DEFAULT_MODE = "env"` + active profile with
-  `default_mode = "fast"` + `general.default_mode = "deep"` → `"env"`.
+- `general.default_mode = "deep_research"`, no profile, no env →
+  `"deep_research"`.
+- `general.default_mode = "deep_research"`, active profile with no
+  `default_mode` → `"deep_research"`.
+- `general.default_mode = "deep_research"`, active profile with
+  `default_mode = "quick_research"` → `"quick_research"`.
+- `THOTH_DEFAULT_MODE = "thinking"` + active profile with
+  `default_mode = "quick_research"` + `general.default_mode =
+  "deep_research"` → `"thinking"`.
 - Active profile not loaded (selection.source = `"none"`) but
-  `[profiles.X]` table exists in TOML → still `"deep"` (only the
-  resolved/loaded active profile counts).
+  `[profiles.X]` table exists in TOML → still `"deep_research"` (only
+  the resolved/loaded active profile counts).
 
 ### JSON envelope shape
 
 `set-default` success:
 
 ```json
-{"default_mode": "deep", "wrote": true, "path": "/path/to/config.toml"}
+{"default_mode": "deep_research", "wrote": true, "path": "/path/to/config.toml"}
 ```
 
 With `--profile`:
 
 ```json
-{"default_mode": "deep", "profile": "X", "wrote": true, "path": "..."}
+{"default_mode": "deep_research", "profile": "work", "wrote": true, "path": "..."}
 ```
 
 Errors emit `{"error": "<CODE>", "message": "..."}` via
