@@ -2999,15 +2999,16 @@ all_tests = [
     ),
     TestCase(
         test_id="P07-M2-01",
-        description="Providers list marks Perplexity as not implemented when configured",
+        description="Providers list marks Perplexity as Ready when API key is set",
         command=[THOTH_EXECUTABLE, "providers", "list"],
-        env={"PERPLEXITY_API_KEY": "pplx-test-not-implemented"},
+        env={"PERPLEXITY_API_KEY": "pplx-test-ready"},
         expected_stdout_patterns=[
             r"perplexity",
-            r"Perplexity search AI \(not.*implemented\)",
+            r"Perplexity Sonar",
+            r"perplexity\s+│\s+✓ Ready",
         ],
         not_expected_stdout_patterns=[
-            r"perplexity\s+│\s+✓ Ready",
+            r"\(not\s+implemented\)",
         ],
         expected_exit_code=0,
     ),

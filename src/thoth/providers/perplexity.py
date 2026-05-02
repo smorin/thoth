@@ -154,10 +154,10 @@ class PerplexityProvider(ResearchProvider):
         )
 
     def is_implemented(self) -> bool:
-        return False
+        return True
 
     def implementation_status(self) -> str | None:
-        return "Not implemented"
+        return None
 
     async def list_models(self) -> list[dict[str, Any]]:
         return [

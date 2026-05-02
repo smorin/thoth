@@ -576,3 +576,44 @@ def test_perplexity_allows_plain_models_on_immediate() -> None:
     provider.client = _stub_client(captured)
     job_id = asyncio.run(provider.submit("hi", mode="perplexity_pro"))
     assert job_id  # no exception
+
+
+# ---------------------------------------------------------------------------
+# TS08 — implementation status flip + user-facing surface
+# ---------------------------------------------------------------------------
+
+
+def test_perplexity_is_implemented_returns_true() -> None:
+    """TS08: PerplexityProvider.is_implemented() flips to True after P23 lands."""
+    provider = PerplexityProvider(api_key="pplx-test")
+    assert provider.is_implemented() is True
+
+
+def test_perplexity_list_models_returns_supported_sync_models() -> None:
+    """TS08: list_models() returns sonar / sonar-pro / sonar-reasoning-pro."""
+    provider = PerplexityProvider(api_key="pplx-test")
+    ids = {m["id"] for m in asyncio.run(provider.list_models())}
+    assert {"sonar", "sonar-pro", "sonar-reasoning-pro"}.issubset(ids)
+    # sonar-deep-research is P27's domain; it must NOT appear in P23's supported list.
+    assert "sonar-deep-research" not in ids
+
+
+def test_perplexity_provider_description_drops_not_implemented() -> None:
+    """TS08: provider description text in commands.py + interactive.py
+    no longer claims Perplexity is unimplemented after P23.
+
+    Asserts at module-source level: the 'not implemented' marker is gone
+    from the perplexity-description rows that drive `providers list` output
+    and the interactive provider menu.
+    """
+    from pathlib import Path
+
+    src_root = Path(__file__).resolve().parent.parent / "src" / "thoth"
+    for filename in ("commands.py", "interactive.py"):
+        text = (src_root / filename).read_text()
+        # Find perplexity-description lines and verify none say "(not implemented)".
+        for line in text.splitlines():
+            if "perplexity" not in line.lower() or "Perplexity" not in line:
+                continue
+            if "(not implemented)" in line:
+                raise AssertionError(f"stale 'not implemented' copy in {filename}: {line!r}")
