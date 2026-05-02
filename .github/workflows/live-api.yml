@@ -35,5 +35,6 @@ jobs:
       - name: Run live-API workflow tests
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          PERPLEXITY_API_KEY: ${{ secrets.PERPLEXITY_API_KEY }}
         run: uv run pytest -m live_api -v
         continue-on-error: true
