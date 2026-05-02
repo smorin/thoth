@@ -41,7 +41,7 @@
 - [x] [P26-T01] Execute the validation pass. Run `uv run pytest` against the inventory surfaced by TS01 for the offline coverage. For items not covered offline, cite live-API workflow evidence (`pytest -m extended` / `live_api`). Record pass / fail / observation per checklist item directly in this body.
 
 **Part 2 — Gap analysis (conditional)**
-- [ ] [P26-T02] Write the Findings section of this project body. If Part 1 had zero failures, this is the single line *"No gaps surfaced; no follow-ups required."* Otherwise, list each gap with severity, blocking-ness for P27 / P28, and recommended owner project (P20 / P34 / P29 / new P## reserved via `project-add`, or won't-fix with rationale).
+- [x] [P26-T02] Write the Findings section of this project body. If Part 1 had zero failures, this is the single line *"No gaps surfaced; no follow-ups required."* Otherwise, list each gap with severity, blocking-ness for P27 / P28, and recommended owner project (P20 / P34 / P29 / new P## reserved via `project-add`, or won't-fix with rationale).
 
 **Part 3 — Refactor pre-analysis**
 - [ ] [P26-T03] Cross-provider background-call shape survey. Compare OpenAI Responses-API background submission (already implemented in `src/thoth/providers/openai.py`), Perplexity Sonar Deep Research async pattern, and Gemini Interactions API. Identify shared shape vs. provider-divergence points: submit body, polling cadence, status enum, cancel semantics, auth header, kind-mismatch defense, secret handling. Output: a comparison table in this body.
@@ -78,6 +78,16 @@ Each row: what we expect "OpenAI background deep research works" to mean, and wh
 `uv run pytest tests/test_vcr_openai.py tests/test_oai_background.py tests/test_polling_interval.py tests/test_async_checkpoint.py tests/test_provider_cancel.py tests/test_cancel_subcommand.py tests/test_sigint_upstream_cancel.py tests/test_resume.py tests/test_resume_async.py tests/test_p16_pr2_resume.py tests/test_is_background_mode.py tests/test_mode_kind_mismatch.py -v` → **97 passed in 14.69 s.** All offline checklist rows return `✓`.
 
 Live row `#13` not run locally (cost / network). Recent green runs of `.github/workflows/extended.yml` (nightly 09:00 UTC) and `.github/workflows/live-api.yml` (weekly Sun 02:00 UTC) are the operative evidence. Per CLAUDE.md, manual local invocation is `just test-extended` / `just test-live-api` (require `OPENAI_API_KEY`).
+
+### T02 — Findings (Part 2 deliverable)
+
+Validation surfaced one minor coverage gap. It does not block P26's close-out and is informational only.
+
+| # | Gap | Severity | Blocks P27 / P28? | Recommended owner |
+|---|---|---|---|---|
+| G1 | `OpenAIProvider.get_result()` cached-response fallback (`src/thoth/providers/openai.py:459-466`: when `client.responses.retrieve()` raises, returns the cached `job_info["response"]` if present, else `f"Error retrieving result: {str(e)}"`) has no offline mock test. The "surfaces partial output on failure" sub-aspect of row #8 is therefore validated only by source inspection plus the live-API workflow. | low | no — P27 / P28 each implement their own `get_result`; OpenAI's cache-fallback strategy is not part of any cross-provider contract | **won't-fix in P26** — informational. If a future test-hardening project lands, an offline mock asserting "retrieve raises → cached response returned" would close G1. P20 is live-only; P34 is stream-specific; P29 is cross-provider architecture. |
+
+**No findings escalated to a new P##.** G1 stays as a documented coverage observation; no existing project is the correct owner.
 
 ### Acceptance Criteria
 - The validation checklist (TS01) exists in this body **before** T01 runs.
