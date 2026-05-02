@@ -1,7 +1,7 @@
-# P35: Uniform `--help` + Useful API-Key Errors Implementation Plan
+# P36: Uniform `--help` + Useful API-Key Errors Implementation Plan
 
 **References**
-- **Project:** [projects/P35-help-uniform-errors.md](../../../projects/P35-help-uniform-errors.md) — P35 project file (scope, tasks, verification — canonical)
+- **Project:** [projects/P36-help-uniform-errors.md](../../../projects/P36-help-uniform-errors.md) — P36 project file (scope, tasks, verification — canonical)
 - **Trunk:** [PROJECTS.md](../../../PROJECTS.md)
 - **Code:**
   - `src/thoth/help.py:109-137` (ThothGroup.invoke, the dispatch fix surface)
@@ -21,7 +21,7 @@
 
 **Tech Stack:** Python 3.11+, Click, pytest. Reuses existing `format_config_context` helper, `PROVIDER_ENV_VARS` registry, `resolve_api_key` resolver.
 
-**Source of truth:** The P35 section of `projects/P35-help-uniform-errors.md`. If this plan and the project file disagree, the project file wins.
+**Source of truth:** The P36 section of `projects/P36-help-uniform-errors.md`. If this plan and the project file disagree, the project file wins.
 
 ---
 
@@ -375,11 +375,11 @@ just check && uv run pytest -q && ./thoth_test -r --skip-interactive -q
 
 ## Suggested commit sequence
 
-1. `chore(p36): start P35 — flip glyph and Status to [~]` — project-tracking flip.
+1. `chore(p36): start P36 — flip glyph and Status to [~]` — project-tracking flip.
 2. `feat(help): route --help and unknown commands before bare-prompt fallback (L1)` — invoke change + helpers + tests.
 3. `feat(errors): enumerate all key-input channels in APIKeyError (L2)` — error message + tests.
 4. `feat(run): pick any-provider-with-key as default fallback (L3)` — run.py + `available_providers` helper + tests.
-5. `feat(p36): close P35 — uniform help + useful API-key errors` — final glyph flip.
+5. `feat(p36): close P36 — uniform help + useful API-key errors` — final glyph flip.
 
 Each commit goes through the full lefthook gate. No `--no-verify`.
 

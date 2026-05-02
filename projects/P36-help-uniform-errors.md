@@ -1,4 +1,4 @@
-# P35 — Uniform `--help` + Useful API-Key Errors
+# P36 — Uniform `--help` + Useful API-Key Errors
 
 **References**
 - **Trunk:** [PROJECTS.md](../PROJECTS.md)
@@ -111,36 +111,36 @@ The plan's task IDs follow the project-harness `P##-T##` / `P##-TS##` convention
 
 #### Pre-flight
 
-- [x] [P35-T00] Worktree at `/Users/stevemorin/c/thoth-worktrees/help-uniform-errors`, branch `help-uniform-errors` from `origin/main`.
-- [x] [P35-T01] Baseline gate green (980 pytest + 76 thoth_test).
-- [~] [P35-T02] Project file + plan + trunk row committed (this commit).
+- [x] [P36-T00] Worktree at `/Users/stevemorin/c/thoth-worktrees/help-uniform-errors`, branch `help-uniform-errors` from `origin/main`.
+- [x] [P36-T01] Baseline gate green (980 pytest + 76 thoth_test).
+- [~] [P36-T02] Project file + plan + trunk row committed (this commit).
 
 #### Layer 1 — Dispatch fix
 
-- [ ] [P35-TS03] Tests for unknown-command + uniform `--help`. Cases: `thoth profiles --help` (exit 2, "unknown command 'profiles'", "Did you mean 'thoth config profiles'", "Available top-level commands"), `thoth modes --help` (exit 0 click help — regression), `thoth default --help` (mode help — regression), `thoth profiles` (exit 2 same error), `thoth quantum gravity` (bare-prompt fallback preserved), `thoth "what is X"` (bare-prompt preserved), `thoth profiles -h` (same as `--help`).
-- [ ] [P35-T04] Implement `_KNOWN_SUBPATHS`, `_suggest_command`, `_format_unknown_command_error` helpers + update `ThothGroup.invoke` short-circuit. Add `--help` / `-h` to `_extract_fallback_options` flag table. Update `tests/baselines/unknown_command.json` to the new "unknown command" output (currently pins the broken behavior).
-- [ ] [P35-T05] Spec-reviewer pass on Layer 1 (verify dispatch matrix matches design notes; confirm bare-prompt regression cases preserved).
-- [ ] [P35-T06] Quality-reviewer pass on Layer 1 (lint/type/format; assertion-message audit; baseline regen scope).
+- [ ] [P36-TS03] Tests for unknown-command + uniform `--help`. Cases: `thoth profiles --help` (exit 2, "unknown command 'profiles'", "Did you mean 'thoth config profiles'", "Available top-level commands"), `thoth modes --help` (exit 0 click help — regression), `thoth default --help` (mode help — regression), `thoth profiles` (exit 2 same error), `thoth quantum gravity` (bare-prompt fallback preserved), `thoth "what is X"` (bare-prompt preserved), `thoth profiles -h` (same as `--help`).
+- [ ] [P36-T04] Implement `_KNOWN_SUBPATHS`, `_suggest_command`, `_format_unknown_command_error` helpers + update `ThothGroup.invoke` short-circuit. Add `--help` / `-h` to `_extract_fallback_options` flag table. Update `tests/baselines/unknown_command.json` to the new "unknown command" output (currently pins the broken behavior).
+- [ ] [P36-T05] Spec-reviewer pass on Layer 1 (verify dispatch matrix matches design notes; confirm bare-prompt regression cases preserved).
+- [ ] [P36-T06] Quality-reviewer pass on Layer 1 (lint/type/format; assertion-message audit; baseline regen scope).
 
 #### Layer 2 — Enhanced `APIKeyError`
 
-- [ ] [P35-TS07] Tests asserting (a) title-line substring `"openai API key not found"` preserved (regression), (b) suggestion lists env var + CLI flag + config syntax all three, (c) status block enumerates ALL providers' env vars not just the failing one, (d) legacy-config-file guidance still appended when present (regression).
-- [ ] [P35-T08] Add `PROVIDER_CLI_FLAGS` registry sibling to `PROVIDER_ENV_VARS`. Rewrite `APIKeyError.__init__` suggestion. Extend / branch `format_config_context` if needed for multi-provider status.
-- [ ] [P35-T09] Spec-reviewer pass on Layer 2 (every channel enumerated; status block iterates registry).
-- [ ] [P35-T10] Quality-reviewer pass on Layer 2.
+- [ ] [P36-TS07] Tests asserting (a) title-line substring `"openai API key not found"` preserved (regression), (b) suggestion lists env var + CLI flag + config syntax all three, (c) status block enumerates ALL providers' env vars not just the failing one, (d) legacy-config-file guidance still appended when present (regression).
+- [ ] [P36-T08] Add `PROVIDER_CLI_FLAGS` registry sibling to `PROVIDER_ENV_VARS`. Rewrite `APIKeyError.__init__` suggestion. Extend / branch `format_config_context` if needed for multi-provider status.
+- [ ] [P36-T09] Spec-reviewer pass on Layer 2 (every channel enumerated; status block iterates registry).
+- [ ] [P36-T10] Quality-reviewer pass on Layer 2.
 
 #### Layer 3 — Multi-provider default fallback
 
-- [ ] [P35-TS11] Tests: openai-only-set → openai used; perplexity-only-set → perplexity used; `general.default_provider="perplexity"` + key set → perplexity used even when openai also has a key; zero keys → enhanced `APIKeyError`; `--provider mock` always wins.
-- [ ] [P35-T12] Implement `available_providers(config, cli_api_keys=None) -> list[str]` in `providers/__init__.py`. Update `run.py:272-294` fallback chain.
-- [ ] [P35-T13] Spec-reviewer pass on Layer 3 (precedence matrix matches design notes).
-- [ ] [P35-T14] Quality-reviewer pass on Layer 3.
+- [ ] [P36-TS11] Tests: openai-only-set → openai used; perplexity-only-set → perplexity used; `general.default_provider="perplexity"` + key set → perplexity used even when openai also has a key; zero keys → enhanced `APIKeyError`; `--provider mock` always wins.
+- [ ] [P36-T12] Implement `available_providers(config, cli_api_keys=None) -> list[str]` in `providers/__init__.py`. Update `run.py:272-294` fallback chain.
+- [ ] [P36-T13] Spec-reviewer pass on Layer 3 (precedence matrix matches design notes).
+- [ ] [P36-T14] Quality-reviewer pass on Layer 3.
 
 #### Close
 
-- [ ] [P35-T15] Full lefthook gate (`just check` + `uv run pytest -q` + `./thoth_test -r --skip-interactive -q` + `uv run ruff format --check src/ tests/`).
-- [ ] [P35-T16] Flip P35 trunk glyph `[~]` → `[x]`. Update each `[ ]` task above to `[x]` as completed.
-- [ ] [P35-T17] Push branch, open PR, squash-merge to `main`.
+- [ ] [P36-T15] Full lefthook gate (`just check` + `uv run pytest -q` + `./thoth_test -r --skip-interactive -q` + `uv run ruff format --check src/ tests/`).
+- [ ] [P36-T16] Flip P36 trunk glyph `[~]` → `[x]`. Update each `[ ]` task above to `[x]` as completed.
+- [ ] [P36-T17] Push branch, open PR, squash-merge to `main`.
 
 ### Verification
 
