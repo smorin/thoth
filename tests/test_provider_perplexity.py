@@ -308,3 +308,199 @@ def test_perplexity_submit_does_not_retry_authentication_error() -> None:
     with pytest.raises(APIKeyError):
         asyncio.run(provider.submit("hi", mode="perplexity_quick"))
     assert len(captured_calls) == 1, "auth error must not retry"
+
+
+# ---------------------------------------------------------------------------
+# TS04 — stream() chunk translation
+# ---------------------------------------------------------------------------
+
+
+def _delta_chunk(delta_content: str | None = None, **extra: Any) -> Any:
+    delta = types.SimpleNamespace(content=delta_content)
+    choice = types.SimpleNamespace(delta=delta)
+    return types.SimpleNamespace(choices=[choice], **extra)
+
+
+class _FakeStream:
+    """Async-iterator stand-in for AsyncOpenAI's streaming response."""
+
+    def __init__(self, chunks: list[Any]) -> None:
+        self._chunks = chunks
+
+    def __aiter__(self) -> _FakeStream:
+        self._iter = iter(self._chunks)
+        return self
+
+    async def __anext__(self) -> Any:
+        try:
+            return next(self._iter)
+        except StopIteration as exc:
+            raise StopAsyncIteration from exc
+
+
+def _stub_stream_client(chunks: list[Any], captured: dict[str, Any] | None = None) -> Any:
+    captured = captured if captured is not None else {}
+
+    async def fake_create(**kwargs: Any) -> Any:
+        captured.update(kwargs)
+        return _FakeStream(chunks)
+
+    return cast(
+        Any,
+        types.SimpleNamespace(
+            chat=types.SimpleNamespace(completions=types.SimpleNamespace(create=fake_create))
+        ),
+    )
+
+
+async def _drain(provider: PerplexityProvider, **kwargs: Any) -> list[tuple[str, str]]:
+    out: list[tuple[str, str]] = []
+    async for ev in provider.stream(**kwargs):
+        out.append((ev.kind, ev.text))
+    return out
+
+
+def test_perplexity_stream_yields_text_deltas() -> None:
+    """TS04: each delta.content -> StreamEvent('text', delta)."""
+    chunks = [
+        _delta_chunk("Hello"),
+        _delta_chunk(" world"),
+        _delta_chunk("!"),
+    ]
+    provider = PerplexityProvider(
+        api_key="pplx-test", config={"model": "sonar", "kind": "immediate"}
+    )
+    provider.client = _stub_stream_client(chunks)
+    events = asyncio.run(_drain(provider, prompt="hi", mode="perplexity_quick"))
+    assert ("text", "Hello") in events
+    assert ("text", " world") in events
+    assert ("text", "!") in events
+
+
+def test_perplexity_stream_cumulative_content_guard() -> None:
+    """TS04: when the API sends cumulative content, only the new delta is emitted."""
+    chunks = [
+        _delta_chunk("Hello"),
+        _delta_chunk("Hello world"),
+        _delta_chunk("Hello world!"),
+    ]
+    provider = PerplexityProvider(
+        api_key="pplx-test", config={"model": "sonar", "kind": "immediate"}
+    )
+    provider.client = _stub_stream_client(chunks)
+    events = asyncio.run(_drain(provider, prompt="hi", mode="perplexity_quick"))
+    text_events = [text for kind, text in events if kind == "text"]
+    assert "".join(text_events) == "Hello world!"
+
+
+def test_perplexity_stream_emits_terminal_done_event() -> None:
+    """TS04: stream always ends with StreamEvent('done', '')."""
+    chunks = [_delta_chunk("done?")]
+    provider = PerplexityProvider(
+        api_key="pplx-test", config={"model": "sonar", "kind": "immediate"}
+    )
+    provider.client = _stub_stream_client(chunks)
+    events = asyncio.run(_drain(provider, prompt="hi", mode="perplexity_quick"))
+    assert events[-1] == ("done", "")
+
+
+def test_perplexity_stream_emits_citations_from_search_results() -> None:
+    """TS04: final chunk's search_results -> StreamEvent('citation', 'title|url') per entry."""
+    final_chunk = _delta_chunk(
+        None,
+        search_results=[
+            {"title": "T1", "url": "https://a.example"},
+            {"title": "T2", "url": "https://b.example"},
+        ],
+    )
+    chunks = [_delta_chunk("hi"), final_chunk]
+    provider = PerplexityProvider(
+        api_key="pplx-test", config={"model": "sonar", "kind": "immediate"}
+    )
+    provider.client = _stub_stream_client(chunks)
+    events = asyncio.run(_drain(provider, prompt="hi", mode="perplexity_quick"))
+    citations = [text for kind, text in events if kind == "citation"]
+    assert "T1|https://a.example" in citations
+    assert "T2|https://b.example" in citations
+
+
+def test_perplexity_stream_extracts_think_block_as_reasoning() -> None:
+    """TS04: <think>...</think> on sonar-reasoning-pro -> reasoning events; stripped from text."""
+    chunks = [
+        _delta_chunk("<think>internal monologue</think>"),
+        _delta_chunk("answer"),
+    ]
+    provider = PerplexityProvider(
+        api_key="pplx-test",
+        config={"model": "sonar-reasoning-pro", "kind": "immediate"},
+    )
+    provider.client = _stub_stream_client(chunks)
+    events = asyncio.run(_drain(provider, prompt="hi", mode="perplexity_reasoning"))
+    reasoning_chunks = [text for kind, text in events if kind == "reasoning"]
+    text_chunks = [text for kind, text in events if kind == "text"]
+    assert any("internal monologue" in r for r in reasoning_chunks)
+    assert "answer" in "".join(text_chunks)
+    assert "<think>" not in "".join(text_chunks)
+
+
+def test_perplexity_stream_tolerates_missing_think_block() -> None:
+    """TS04: sonar-reasoning-pro without <think> still emits text events; no error."""
+    chunks = [_delta_chunk("plain answer")]
+    provider = PerplexityProvider(
+        api_key="pplx-test",
+        config={"model": "sonar-reasoning-pro", "kind": "immediate"},
+    )
+    provider.client = _stub_stream_client(chunks)
+    events = asyncio.run(_drain(provider, prompt="hi", mode="perplexity_reasoning"))
+    text_chunks = [text for kind, text in events if kind == "text"]
+    assert "plain answer" in "".join(text_chunks)
+
+
+def test_perplexity_stream_passes_stream_mode_full() -> None:
+    """TS04: config['perplexity']['stream_mode'] = 'full' passes through to extra_body."""
+    captured: dict[str, Any] = {}
+    chunks = [_delta_chunk("hi")]
+
+    async def fake_create(**kwargs: Any) -> Any:
+        captured.update(kwargs)
+        return _FakeStream(chunks)
+
+    provider = PerplexityProvider(
+        api_key="pplx-test",
+        config={
+            "model": "sonar",
+            "kind": "immediate",
+            "perplexity": {"stream_mode": "full"},
+        },
+    )
+    provider.client = cast(
+        Any,
+        types.SimpleNamespace(
+            chat=types.SimpleNamespace(completions=types.SimpleNamespace(create=fake_create))
+        ),
+    )
+    asyncio.run(_drain(provider, prompt="hi", mode="perplexity_quick"))
+    assert captured["stream"] is True
+    assert captured["extra_body"]["stream_mode"] == "full"
+
+
+def test_perplexity_stream_passes_stream_mode_concise_default() -> None:
+    """TS04: when stream_mode unset, default 'concise' propagates to extra_body."""
+    captured: dict[str, Any] = {}
+    chunks = [_delta_chunk("hi")]
+
+    async def fake_create(**kwargs: Any) -> Any:
+        captured.update(kwargs)
+        return _FakeStream(chunks)
+
+    provider = PerplexityProvider(
+        api_key="pplx-test", config={"model": "sonar", "kind": "immediate"}
+    )
+    provider.client = cast(
+        Any,
+        types.SimpleNamespace(
+            chat=types.SimpleNamespace(completions=types.SimpleNamespace(create=fake_create))
+        ),
+    )
+    asyncio.run(_drain(provider, prompt="hi", mode="perplexity_quick"))
+    assert captured["extra_body"]["stream_mode"] == "concise"

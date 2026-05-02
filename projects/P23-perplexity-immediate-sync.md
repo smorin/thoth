@@ -100,8 +100,10 @@ web_search_options = { search_context_size = "high" }
 - [x] [P23-T03] Implement `_map_perplexity_error(...)` and non-stream retry policy. Make P23-TS03 pass.
       Added module-level `_map_perplexity_error()` covering 8 OpenAI SDK exception classes plus a generic Exception fallback. Wrapped `submit()` with tenacity retry (`stop_after_attempt(3)`, `wait_exponential(min=4, max=10)`, retry on `APITimeoutError | APIConnectionError`). Updated thoth_test cases REAL-02/P07-M2-02 from "not implemented" to "rejects invalid key with mapped APIKeyError".
 
-- [ ] [P23-TS04] Add failing provider stream tests for Perplexity chunk translation. Cover text deltas, cumulative-content guard, final `search_results`/citations, terminal `done`, `<think>` extraction, missing `<think>` tolerance, `stream_mode = "full"`, and `stream_mode = "concise"`.
-- [ ] [P23-T04] Implement `PerplexityProvider.stream()`. Make P23-TS04 pass.
+- [x] [P23-TS04] Add failing provider stream tests for Perplexity chunk translation. Cover text deltas, cumulative-content guard, final `search_results`/citations, terminal `done`, `<think>` extraction, missing `<think>` tolerance, `stream_mode = "full"`, and `stream_mode = "concise"`.
+      Added 8 stream tests using a fake async iterator over chunk SimpleNamespaces.
+- [x] [P23-T04] Implement `PerplexityProvider.stream()`. Make P23-TS04 pass.
+      Implemented `stream()` with cumulative-content guard, `<think>...</think>` segmenter (only on `reasoning` model), final-chunk citation emission deduped by URL, terminal `done`. Errors mapped through `_map_perplexity_error`.
 
 - [ ] [P23-TS05] Add failing executor/sink tests for side-channel stream events. Use a fake provider emitting `text`, `reasoning`, `citation`, and `done`; assert stdout, file-only, tee, and project-persisted output all contain the same rendered answer, reasoning section, and `## Sources` section.
 - [ ] [P23-T05] Update `_execute_immediate` to collect/render `reasoning` and `citation` events and write them to all sinks and persisted output. Make P23-TS05 pass.

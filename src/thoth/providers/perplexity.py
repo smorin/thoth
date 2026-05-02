@@ -8,6 +8,8 @@ under the `perplexity` mode-config namespace and are forwarded via
 
 from __future__ import annotations
 
+import re
+from collections.abc import AsyncIterator
 from datetime import datetime
 from typing import Any
 from uuid import uuid4
@@ -28,7 +30,30 @@ from thoth.errors import (
     ProviderError,
     ThothError,
 )
-from thoth.providers.base import ResearchProvider
+from thoth.providers.base import ResearchProvider, StreamEvent
+
+_THINK_PATTERN = re.compile(r"<think>(.*?)</think>", re.DOTALL)
+
+
+def _split_think_segments(text: str) -> list[tuple[str, str]]:
+    """Split text on `<think>...</think>` tags.
+
+    Returns a list of ('reasoning', body) and ('text', body) tuples in
+    document order. Handles tags that fully open-and-close within `text`;
+    open tags without a matching close are treated as text (defensive —
+    the model can drop the closing tag mid-stream per community report).
+    """
+    segments: list[tuple[str, str]] = []
+    pos = 0
+    for m in _THINK_PATTERN.finditer(text):
+        if m.start() > pos:
+            segments.append(("text", text[pos : m.start()]))
+        segments.append(("reasoning", m.group(1)))
+        pos = m.end()
+    if pos < len(text):
+        segments.append(("text", text[pos:]))
+    return segments
+
 
 _PROVIDER_NAME = "perplexity"
 
@@ -215,6 +240,76 @@ class PerplexityProvider(ResearchProvider):
     async def _submit_with_retry(self, prompt: str, system_prompt: str | None) -> Any:
         params = self._build_request_params(prompt, system_prompt)
         return await self.client.chat.completions.create(**params)
+
+    async def stream(
+        self,
+        prompt: str,
+        mode: str,
+        system_prompt: str | None = None,
+        verbose: bool = False,
+    ) -> AsyncIterator[StreamEvent]:
+        """Translate Perplexity's streaming chunks into StreamEvent."""
+        params = self._build_request_params(prompt, system_prompt)
+        params["stream"] = True
+
+        try:
+            stream = await self.client.chat.completions.create(**params)
+        except (openai.APIError, Exception) as exc:
+            raise _map_perplexity_error(exc, model=self.model, verbose=verbose) from exc
+
+        accumulated = ""
+        is_reasoning_model = "reasoning" in self.model
+        last_search_results: list[Any] = []
+
+        async for chunk in stream:
+            sr = getattr(chunk, "search_results", None)
+            if sr:
+                last_search_results = list(sr)
+
+            choices = getattr(chunk, "choices", None) or []
+            if not choices:
+                continue
+            delta = getattr(choices[0], "delta", None)
+            if delta is None:
+                continue
+            content = getattr(delta, "content", None)
+            if not content:
+                continue
+
+            # Cumulative-content guard: if `content` starts with what we've
+            # already seen, the API is sending cumulative state per chunk;
+            # peel off only the new tail.
+            if accumulated and content.startswith(accumulated):
+                new_text = content[len(accumulated) :]
+                accumulated = content
+            else:
+                new_text = content
+                accumulated += content
+
+            if not new_text:
+                continue
+
+            if is_reasoning_model:
+                for kind, body in _split_think_segments(new_text):
+                    if not body:
+                        continue
+                    if kind == "reasoning":
+                        yield StreamEvent(kind="reasoning", text=body)
+                    else:
+                        yield StreamEvent(kind="text", text=body)
+            else:
+                yield StreamEvent(kind="text", text=new_text)
+
+        seen_urls: set[str] = set()
+        for entry in last_search_results:
+            url = _entry_get(entry, "url") or ""
+            if not url or url in seen_urls:
+                continue
+            seen_urls.add(url)
+            title = _entry_get(entry, "title") or url
+            yield StreamEvent(kind="citation", text=f"{title}|{url}")
+
+        yield StreamEvent(kind="done", text="")
 
     async def check_status(self, job_id: str) -> dict[str, Any]:
         if job_id not in self.jobs:
