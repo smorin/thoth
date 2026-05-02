@@ -2822,14 +2822,13 @@ all_tests = [
     ),
     TestCase(
         test_id="REAL-02",
-        description="Perplexity provider fails cleanly while not implemented",
+        description="Perplexity rejects invalid API key with mapped APIKeyError",
         command=[THOTH_EXECUTABLE, "test perplexity", "--provider", "perplexity"],
         expected_stdout_patterns=[
-            r"perplexity error: Perplexity provider is not implemented yet",
-            r"Use openai or mock until Perplexity support lands",
+            r"perplexity API key",
         ],
         expected_exit_code=1,
-        env={"PERPLEXITY_API_KEY": "pplx-test-not-implemented"},
+        env={"PERPLEXITY_API_KEY": "pplx-test-bogus-key"},
     ),
     # Signal handling tests
     TestCase(
@@ -3014,18 +3013,17 @@ all_tests = [
     ),
     TestCase(
         test_id="P07-M2-02",
-        description="Direct Perplexity invocation fails with intentional message",
+        description="Direct Perplexity invocation rejects bogus key with mapped APIKeyError",
         command=[
             THOTH_EXECUTABLE,
             "test perplexity regression",
             "--provider",
             "perplexity",
             "--api-key-perplexity",
-            "pplx-test-not-implemented",
+            "pplx-test-bogus-key",
         ],
         expected_stdout_patterns=[
-            r"perplexity error: Perplexity provider is not implemented yet",
-            r"Use openai or mock until Perplexity support lands",
+            r"perplexity API key",
         ],
         not_expected_stdout_patterns=[
             r"Unexpected error during submission",
