@@ -40,7 +40,8 @@
 - [ ] [P35-T03] Add hand-written click leaves `modes_set_default` and `modes_unset_default` in `src/thoth/cli_subcommands/modes.py`. Update `_MODES_EPILOG` to mention them. Verify `thoth modes --help` lists both.
 - [ ] [P35-T04] Update `_config_default_mode()` in `src/thoth/cli.py` to read `THOTH_DEFAULT_MODE` directly, then check `config.active_profile.data.default_mode`, then `general.default_mode`, then `"default"`. Leave the existing `_env_overrides` mapping in place for non-mode-resolution read paths.
 - [ ] [P35-T05] Run all tests from TS01-TS06 against the implementation; fix until green.
-- [ ] [P35-T06] Add at least one integration test under `thoth_test/` driving the new commands end-to-end against the mock provider, verifying the resolved default actually flows through to `thoth ask` mode selection.
+- [x] [P35-T06] Add at least one integration test under `thoth_test/` driving the new commands end-to-end against the mock provider, verifying the resolved default actually flows through to `thoth ask` mode selection.
+      Added `P35-INT-01` to `thoth_test`: setup persists `general.default_mode = "deep_research"` via `thoth modes set-default`, the main command runs `thoth ask` (no `--mode`) and asserts `*_deep_research_mock_*.md` is created with `mode: deep_research` content, teardown runs `thoth modes unset-default` and verifies the key is removed. Suite goes 76 → 77 passing.
 - [ ] [P35-T07] Manual verification: run the seven worked examples from the spec by hand against tmp configs; confirm error messages are clear and actionable.
 - [ ] [P35-T08] Final pre-commit gate: `make env-check`, `just check`, `just test-lint`, `just test-typecheck`, `pytest`, `./thoth_test -r`. Address any drift; commit when green.
 - [ ] [P35-T09] Update CHANGELOG via release-please-friendly conventional commit messages (`feat(modes): add set-default / unset-default commands`). No hand edits to versioning files.
