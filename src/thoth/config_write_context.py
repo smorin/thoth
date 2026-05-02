@@ -68,5 +68,16 @@ class ConfigWriteContext:
             project_path=project_path,
         )
 
+    def target_has_profile(self, name: str) -> bool:
+        """Return True iff `[profiles.<name>]` exists in the target file.
+
+        Same-tier check used by P35's `modes set-default --profile X` rule.
+        Inspects ONLY the target file — does not consider the merged
+        catalog across user/project tiers.
+        """
+        if not self.target_path.exists():
+            return False
+        return self.load_document().has_profile(name)
+
 
 __all__ = ["ConfigTargetConflictError", "ConfigWriteContext"]

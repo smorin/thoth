@@ -91,3 +91,17 @@ def test_has_profile_false_for_general_table(tmp_path: Path) -> None:
     doc = _doc(p)
     doc.set_default_mode("deep")
     assert doc.has_profile("work") is False
+
+
+def test_target_has_profile_reads_only_target_file(tmp_path: Path) -> None:
+    """target_has_profile inspects the target file only — NOT the merged catalog."""
+    from thoth.config_write_context import ConfigWriteContext
+
+    target = tmp_path / "custom.toml"
+    doc = ConfigDocument.load(target)
+    doc.ensure_profile("scoped")
+    doc.save()
+
+    ctx = ConfigWriteContext.resolve(project=False, config_path=target)
+    assert ctx.target_has_profile("scoped") is True
+    assert ctx.target_has_profile("missing") is False
