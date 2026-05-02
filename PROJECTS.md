@@ -72,6 +72,7 @@ Older entries may use `**Primary spec**`, `**Plan**`, or
 <!-- Descending P-number order. Scoped / in-progress / done first;
      ideas last. One row per file; one file per row. -->
 
+- [?] **P37** — [Review starter-profile selection](projects/P37-starter-profile-review-.md)
 - [?] **P34** — [Offline testing for OpenAIProvider.stream() (VCR or alternative)](projects/P34-offline-testing-openai-stream-.md)
 - [ ] **P33** — [Schema-Driven Config Defaults](projects/P33-schema-driven-config-defaults.md)
 - [ ] **P32** — [Interactive Prompt Refiner](projects/P32-interactive-prompt-refiner.md)
