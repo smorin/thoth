@@ -35,6 +35,12 @@ PROVIDER_ENV_VARS: dict[str, str] = {
     "mock": "MOCK_API_KEY",
 }
 
+PROVIDER_CLI_FLAGS: dict[str, str] = {
+    "openai": "--api-key-openai",
+    "perplexity": "--api-key-perplexity",
+    "mock": "--api-key-mock",
+}
+
 
 def resolve_api_key(
     provider_name: str,
@@ -124,6 +130,7 @@ def create_provider(
 
 __all__ = [
     "PROVIDERS",
+    "PROVIDER_CLI_FLAGS",
     "PROVIDER_ENV_VARS",
     "MockProvider",
     "OpenAIProvider",
