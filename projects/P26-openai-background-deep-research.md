@@ -44,8 +44,8 @@
 - [x] [P26-T02] Write the Findings section of this project body. If Part 1 had zero failures, this is the single line *"No gaps surfaced; no follow-ups required."* Otherwise, list each gap with severity, blocking-ness for P27 / P28, and recommended owner project (P20 / P34 / P29 / new P## reserved via `project-add`, or won't-fix with rationale).
 
 **Part 3 — Refactor pre-analysis**
-- [ ] [P26-T03] Cross-provider background-call shape survey. Compare OpenAI Responses-API background submission (already implemented in `src/thoth/providers/openai.py`), Perplexity Sonar Deep Research async pattern, and Gemini Interactions API. Identify shared shape vs. provider-divergence points: submit body, polling cadence, status enum, cancel semantics, auth header, kind-mismatch defense, secret handling. Output: a comparison table in this body.
-- [ ] [P26-T04] Refactor decision. Pick outcome (a) / (b) / (c) per the three-part structure above and write the rationale into this body. If (b), draft the Protocol / ABC sketch (≤ 30 lines) inline. If (c), reserve a new P## via `project-add` and add the redirect note here; the new P## becomes a dependency of P27, P28, and P29.
+- [x] [P26-T03] Cross-provider background-call shape survey. Compare OpenAI Responses-API background submission (already implemented in `src/thoth/providers/openai.py`), Perplexity Sonar Deep Research async pattern, and Gemini Interactions API. Identify shared shape vs. provider-divergence points: submit body, polling cadence, status enum, cancel semantics, auth header, kind-mismatch defense, secret handling. Output: a comparison table in this body.
+- [x] [P26-T04] Refactor decision. Pick outcome (a) / (b) / (c) per the three-part structure above and write the rationale into this body. If (b), draft the Protocol / ABC sketch (≤ 30 lines) inline. If (c), reserve a new P## via `project-add` and add the redirect note here; the new P## becomes a dependency of P27, P28, and P29.
 
 **Project close-out**
 - [ ] [P26-T05] Update the close-out summary at the top of this body with the outcome label (e.g. *"closed: validation passed, no gaps, no refactor"* or *"closed: 2 gaps → P##, refactor outcome (b)"*) and flip P26's trunk glyph to `[x]`.
@@ -88,6 +88,54 @@ Validation surfaced one minor coverage gap. It does not block P26's close-out an
 | G1 | `OpenAIProvider.get_result()` cached-response fallback (`src/thoth/providers/openai.py:459-466`: when `client.responses.retrieve()` raises, returns the cached `job_info["response"]` if present, else `f"Error retrieving result: {str(e)}"`) has no offline mock test. The "surfaces partial output on failure" sub-aspect of row #8 is therefore validated only by source inspection plus the live-API workflow. | low | no — P27 / P28 each implement their own `get_result`; OpenAI's cache-fallback strategy is not part of any cross-provider contract | **won't-fix in P26** — informational. If a future test-hardening project lands, an offline mock asserting "retrieve raises → cached response returned" would close G1. P20 is live-only; P34 is stream-specific; P29 is cross-provider architecture. |
 
 **No findings escalated to a new P##.** G1 stays as a documented coverage observation; no existing project is the correct owner.
+
+### T03 — Cross-provider background-call shape survey (Part 3 input)
+
+Existing `ResearchProvider` background contract (`src/thoth/providers/base.py`):
+
+```python
+async def submit(prompt, mode, system_prompt=None, verbose=False) -> str: ...
+async def check_status(job_id) -> dict[str, Any]:
+    # returns {"status": "queued"|"running"|"completed"|"transient_error"|"permanent_error"|"cancelled", ...}
+async def get_result(job_id, verbose=False) -> str: ...
+async def cancel(job_id) -> dict[str, Any]: ...
+```
+
+Provider-agnostic runtime (`src/thoth/run.py:588` `_run_polling_loop`): owns jitter (±10%), refresh interval, exponential backoff on transient errors (capped at 60 s), `max_transient_errors` counter, checkpoint write on every status transition, timeout via `max_wait`. Providers DO NOT implement polling themselves — they only emit status dicts.
+
+| Concern | OpenAI (shipped) | Perplexity (P27) | Gemini (P28) |
+|---|---|---|---|
+| Provider file | `src/thoth/providers/openai.py` | `src/thoth/providers/perplexity.py` (immediate-only stub at present; background path planned in P27) | `src/thoth/providers/gemini.py` (planned in P28) |
+| Auth | `Bearer $OPENAI_API_KEY` | `Bearer $PERPLEXITY_API_KEY` | `x-goog-api-key: $GEMINI_API_KEY` (per `planning/references.md`) |
+| Submit shape | `client.responses.create(model, input, background=True)` returning `resp_*` ID | TBD per P27 — Sonar Deep Research uses `chat/completions` with `stream=true`; submission and polling shape pending P27 scoping | `client.aio.interactions.create(agent="deep-research-pro-preview-12-2025", background=True)` returning interaction ID (per P28 parity matrix row 3) |
+| Status enum returned by `check_status()` | `queued` / `running` / `completed` / `transient_error` / `permanent_error` / `cancelled` (mapped from OpenAI's `queued`/`in_progress`/`completed`/`failed`/`incomplete`/`cancelled`) | TBD per P27 — must produce the same six-value enum that `_run_polling_loop` switches on | Same six-value enum, with delta: HTTP 403 from `interactions.get(id)` is intermittent and must map to `transient_error`; `cancelled` is disambiguated user-vs-server via local `_cancel_requested[job_id]` flag (per P28 deltas #3 and #4) |
+| Polling cadence | `poll_interval = 30 s`, `max_wait = 30 min` (config defaults) | TBD per P27 | `poll_interval = 10 s`, `max_wait = 20 min` (P28 plan, per Gemini doc §6 / §10) |
+| Submit-time transport retry | tenacity `@retry` 3× exp 4–10 s on `openai.APITimeoutError` / `openai.APIConnectionError` (`openai.py:182-188`) | TBD per P27 — same decorator shape expected | Same decorator shape, on `google.genai.errors.APIError` subclasses indicating timeout / connection (per P28 parity matrix row 10) |
+| Cancel semantics | `client.responses.cancel(response_id)`; idempotent; integrated with SIGINT cooperative cancel (`_maybe_cancel_upstream_and_raise` in `run.py:530`) | Per P22-T03 survey: Perplexity does not expose cancel; orphan request_id; `cancel()` will raise `NotImplementedError` (`test_provider_cancel.py::test_perplexity_cancel_raises_not_implemented` already asserts this) | `client.aio.interactions.cancel(interaction_id)`; first-class; SIGINT integration via the same shared `_maybe_cancel_upstream_and_raise` (per P28 parity matrix row 7) |
+| Kind-mismatch defense | `_validate_kind_for_model` + `is_background_model("o3-deep-research" / "o4-mini-deep-research")` raises `ModeKindMismatchError` before HTTP for `kind="immediate"` + DR model | TBD per P27 — `is_background_model` for `sonar-deep-research`; immediate models `sonar`, `sonar-pro` | `is_background_model("deep-research-pro-preview-12-2025")` (per P28 parity matrix row 2 — adds 9 new entries to `KNOWN_MODELS`); reuses the same `_validate_kind_for_model` helper |
+| Secret handling | `--api-key-openai` flag; `resolve_api_key()` resolves CLI → env → config; secret masking via `MultiSink` redaction | TBD per P27 — `--api-key-perplexity` (already exists for immediate path) extends naturally to background | `--api-key-gemini` flag (P28 parity matrix row 1); same `resolve_api_key()` resolution order; same masking |
+| Citation extraction | `response.output[*].content[*].annotations[*].url` → dedupe by URL → `## Sources` markdown (`openai.py:517-525,599-606`) | TBD per P27 — Sonar emits citation arrays in the response payload | `interaction.outputs[-1].annotations[]` → dedupe by URL → same `## Sources` rendering (per P28 parity matrix row 9); empty annotations are normal (P28 delta #5) |
+| Resume / reconnect | `OperationStatus.providers["openai"]["job_id"]` persists `resp_*` ID; reconnect calls `client.responses.retrieve(id)` (`openai.py:346-353`) | TBD per P27 | `OperationStatus.providers["gemini"]["job_id"]` persists interaction ID; reconnect calls `client.aio.interactions.get(id)` (per P28 parity matrix row 6) |
+| Runtime layer (polling loop, checkpoint, SIGINT, output sinks) | Inherited from `_run_polling_loop` / `CheckpointManager` / `_maybe_cancel_upstream_and_raise` / `OutputManager` | Inherited (P27) | Inherited unchanged (P28 parity matrix rows 5–8 are explicit) |
+
+**Shape observations:**
+- The `ResearchProvider` background contract (`submit / check_status / get_result / cancel`) is already a thoughtful cross-provider abstraction. The six-value status enum returned by `check_status()` is exactly what `_run_polling_loop` switches on — it was designed to absorb provider-specific status vocabularies via per-provider mapping.
+- The shared runtime in `run.py` (polling loop with jitter / backoff / checkpoint / timeout, SIGINT cancel orchestration, output-manager save) is already provider-agnostic. P28's parity matrix says this in rows 5–8 explicitly; P27 will follow the same pattern.
+- Provider-specific concerns (auth scheme, status-enum mapping, error classes, cancel availability, citation field paths, model namespace for kind defense) are inherently provider-local. They cannot be shared in a base class without leaking provider details upstream.
+- P28 already enumerates 10 "provider-specific deltas" vs OpenAI (poll cadence, 403 transient, server-side cancel disambiguation, empty annotations, etc.). These are good evidence that the seam between shared runtime and per-provider code is in the right place — divergences are concentrated in provider files, not in `run.py`.
+
+### T04 — Refactor decision
+
+**Outcome (a): No refactor warranted now.**
+
+**Rationale:**
+1. The shared abstraction already exists. `_run_polling_loop` (`src/thoth/run.py:588`) owns the polling loop, jitter, exponential backoff on transient errors, transient-error counter, and checkpoint-on-every-status-transition. `ResearchProvider` base class owns the `submit / check_status / get_result / cancel` contract. `StreamEvent` (from P22's analysis) covers output translation. There is no abstraction to extract that is not already in place.
+2. P28 has already endorsed outcome (a) by design. P28's parity matrix rows 5–8 explicitly say "Inherit unchanged" for the runtime polling loop, checkpoint, SIGINT, and output sinks — that is exactly what outcome (a) means at the runtime layer. P28 only adds a new provider file plus 9 mode entries; it does not change `run.py` or `base.py`. Pulling refactor work forward into P26 would be premature.
+3. P27 will follow the same pattern. Perplexity's known divergences (no cancel, citation-array shape, sonar model namespace) are provider-local. P27 can land a `submit / check_status / get_result` triple plus a `cancel()` that raises `NotImplementedError` (already asserted by `test_provider_cancel.py::test_perplexity_cancel_raises_not_implemented`) and inherit the rest.
+4. P22-T04 already chose outcome (a) for the immediate path with the same structural reasoning ("the existing `ResearchProvider.stream()` + `StreamEvent` is already a thoughtful cross-provider abstraction"). The background path's seam is even cleaner because the runtime layer is more fully provider-agnostic than the immediate stream path.
+5. P29 is the right place for cross-cutting cleanup once all three providers ship. Pulling that decision forward to P26 — before P27 / P28 even exist — would conflict with the staging logic the project trunk already encodes.
+
+**No new P## reserved.** **No Protocol / ABC sketch needed** (the existing `ResearchProvider` background contract serves that role; `_run_polling_loop` serves the runtime role). **No code changes in `src/thoth/`.**
 
 ### Acceptance Criteria
 - The validation checklist (TS01) exists in this body **before** T01 runs.
