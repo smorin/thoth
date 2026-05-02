@@ -12,7 +12,7 @@
 - **External:** https://docs.perplexity.ai/api-reference/sonar-post
 - **External:** https://docs.perplexity.ai/docs/sonar/pro-search/stream-mode
 
-**Status:** `[ ]` Scoped, not started.
+**Status:** `[x]` Completed 2026-05-02.
 
 **Goal**: Implement Perplexity synchronous Sonar support for immediate Thoth runs using the OpenAI Python SDK compatibility path. P23 adds Perplexity built-in immediate modes, request construction, streaming, non-stream execution, side-channel output handling, live coverage, and user-facing provider surfaces.
 
@@ -130,7 +130,8 @@ web_search_options = { search_context_size = "high" }
 - [x] [P23-T09] Implement the extended and weekly live-api Perplexity test coverage. Update `.github/workflows/extended.yml` and `.github/workflows/live-api.yml` to pass `PERPLEXITY_API_KEY: ${{ secrets.PERPLEXITY_API_KEY }}` alongside `OPENAI_API_KEY`. Make P23-TS09 pass.
       `KNOWN_MODELS` auto-derives from `BUILTIN_MODES` so the Perplexity triple landed automatically when T02 added the modes; removed the explicit skip block in `tests/extended/test_model_kind_runtime.py`. Both CI workflows now pass `PERPLEXITY_API_KEY`. Added `live_perplexity_env` fixture and `require_perplexity_key()` helper to `tests/extended/conftest.py`; `assert_no_secret_leaked` extended to redact both keys.
 
-- [ ] [P23-T10] Final verification and project closeout. Run targeted pytest for new/changed tests, `just check`, `./thoth_test -r`, `just test-lint`, `just test-typecheck`, and the Perplexity live-api command when `PERPLEXITY_API_KEY` is available. Flip P23 to `[x]` only after the full gate passes.
+- [x] [P23-T10] Final verification and project closeout. Run targeted pytest for new/changed tests, `just check`, `./thoth_test -r`, `just test-lint`, `just test-typecheck`, and the Perplexity live-api command when `PERPLEXITY_API_KEY` is available. Flip P23 to `[x]` only after the full gate passes.
+      Gate results (2026-05-02): `make env-check` ✅; `just check` (ruff + ty on src) ✅; `just test-lint` ✅; `just test-typecheck` ✅; `./thoth_test -r --provider mock --skip-interactive`: 76 passed, 0 failed, 1 skipped; full pytest: 1035 passed, 23 deselected (gated extended/live_api markers). Live-api manual run deferred — runs in CI weekly via `live-api.yml`.
 
 ### Acceptance Criteria
 
