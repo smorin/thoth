@@ -918,13 +918,6 @@ def get_modes_set_default_data(
     base_modes = cm.get("modes")
     if isinstance(base_modes, dict):
         resolvable.update(base_modes.keys())
-    if profile is not None:
-        for layer in cm.profile_catalog:
-            if layer.name != profile:
-                continue
-            overlay_modes = layer.data.get("modes") if isinstance(layer.data, dict) else None
-            if isinstance(overlay_modes, dict):
-                resolvable.update(overlay_modes.keys())
 
     if name not in resolvable:
         raise ThothError(

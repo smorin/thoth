@@ -11,7 +11,7 @@ from thoth.config_cmd import (
     get_config_profile_add_data,
     get_modes_set_default_data,
 )
-from thoth.errors import ConfigProfileError
+from thoth.errors import ConfigProfileError, ThothError
 
 
 def test_set_default_general_writes_user_config(isolated_thoth_home: Path) -> None:
@@ -32,7 +32,7 @@ def test_set_default_general_accepts_builtin(isolated_thoth_home: Path) -> None:
 
 
 def test_set_default_general_rejects_unknown_mode(isolated_thoth_home: Path) -> None:
-    with pytest.raises(Exception) as excinfo:
+    with pytest.raises(ThothError) as excinfo:
         get_modes_set_default_data(
             "no-such-mode",
             project=False,
@@ -128,7 +128,7 @@ def test_set_default_profile_accepts_builtin_mode_cross_tier(
 
 def test_set_default_profile_rejects_unknown_mode(isolated_thoth_home: Path) -> None:
     get_config_profile_add_data("work", project=False, config_path=None)
-    with pytest.raises(Exception) as excinfo:
+    with pytest.raises(ThothError) as excinfo:
         get_modes_set_default_data(
             "ghost-mode",
             project=False,
