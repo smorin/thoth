@@ -136,3 +136,70 @@ def test_set_default_profile_rejects_unknown_mode(isolated_thoth_home: Path) -> 
             config_path=None,
         )
     assert "ghost-mode" in str(excinfo.value)
+
+
+# --- CLI integration (Click leaves) ---
+
+import json  # noqa: E402
+
+from click.testing import CliRunner  # noqa: E402
+
+from thoth.cli import cli  # noqa: E402
+
+
+def test_cli_modes_set_default_human(isolated_thoth_home: Path) -> None:
+    runner = CliRunner()
+    result = runner.invoke(cli, ["modes", "set-default", "deep_research"])
+    assert result.exit_code == 0, result.output
+    assert "deep_research" in result.output
+
+
+def test_cli_modes_set_default_json_envelope(isolated_thoth_home: Path) -> None:
+    runner = CliRunner()
+    result = runner.invoke(cli, ["modes", "set-default", "deep_research", "--json"])
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["status"] == "ok"
+    data = payload["data"]
+    assert data["default_mode"] == "deep_research"
+    assert data["wrote"] is True
+    assert "path" in data
+
+
+def test_cli_modes_set_default_with_profile_json(isolated_thoth_home: Path) -> None:
+    runner = CliRunner()
+    runner.invoke(cli, ["config", "profiles", "add", "work"])
+    result = runner.invoke(
+        cli, ["--profile", "work", "modes", "set-default", "deep_research", "--json"]
+    )
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["status"] == "ok"
+    data = payload["data"]
+    assert data["default_mode"] == "deep_research"
+    assert data["profile"] == "work"
+
+
+def test_cli_modes_set_default_unknown_mode_exit1(isolated_thoth_home: Path) -> None:
+    runner = CliRunner()
+    result = runner.invoke(cli, ["modes", "set-default", "no-such-mode"])
+    assert result.exit_code == 1, result.output
+    assert "no-such-mode" in result.output or "not found" in result.output.lower()
+
+
+def test_cli_modes_set_default_project_config_conflict_exit2(
+    isolated_thoth_home: Path, tmp_path: Path
+) -> None:
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        [
+            "--config",
+            str(tmp_path / "x.toml"),
+            "modes",
+            "set-default",
+            "deep_research",
+            "--project",
+        ],
+    )
+    assert result.exit_code == 2, result.output

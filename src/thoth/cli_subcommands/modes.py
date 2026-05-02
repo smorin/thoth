@@ -45,6 +45,8 @@ Mutation operations:
   thoth modes remove NAME
   thoth modes rename OLD NEW
   thoth modes copy SRC DST [--from-profile X] [--override]
+  thoth modes set-default NAME
+  thoth modes unset-default
 
 All mutators support: --project | --config PATH | --profile X | --json.
 Use --override with add/copy to create a builtin-name override in the
@@ -162,6 +164,100 @@ def modes_list(
 
 
 _MODES_MUTATOR_HONOR: frozenset[str] = frozenset({"config_path", "profile"})
+
+
+@modes.command(name="set-default")
+@click.argument("name")
+@click.option("--project", "project", is_flag=True, help="Write to project config")
+@click.option("--json", "as_json", is_flag=True, help="Emit JSON envelope")
+@click.pass_context
+def modes_set_default(ctx: click.Context, name: str, project: bool, as_json: bool) -> None:
+    """Persist `general.default_mode` (or `profiles.<X>.default_mode`)."""
+    from thoth.config_cmd import get_modes_set_default_data
+    from thoth.errors import ConfigProfileError, ThothError
+    from thoth.json_output import emit_error, emit_json, emit_thoth_error
+
+    validate_inherited_options(ctx, "modes set-default", _MODES_MUTATOR_HONOR)
+    config_path = inherited_value(ctx, "config_path")
+    profile = inherited_value(ctx, "profile")
+
+    try:
+        data = get_modes_set_default_data(
+            name,
+            project=project,
+            profile=profile,
+            config_path=config_path,
+        )
+    except ConfigProfileError as exc:
+        if as_json:
+            emit_thoth_error(exc)
+        click.echo(f"Error: {exc.message}", err=True)
+        if exc.suggestion:
+            click.echo(f"Suggestion: {exc.suggestion}", err=True)
+        ctx.exit(exc.exit_code)
+    except ThothError as exc:
+        if as_json:
+            emit_thoth_error(exc)
+        click.echo(f"Error: {exc.message}", err=True)
+        if getattr(exc, "suggestion", None):
+            click.echo(f"Suggestion: {exc.suggestion}", err=True)
+        ctx.exit(exc.exit_code)
+
+    if as_json:
+        if data.get("error") == "PROJECT_CONFIG_CONFLICT":
+            emit_error(
+                "PROJECT_CONFIG_CONFLICT",
+                "--config cannot be used with --project",
+                exit_code=2,
+            )
+        emit_json(data)
+
+    if data.get("error") == "PROJECT_CONFIG_CONFLICT":
+        click.echo("Error: --config cannot be used with --project", err=True)
+        ctx.exit(2)
+
+    if data.get("profile"):
+        click.echo(f"Set default mode to '{data['default_mode']}' for profile '{data['profile']}'")
+    else:
+        click.echo(f"Set default mode to '{data['default_mode']}'")
+
+
+@modes.command(name="unset-default")
+@click.option("--project", "project", is_flag=True, help="Write to project config")
+@click.option("--json", "as_json", is_flag=True, help="Emit JSON envelope")
+@click.pass_context
+def modes_unset_default(ctx: click.Context, project: bool, as_json: bool) -> None:
+    """Remove `general.default_mode` (or `profiles.<X>.default_mode`)."""
+    from thoth.config_cmd import get_modes_unset_default_data
+    from thoth.json_output import emit_error, emit_json
+
+    validate_inherited_options(ctx, "modes unset-default", _MODES_MUTATOR_HONOR)
+    config_path = inherited_value(ctx, "config_path")
+    profile = inherited_value(ctx, "profile")
+
+    data = get_modes_unset_default_data(
+        project=project,
+        profile=profile,
+        config_path=config_path,
+    )
+
+    if as_json:
+        if data.get("error") == "PROJECT_CONFIG_CONFLICT":
+            emit_error(
+                "PROJECT_CONFIG_CONFLICT",
+                "--config cannot be used with --project",
+                exit_code=2,
+            )
+        emit_json(data)
+
+    if data.get("error") == "PROJECT_CONFIG_CONFLICT":
+        click.echo("Error: --config cannot be used with --project", err=True)
+        ctx.exit(2)
+
+    if data.get("profile"):
+        click.echo(f"Unset default mode for profile '{data['profile']}'")
+    else:
+        click.echo("Unset default mode")
 
 
 def _make_modes_leaf(op_name: str):

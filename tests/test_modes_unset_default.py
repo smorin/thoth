@@ -70,3 +70,30 @@ def test_unset_default_project_conflicts_with_config_path(tmp_path: Path) -> Non
         config_path=tmp_path / "x.toml",
     )
     assert out["error"] == "PROJECT_CONFIG_CONFLICT"
+
+
+# --- CLI integration (Click leaves) ---
+
+import json  # noqa: E402
+
+from click.testing import CliRunner  # noqa: E402
+
+from thoth.cli import cli  # noqa: E402
+
+
+def test_cli_modes_unset_default_human(isolated_thoth_home: Path) -> None:
+    runner = CliRunner()
+    runner.invoke(cli, ["modes", "set-default", "deep_research"])
+    result = runner.invoke(cli, ["modes", "unset-default"])
+    assert result.exit_code == 0, result.output
+
+
+def test_cli_modes_unset_default_json_when_absent(isolated_thoth_home: Path) -> None:
+    runner = CliRunner()
+    result = runner.invoke(cli, ["modes", "unset-default", "--json"])
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["status"] == "ok"
+    data = payload["data"]
+    assert data["removed"] is False
+    assert data["reason"] in {"NOT_FOUND", "NO_FILE"}
