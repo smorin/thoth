@@ -17,7 +17,7 @@
 - New pure-data functions in `config_cmd.py`: `get_modes_set_default_data`, `get_modes_unset_default_data`. JSON envelope mirrors `config profiles set-default`.
 - Hand-written click leaves in `cli_subcommands/modes.py` (NOT factory-generated; flag shape differs from add/set/unset/remove/rename/copy).
 - Update `_config_default_mode()` in `cli.py` so the precedence chain is: positional builtin → `--mode` flag → `THOTH_DEFAULT_MODE` env → `profiles.<active>.default_mode` → `general.default_mode` → `"default"`.
-- Same-tier validation rule for `--profile X` on `set-default`: profile X must already be defined in the target tier file; otherwise exit 3 with a remediation hint. Mode NAME validation stays cross-tier (β). `unset-default` is exempt from the same-tier rule (δ).
+- Same-tier validation rule for `--profile X` on `set-default`: profile X must already be defined in the target tier file; otherwise exit 1 with a remediation hint. Mode NAME validation stays cross-tier (β). `unset-default` is exempt from the same-tier rule (δ).
 - Unset-default is fully idempotent: target file missing → `NO_FILE`, key absent → `NOT_FOUND`, both exit 0.
 
 **Out of Scope**
@@ -29,9 +29,9 @@
 
 ### Tests & Tasks
 
-- [ ] [P35-TS01] Author validation tests for `set-default`: NAME-not-in-catalog → exit 3 with available list; `--project --config PATH` conflict → exit 2; builtin NAME accepted; cross-tier NAME accepted under `--profile`. Live in `tests/test_modes_set_default.py`.
+- [ ] [P35-TS01] Author validation tests for `set-default`: NAME-not-in-catalog → exit 1 with available list; `--project --config PATH` conflict → exit 2; builtin NAME accepted; cross-tier NAME accepted under `--profile`. Live in `tests/test_modes_set_default.py`.
 - [ ] [P35-TS02] Author tier-matrix tests parametrized over the 7-row matrix (no flag, `--project`, `--config PATH`, each combined with `--profile X`, plus the conflict row). Each row asserts (a) target file received the expected key, (b) other files untouched, (c) JSON envelope shape is correct.
-- [ ] [P35-TS03] Author **same-tier profile-existence rule** tests for `set-default`: X-only-in-user with `--project` → exit 3; X-only-in-project with default user target → exit 3; X-in-both → accepted; X-nowhere → exit 3; `--config PATH` to a file lacking `[profiles.X]` → exit 3. Error message includes target tier and remediation hint.
+- [ ] [P35-TS03] Author **same-tier profile-existence rule** tests for `set-default`: X-only-in-user with `--project` → exit 1; X-only-in-project with default user target → exit 1; X-in-both → accepted; X-nowhere → exit 1; `--config PATH` to a file lacking `[profiles.X]` → exit 1. Error message includes target tier and remediation hint.
 - [ ] [P35-TS04] Author `unset-default` idempotency tests: key present → removed + table preserved; key absent → `NOT_FOUND` exit 0; file missing → `NO_FILE` exit 0; profile/file existence NOT required (δ).
 - [ ] [P35-TS05] Author resolution-chain tests in `tests/test_default_mode_resolution.py` covering all 6 cases: empty config → `"default"`; only `general.default_mode`; profile without `default_mode` → falls through; profile with `default_mode` overrides general; `THOTH_DEFAULT_MODE` env beats profile; profile defined in TOML but not the active selection → ignored.
 - [ ] [P35-TS06] Author JSON envelope tests asserting the success and error shapes documented in the spec (with and without `--profile`).

@@ -89,15 +89,25 @@ absent. See `unset-default` rules below.
    miss, raise `ConfigProfileError` with `available_profiles`
    scoped to the target tier and a suggestion message telling the
    user either to switch the tier flag or to create profile X in
-   the target tier first. Exit 3.
+   the target tier first. Exit 1 (matches existing
+   `ConfigProfileError` convention).
 3. NAME must be resolvable when the configured default fires (uses
    the merged catalog — cross-tier mode resolution is normal):
    - General scope (no `--profile`): NAME ∈ builtins ∪ base
      `[modes.*]` (across user + project).
    - Profile scope (`--profile X`): NAME ∈ builtins ∪ base
      `[modes.*]` ∪ `[profiles.X.modes.*]`.
-   - On miss → "mode not found" error including the available list,
-     exit 3.
+   - On miss → "mode not found" `ThothError` including the
+     available list. Exit 1 (matches `ThothError` default).
+
+Exit-code summary:
+
+| Failure | Exit code |
+|---|---|
+| Success | 0 |
+| `--project --config PATH` conflict | 2 |
+| Profile X not in target tier | 1 |
+| Mode NAME not in resolvable set | 1 |
 
 `unset-default`:
 
@@ -132,10 +142,10 @@ Given:
 |---|---|
 | `thoth modes set-default deep-with-stats` | ✓ writes `general.default_mode = "deep-with-stats"` to user. NAME resolvable cross-tier (defined in project base modes). |
 | `thoth modes set-default deep-with-stats --profile work` | ✓ writes `profiles.work.default_mode = "deep-with-stats"` to user. Profile `work` exists in user (target tier). |
-| `thoth modes set-default deep-with-stats --profile work --project` | ✗ exit 3. Profile `work` not in project config. Error: "Profile 'work' not found in project config; pass `--project` only if work is defined there, or run `thoth config profiles add work --project` first." |
-| `thoth modes set-default deep-with-stats --profile demo` | ✗ exit 3. Profile `demo` not in user config. Error lists profiles found in user config. |
+| `thoth modes set-default deep-with-stats --profile work --project` | ✗ exit 1. Profile `work` not in project config. Error: "Profile 'work' not found in project config; pass `--project` only if work is defined there, or run `thoth config profiles add work --project` first." |
+| `thoth modes set-default deep-with-stats --profile demo` | ✗ exit 1. Profile `demo` not in user config. Error lists profiles found in user config. |
 | `thoth modes set-default deep --profile work` | ✓ writes `profiles.work.default_mode = "deep"` to user. NAME `deep` is a builtin. |
-| `thoth modes set-default not-a-mode` | ✗ exit 3. Mode `not-a-mode` not found. Error lists resolvable modes. |
+| `thoth modes set-default not-a-mode` | ✗ exit 1. Mode `not-a-mode` not found. Error lists resolvable modes. |
 | `thoth modes unset-default --profile work --project` | ✓ no-op. Returns `removed=False, reason="NOT_FOUND"` (or `NO_FILE`). No same-tier check on unset. |
 | `thoth modes unset-default --profile demo` | ✓ no-op. Returns `removed=False, reason="NOT_FOUND"`. Profile `demo` doesn't exist anywhere; unset is idempotent. |
 
@@ -203,7 +213,7 @@ Tests land **before** implementation, per repo policy.
 
 ### Set-default validation (`tests/test_modes_set_default.py`)
 
-- NAME not in catalog → exit 3; stderr lists available modes.
+- NAME not in catalog → exit 1; stderr lists available modes.
 - `--project --config PATH` → exit 2, `PROJECT_CONFIG_CONFLICT`.
 - NAME = a builtin (e.g. `"deep"`) → accepted, write succeeds.
 - NAME exists only as `[modes.NAME]` in user → accepted (general scope).
@@ -220,17 +230,17 @@ Tests land **before** implementation, per repo policy.
 - Profile X defined only in user; `set-default NAME --profile X`
   (default user target) → accepted.
 - Profile X defined only in user; `set-default NAME --profile X --project`
-  → exit 3, error names target tier (`project`) and lists profiles
+  → exit 1, error names target tier (`project`) and lists profiles
   found there.
 - Profile X defined only in project; `set-default NAME --profile X`
-  (default user target) → exit 3, error lists user profiles and
+  (default user target) → exit 1, error lists user profiles and
   suggests `--project`.
 - Profile X defined only in project; `set-default NAME --profile X --project`
   → accepted.
 - Profile X defined in both; either tier flag → accepted.
-- Profile X nowhere; any tier flag → exit 3 with empty/limited
+- Profile X nowhere; any tier flag → exit 1 with empty/limited
   available list for the target tier.
-- `--config PATH` where PATH has no `[profiles.X]` → exit 3.
+- `--config PATH` where PATH has no `[profiles.X]` → exit 1.
 
 ### Tier matrix (parametrized)
 
