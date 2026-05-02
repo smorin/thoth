@@ -504,3 +504,75 @@ def test_perplexity_stream_passes_stream_mode_concise_default() -> None:
     )
     asyncio.run(_drain(provider, prompt="hi", mode="perplexity_quick"))
     assert captured["extra_body"]["stream_mode"] == "concise"
+
+
+# ---------------------------------------------------------------------------
+# TS07 — kind-mismatch defense (sonar-deep-research is P27 territory)
+# ---------------------------------------------------------------------------
+
+
+def test_perplexity_rejects_sonar_deep_research_on_immediate() -> None:
+    """TS07: model='sonar-deep-research' + kind='immediate' raises before any HTTP call."""
+    from thoth.errors import ModeKindMismatchError
+
+    captured: dict[str, Any] = {}
+
+    async def fake_create(**kwargs: Any) -> Any:
+        captured.update(kwargs)
+        captured.setdefault("called", []).append(1)
+        return _stub_response()
+
+    provider = PerplexityProvider(
+        api_key="pplx-test",
+        config={"model": "sonar-deep-research", "kind": "immediate"},
+    )
+    provider.client = cast(
+        Any,
+        types.SimpleNamespace(
+            chat=types.SimpleNamespace(completions=types.SimpleNamespace(create=fake_create))
+        ),
+    )
+    with pytest.raises(ModeKindMismatchError):
+        asyncio.run(provider.submit("hi", mode="perplexity_deep"))
+    assert "called" not in captured, "no HTTP call should have been made"
+
+
+def test_perplexity_rejects_sonar_deep_research_on_stream() -> None:
+    """TS07: stream() also raises before opening the HTTP request."""
+    from thoth.errors import ModeKindMismatchError
+
+    captured: dict[str, Any] = {}
+
+    async def fake_create(**kwargs: Any) -> Any:
+        captured.setdefault("called", []).append(1)
+        return _FakeStream([_delta_chunk("x")])
+
+    provider = PerplexityProvider(
+        api_key="pplx-test",
+        config={"model": "sonar-deep-research", "kind": "immediate"},
+    )
+    provider.client = cast(
+        Any,
+        types.SimpleNamespace(
+            chat=types.SimpleNamespace(completions=types.SimpleNamespace(create=fake_create))
+        ),
+    )
+
+    async def _consume() -> None:
+        async for _ in provider.stream("hi", mode="perplexity_deep"):
+            pass
+
+    with pytest.raises(ModeKindMismatchError):
+        asyncio.run(_consume())
+    assert "called" not in captured, "no HTTP call should have been made"
+
+
+def test_perplexity_allows_plain_models_on_immediate() -> None:
+    """TS07: regular Sonar models on immediate kind do NOT raise."""
+    captured: dict[str, Any] = {}
+    provider = PerplexityProvider(
+        api_key="pplx-test", config={"model": "sonar-pro", "kind": "immediate"}
+    )
+    provider.client = _stub_client(captured)
+    job_id = asyncio.run(provider.submit("hi", mode="perplexity_pro"))
+    assert job_id  # no exception

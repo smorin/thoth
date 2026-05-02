@@ -115,8 +115,10 @@ web_search_options = { search_context_size = "high" }
 - [x] [P23-T06] Implement explicit `stream = false` handling and Perplexity `submit()` / `check_status()` / `get_result()` one-shot behavior. Make P23-TS06 pass.
       Branch in `_execute_immediate` reads `mode_config.get("stream") is False` and uses the submit/get_result path directly instead of `provider.stream()`. Falls back path for `NotImplementedError` is preserved unchanged. Perplexity's `submit()`/`get_result()` (T02) already produces the deduped `## Sources` block.
 
-- [ ] [P23-TS07] Add failing kind-mismatch tests for `sonar-deep-research` with `kind = "immediate"`. Assert `ModeKindMismatchError` fires before any HTTP call and uses the existing generic config-edit suggestion.
-- [ ] [P23-T07] Implement Perplexity kind-mismatch guard. Make P23-TS07 pass.
+- [x] [P23-TS07] Add failing kind-mismatch tests for `sonar-deep-research` with `kind = "immediate"`. Assert `ModeKindMismatchError` fires before any HTTP call and uses the existing generic config-edit suggestion.
+      Added 3 cases (submit + stream paths reject `sonar-deep-research` immediate; plain models still allowed). Each asserts `captured["called"]` is absent, proving no HTTP call was attempted.
+- [x] [P23-T07] Implement Perplexity kind-mismatch guard. Make P23-TS07 pass.
+      Added `PerplexityProvider._validate_kind_for_model()` mirroring OpenAI's; reuses `is_background_model` (substring "deep-research"). Called at top of `submit()` and `stream()` BEFORE any HTTP attempt. `ModeKindMismatchError` is allowed to propagate uncaught (not mapped to ProviderError).
 
 - [ ] [P23-TS08] Add failing provider-registry, model-listing, and user-facing surface tests. Cover `PerplexityProvider.is_implemented()`, default model `sonar`, supported sync model list, provider list output without "(not implemented)", interactive provider menus, README/docs text, and any legacy tests/spec assertions that freeze old not-implemented copy.
 - [ ] [P23-T08] Flip Perplexity implementation status and update user-facing provider surfaces. Make P23-TS08 pass.

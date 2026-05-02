@@ -24,9 +24,11 @@ from tenacity import (
     wait_exponential,
 )
 
+from thoth.config import is_background_model
 from thoth.errors import (
     APIKeyError,
     APIQuotaError,
+    ModeKindMismatchError,
     ProviderError,
     ThothError,
 )
@@ -168,6 +170,21 @@ class PerplexityProvider(ResearchProvider):
             },
         ]
 
+    def _validate_kind_for_model(self, mode: str) -> None:
+        """Refuse immediate-kind use when the configured model requires background.
+
+        Mirrors `OpenAIProvider._validate_kind_for_model`. Specifically blocks
+        `sonar-deep-research` on the immediate path — that model belongs to
+        P27 and uses Perplexity's async API. Raises BEFORE any HTTP call.
+        """
+        if self.config.get("kind") == "immediate" and is_background_model(self.model):
+            raise ModeKindMismatchError(
+                mode_name=mode,
+                model=self.model,
+                declared_kind="immediate",
+                required_kind="background",
+            )
+
     def _build_messages(self, prompt: str, system_prompt: str | None) -> list[dict[str, str]]:
         messages: list[dict[str, str]] = []
         if system_prompt:
@@ -219,8 +236,11 @@ class PerplexityProvider(ResearchProvider):
         Wraps the inner retryable call to map any openai.* exception to a
         ThothError before reaching the caller.
         """
+        self._validate_kind_for_model(mode)
         try:
             response = await self._submit_with_retry(prompt, system_prompt)
+        except ModeKindMismatchError:
+            raise
         except (openai.APIError, Exception) as exc:
             raise _map_perplexity_error(exc, model=self.model, verbose=verbose) from exc
 
@@ -249,11 +269,14 @@ class PerplexityProvider(ResearchProvider):
         verbose: bool = False,
     ) -> AsyncIterator[StreamEvent]:
         """Translate Perplexity's streaming chunks into StreamEvent."""
+        self._validate_kind_for_model(mode)
         params = self._build_request_params(prompt, system_prompt)
         params["stream"] = True
 
         try:
             stream = await self.client.chat.completions.create(**params)
+        except ModeKindMismatchError:
+            raise
         except (openai.APIError, Exception) as exc:
             raise _map_perplexity_error(exc, model=self.model, verbose=verbose) from exc
 
