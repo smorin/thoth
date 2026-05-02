@@ -50,11 +50,31 @@ orthogonal.
 | `--profile X --config PATH`    | `PATH`        | `profiles.X.default_mode`    |
 | `--project --config PATH`      | **error**     | `PROJECT_CONFIG_CONFLICT` (exit 2) |
 
-`--profile X` (no `--project`, no `--config`) writing into the user
-file is allowed even when profile X is defined only in the project
-file. The runtime merges `[profiles.X]` across tiers, so the per-tier
-partial entry is well-defined. This matches existing
-`thoth modes set NAME KEY VALUE --profile X` behavior.
+**Same-tier rule for `--profile X`.** When `--profile X` is passed,
+profile X must already be defined in the **target tier** (the file
+selected by `--project` / `--config PATH` / default user). The
+command refuses if X exists in a different tier or is missing
+entirely. The error message tells the user how to fix it: either
+adjust the tier flag or create profile X in the desired tier first.
+
+Rationale: the namespace `[profiles.X]` and the keys inside it should
+live in the same file. Allowing partial cross-tier entries (e.g.,
+`[profiles.X]` defined in project but `profiles.X.default_mode` in
+user) creates confusing merge behavior at runtime. Forcing same-tier
+co-location surfaces tier-mismatch as an explicit error rather than
+a silent footgun.
+
+**Same-tier rule applies only to the profile namespace, not the mode
+NAME.** The mode NAME the default points at can be (a) a builtin,
+(b) defined in any base `[modes.NAME]` (user or project), or
+(c) defined in `[profiles.X.modes.NAME]` (user or project) when
+`--profile X` is in play. Modes are resolved at runtime through the
+merged config; cross-tier mode resolution is normal. Only the
+profile namespace itself requires same-tier co-location.
+
+**Same-tier rule applies only to `set-default`, not `unset-default`.**
+Unset is idempotent and harmless when the target file or table is
+absent. See `unset-default` rules below.
 
 ## Validation
 
@@ -63,10 +83,15 @@ partial entry is well-defined. This matches existing
 1. `--project` and `--config PATH` both set → emit
    `PROJECT_CONFIG_CONFLICT`, exit 2 (same shape as
    `profiles set-default`).
-2. If `--profile X` is set, X must exist in the resolved profile
-   catalog (union across user + project). Else `ConfigProfileError`,
-   exit 3.
-3. NAME must be resolvable when the configured default fires:
+2. If `--profile X` is set, X must exist **in the target tier**
+   (the same file the write would land in). The check inspects only
+   that file's `[profiles.X]` table — not the merged catalog. On
+   miss, raise `ConfigProfileError` with `available_profiles`
+   scoped to the target tier and a suggestion message telling the
+   user either to switch the tier flag or to create profile X in
+   the target tier first. Exit 3.
+3. NAME must be resolvable when the configured default fires (uses
+   the merged catalog — cross-tier mode resolution is normal):
    - General scope (no `--profile`): NAME ∈ builtins ∪ base
      `[modes.*]` (across user + project).
    - Profile scope (`--profile X`): NAME ∈ builtins ∪ base
@@ -88,6 +113,31 @@ partial entry is well-defined. This matches existing
 - Removes only the leaf `default_mode` key. Leaves the surrounding
   `[general]` or `[profiles.X]` table intact even if it goes empty
   (B17 precedent shared with `unset_default_profile`).
+
+## Worked examples
+
+Given:
+
+```
+~/.config/thoth/config.toml          (user)
+  [profiles.work]
+  api_key = "..."
+
+./.thoth/config.toml                 (project)
+  [modes.deep-with-stats]
+  model = "..."
+```
+
+| Command | Outcome |
+|---|---|
+| `thoth modes set-default deep-with-stats` | ✓ writes `general.default_mode = "deep-with-stats"` to user. NAME resolvable cross-tier (defined in project base modes). |
+| `thoth modes set-default deep-with-stats --profile work` | ✓ writes `profiles.work.default_mode = "deep-with-stats"` to user. Profile `work` exists in user (target tier). |
+| `thoth modes set-default deep-with-stats --profile work --project` | ✗ exit 3. Profile `work` not in project config. Error: "Profile 'work' not found in project config; pass `--project` only if work is defined there, or run `thoth config profiles add work --project` first." |
+| `thoth modes set-default deep-with-stats --profile demo` | ✗ exit 3. Profile `demo` not in user config. Error lists profiles found in user config. |
+| `thoth modes set-default deep --profile work` | ✓ writes `profiles.work.default_mode = "deep"` to user. NAME `deep` is a builtin. |
+| `thoth modes set-default not-a-mode` | ✗ exit 3. Mode `not-a-mode` not found. Error lists resolvable modes. |
+| `thoth modes unset-default --profile work --project` | ✓ no-op. Returns `removed=False, reason="NOT_FOUND"` (or `NO_FILE`). No same-tier check on unset. |
+| `thoth modes unset-default --profile demo` | ✓ no-op. Returns `removed=False, reason="NOT_FOUND"`. Profile `demo` doesn't exist anywhere; unset is idempotent. |
 
 ## Resolution change
 
@@ -154,15 +204,33 @@ Tests land **before** implementation, per repo policy.
 ### Set-default validation (`tests/test_modes_set_default.py`)
 
 - NAME not in catalog → exit 3; stderr lists available modes.
-- `--profile X` where X is not a known profile → exit 3,
-  `ConfigProfileError` shape.
 - `--project --config PATH` → exit 2, `PROJECT_CONFIG_CONFLICT`.
 - NAME = a builtin (e.g. `"deep"`) → accepted, write succeeds.
-- NAME exists only as `[modes.NAME]` in user → accepted.
+- NAME exists only as `[modes.NAME]` in user → accepted (general scope).
 - NAME exists only as `[profiles.Y.modes.NAME]`, writing `--profile X`
-  (X ≠ Y) → rejected.
+  (X ≠ Y) → rejected (mode not resolvable when X is active).
 - NAME exists only as `[profiles.X.modes.NAME]`, writing
   `--profile X` → accepted.
+- NAME exists in user `[modes.*]`, writing
+  `set-default NAME --profile X --project` (and X exists in project)
+  → accepted (β: cross-tier mode resolution allowed).
+
+**Same-tier profile-existence rule:**
+
+- Profile X defined only in user; `set-default NAME --profile X`
+  (default user target) → accepted.
+- Profile X defined only in user; `set-default NAME --profile X --project`
+  → exit 3, error names target tier (`project`) and lists profiles
+  found there.
+- Profile X defined only in project; `set-default NAME --profile X`
+  (default user target) → exit 3, error lists user profiles and
+  suggests `--project`.
+- Profile X defined only in project; `set-default NAME --profile X --project`
+  → accepted.
+- Profile X defined in both; either tier flag → accepted.
+- Profile X nowhere; any tier flag → exit 3 with empty/limited
+  available list for the target tier.
+- `--config PATH` where PATH has no `[profiles.X]` → exit 3.
 
 ### Tier matrix (parametrized)
 
@@ -241,6 +309,12 @@ Errors emit `{"error": "<CODE>", "message": "..."}` via
 - **Validation false negatives** if a mode is added in one tier and
   set as default in another. Mitigated by validating against the
   union catalog scoped to the target tier (general vs profile X).
+- **Same-tier rule causes friction for users** who expect partial
+  cross-tier writes to "just work". Mitigated by error messages
+  that include both fix paths (switch tier flag, or
+  `thoth config profiles add X --project` first). The friction is
+  intentional: it surfaces an ambiguous intent rather than silently
+  picking one tier.
 - **`unset-default` on a profile that doesn't exist.** Same as
   `unset-default` on a key that doesn't exist: `removed=False,
   reason="NOT_FOUND"`, exit 0. No profile-existence check on unset
@@ -255,6 +329,9 @@ Errors emit `{"error": "<CODE>", "message": "..."}` via
 | Validation strictness | Validate against the resolvable set for the target tier | Prevents dangling defaults. Matches `profiles set-default`. |
 | Profile-existence check on `set-default --profile X` | Yes | Symmetric with `profiles set-default` validating profile names. |
 | Flag orthogonality (tier vs key path) | Orthogonal | Consistent with existing modes mutators (`add`/`set`/...). User opts into project tier explicitly. |
+| Profile-existence check scope (set-default) | **Same-tier** — X must exist in the target file | Prevents partial cross-tier `[profiles.X]` entries that cause confusing merge behavior. Forces user to choose the right tier explicitly. |
+| Same-tier rule on mode NAME? | No (β) | Modes are values resolved through the merged config; cross-tier mode resolution is normal. Builtins also count. |
+| Same-tier rule on `unset-default`? | No (δ) | Unset is idempotent; missing file/table → silent `NOT_FOUND`/`NO_FILE`. Same-tier rule prevents creating dangling state, which delete cannot do. |
 
 ## Acceptance
 
