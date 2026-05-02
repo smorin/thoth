@@ -263,6 +263,12 @@ def _extract_fallback_options(args: list[str], opts: dict) -> tuple[list[str], d
         "--pick-model": "pick_model",
         "-M": "pick_model",
         "--append": "append",
+        # P35 Layer 1: belt-and-suspenders. ThothGroup.invoke already
+        # short-circuits --help/-h before reaching this fallback parser,
+        # but if anything routes here regardless we want them classified
+        # as flags (not positional prompt tokens).
+        "--help": "help",
+        "-h": "help",
     }
 
     parsed = dict(opts)

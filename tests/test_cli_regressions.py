@@ -60,13 +60,16 @@ def test_bare_prompt_forwards_leading_out_and_append(monkeypatch, tmp_path: Path
     captured = _stub_run_research(monkeypatch)
     target = tmp_path / "answer.md"
 
+    # P35 L1: single-token bare prompts (e.g. "topic") are now treated as
+    # typos and rejected with an "unknown command" error. Use a multi-token
+    # prompt so the bare-prompt fallback still catches it.
     result = CliRunner().invoke(
         cli,
-        ["--out", str(target), "--append", "--provider", "mock", "topic"],
+        ["--out", str(target), "--append", "--provider", "mock", "topic", "expand"],
     )
 
     assert result.exit_code == 0, result.output
-    assert captured["prompt"] == "topic"
+    assert captured["prompt"] == "topic expand"
     assert captured["provider"] == "mock"
     assert captured["out_specs"] == (str(target),)
     assert captured["append"] is True
