@@ -82,6 +82,34 @@ class ConfigDocument:
             return False
         return self.unset_default_profile()
 
+    def has_profile(self, name: str) -> bool:
+        """Return True iff `[profiles.<name>]` exists in this document."""
+        return self._table_at(("profiles", name)) is not None
+
+    def set_default_mode(self, name: str, *, profile: str | None = None) -> None:
+        if profile is None:
+            self.set_config_value("general.default_mode", name)
+            return
+        self.set_profile_value(profile, "default_mode", name)
+
+    def unset_default_mode(self, *, profile: str | None = None) -> bool:
+        if profile is None:
+            return self.unset_config_value("general.default_mode", prune_empty=False)
+        return self.unset_profile_value(profile, "default_mode")
+
+    def default_mode_name(self, *, profile: str | None = None) -> str | None:
+        if profile is None:
+            general = self._table_at(("general",))
+            if general is None or "default_mode" not in general:
+                return None
+            value = general["default_mode"]
+        else:
+            profile_table = self._table_at(("profiles", profile))
+            if profile_table is None or "default_mode" not in profile_table:
+                return None
+            value = profile_table["default_mode"]
+        return value if isinstance(value, str) and value else None
+
     # ------------------------------------------------------------------
     # Mode primitives (P12) — base tier `[modes.<NAME>]` or overlay
     # tier `[profiles.<X>.modes.<NAME>]` when `profile` is set.
