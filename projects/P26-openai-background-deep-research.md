@@ -12,7 +12,7 @@
 - **External (Responses API):** https://platform.openai.com/docs/api-reference/responses
 - **External (Deep-research cookbook):** https://cookbook.openai.com/examples/deep_research_api/introduction_to_deep_research_api
 
-**Status:** `[ ]` Scoped, not started.
+**Status:** `[x]` Completed — validation passed, 1 informational gap (G1), refactor outcome (a).
 
 **Goal**: Validate that OpenAI background deep research already works end-to-end as a distinct path from immediate, and produce a lightweight architecture pre-analysis informing whether cross-provider refactoring should pull forward from P29 before P27 / P28 implement their background paths. P26 produces evidence and a decision; it does **not** add new provider implementation. If validation surfaces zero gaps and the pre-analysis recommends no refactor, P26 closes as `[x]` with that documented confirmation.
 
@@ -48,7 +48,7 @@
 - [x] [P26-T04] Refactor decision. Pick outcome (a) / (b) / (c) per the three-part structure above and write the rationale into this body. If (b), draft the Protocol / ABC sketch (≤ 30 lines) inline. If (c), reserve a new P## via `project-add` and add the redirect note here; the new P## becomes a dependency of P27, P28, and P29.
 
 **Project close-out**
-- [ ] [P26-T05] Update the close-out summary at the top of this body with the outcome label (e.g. *"closed: validation passed, no gaps, no refactor"* or *"closed: 2 gaps → P##, refactor outcome (b)"*) and flip P26's trunk glyph to `[x]`.
+- [x] [P26-T05] Update the close-out summary at the top of this body with the outcome label (e.g. *"closed: validation passed, no gaps, no refactor"* or *"closed: 2 gaps → P##, refactor outcome (b)"*) and flip P26's trunk glyph to `[x]`.
 
 ### Validation Checklist (TS01 deliverable) + Coverage Map
 
@@ -136,6 +136,14 @@ Provider-agnostic runtime (`src/thoth/run.py:588` `_run_polling_loop`): owns jit
 5. P29 is the right place for cross-cutting cleanup once all three providers ship. Pulling that decision forward to P26 — before P27 / P28 even exist — would conflict with the staging logic the project trunk already encodes.
 
 **No new P## reserved.** **No Protocol / ABC sketch needed** (the existing `ResearchProvider` background contract serves that role; `_run_polling_loop` serves the runtime role). **No code changes in `src/thoth/`.**
+
+### P26 close-out summary
+
+- **Part 1 (validation):** PASS. 13 of 14 checklist rows `✓` offline; 1 of 14 `✓ live`; 0 confirmed sub-gaps from T01 (97 of 97 offline tests passed in 14.69 s).
+- **Part 2 (gap analysis):** 1 finding (G1 — `OpenAIProvider.get_result()` cached-response fallback has no offline mock test). Severity low; not blocking for P27 / P28; disposition won't-fix-in-P26, informational only. **No new P## reserved.**
+- **Part 3 (refactor pre-analysis):** Outcome (a) — no refactor warranted now. P29 owns any cross-cutting cleanup once P27 / P28 land.
+
+P26 closes `[x]` per the project-level close-out criterion (all three parts have closed out, no new code lands in `src/thoth/`).
 
 ### Acceptance Criteria
 - The validation checklist (TS01) exists in this body **before** T01 runs.
