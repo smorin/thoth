@@ -454,6 +454,26 @@ async def run_research(
         raise click.Abort()
 
 
+def _format_citations_block(citations: list[str]) -> str:
+    """Render `title|url` pairs as a `## Sources` markdown block.
+
+    Deduplicates by URL (the provider already dedupes, but a downstream
+    `--combined` run may join two providers' citation streams).
+    """
+    seen_urls: set[str] = set()
+    lines: list[str] = []
+    for entry in citations:
+        title, _, url = entry.partition("|")
+        url = url.strip()
+        if not url or url in seen_urls:
+            continue
+        seen_urls.add(url)
+        lines.append(f"- [{title or url}]({url})")
+    if not lines:
+        return ""
+    return "\n\n## Sources\n\n" + "\n".join(lines) + "\n"
+
+
 async def _execute_immediate(
     operation: OperationStatus,
     checkpoint_manager: CheckpointManager,
@@ -500,6 +520,7 @@ async def _execute_immediate(
 
     system_prompt = mode_config.get("system_prompt") or ""
     aggregated: list[str] = []
+    citations: list[str] = []
 
     sink = MultiSink.from_specs(list(out_specs), append=append)
     try:
@@ -511,6 +532,13 @@ async def _execute_immediate(
                     if event.kind == "text":
                         sink.write(event.text)
                         aggregated.append(event.text)
+                    elif event.kind == "reasoning":
+                        # P23: side-channel reasoning content streams alongside
+                        # text and persists into the saved output.
+                        sink.write(event.text)
+                        aggregated.append(event.text)
+                    elif event.kind == "citation":
+                        citations.append(event.text)
                     elif event.kind == "done":
                         break
             except NotImplementedError:
@@ -535,6 +563,12 @@ async def _execute_immediate(
             operation.failure_type = "permanent"
             await checkpoint_manager.save(operation)
             return
+        # P23: render buffered citations as a `## Sources` markdown block to
+        # every selected sink, after text/reasoning events have flushed.
+        if citations:
+            sources_block = _format_citations_block(citations)
+            sink.write(sources_block)
+            aggregated.append(sources_block)
     finally:
         sink.close()
 

@@ -105,8 +105,10 @@ web_search_options = { search_context_size = "high" }
 - [x] [P23-T04] Implement `PerplexityProvider.stream()`. Make P23-TS04 pass.
       Implemented `stream()` with cumulative-content guard, `<think>...</think>` segmenter (only on `reasoning` model), final-chunk citation emission deduped by URL, terminal `done`. Errors mapped through `_map_perplexity_error`.
 
-- [ ] [P23-TS05] Add failing executor/sink tests for side-channel stream events. Use a fake provider emitting `text`, `reasoning`, `citation`, and `done`; assert stdout, file-only, tee, and project-persisted output all contain the same rendered answer, reasoning section, and `## Sources` section.
-- [ ] [P23-T05] Update `_execute_immediate` to collect/render `reasoning` and `citation` events and write them to all sinks and persisted output. Make P23-TS05 pass.
+- [x] [P23-TS05] Add failing executor/sink tests for side-channel stream events. Use a fake provider emitting `text`, `reasoning`, `citation`, and `done`; assert stdout, file-only, tee, and project-persisted output all contain the same rendered answer, reasoning section, and `## Sources` section.
+      Added 4 cases to `tests/test_immediate_path.py` exercising the side-channel rendering path (stdout, citations block, persisted save_result content, file-only sink).
+- [x] [P23-T05] Update `_execute_immediate` to collect/render `reasoning` and `citation` events and write them to all sinks and persisted output. Make P23-TS05 pass.
+      `_execute_immediate` now branches on `kind` (text/reasoning/citation/done). New module-level `_format_citations_block()` renders deduped `## Sources\n\n- [t](u)` after the stream ends; the block flows to every sink AND into `aggregated` for persistence.
 
 - [ ] [P23-TS06] Add failing non-stream opt-out tests. Cover `stream = false` skipping `provider.stream()` entirely, calling `submit()` / `check_status()` / `get_result()`, appending sources, and preserving current behavior where `NotImplementedError` from `stream()` falls back but other stream errors fail.
 - [ ] [P23-T06] Implement explicit `stream = false` handling and Perplexity `submit()` / `check_status()` / `get_result()` one-shot behavior. Make P23-TS06 pass.
