@@ -136,8 +136,10 @@ def create_provider(
     if timeout_override is not None and provider_name in ("openai", "perplexity"):
         provider_config["timeout"] = timeout_override
 
-    # Apply model from mode configuration if specified
-    if mode_config and "model" in mode_config and provider_name == "openai":
+    # Apply model from mode configuration if specified.
+    # P23: extended from openai-only to perplexity. Generic passthrough; the
+    # provider/API surfaces validation, not this factory.
+    if mode_config and "model" in mode_config and provider_name in ("openai", "perplexity"):
         provider_config["model"] = mode_config["model"]
 
     # Thread the mode's declared `kind` into provider_config so the OpenAI

@@ -87,7 +87,8 @@ web_search_options = { search_context_size = "high" }
 
 - [x] [P23-TS01] Add failing CLI/model-resolution tests for `--model` passthrough. Cover `--provider perplexity --model sonar-pro`, an arbitrary future model string, mode-provided model passthrough, Perplexity provider default `sonar` when no model is configured, and no local provider/model compatibility validation.
       Tests added to `tests/test_provider_config.py` (3 unit tests on `create_provider`) and `tests/test_cli_option_policy.py` (3 CLI integration tests, incl. mutual-exclusion with `--pick-model` per design choice C). All 6 fail; T01 turns them green.
-- [ ] [P23-T01] Implement `--model` in the shared research option surface and thread it through `cli.py`, `cli_subcommands/ask.py`, `run.py`, and `create_provider()`. Make P23-TS01 pass.
+- [x] [P23-T01] Implement `--model` in the shared research option surface and thread it through `cli.py`, `cli_subcommands/ask.py`, `run.py`, and `create_provider()`. Make P23-TS01 pass.
+      Added `--model` to `_options.py` shared stack; threaded through root `cli.py` (callback signature, ctx.obj, fallback parser, mutex check before `pick_model`), through both `_run_research_default` callsites in `ask.py` (live + JSON path), through `create_provider` (gate extended openai→perplexity), and flipped `PerplexityProvider` default to `sonar`. All 6 TS01 tests green; 50 tests in neighboring suites still pass.
 
 - [ ] [P23-TS02] Add failing built-in mode and request-construction tests. Mock `AsyncOpenAI.chat.completions.create` and assert exact `messages`, direct SDK kwargs, `extra_body`, Perplexity namespace passthrough, explicit built-in `search_context_size` / `stream_mode`, fallback `search_context_size = "medium"`, fallback `stream_mode = "concise"`, and `system_prompt` as a system message.
 - [ ] [P23-T02] Add the three built-in Perplexity modes and implement Perplexity request construction. Make P23-TS02 pass.

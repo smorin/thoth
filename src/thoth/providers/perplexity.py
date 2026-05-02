@@ -14,7 +14,7 @@ class PerplexityProvider(ResearchProvider):
     def __init__(self, api_key: str, config: dict[str, Any] | None = None):
         self.api_key = api_key
         self.config = config or {}
-        self.model = self.config.get("model", "sonar-pro")  # Store model from config
+        self.model = self.config.get("model", "sonar")
 
     async def submit(
         self, prompt: str, mode: str, system_prompt: str | None = None, verbose: bool = False

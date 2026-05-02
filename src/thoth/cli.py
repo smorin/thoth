@@ -127,6 +127,7 @@ def _version_conflicts(ctx: click.Context, opts: dict) -> list[str]:
         "interactive": "--interactive",
         "clarify": "--clarify",
         "pick_model": "--pick-model",
+        "model": "--model",
     }
     for key, label in option_labels.items():
         if _has_supplied_value(opts.get(key)):
@@ -239,6 +240,7 @@ def _extract_fallback_options(args: list[str], opts: dict) -> tuple[list[str], d
         "--timeout": "timeout",
         "-T": "timeout",
         "--out": "out",
+        "--model": "model",
     }
 
     def _validate_provider(value: str) -> None:
@@ -423,7 +425,7 @@ def _dispatch_click_fallback(
     if not prompt:
         raise click.BadParameter("Prompt cannot be empty")
 
-    model_override = None
+    model_override = opts.get("model")
     if opts.get("pick_model"):
         model_override = _pick_model_override(mode, config)
 
@@ -585,6 +587,7 @@ def cli(
     interactive,
     clarify,
     pick_model,
+    model,
     cancel_on_interrupt,
 ):
     """thoth — research orchestration.
@@ -623,6 +626,7 @@ def cli(
     ctx.obj["interactive"] = interactive
     ctx.obj["clarify"] = clarify
     ctx.obj["pick_model"] = pick_model
+    ctx.obj["model"] = model
     ctx.obj["cancel_on_interrupt"] = cancel_on_interrupt
 
     if version:
@@ -654,6 +658,11 @@ def cli(
         raise click.BadParameter(
             "--clarify requires --interactive",
             param_hint="--clarify",
+        )
+
+    if model and pick_model:
+        raise click.UsageError(
+            "--model and --pick-model are mutually exclusive; use one or the other."
         )
 
     if pick_model:
