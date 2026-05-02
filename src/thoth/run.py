@@ -21,6 +21,7 @@ from typing import Any
 import aiofiles
 import click
 from rich.console import Console
+from rich.markup import escape as _rich_escape
 from rich.progress import (
     BarColumn,
     Progress,
@@ -330,17 +331,17 @@ async def run_research(
             )
         except APIKeyError as e:
             console.print(f"[red]Error:[/red] {e.message}")
-            console.print(f"[yellow]Suggestion:[/yellow] {e.suggestion}")
+            console.print(f"[yellow]Suggestion:[/yellow] {_rich_escape(e.suggestion or '')}")
             raise click.Abort()
         except ProviderError as e:
             console.print(f"[red]Error:[/red] {e.message}")
-            console.print(f"[yellow]Suggestion:[/yellow] {e.suggestion}")
+            console.print(f"[yellow]Suggestion:[/yellow] {_rich_escape(e.suggestion or '')}")
             if verbose and hasattr(e, "raw_error") and e.raw_error:
                 console.print(f"[dim]Raw error: {e.raw_error}[/dim]")
             raise click.Abort()
         except ThothError as e:
             console.print(f"[red]Error:[/red] {e.message}")
-            console.print(f"[yellow]Suggestion:[/yellow] {e.suggestion}")
+            console.print(f"[yellow]Suggestion:[/yellow] {_rich_escape(e.suggestion or '')}")
             raise click.Abort()
 
     if verbose:
@@ -377,7 +378,7 @@ async def run_research(
             operation.transition_to("failed", error=e.message)
             await checkpoint_manager.save(operation)
             console.print(f"[red]Error:[/red] {e.message}")
-            console.print(f"[yellow]Suggestion:[/yellow] {e.suggestion}")
+            console.print(f"[yellow]Suggestion:[/yellow] {_rich_escape(e.suggestion or '')}")
             if verbose and hasattr(e, "raw_error") and getattr(e, "raw_error", None):
                 console.print(f"[dim]Raw error: {e.raw_error}[/dim]")
             print_saved_not_submitted(operation_id)
@@ -847,7 +848,7 @@ async def _execute_research(
             }
         except ProviderError as e:
             console.print(f"\n[red]Error:[/red] {e.message}")
-            console.print(f"[yellow]Suggestion:[/yellow] {e.suggestion}")
+            console.print(f"[yellow]Suggestion:[/yellow] {_rich_escape(e.suggestion or '')}")
             if verbose and hasattr(e, "raw_error") and e.raw_error:
                 console.print(f"[dim]Raw error: {e.raw_error}[/dim]")
             raise click.Abort()
@@ -1186,7 +1187,7 @@ async def resume_operation(
             )
         except (APIKeyError, ProviderError, ThothError) as e:
             console.print(f"[red]Error:[/red] {e.message}")
-            console.print(f"[yellow]Suggestion:[/yellow] {e.suggestion}")
+            console.print(f"[yellow]Suggestion:[/yellow] {_rich_escape(e.suggestion or '')}")
             sys.exit(1)
 
         try:

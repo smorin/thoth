@@ -17,6 +17,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 import click
+from rich.markup import escape as _rich_escape
 
 import thoth.config as _thoth_config
 import thoth.run as _thoth_run
@@ -453,7 +454,7 @@ def handle_error(error: Exception):
     if isinstance(error, ThothError):
         console.print(f"\n[red]Error:[/red] {error.message}")
         if error.suggestion:
-            console.print(f"[yellow]Suggestion:[/yellow] {error.suggestion}")
+            console.print(f"[yellow]Suggestion:[/yellow] {_rich_escape(error.suggestion)}")
         sys.exit(error.exit_code)
     elif isinstance(error, KeyboardInterrupt):
         console.print("\n[yellow]Operation cancelled by user[/yellow]")

@@ -72,7 +72,7 @@ Older entries may use `**Primary spec**`, `**Plan**`, or
 <!-- Descending P-number order. Scoped / in-progress / done first;
      ideas last. One row per file; one file per row. -->
 
-- [~] **P36** — [Uniform `--help` + Useful API-Key Errors](projects/P36-help-uniform-errors.md)
+- [x] **P36** — [Uniform `--help` + Useful API-Key Errors](projects/P36-help-uniform-errors.md)
 - [?] **P34** — [Offline testing for OpenAIProvider.stream() (VCR or alternative)](projects/P34-offline-testing-openai-stream-.md)
 - [ ] **P33** — [Schema-Driven Config Defaults](projects/P33-schema-driven-config-defaults.md)
 - [ ] **P32** — [Interactive Prompt Refiner](projects/P32-interactive-prompt-refiner.md)

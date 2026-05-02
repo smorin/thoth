@@ -12,7 +12,7 @@
   - `src/thoth/providers/__init__.py:25-65` — `PROVIDERS`, `PROVIDER_ENV_VARS`, `resolve_api_key`
   - `src/thoth/run.py:272-294` — provider-selection fallback
 
-**Status:** `[~]` In progress.
+**Status:** `[x]` Done.
 
 **Goal**: Make `--help` work uniformly across the CLI (any invocation containing `--help` / `-h` shows help, never falls through to the research runner). Replace the misleading "openai API key not found" error that surfaces for unknown subcommands like `thoth profiles --help` with a clear "unknown command" error + fuzzy did-you-mean suggestion + full top-level command listing. Where a key is genuinely required, enumerate all three input channels (env var, `--api-key-*` flag, config file) and show every provider's key status, not just the failing one. Default the runner's provider selection to "any provider that has a resolvable key" instead of hardcoding `openai`, honoring `general.default_provider` when set.
 
@@ -113,34 +113,34 @@ The plan's task IDs follow the project-harness `P##-T##` / `P##-TS##` convention
 
 - [x] [P36-T00] Worktree at `/Users/stevemorin/c/thoth-worktrees/help-uniform-errors`, branch `help-uniform-errors` from `origin/main`.
 - [x] [P36-T01] Baseline gate green (980 pytest + 76 thoth_test).
-- [~] [P36-T02] Project file + plan + trunk row committed (this commit).
+- [x] [P36-T02] Project file + plan + trunk row committed (this commit).
 
 #### Layer 1 — Dispatch fix
 
-- [ ] [P36-TS03] Tests for unknown-command + uniform `--help`. Cases: `thoth profiles --help` (exit 2, "unknown command 'profiles'", "Did you mean 'thoth config profiles'", "Available top-level commands"), `thoth modes --help` (exit 0 click help — regression), `thoth default --help` (mode help — regression), `thoth profiles` (exit 2 same error), `thoth quantum gravity` (bare-prompt fallback preserved), `thoth "what is X"` (bare-prompt preserved), `thoth profiles -h` (same as `--help`).
-- [ ] [P36-T04] Implement `_KNOWN_SUBPATHS`, `_suggest_command`, `_format_unknown_command_error` helpers + update `ThothGroup.invoke` short-circuit. Add `--help` / `-h` to `_extract_fallback_options` flag table. Update `tests/baselines/unknown_command.json` to the new "unknown command" output (currently pins the broken behavior).
-- [ ] [P36-T05] Spec-reviewer pass on Layer 1 (verify dispatch matrix matches design notes; confirm bare-prompt regression cases preserved).
-- [ ] [P36-T06] Quality-reviewer pass on Layer 1 (lint/type/format; assertion-message audit; baseline regen scope).
+- [x] [P36-TS03] Tests for unknown-command + uniform `--help`. Cases: `thoth profiles --help` (exit 2, "unknown command 'profiles'", "Did you mean 'thoth config profiles'", "Available top-level commands"), `thoth modes --help` (exit 0 click help — regression), `thoth default --help` (mode help — regression), `thoth profiles` (exit 2 same error), `thoth quantum gravity` (bare-prompt fallback preserved), `thoth "what is X"` (bare-prompt preserved), `thoth profiles -h` (same as `--help`).
+- [x] [P36-T04] Implement `_KNOWN_SUBPATHS`, `_suggest_command`, `_format_unknown_command_error` helpers + update `ThothGroup.invoke` short-circuit. Add `--help` / `-h` to `_extract_fallback_options` flag table. Update `tests/baselines/unknown_command.json` to the new "unknown command" output (currently pins the broken behavior).
+- [x] [P36-T05] Spec-reviewer pass on Layer 1 (verify dispatch matrix matches design notes; confirm bare-prompt regression cases preserved).
+- [x] [P36-T06] Quality-reviewer pass on Layer 1 (lint/type/format; assertion-message audit; baseline regen scope).
 
 #### Layer 2 — Enhanced `APIKeyError`
 
-- [ ] [P36-TS07] Tests asserting (a) title-line substring `"openai API key not found"` preserved (regression), (b) suggestion lists env var + CLI flag + config syntax all three, (c) status block enumerates ALL providers' env vars not just the failing one, (d) legacy-config-file guidance still appended when present (regression).
-- [ ] [P36-T08] Add `PROVIDER_CLI_FLAGS` registry sibling to `PROVIDER_ENV_VARS`. Rewrite `APIKeyError.__init__` suggestion. Extend / branch `format_config_context` if needed for multi-provider status.
-- [ ] [P36-T09] Spec-reviewer pass on Layer 2 (every channel enumerated; status block iterates registry).
-- [ ] [P36-T10] Quality-reviewer pass on Layer 2.
+- [x] [P36-TS07] Tests asserting (a) title-line substring `"openai API key not found"` preserved (regression), (b) suggestion lists env var + CLI flag + config syntax all three, (c) status block enumerates ALL providers' env vars not just the failing one, (d) legacy-config-file guidance still appended when present (regression).
+- [x] [P36-T08] Add `PROVIDER_CLI_FLAGS` registry sibling to `PROVIDER_ENV_VARS`. Rewrite `APIKeyError.__init__` suggestion. Extend / branch `format_config_context` if needed for multi-provider status.
+- [x] [P36-T09] Spec-reviewer pass on Layer 2 (every channel enumerated; status block iterates registry).
+- [x] [P36-T10] Quality-reviewer pass on Layer 2.
 
 #### Layer 3 — Multi-provider default fallback
 
-- [ ] [P36-TS11] Tests: openai-only-set → openai used; perplexity-only-set → perplexity used; `general.default_provider="perplexity"` + key set → perplexity used even when openai also has a key; zero keys → enhanced `APIKeyError`; `--provider mock` always wins.
-- [ ] [P36-T12] Implement `available_providers(config, cli_api_keys=None) -> list[str]` in `providers/__init__.py`. Update `run.py:272-294` fallback chain.
-- [ ] [P36-T13] Spec-reviewer pass on Layer 3 (precedence matrix matches design notes).
-- [ ] [P36-T14] Quality-reviewer pass on Layer 3.
+- [x] [P36-TS11] Tests: openai-only-set → openai used; perplexity-only-set → perplexity used; `general.default_provider="perplexity"` + key set → perplexity used even when openai also has a key; zero keys → enhanced `APIKeyError`; `--provider mock` always wins.
+- [x] [P36-T12] Implement `available_providers(config, cli_api_keys=None) -> list[str]` in `providers/__init__.py`. Update `run.py:272-294` fallback chain.
+- [x] [P36-T13] Spec-reviewer pass on Layer 3 (precedence matrix matches design notes).
+- [x] [P36-T14] Quality-reviewer pass on Layer 3.
 
 #### Close
 
-- [ ] [P36-T15] Full lefthook gate (`just check` + `uv run pytest -q` + `./thoth_test -r --skip-interactive -q` + `uv run ruff format --check src/ tests/`).
-- [ ] [P36-T16] Flip P36 trunk glyph `[~]` → `[x]`. Update each `[ ]` task above to `[x]` as completed.
-- [ ] [P36-T17] Push branch, open PR, squash-merge to `main`.
+- [x] [P36-T15] Full lefthook gate (`just check` + `uv run pytest -q` + `./thoth_test -r --skip-interactive -q` + `uv run ruff format --check src/ tests/`).
+- [x] [P36-T16] Flip P36 trunk glyph `[~]` → `[x]`. Update each `[ ]` task above to `[x]` as completed.
+- [x] [P36-T17] Push branch, open PR, squash-merge to `main`.
 
 ### Verification
 
@@ -168,13 +168,13 @@ just check && uv run pytest -q && ./thoth_test -r --skip-interactive -q
 
 ### Acceptance criteria
 
-- [ ] All `--help` invocations work without API keys.
-- [ ] Unknown single-token commands emit "unknown command" + did-you-mean + command list (exit 2).
-- [ ] Multi-token strings still route to bare-prompt research.
-- [ ] `APIKeyError` suggestion lists env var + CLI flag + config syntax.
-- [ ] `APIKeyError` shows status of ALL provider env vars.
-- [ ] Runner picks any-provider-with-key when no `--provider` given.
-- [ ] `general.default_provider` config key honored when its provider has a key.
-- [ ] No regressions in registered-subcommand or builtin-mode dispatch.
-- [ ] Existing `tests/test_api_key_resolver.py` substring assertions still pass.
-- [ ] Full pytest + thoth_test + lefthook gate green.
+- [x] All `--help` invocations work without API keys.
+- [x] Unknown single-token commands emit "unknown command" + did-you-mean + command list (exit 2).
+- [x] Multi-token strings still route to bare-prompt research.
+- [x] `APIKeyError` suggestion lists env var + CLI flag + config syntax.
+- [x] `APIKeyError` shows status of ALL provider env vars.
+- [x] Runner picks any-provider-with-key when no `--provider` given.
+- [x] `general.default_provider` config key honored when its provider has a key.
+- [x] No regressions in registered-subcommand or builtin-mode dispatch.
+- [x] Existing `tests/test_api_key_resolver.py` substring assertions still pass.
+- [x] Full pytest + thoth_test + lefthook gate green.
