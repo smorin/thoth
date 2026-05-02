@@ -947,6 +947,50 @@ def _names_under_table(doc: Any, segments: tuple[str, ...]) -> list[str]:
     return [str(k) for k in table.keys()]
 
 
+def get_modes_unset_default_data(
+    *,
+    project: bool,
+    profile: str | None = None,
+    config_path: str | Path | None = None,
+) -> dict:
+    """Pure data function for `thoth modes unset-default`.
+
+    Idempotent: missing file → NO_FILE; key absent → NOT_FOUND; both exit 0.
+    No same-tier profile check (δ rule from P35 spec).
+    """
+    if project and config_path is not None:
+        envelope: dict[str, Any] = {
+            "removed": False,
+            "path": None,
+            "error": "PROJECT_CONFIG_CONFLICT",
+        }
+        if profile is not None:
+            envelope["profile"] = profile
+        return envelope
+
+    context = _write_context(project, config_path)
+    path = context.target_path
+    if not path.exists():
+        out: dict[str, Any] = {"removed": False, "path": str(path), "reason": "NO_FILE"}
+        if profile is not None:
+            out["profile"] = profile
+        return out
+
+    doc = context.load_document()
+    removed = doc.unset_default_mode(profile=profile)
+    if not removed:
+        out = {"removed": False, "path": str(path), "reason": "NOT_FOUND"}
+        if profile is not None:
+            out["profile"] = profile
+        return out
+
+    doc.save()
+    out = {"removed": True, "path": str(path)}
+    if profile is not None:
+        out["profile"] = profile
+    return out
+
+
 def get_config_profile_list_data(
     *,
     config_path: str | Path | None = None,
@@ -1035,4 +1079,5 @@ __all__ = [
     "get_config_set_data",
     "get_config_unset_data",
     "get_modes_set_default_data",
+    "get_modes_unset_default_data",
 ]
