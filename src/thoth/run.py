@@ -522,27 +522,14 @@ async def _execute_immediate(
     aggregated: list[str] = []
     citations: list[str] = []
 
+    # P23-T06: explicit non-stream opt-out via mode_config['stream'] = False.
+    # Skips provider.stream() entirely and uses the submit/get_result path.
+    explicit_no_stream = mode_config.get("stream") is False
+
     sink = MultiSink.from_specs(list(out_specs), append=append)
     try:
         try:
-            try:
-                async for event in provider_instance.stream(
-                    prompt, mode, system_prompt, verbose=verbose
-                ):
-                    if event.kind == "text":
-                        sink.write(event.text)
-                        aggregated.append(event.text)
-                    elif event.kind == "reasoning":
-                        # P23: side-channel reasoning content streams alongside
-                        # text and persists into the saved output.
-                        sink.write(event.text)
-                        aggregated.append(event.text)
-                    elif event.kind == "citation":
-                        citations.append(event.text)
-                    elif event.kind == "done":
-                        break
-            except NotImplementedError:
-                # Fallback for providers that haven't implemented stream yet.
+            if explicit_no_stream:
                 job_id = await provider_instance.submit(
                     prompt, mode, system_prompt, verbose=verbose
                 )
@@ -550,6 +537,32 @@ async def _execute_immediate(
                 content = await provider_instance.get_result(job_id, verbose=verbose)
                 sink.write(content)
                 aggregated.append(content)
+            else:
+                try:
+                    async for event in provider_instance.stream(
+                        prompt, mode, system_prompt, verbose=verbose
+                    ):
+                        if event.kind == "text":
+                            sink.write(event.text)
+                            aggregated.append(event.text)
+                        elif event.kind == "reasoning":
+                            # P23: side-channel reasoning content streams alongside
+                            # text and persists into the saved output.
+                            sink.write(event.text)
+                            aggregated.append(event.text)
+                        elif event.kind == "citation":
+                            citations.append(event.text)
+                        elif event.kind == "done":
+                            break
+                except NotImplementedError:
+                    # Fallback for providers that haven't implemented stream yet.
+                    job_id = await provider_instance.submit(
+                        prompt, mode, system_prompt, verbose=verbose
+                    )
+                    operation.providers[provider_name]["job_id"] = job_id
+                    content = await provider_instance.get_result(job_id, verbose=verbose)
+                    sink.write(content)
+                    aggregated.append(content)
         except Exception as e:
             # Streaming runs treat any exception as a permanent failure —
             # immediate-kind ops have no upstream job to retry/resume against.

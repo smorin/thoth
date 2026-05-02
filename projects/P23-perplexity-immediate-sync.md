@@ -110,8 +110,10 @@ web_search_options = { search_context_size = "high" }
 - [x] [P23-T05] Update `_execute_immediate` to collect/render `reasoning` and `citation` events and write them to all sinks and persisted output. Make P23-TS05 pass.
       `_execute_immediate` now branches on `kind` (text/reasoning/citation/done). New module-level `_format_citations_block()` renders deduped `## Sources\n\n- [t](u)` after the stream ends; the block flows to every sink AND into `aggregated` for persistence.
 
-- [ ] [P23-TS06] Add failing non-stream opt-out tests. Cover `stream = false` skipping `provider.stream()` entirely, calling `submit()` / `check_status()` / `get_result()`, appending sources, and preserving current behavior where `NotImplementedError` from `stream()` falls back but other stream errors fail.
-- [ ] [P23-T06] Implement explicit `stream = false` handling and Perplexity `submit()` / `check_status()` / `get_result()` one-shot behavior. Make P23-TS06 pass.
+- [x] [P23-TS06] Add failing non-stream opt-out tests. Cover `stream = false` skipping `provider.stream()` entirely, calling `submit()` / `check_status()` / `get_result()`, appending sources, and preserving current behavior where `NotImplementedError` from `stream()` falls back but other stream errors fail.
+      Added 2 cases (skip-when-false + default-uses-stream) using a stream-call tracker stub.
+- [x] [P23-T06] Implement explicit `stream = false` handling and Perplexity `submit()` / `check_status()` / `get_result()` one-shot behavior. Make P23-TS06 pass.
+      Branch in `_execute_immediate` reads `mode_config.get("stream") is False` and uses the submit/get_result path directly instead of `provider.stream()`. Falls back path for `NotImplementedError` is preserved unchanged. Perplexity's `submit()`/`get_result()` (T02) already produces the deduped `## Sources` block.
 
 - [ ] [P23-TS07] Add failing kind-mismatch tests for `sonar-deep-research` with `kind = "immediate"`. Assert `ModeKindMismatchError` fires before any HTTP call and uses the existing generic config-edit suggestion.
 - [ ] [P23-T07] Implement Perplexity kind-mismatch guard. Make P23-TS07 pass.

@@ -392,3 +392,95 @@ def test_immediate_writes_side_channel_events_to_file_sink(
     assert "answer body" in file_content
     assert "## Sources" in file_content
     assert "[Title One](https://one.example)" in file_content
+
+
+# ---------------------------------------------------------------------------
+# P23-TS06 — explicit stream=False opts out of streaming entirely.
+# ---------------------------------------------------------------------------
+
+
+class _StreamUseTracker:
+    """Tracks whether stream() vs submit/get_result was used."""
+
+    model = "perplexity-nostream"
+
+    def __init__(self) -> None:
+        self.stream_called = False
+        self.submitted: tuple[str, str, str | None] | None = None
+
+    async def stream(self, prompt, mode, system_prompt=None, verbose=False):
+        self.stream_called = True
+        if False:
+            yield None  # pragma: no cover
+
+    async def submit(self, prompt, mode, system_prompt=None, verbose=False):
+        self.submitted = (prompt, mode, system_prompt)
+        return "job-nostream"
+
+    async def get_result(self, job_id, verbose=False):
+        assert job_id == "job-nostream"
+        return "non-stream answer\n\n## Sources\n\n- [t](https://x.example)"
+
+
+def test_immediate_stream_false_skips_stream_and_uses_submit(
+    stub_config,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """TS06: mode_config['stream'] is False -> bypass provider.stream()."""
+    operation = make_operation("research-stream-false")
+    provider = _StreamUseTracker()
+    asyncio.run(
+        _execute_immediate(
+            operation=operation,
+            checkpoint_manager=_CheckpointStub(),  # ty: ignore[invalid-argument-type]
+            output_manager=_OutputCaptureStub(),  # ty: ignore[invalid-argument-type]
+            config=stub_config,
+            mode_config={"system_prompt": None, "stream": False},
+            providers={"perplexity": provider},
+            quiet=False,
+            verbose=False,
+            output_dir=None,
+            project=None,
+            mode="perplexity_quick",
+            prompt="hi",
+            out_specs=(),
+            append=False,
+            ctx=AppContext(config=stub_config),
+        )
+    )
+    assert provider.stream_called is False
+    assert provider.submitted == ("hi", "perplexity_quick", "")
+    captured = capsys.readouterr().out
+    assert "non-stream answer" in captured
+    assert "## Sources" in captured
+
+
+def test_immediate_default_uses_stream(
+    stub_config,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """TS06: when stream is unset, the streaming path runs."""
+    operation = make_operation("research-stream-default")
+    provider = _SideChannelProvider()
+    asyncio.run(
+        _execute_immediate(
+            operation=operation,
+            checkpoint_manager=_CheckpointStub(),  # ty: ignore[invalid-argument-type]
+            output_manager=_OutputCaptureStub(),  # ty: ignore[invalid-argument-type]
+            config=stub_config,
+            mode_config={"system_prompt": None},  # no `stream` key
+            providers={"perplexity": provider},
+            quiet=False,
+            verbose=False,
+            output_dir=None,
+            project=None,
+            mode="perplexity_quick",
+            prompt="hi",
+            out_specs=(),
+            append=False,
+            ctx=AppContext(config=stub_config),
+        )
+    )
+    captured = capsys.readouterr().out
+    assert "answer body" in captured
+    assert "## Sources" in captured
