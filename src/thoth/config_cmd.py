@@ -857,6 +857,103 @@ def get_config_profile_unset_default_data(
     return {"removed": True, "path": str(path)}
 
 
+def get_modes_set_default_data(
+    name: str,
+    *,
+    project: bool,
+    profile: str | None = None,
+    config_path: str | Path | None = None,
+) -> dict:
+    """Pure data function for `thoth modes set-default NAME`.
+
+    Validation:
+      1. --project + --config PATH → PROJECT_CONFIG_CONFLICT (exit 2).
+      2. --profile X → X must exist in the target tier (same-tier rule).
+         Else ConfigProfileError (exit 1).
+      3. NAME must be resolvable when the default fires:
+         general scope → builtins ∪ base [modes.*];
+         profile scope → builtins ∪ base [modes.*] ∪ [profiles.X.modes.*].
+    """
+    from thoth.config import BUILTIN_MODES
+    from thoth.errors import ConfigProfileError, ThothError
+
+    if project and config_path is not None:
+        envelope: dict[str, Any] = {
+            "default_mode": None,
+            "wrote": False,
+            "path": None,
+            "error": "PROJECT_CONFIG_CONFLICT",
+        }
+        if profile is not None:
+            envelope["profile"] = profile
+        return envelope
+
+    context = _write_context(project, config_path)
+
+    # Same-tier profile-existence rule (P35).
+    if profile is not None and not context.target_has_profile(profile):
+        # Build the available list scoped to the target tier so the error
+        # message is actionable.
+        if context.target_path.exists():
+            target_doc = context.load_document()
+            target_profiles = sorted(_names_under_table(target_doc, ("profiles",)))
+        else:
+            target_profiles = []
+        tier_label = (
+            "project config"
+            if project
+            else f"config file {context.target_path}"
+            if config_path
+            else "user config"
+        )
+        raise ConfigProfileError(
+            f"Profile {profile!r} not found in {tier_label}",
+            available_profiles=target_profiles,
+            source="thoth modes set-default",
+        )
+
+    # Mode NAME resolvability check (cross-tier — β rule).
+    cm = _load_manager(config_path, profile=profile)
+    resolvable = set(BUILTIN_MODES.keys())
+    base_modes = cm.get("modes")
+    if isinstance(base_modes, dict):
+        resolvable.update(base_modes.keys())
+    if profile is not None:
+        for layer in cm.profile_catalog:
+            if layer.name != profile:
+                continue
+            overlay_modes = layer.data.get("modes") if isinstance(layer.data, dict) else None
+            if isinstance(overlay_modes, dict):
+                resolvable.update(overlay_modes.keys())
+
+    if name not in resolvable:
+        raise ThothError(
+            f"Mode {name!r} not found",
+            suggestion=f"Available modes: {', '.join(sorted(resolvable))}",
+        )
+
+    doc = context.load_document()
+    doc.set_default_mode(name, profile=profile)
+    doc.save()
+
+    out: dict[str, Any] = {
+        "default_mode": name,
+        "wrote": True,
+        "path": str(context.target_path),
+    }
+    if profile is not None:
+        out["profile"] = profile
+    return out
+
+
+def _names_under_table(doc: Any, segments: tuple[str, ...]) -> list[str]:
+    """Helper: list the keys of a nested table, or [] if absent."""
+    table = doc._table_at(segments)
+    if table is None:
+        return []
+    return [str(k) for k in table.keys()]
+
+
 def get_config_profile_list_data(
     *,
     config_path: str | Path | None = None,
@@ -944,4 +1041,5 @@ __all__ = [
     "get_config_profile_unset_default_data",
     "get_config_set_data",
     "get_config_unset_data",
+    "get_modes_set_default_data",
 ]
