@@ -72,6 +72,7 @@ Older entries may use `**Primary spec**`, `**Plan**`, or
 <!-- Descending P-number order. Scoped / in-progress / done first;
      ideas last. One row per file; one file per row. -->
 
+- [ ] **P38** — [Perplexity Sync VCR Replay](projects/P38-perplexity-sync-vcr-replay.md)
 - [x] **P36** — [Uniform `--help` + Useful API-Key Errors](projects/P36-help-uniform-errors.md)
 - [x] **P35** — [Modes Set-Default / Unset-Default Commands](projects/P35-modes-set-default.md)
 - [?] **P34** — [Offline testing for OpenAIProvider.stream() (VCR or alternative)](projects/P34-offline-testing-openai-stream-.md)
