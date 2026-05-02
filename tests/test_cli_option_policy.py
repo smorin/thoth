@@ -203,3 +203,82 @@ def test_bare_admin_groups_reject_inherited_config_path(tmp_path: Path):
         assert result.exit_code == 2
         assert "--config" in result.output
         assert command in result.output
+
+
+# ---------------------------------------------------------------------------
+# P23-TS01 — failing CLI tests for the new `--model` flag.
+# `--model X` does not yet exist; these tests pin its expected wiring:
+# threads through to run_research's `model_override` kwarg without local
+# compatibility validation, and is mutually exclusive with `--pick-model`.
+# ---------------------------------------------------------------------------
+
+
+def test_ask_threads_model_flag_into_run_research(monkeypatch):
+    """P23-TS01: `--model X` populates run_research's model_override kwarg."""
+    captured = _stub_run_research(monkeypatch)
+
+    result = CliRunner().invoke(
+        cli,
+        [
+            "--prompt",
+            "test prompt",
+            "ask",
+            "--provider",
+            "perplexity",
+            "--model",
+            "sonar-pro",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert captured["model_override"] == "sonar-pro"
+    assert captured["provider"] == "perplexity"
+
+
+def test_ask_model_flag_passes_arbitrary_string_without_validation(monkeypatch):
+    """P23-TS01: --model accepts any string; validation is delegated to provider/API."""
+    captured = _stub_run_research(monkeypatch)
+
+    result = CliRunner().invoke(
+        cli,
+        [
+            "--prompt",
+            "test prompt",
+            "ask",
+            "--provider",
+            "perplexity",
+            "--model",
+            "future-sonar-2027-preview",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert captured["model_override"] == "future-sonar-2027-preview"
+
+
+def test_ask_model_and_pick_model_are_mutually_exclusive():
+    """P23-TS01 (design choice C): --model and --pick-model conflict → UsageError.
+
+    Asserts on the literal phrase "mutually exclusive" so the test stays red
+    after T01 adds the --model flag, until T01 also wires the explicit
+    mutual-exclusion rule. Without this phrase check, the test would pass
+    by accident on Click's "no such option" path (also exit code 2).
+    """
+    result = CliRunner().invoke(
+        cli,
+        [
+            "--prompt",
+            "test prompt",
+            "ask",
+            "--provider",
+            "perplexity",
+            "--model",
+            "sonar",
+            "--pick-model",
+        ],
+    )
+
+    assert result.exit_code == 2, result.output
+    assert "mutually exclusive" in result.output.lower()
+    assert "--model" in result.output
+    assert "--pick-model" in result.output

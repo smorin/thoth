@@ -140,3 +140,74 @@ def test_create_provider_no_background_for_plain_model() -> None:
         mode_config=mode_config,
     )
     assert provider.config.get("background", False) is False
+
+
+# ---------------------------------------------------------------------------
+# P23-TS01 — failing tests for `--model` passthrough through create_provider.
+# Currently create_provider gates mode_config["model"] passthrough to OpenAI
+# only (providers/__init__.py:107). T01 must extend it to Perplexity.
+# Currently PerplexityProvider defaults to "sonar-pro"; plan-pinned default
+# is "sonar". T01 must flip the stub default.
+# ---------------------------------------------------------------------------
+
+
+def test_create_provider_passes_perplexity_model_from_mode_config() -> None:
+    """P23-TS01: mode-config model passes through to PerplexityProvider."""
+    from types import SimpleNamespace
+
+    from thoth.config import ConfigManager
+    from thoth.providers import create_provider
+
+    config = cast(
+        ConfigManager,
+        SimpleNamespace(data={"providers": {"perplexity": {"api_key": "pplx-test"}}}),
+    )
+    mode_config: dict[str, Any] = {"model": "sonar-pro", "kind": "immediate"}
+
+    provider = create_provider("perplexity", config, mode_config=mode_config)
+    assert provider.config.get("model") == "sonar-pro"
+
+
+def test_create_provider_perplexity_default_model_is_sonar() -> None:
+    """P23-TS01: PerplexityProvider defaults to `sonar` when no model is configured.
+
+    Plan-pinned default; previous stub used `sonar-pro`.
+    """
+    from types import SimpleNamespace
+
+    from thoth.config import ConfigManager
+    from thoth.providers import create_provider
+    from thoth.providers.perplexity import PerplexityProvider
+
+    config = cast(
+        ConfigManager,
+        SimpleNamespace(data={"providers": {"perplexity": {"api_key": "pplx-test"}}}),
+    )
+
+    provider = create_provider("perplexity", config)
+    assert isinstance(provider, PerplexityProvider)
+    assert provider.model == "sonar"
+
+
+def test_create_provider_perplexity_passes_arbitrary_model_string() -> None:
+    """P23-TS01: no local provider/model compatibility validation.
+
+    A model string thoth has never seen passes through unchanged; any
+    invalid-model error is surfaced from the provider/API layer.
+    """
+    from types import SimpleNamespace
+
+    from thoth.config import ConfigManager
+    from thoth.providers import create_provider
+
+    config = cast(
+        ConfigManager,
+        SimpleNamespace(data={"providers": {"perplexity": {"api_key": "pplx-test"}}}),
+    )
+    mode_config: dict[str, Any] = {
+        "model": "future-sonar-2027-preview",
+        "kind": "immediate",
+    }
+
+    provider = create_provider("perplexity", config, mode_config=mode_config)
+    assert provider.config.get("model") == "future-sonar-2027-preview"
