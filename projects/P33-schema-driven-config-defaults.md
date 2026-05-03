@@ -75,7 +75,7 @@ The schema is **one of three cooperating layers**, not a monolith:
 ### Out of scope
 - Changing on-disk TOML schema or any default values (the schema must accept exactly what runtime defaults produce today).
 - Replacing `tomlkit` with another serializer.
-- Touching `BUILTIN_MODES` (mode-specific data, not config defaults — see `src/thoth/modes.py:53`).
+- Touching `BUILTIN_MODES` (mode-specific data, not config defaults — see `src/thoth/config.py:53`).
 - Reviewing *which* starter profiles ship — deferred to [P37](P37-starter-profile-review-.md).
 - Refactoring runtime call sites to consume new typed provider fields for future/non-OpenAI providers — that work belongs to whichever provider project picks them up (P23/P24/P28, etc.). P33 only adds OpenAI runtime-consumption regression tests for fields it explicitly claims OpenAI already consumes.
 - Promoting validation from warn-only to hard-fail. **Never hard-fail.** Warnings are diagnostic; raising on validation failures would be a breaking change to user configs and is explicitly excluded.
