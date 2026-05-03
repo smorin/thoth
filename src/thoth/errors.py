@@ -32,6 +32,80 @@ def format_config_context(config_path: Path | str, env_vars: list[str] | None = 
     return "\n".join(lines)
 
 
+# Per-provider human-readable display name for the suggestion section header
+# (e.g. "Provide an OpenAI API key via one of:"). `provider.title()` would
+# yield "Openai" / "Perplexity" / "Mock"; this mapping covers branded casing.
+_PROVIDER_DISPLAY_NAMES: dict[str, str] = {
+    "openai": "OpenAI",
+    "perplexity": "Perplexity",
+    "mock": "Mock",
+}
+
+# Per-provider example placeholder used in the env-var / CLI-flag / config
+# example lines. Mirrors the actual key prefix each provider expects.
+_PROVIDER_KEY_PLACEHOLDERS: dict[str, str] = {
+    "openai": "sk-...",
+    "perplexity": "pplx-...",
+    "mock": "mock-...",
+}
+
+
+def format_api_key_error_suggestion(provider: str, config_path: Path | str) -> str:
+    """Build the multi-channel APIKeyError suggestion body.
+
+    Enumerates all three input channels (env var, CLI flag, config-file
+    TOML), suggests switching to another provider, and shows the status
+    of every known provider's env var (not just the failing one). The
+    title-line `"{provider} API key not found"` is set by `APIKeyError`
+    itself and is preserved verbatim.
+    """
+    # Local import to avoid circulars (providers/__init__.py imports
+    # APIKeyError from this module).
+    from thoth.providers import PROVIDER_CLI_FLAGS, PROVIDER_ENV_VARS
+
+    display = _PROVIDER_DISPLAY_NAMES.get(provider, provider.title())
+    placeholder = _PROVIDER_KEY_PLACEHOLDERS.get(provider, "...")
+    env_var = PROVIDER_ENV_VARS.get(provider, f"{provider.upper()}_API_KEY")
+    cli_flag = PROVIDER_CLI_FLAGS.get(provider, f"--api-key-{provider}")
+    cfg_path = Path(config_path)
+
+    # Pick the first OTHER provider in registry-iteration order for the
+    # "switch providers" hint. Deterministic: PROVIDER_ENV_VARS dict order.
+    other_provider = next(
+        (name for name in PROVIDER_ENV_VARS if name != provider),
+        None,
+    )
+
+    channels = (
+        f"Provide an {display} API key via one of:\n"
+        f"  1. Environment variable: export {env_var}={placeholder}\n"
+        f"  2. CLI flag:              thoth {cli_flag} {placeholder} <command>\n"
+        f"  3. Config file:           Add the following to {cfg_path}:\n"
+        f"                              [providers.{provider}]\n"
+        f'                              api_key = "{placeholder}"'
+    )
+
+    if other_provider is not None:
+        switch_hint = (
+            f"\n\nAlternatively, switch providers with --provider {other_provider} "
+            f"(or another) and\nsupply that provider's key via the same channels."
+        )
+    else:
+        switch_hint = ""
+
+    cfg_status = (
+        f"  Config file: {cfg_path}  ({'exists' if cfg_path.exists() else 'does not exist'})"
+    )
+    env_status_parts = [
+        f"{name} ({'set' if os.environ.get(name) else 'unset'})"
+        for name in PROVIDER_ENV_VARS.values()
+    ]
+    env_status = f"  Env vars:    {'  '.join(env_status_parts)}"
+    status_block = "\n\nStatus of currently-checked sources:\n" + cfg_status + "\n" + env_status
+
+    return channels + switch_hint + status_block
+
+
 class ThothError(Exception):
     """Base exception for Thoth errors"""
 
@@ -46,15 +120,14 @@ class APIKeyError(ThothError):
     """Missing or invalid API key"""
 
     def __init__(self, provider: str):
-        from thoth.config_legacy import format_legacy_config_guidance
+        from thoth import config_legacy
         from thoth.paths import user_config_file  # local import to avoid cycles
 
-        env_var = f"{provider.upper()}_API_KEY"
         cfg_path = user_config_file()
-        suggestion = f"Set {env_var} (or edit {cfg_path})\n" + format_config_context(
-            cfg_path, env_vars=[env_var]
-        )
-        legacy_guidance = format_legacy_config_guidance()
+        suggestion = format_api_key_error_suggestion(provider, cfg_path)
+        # Look up via module attribute so test monkeypatching of
+        # `thoth.config_legacy.format_legacy_config_guidance` is honored.
+        legacy_guidance = config_legacy.format_legacy_config_guidance()
         if legacy_guidance:
             suggestion = f"{suggestion}\n\n{legacy_guidance}"
         super().__init__(

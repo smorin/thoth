@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import difflib
+import re
 import sys
 import warnings
 
@@ -21,6 +23,69 @@ ADMIN_COMMANDS: tuple[str, ...] = (
     "completion",
     "help",
 )
+
+
+# P36 Layer 1: curated typed-token → full-invocation map for the
+# unknown-command did-you-mean suggestion. Captures cases where the user
+# typed a leaf name from a multi-level command path (e.g. `profiles`,
+# which lives at `thoth config profiles`).
+_KNOWN_SUBPATHS: dict[str, str] = {
+    "profiles": "thoth config profiles",
+    "profile": "thoth config profiles",
+    "set": "thoth config set",
+    "get": "thoth config get",
+    "unset": "thoth config unset",
+    "path": "thoth config path",
+    "edit": "thoth config edit",
+    "add": "thoth modes add",
+    "remove": "thoth modes remove",
+    "rename": "thoth modes rename",
+    "copy": "thoth modes copy",
+}
+
+
+# P36 Layer 1: a "single token that looks like a command name" is
+# overwhelmingly a typo, not a research prompt. Multi-token strings,
+# quoted strings with spaces, and option-only invocations preserve
+# the existing bare-prompt fallback.
+_COMMAND_NAME_RE = re.compile(r"^[a-z][a-z0-9_-]*$")
+
+
+def _suggest_command(typed: str, registered: list[str]) -> str | None:
+    """Return a 'thoth ...' suggestion string, or None if no good match."""
+    if typed in _KNOWN_SUBPATHS:
+        return _KNOWN_SUBPATHS[typed]
+    matches = difflib.get_close_matches(typed, registered, n=1, cutoff=0.7)
+    if matches:
+        return f"thoth {matches[0]}"
+    return None
+
+
+def _format_unknown_command_error(
+    typed: str,
+    registered: list[str],
+    registered_run: list[str],
+    registered_admin: list[str],
+) -> str:
+    """Render the structured 'unknown command' error body.
+
+    Output format matches the design notes in
+    docs/superpowers/plans/2026-05-01-help-uniform-errors.md.
+    The suggestion paragraph is omitted entirely if no good match exists.
+    """
+    lines: list[str] = [f"Error: unknown command '{typed}'", ""]
+    suggestion = _suggest_command(typed, registered)
+    if suggestion is not None:
+        lines.append(f"Did you mean '{suggestion}'?")
+        lines.append("")
+    lines.append("Available top-level commands:")
+    if registered_run:
+        lines.append(f"  Run research:  {', '.join(registered_run)}")
+    if registered_admin:
+        lines.append(f"  Manage thoth:  {', '.join(registered_admin)}")
+    lines.append("")
+    lines.append("Run `thoth --help` for the full command list and options.")
+    return "\n".join(lines)
 
 
 def _run_research_default(*args, **kwargs):
@@ -122,6 +187,26 @@ class ThothGroup(click.Group):
             args = list(ctx.protected_args) + list(ctx.args)
         if args:
             first = args[0]
+            help_requested = ("--help" in args) or ("-h" in args)
+            # P36 Layer 1: --help/-h short-circuit. Registered subcommands
+            # and builtin modes still flow through their own dispatch (Click
+            # handles --help natively for registered commands; the mode
+            # dispatcher owns mode help). Anything else is a typo and gets
+            # the structured "unknown command" error rather than the
+            # misleading API-key error from the bare-prompt fallback.
+            if help_requested and first not in self.commands and first not in BUILTIN_MODES:
+                self._emit_unknown_command_error(ctx, first)
+            # P36 Layer 1: single-token unknown command (no --help). Match
+            # the command-name shape so multi-token / quoted / option-only
+            # bare prompts still route through the research fallback.
+            if (
+                len(args) == 1
+                and not first.startswith("-")
+                and _COMMAND_NAME_RE.match(first)
+                and first not in self.commands
+                and first not in BUILTIN_MODES
+            ):
+                self._emit_unknown_command_error(ctx, first)
             # Path 1: registered subcommand → standard dispatch
             if first in self.commands:
                 try:
@@ -135,6 +220,15 @@ class ThothGroup(click.Group):
             return _dispatch_click_fallback(ctx, args)
         # No args: option-only research/resume/interactive fallback.
         return _dispatch_click_fallback(ctx, args)
+
+    def _emit_unknown_command_error(self, ctx: click.Context, typed: str):
+        """Print the structured 'unknown command' error and exit 2."""
+        registered = sorted(self.commands.keys())
+        registered_run = [n for n in RUN_COMMANDS if n in self.commands]
+        registered_admin = [n for n in ADMIN_COMMANDS if n in self.commands]
+        message = _format_unknown_command_error(typed, registered, registered_run, registered_admin)
+        click.echo(message, err=True)
+        ctx.exit(2)
 
     def format_commands(self, ctx: click.Context, formatter):
         """Render commands in two sections: Run research / Manage thoth."""
