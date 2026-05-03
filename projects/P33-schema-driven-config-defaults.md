@@ -142,3 +142,4 @@ After P33 lands:
 - Run `thoth init --hidden` in a scratch dir; diff output against a pre-P33 capture — should be byte-identical (modulo the `version` line and any tomlkit-version-driven formatting).
 - Add `[general] prompy_prefix = "x"` to a config; run `thoth status`; observe one warning with field path `general.prompy_prefix`. Add `--no-validate`; observe no warnings.
 - Add `[experimental] anything = true` to a config; observe no warnings.
+- 2026-05-02: P33-T08 confirmed zero new validation warnings on existing test fixtures (225 config tests, no `config warning` output). P33 is invisible to existing users — no README/CHANGELOG entry needed.
