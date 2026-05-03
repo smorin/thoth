@@ -324,6 +324,18 @@ class PerplexityProvider(ResearchProvider):
             base_url=PERPLEXITY_BASE_URL,
             timeout=httpx.Timeout(timeout, connect=5.0),
         )
+        # Raw httpx client for the async API (P27): /v1/async/sonar lives
+        # outside the OpenAI SDK's surface, so the background lifecycle uses
+        # this client instead of self.client. Tests patch this attribute via
+        # AsyncMock; production code constructs a real AsyncClient here.
+        self._async_http = httpx.AsyncClient(
+            base_url=PERPLEXITY_BASE_URL,
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
+            timeout=httpx.Timeout(timeout, connect=5.0),
+        )
 
     def is_implemented(self) -> bool:
         return True
@@ -418,12 +430,16 @@ class PerplexityProvider(ResearchProvider):
         system_prompt: str | None = None,
         verbose: bool = False,
     ) -> str:
-        """One-shot synchronous chat completion.
+        """Submit a research request; routes by declared `kind`.
 
-        Wraps the inner retryable call to map any openai.* exception to a
-        ThothError before reaching the caller.
+        - `kind="background"` (P27, sonar-deep-research) -> `_submit_async`
+          (POST /v1/async/sonar; returns the upstream request_id as job_id).
+        - Anything else (P23 immediate path) -> the existing one-shot
+          /chat/completions submit, unchanged.
         """
         self._validate_kind_for_model(mode)
+        if self.config.get("kind") == "background":
+            return await self._submit_async(prompt, mode, system_prompt, verbose)
         try:
             response = await self._submit_with_retry(prompt, system_prompt)
         except ModeKindMismatchError:
@@ -447,6 +463,73 @@ class PerplexityProvider(ResearchProvider):
     async def _submit_with_retry(self, prompt: str, system_prompt: str | None) -> Any:
         params = self._build_request_params(prompt, system_prompt)
         return await self.client.chat.completions.create(**params)
+
+    def _build_async_request_body(
+        self, prompt: str, system_prompt: str | None, idempotency_key: str
+    ) -> dict[str, Any]:
+        """Build the /v1/async/sonar POST body with the request wrapper.
+
+        Wrapper shape is Perplexity-specific (NOT OpenAI's flat shape) per
+        https://docs.perplexity.ai/api-reference/async-chat-completions.
+        Forwards `reasoning_effort` and `web_search_options` from the
+        `perplexity` config namespace into the request part.
+        """
+        messages: list[dict[str, str]] = []
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+        messages.append({"role": "user", "content": prompt})
+        request_part: dict[str, Any] = {
+            "model": self.model,
+            "messages": messages,
+        }
+        perp_cfg = dict(self.config.get("perplexity") or {})
+        if "reasoning_effort" in perp_cfg:
+            request_part["reasoning_effort"] = perp_cfg["reasoning_effort"]
+        if "web_search_options" in perp_cfg:
+            request_part["web_search_options"] = perp_cfg["web_search_options"]
+        return {"request": request_part, "idempotency_key": idempotency_key}
+
+    async def _submit_async(
+        self, prompt: str, mode: str, system_prompt: str | None, verbose: bool
+    ) -> str:
+        """POST /v1/async/sonar; capture upstream request_id; map errors.
+
+        idempotency_key is generated ONCE here and reused across tenacity
+        retries — minting a fresh key per attempt would defeat idempotency.
+        """
+        idempotency_key = uuid4().hex
+        body = self._build_async_request_body(prompt, system_prompt, idempotency_key)
+        try:
+            response = await self._submit_async_with_retry(body)
+        except (httpx.HTTPStatusError, httpx.HTTPError, Exception) as exc:
+            raise _map_perplexity_error_async(exc, model=self.model, verbose=verbose) from exc
+
+        payload = response.json()
+        request_id = payload.get("id")
+        if not request_id:
+            raise ProviderError(
+                _PROVIDER_NAME,
+                "Async submit response missing 'id' field",
+                raw_error=str(payload) if verbose else None,
+            )
+        self.jobs[request_id] = {
+            "response_data": payload,
+            "background": True,
+            "created_at": datetime.now(),
+        }
+        return request_id
+
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=4, max=10),
+        retry=retry_if_exception_type((httpx.ConnectError, httpx.TimeoutException)),
+        reraise=True,
+    )
+    async def _submit_async_with_retry(self, body: dict[str, Any]) -> httpx.Response:
+        """Inner retryable POST. Raises raw httpx exceptions; outer maps."""
+        response = await self._async_http.post("/v1/async/sonar", json=body)
+        response.raise_for_status()
+        return response
 
     async def stream(
         self,

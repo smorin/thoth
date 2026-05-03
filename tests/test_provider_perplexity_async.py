@@ -16,6 +16,10 @@ Test slices:
 
 from __future__ import annotations
 
+import asyncio
+from typing import Any
+from unittest.mock import AsyncMock
+
 import httpx
 import pytest
 
@@ -26,7 +30,10 @@ from thoth.errors import (
     ProviderError,
     ThothError,
 )
-from thoth.providers.perplexity import _map_perplexity_error_async
+from thoth.providers.perplexity import (
+    PerplexityProvider,
+    _map_perplexity_error_async,
+)
 
 
 def _make_http_status_error(status: int, body: str = "{}") -> httpx.HTTPStatusError:
@@ -101,7 +108,7 @@ def test_async_map_5xx_returns_transient_provider_error(status: int) -> None:
     assert "server error" in str(result).lower() or "5xx" in str(result)
 
 
-def test_async_map_httpx_timeout_returns_provider_error() -> None:
+def test_async_maphttpx_timeout_returns_provider_error() -> None:
     """T04: httpx.TimeoutException → ProviderError with timeout language."""
     exc = httpx.TimeoutException("request timed out")
     result = _map_perplexity_error_async(exc)
@@ -109,7 +116,7 @@ def test_async_map_httpx_timeout_returns_provider_error() -> None:
     assert "timed out" in str(result).lower()
 
 
-def test_async_map_httpx_connect_error_returns_provider_error() -> None:
+def test_async_maphttpx_connect_error_returns_provider_error() -> None:
     """T04: httpx.ConnectError → ProviderError with network language."""
     exc = httpx.ConnectError("DNS resolution failed")
     result = _map_perplexity_error_async(exc)
@@ -132,3 +139,199 @@ def test_async_map_verbose_includes_raw_error_text() -> None:
     assert isinstance(result, ProviderError)
     assert result.raw_error is not None
     assert result.raw_error  # non-empty
+
+
+# ---------------------------------------------------------------------------
+# P27-TS01 — submit() POST body shape + idempotency
+# ---------------------------------------------------------------------------
+#
+# All tests below patch `provider._async_http` (the raw httpx client
+# scheduled to be added in __init__ alongside the existing AsyncOpenAI
+# `provider.client`). Calls to `submit()` with kind="background" route
+# through this httpx client; calls with kind="immediate" continue to use
+# the existing OpenAI-SDK client and are out of scope here.
+
+
+def _async_response(
+    status_code: int = 202,
+    payload: dict[str, Any] | None = None,
+) -> httpx.Response:
+    """Build an httpx.Response with a JSON body and a synthetic Request."""
+    request = httpx.Request("POST", "https://api.perplexity.ai/v1/async/sonar")
+    response = httpx.Response(
+        status_code=status_code,
+        json=payload or {"id": "req-async-123", "status": "CREATED"},
+        request=request,
+    )
+    return response
+
+
+def _make_background_provider(
+    response: httpx.Response | None = None,
+    extra_config: dict[str, Any] | None = None,
+) -> tuple[PerplexityProvider, AsyncMock]:
+    """Provider wired with an AsyncMock httpx client; returns (provider, post_mock)."""
+    config: dict[str, Any] = {
+        "model": "sonar-deep-research",
+        "kind": "background",
+    }
+    if extra_config:
+        config.update(extra_config)
+    provider = PerplexityProvider(api_key="pplx-test", config=config)
+    post_mock = AsyncMock(return_value=response or _async_response())
+    fake_client = AsyncMock()
+    fake_client.post = post_mock
+    fake_client.get = AsyncMock(return_value=_async_response())
+    provider._async_http = fake_client  # type: ignore[attr-defined]
+    return provider, post_mock
+
+
+def test_async_submit_posts_to_v1_async_sonar() -> None:
+    """TS01: submit() with kind=background POSTs to /v1/async/sonar."""
+    provider, post = _make_background_provider()
+    asyncio.run(provider.submit("hello", mode="perplexity_deep_research"))
+    assert post.await_count == 1
+    assert post.await_args is not None
+    url = post.await_args.args[0] if post.await_args.args else post.await_args.kwargs.get("url", "")
+    assert url == "/v1/async/sonar"
+
+
+def test_async_submit_uses_request_wrapper_shape() -> None:
+    """TS01: body matches Perplexity's `{"request": {...}, "idempotency_key": ...}` shape.
+
+    NOT OpenAI's flat shape — the request part is wrapped explicitly.
+    """
+    provider, post = _make_background_provider()
+    asyncio.run(provider.submit("hello", mode="perplexity_deep_research"))
+    assert post.await_args is not None
+    body = post.await_args.kwargs["json"]
+    assert "request" in body, f"missing 'request' wrapper in body: {body}"
+    assert "idempotency_key" in body
+    assert body["request"]["model"] == "sonar-deep-research"
+    assert body["request"]["messages"] == [{"role": "user", "content": "hello"}]
+
+
+def test_async_submit_idempotency_key_is_uuid4_hex() -> None:
+    """TS01: idempotency_key is a 32-char hex string (uuid4().hex)."""
+    provider, post = _make_background_provider()
+    asyncio.run(provider.submit("hello", mode="perplexity_deep_research"))
+    assert post.await_args is not None
+    body = post.await_args.kwargs["json"]
+    key = body["idempotency_key"]
+    assert isinstance(key, str)
+    assert len(key) == 32
+    int(key, 16)  # raises if not hex
+
+
+def test_async_submit_idempotency_key_stable_across_retries() -> None:
+    """TS01: tenacity retries reuse the SAME idempotency_key (advisor #2).
+
+    Generating a new UUID inside the retried inner would defeat the whole
+    point of idempotency. The key must be minted in `submit()` (or any
+    outer caller) once, then passed into the retried inner.
+    """
+    provider, post = _make_background_provider()
+    seen_keys: list[str] = []
+
+    async def flaky_post(*args: Any, **kwargs: Any) -> httpx.Response:
+        seen_keys.append(kwargs["json"]["idempotency_key"])
+        if len(seen_keys) < 3:
+            raise httpx.ConnectError("transient network failure")
+        return _async_response()
+
+    post.side_effect = flaky_post
+    asyncio.run(provider.submit("hello", mode="perplexity_deep_research"))
+    assert len(seen_keys) == 3, f"expected 3 retry attempts, got {len(seen_keys)}"
+    assert len(set(seen_keys)) == 1, f"idempotency_key changed across retries: {seen_keys}"
+
+
+def test_async_submit_includes_reasoning_effort_from_mode_config() -> None:
+    """TS01: config['perplexity']['reasoning_effort'] passes through to body['request']."""
+    provider, post = _make_background_provider(
+        extra_config={"perplexity": {"reasoning_effort": "high"}}
+    )
+    asyncio.run(provider.submit("hello", mode="perplexity_deep_research"))
+    assert post.await_args is not None
+    body = post.await_args.kwargs["json"]
+    assert body["request"].get("reasoning_effort") == "high"
+
+
+def test_async_submit_omits_reasoning_effort_when_unset() -> None:
+    """TS01: omitting reasoning_effort from config also omits it from the request body.
+
+    Lets Perplexity's server-side default apply rather than forcing one client-side.
+    """
+    provider, post = _make_background_provider()  # no perplexity.reasoning_effort
+    asyncio.run(provider.submit("hello", mode="perplexity_deep_research"))
+    assert post.await_args is not None
+    body = post.await_args.kwargs["json"]
+    assert "reasoning_effort" not in body["request"]
+
+
+def test_async_submit_with_system_prompt_yields_two_messages() -> None:
+    """TS01: system_prompt -> first system message; user prompt -> user message."""
+    provider, post = _make_background_provider()
+    asyncio.run(
+        provider.submit("user content", mode="perplexity_deep_research", system_prompt="be brief")
+    )
+    assert post.await_args is not None
+    body = post.await_args.kwargs["json"]
+    assert body["request"]["messages"] == [
+        {"role": "system", "content": "be brief"},
+        {"role": "user", "content": "user content"},
+    ]
+
+
+def test_async_submit_returns_request_id_as_job_id() -> None:
+    """TS01: response.json()['id'] is captured as the job_id and stored in self.jobs."""
+    provider, post = _make_background_provider(
+        response=_async_response(payload={"id": "req-xyz-789", "status": "CREATED"})
+    )
+    job_id = asyncio.run(provider.submit("hello", mode="perplexity_deep_research"))
+    assert job_id == "req-xyz-789"
+    assert "req-xyz-789" in provider.jobs
+
+
+def test_async_submit_does_not_route_immediate_kind_through_async_path() -> None:
+    """Regression: kind='immediate' MUST continue to use the existing P23 sync path.
+
+    P27 must not change the immediate-path lifecycle. Verifies that the
+    new kind=background dispatch is the ONLY path that touches the new
+    `_async_http` client.
+    """
+    provider, post = _make_background_provider(
+        extra_config={"model": "sonar-pro", "kind": "immediate"}
+    )
+    # Patch the SDK client too so we can detect which path executes.
+    sync_called = {"hit": False}
+
+    async def fake_sync_create(**kwargs: Any) -> Any:
+        sync_called["hit"] = True
+        # Return a SimpleNamespace that mimics the SDK response shape.
+        from types import SimpleNamespace
+
+        return SimpleNamespace(id="sync-id", choices=[], search_results=[])
+
+    from types import SimpleNamespace
+
+    provider.client = SimpleNamespace(  # type: ignore[assignment]  # ty: ignore[invalid-assignment]
+        chat=SimpleNamespace(completions=SimpleNamespace(create=fake_sync_create))
+    )
+    asyncio.run(provider.submit("hello", mode="perplexity_pro"))
+    assert sync_called["hit"], "immediate kind should call the SDK client, not _async_http"
+    assert post.await_count == 0, "_async_http MUST NOT be called for kind=immediate"
+
+
+def test_async_submit_provider_init_creates_async_http_client() -> None:
+    """T03 part 2: __init__ wires self._async_http as an httpx.AsyncClient.
+
+    Verified by attribute presence and base_url. Tests below patch this
+    attribute, but the real construction must happen in __init__.
+    """
+    provider = PerplexityProvider(
+        api_key="pplx-test", config={"model": "sonar-deep-research", "kind": "background"}
+    )
+    assert hasattr(provider, "_async_http"), "expected _async_http attribute in __init__"
+    assert isinstance(provider._async_http, httpx.AsyncClient)
+    assert str(provider._async_http.base_url).rstrip("/") == "https://api.perplexity.ai"
+    asyncio.run(provider._async_http.aclose())
