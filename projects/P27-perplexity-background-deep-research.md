@@ -83,21 +83,50 @@
 - ~~**`reasoning_effort` default**~~ **RESOLVED**: `high` (~$1.32/query) — user-locked at P27 kickoff. Matches "deep research means deep" intent; users opt down via mode config.
 - **Async polling delay bug**: `IN_PROGRESS` may show for 30–40 minutes when actual completion is ~2 minutes (per §17). Should we add a "poll-budget" timeout that abandons after N minutes regardless of API status? Out of scope for v1; document in mode docstring.
 
+### Background lifecycle parity (vs OpenAI background)
+
+P27 must mirror OpenAI background's behavioral contract without modifying
+the contract itself. The runner (`src/thoth/run.py:_run_polling_loop`),
+checkpoint manager (`src/thoth/checkpoint.py:CheckpointManager`), the
+`ResearchProvider` ABC (`src/thoth/providers/base.py`), and the cancel CLI
+renderer (`src/thoth/cli_subcommands/cancel.py`) are all consumed
+unchanged — P27 only adds new code to `PerplexityProvider`.
+
+A coverage audit of OpenAI background tests (94 cases across 13 files)
+mapped each to P27 as direct-mirror, adapted, OpenAI-specific, or
+immediate-path. The categories where Perplexity diverges intentionally:
+
+| Category | Divergence | P27 stance |
+|---|---|---|
+| Status enum | Perplexity has no `incomplete` or `cancelled` states | Test cases for those statuses are N/A (skip; not gaps) |
+| Cancel | No upstream cancel API (T01 verified) | `cancel()` returns `{"status":"upstream_unsupported"}` consumed by `cancel.py:126`; replaces OpenAI's API-call test with the unsupported-return test |
+| Result shape | dict access (no SDK typedefs); `search_results` not `annotations`; `usage.cost.total_cost` and `reasoning_effort` are Perplexity-only | adapted tests; new `## Cost` footer + truncation heuristic tests have no OpenAI parallel |
+| Kind-mismatch | Perplexity 422s on `kind="background"` + non-DR model (OpenAI permits force-background on any model) | both directions tested (P27-TS06 reverse + P23-TS07 forward) |
+
+The remaining categories all have a 1-to-1 Perplexity-side test in
+this plan. No background-lifecycle contract changes; no infrastructure
+modifications.
+
 ### Tests & Tasks
 
-- [ ] [P27-TS01] Design tests for `submit()` POST body shape — `{"request": {...model, messages, reasoning_effort?}, "idempotency_key": <uuid>}`. Cover the request-wrapper requirement (NOT OpenAI's flat shape).
-- [ ] [P27-TS02] Design tests for status mapping (CREATED/IN_PROGRESS/COMPLETED/FAILED → Thoth status enum + progress).
-- [ ] [P27-TS03] Design tests for `get_result` extraction — dict-style `search_results` access (NOT attr-style; OpenAI SDK has no typedefs), `## Sources` formatting + dedup, `## Cost` footer from `usage.cost.total_cost`, truncation warning heuristic.
+- [ ] [P27-TS01] Design tests for `submit()` POST body shape — `{"request": {model, messages, reasoning_effort?, ...}, "idempotency_key": <uuid>}`. MUST cover the request-wrapper requirement (NOT OpenAI's flat shape), `reasoning_effort` passthrough from mode config, and the idempotency_key being generated **outside** the tenacity-retried inner (every retry must reuse the same UUID — that's the whole point).
+- [ ] [P27-TS02] Design tests for status mapping (CREATED/IN_PROGRESS/COMPLETED/FAILED → Thoth status enum + progress). Cover the network-error-with-stale-cache cases mirroring OAI-BG-06/07: poll fails transient + cached IN_PROGRESS → `transient_error`; poll fails transient + cached COMPLETED → `completed`.
+- [ ] [P27-TS03] Design tests for `get_result` extraction — dict-style `search_results` access (NOT attr-style; OpenAI SDK has no typedefs), `## Sources` formatting + URL-only dedup. Per audit gap, split out:
+- [ ] [P27-TS03b] Cost footer formatting — `usage.cost.total_cost: 1.2345` → `## Cost\n\nTotal: $1.23` (4-decimal rounding, currency symbol, "Total:" label).
+- [ ] [P27-TS03c] Truncation heuristic — 2 cases: response with `finish_reason="stop"` AND content tail lacking terminal punctuation → `> ⚠ Possible truncation` warning; complete response with terminal punctuation → no warning. Document conservativeness in test docstring.
 - [ ] [P27-TS04] Design tests for `reconnect()` — happy-path repopulates `self.jobs[job_id]`; HTTP 404 raises `ProviderError` with 7-day-TTL message.
-- [ ] [P27-TS05] Design tests for `cancel()` — based on T01 finding, either upstream-cancel happy-path or `upstream_unsupported` returned (exact shape consumed by `cancel.py:122–129`).
-- [ ] [P27-TS06] Design tests for kind-mismatch defense — `kind="background"` + `model="sonar-pro"` raises pre-HTTP; `kind="immediate"` + `model="sonar-deep-research"` raises pre-HTTP.
+- [ ] [P27-TS04b] End-to-end resume integration test (mirrors OpenAI's RESUME-01): submit → simulated crash → `thoth resume <op_id>` reconnects via `request_id` → polls to completion. Verifies the runner consumes Perplexity's `reconnect()` the same way it consumes OpenAI's.
+- [ ] [P27-TS05] Design tests for `cancel()` — `upstream_unsupported` return shape verified against `cancel.py:126` (exact dict key spelling). Negative assertion: NO HTTP call made (since there's no endpoint to call).
+- [x] [P27-TS06] Design tests for kind-mismatch defense — `kind="background"` + `model="sonar-pro"` raises pre-HTTP; `kind="immediate"` + `model="sonar-deep-research"` raises pre-HTTP. (Done in `tests/test_provider_perplexity.py:743-769`; reverse direction lands as part of T03 part 1.)
 - [ ] [P27-TS07] Design VCR cassette test for happy-path async lifecycle — submit → 1× IN_PROGRESS poll → COMPLETED → `get_result()` returns content+sources+cost. Cassette path: `thoth_test_cassettes/perplexity/async-happy-path.yaml`.
 - [ ] [P27-TS08] Design VCR cassette tests for auth-error (401) and expired-job (404) wire formats.
 - [ ] [P27-TS09] Design live-api gated tests (`@pytest.mark.live_api`, `tests/extended/test_perplexity_async_real_workflows.py`) for the full lifecycle (submit → poll → result → cancel-or-cleanup).
-- [ ] [P27-T01] Re-verify Perplexity server-side cancel support against current docs (https://docs.perplexity.ai/api-reference/async-chat-completions); update Open Questions section with finding before T08 starts.
-- [ ] [P27-T02] Add Perplexity built-in mode `perplexity_deep_research` to `src/thoth/config.py:BUILTIN_MODES` with `model: "sonar-deep-research"`, `kind: "background"`, `reasoning_effort` exposed (default `low` or `medium` per Open Question).
-- [ ] [P27-T03] Implement `PerplexityProvider.__init__` for the background path: `httpx.AsyncClient(base_url="https://api.perplexity.ai", headers={"Authorization":..., "Content-Type":...})`. Add `_validate_kind_for_model` covering both directions of the kind-split.
-- [ ] [P27-T04] Implement module-level `_map_perplexity_error_async(exc, model, verbose) -> ThothError` for httpx exceptions and Perplexity HTTP status codes (401/402/422/429/5xx).
+- [ ] [P27-TS10] Sigint / cancel-on-interrupt matrix (mirrors SIGINT-01..07): config default `cancel_upstream_on_interrupt`; `--cancel-on-interrupt=false` skips cancel and prints hint; `upstream_unsupported` does NOT block other providers' cancels; 5s `asyncio.wait_for` envelope on a hung cancel call.
+- [ ] [P27-TS11] Snapshot status mapping (mirrors SNAPSHOT-03/04): explicit `get_resume_snapshot_data()` enum mapping for failed+transient → `recoverable_failure` and failed+permanent → `failed_permanent` for Perplexity-shaped jobs.
+- [x] [P27-T01] Re-verify Perplexity server-side cancel support against current docs (https://docs.perplexity.ai/api-reference/async-chat-completions); update Open Questions section with finding before T09 starts. (Resolved 2026-05-02; see Open Questions.)
+- [x] [P27-T02] Add Perplexity built-in mode `perplexity_deep_research` to `src/thoth/config.py:BUILTIN_MODES` with `model: "sonar-deep-research"`, `kind: "background"`, `reasoning_effort: "high"` (locked). (Done in `0c2d325`.)
+- [~] [P27-T03] Implement `PerplexityProvider` background-path additions: (part 1) extend `_validate_kind_for_model` with reverse direction — DONE in `0f28761`; (part 2) add `httpx.AsyncClient(base_url="https://api.perplexity.ai", ...)` alongside the existing `AsyncOpenAI` client — deferred, lands with T05 where the client is first used.
+- [x] [P27-T04] Implement module-level `_map_perplexity_error_async(exc, model, verbose) -> ThothError` for httpx exceptions and Perplexity HTTP status codes (401/402/422/429/5xx). (Done in `2605131`.)
 - [ ] [P27-T05] Implement `submit()` — POST `/v1/async/sonar` with idempotency_key, retry on transient. Capture `request_id` → `self.jobs[request_id]`, return as job_id.
 - [ ] [P27-T06] Implement `check_status()` — GET `/v1/async/sonar/{id}` with full status mapping, 404 → expired-TTL message, network errors → transient.
 - [ ] [P27-T07] Implement `get_result()` — fresh fetch, dict-style `search_results` access, `## Sources` dedup, `## Cost` footer from `usage.cost.total_cost`, truncation-warning heuristic.
