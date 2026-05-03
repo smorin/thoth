@@ -75,7 +75,7 @@ Older entries may use `**Primary spec**`, `**Plan**`, or
 - [?] **P37** — [Review starter-profile selection](projects/P37-starter-profile-review-.md)
 - [x] **P36** — [Uniform `--help` + Useful API-Key Errors](projects/P36-help-uniform-errors.md)
 - [?] **P34** — [Offline testing for OpenAIProvider.stream() (VCR or alternative)](projects/P34-offline-testing-openai-stream-.md)
-- [ ] **P33** — [Schema-Driven Config Defaults](projects/P33-schema-driven-config-defaults.md)
+- [x] **P33** — [Schema-Driven Config Defaults](projects/P33-schema-driven-config-defaults.md)
 - [ ] **P32** — [Interactive Prompt Refiner](projects/P32-interactive-prompt-refiner.md)
 - [ ] **P31** — [Interactive Init Command](projects/P31-interactive-init-command.md)
 - [ ] **P30** — [Claude Code Skills Support](projects/P30-claude-code-skills-support.md)
