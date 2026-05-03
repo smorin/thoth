@@ -200,7 +200,7 @@ def test_perplexity_request_passes_direct_sdk_kwargs() -> None:
 # ---------------------------------------------------------------------------
 
 
-def _make_openai_exc(cls_name: str, status: int = 400) -> BaseException:
+def _make_openai_exc(cls_name: str, status: int = 400, body: Any = None) -> BaseException:
     """Build a fake openai.* SDK exception with a real httpx.Request anchor."""
     import httpx
     import openai
@@ -213,16 +213,16 @@ def _make_openai_exc(cls_name: str, status: int = 400) -> BaseException:
     if cls is openai.APIConnectionError:
         return cls(message=msg, request=request)
     if cls is openai.APIError:
-        return cls(message=msg, request=request, body=None)
+        return cls(message=msg, request=request, body=body)
     response = httpx.Response(status_code=status, request=request)
-    return cls(message=msg, response=response, body=None)
+    return cls(message=msg, response=response, body=body)
 
 
 @pytest.mark.parametrize(
     ("exc_cls", "expected_thoth"),
     [
         ("AuthenticationError", "APIKeyError"),
-        ("RateLimitError", "APIQuotaError"),
+        ("RateLimitError", "APIRateLimitError"),
         ("BadRequestError", "ProviderError"),
         ("PermissionDeniedError", "ProviderError"),
         ("InternalServerError", "ProviderError"),
@@ -260,6 +260,22 @@ def test_map_perplexity_error_falls_back_for_unknown_exception() -> None:
 
     mapped = _map_perplexity_error(RuntimeError("unrelated"), model="sonar")
     assert isinstance(mapped, ProviderError)
+
+
+def test_map_perplexity_rate_limit_quota_message_maps_to_quota() -> None:
+    """P23-RS04: quota/credit exhaustion remains APIQuotaError, distinct from rate limit."""
+    from thoth.errors import APIQuotaError
+    from thoth.providers.perplexity import _map_perplexity_error
+
+    exc = _make_openai_exc(
+        "RateLimitError",
+        status=429,
+        body={"error": {"message": "Your credits are exhausted; add billing credits."}},
+    )
+
+    mapped = _map_perplexity_error(exc, model="sonar")
+
+    assert isinstance(mapped, APIQuotaError)
 
 
 def test_perplexity_submit_retries_on_transient_then_succeeds() -> None:
@@ -338,6 +354,24 @@ class _FakeStream:
             raise StopAsyncIteration from exc
 
 
+class _FailingStream:
+    """Async iterator that raises after yielding any configured chunks."""
+
+    def __init__(self, chunks: list[Any], exc: BaseException) -> None:
+        self._chunks = chunks
+        self._exc = exc
+
+    def __aiter__(self) -> _FailingStream:
+        self._iter = iter(self._chunks)
+        return self
+
+    async def __anext__(self) -> Any:
+        try:
+            return next(self._iter)
+        except StopIteration:
+            raise self._exc
+
+
 def _stub_stream_client(chunks: list[Any], captured: dict[str, Any] | None = None) -> Any:
     captured = captured if captured is not None else {}
 
@@ -357,6 +391,13 @@ async def _drain(provider: PerplexityProvider, **kwargs: Any) -> list[tuple[str,
     out: list[tuple[str, str]] = []
     async for ev in provider.stream(**kwargs):
         out.append((ev.kind, ev.text))
+    return out
+
+
+async def _drain_events(provider: PerplexityProvider, **kwargs: Any) -> list[Any]:
+    out: list[Any] = []
+    async for ev in provider.stream(**kwargs):
+        out.append(ev)
     return out
 
 
@@ -404,12 +445,12 @@ def test_perplexity_stream_emits_terminal_done_event() -> None:
     assert events[-1] == ("done", "")
 
 
-def test_perplexity_stream_emits_citations_from_search_results() -> None:
-    """TS04: final chunk's search_results -> StreamEvent('citation', 'title|url') per entry."""
+def test_perplexity_stream_emits_structured_citations_from_search_results() -> None:
+    """P23-RS06: final search_results emit structured citation data, not title|url."""
     final_chunk = _delta_chunk(
         None,
         search_results=[
-            {"title": "T1", "url": "https://a.example"},
+            {"title": "T1 | pipe", "url": "https://a.example"},
             {"title": "T2", "url": "https://b.example"},
         ],
     )
@@ -418,10 +459,12 @@ def test_perplexity_stream_emits_citations_from_search_results() -> None:
         api_key="pplx-test", config={"model": "sonar", "kind": "immediate"}
     )
     provider.client = _stub_stream_client(chunks)
-    events = asyncio.run(_drain(provider, prompt="hi", mode="perplexity_quick"))
-    citations = [text for kind, text in events if kind == "citation"]
-    assert "T1|https://a.example" in citations
-    assert "T2|https://b.example" in citations
+    events = asyncio.run(_drain_events(provider, prompt="hi", mode="perplexity_quick"))
+    citations = [event.citation for event in events if event.kind == "citation"]
+    assert citations[0].title == "T1 | pipe"
+    assert citations[0].url == "https://a.example"
+    assert citations[1].title == "T2"
+    assert citations[1].url == "https://b.example"
 
 
 def test_perplexity_stream_extracts_think_block_as_reasoning() -> None:
@@ -441,6 +484,30 @@ def test_perplexity_stream_extracts_think_block_as_reasoning() -> None:
     assert any("internal monologue" in r for r in reasoning_chunks)
     assert "answer" in "".join(text_chunks)
     assert "<think>" not in "".join(text_chunks)
+
+
+def test_perplexity_stream_extracts_think_block_split_across_chunks() -> None:
+    """P23-RS05: split <think> tags are parsed statefully across chunks."""
+    chunks = [
+        _delta_chunk("pre <th"),
+        _delta_chunk("ink>internal "),
+        _delta_chunk("monologue</"),
+        _delta_chunk("think> answer"),
+    ]
+    provider = PerplexityProvider(
+        api_key="pplx-test",
+        config={"model": "sonar-reasoning-pro", "kind": "immediate"},
+    )
+    provider.client = _stub_stream_client(chunks)
+
+    events = asyncio.run(_drain(provider, prompt="hi", mode="perplexity_reasoning"))
+
+    reasoning_chunks = [text for kind, text in events if kind == "reasoning"]
+    text_chunks = [text for kind, text in events if kind == "text"]
+    assert "".join(reasoning_chunks) == "internal monologue"
+    assert "".join(text_chunks) == "pre  answer"
+    assert "<think>" not in "".join(text_chunks)
+    assert "</think>" not in "".join(text_chunks)
 
 
 def test_perplexity_stream_tolerates_missing_think_block() -> None:
@@ -504,6 +571,30 @@ def test_perplexity_stream_passes_stream_mode_concise_default() -> None:
     )
     asyncio.run(_drain(provider, prompt="hi", mode="perplexity_quick"))
     assert captured["extra_body"]["stream_mode"] == "concise"
+
+
+def test_perplexity_stream_maps_iteration_errors() -> None:
+    """P23-RS05: SDK errors raised mid-stream map through Perplexity taxonomy."""
+    from thoth.errors import APIRateLimitError
+
+    captured: dict[str, Any] = {}
+
+    async def fake_create(**kwargs: Any) -> Any:
+        captured.update(kwargs)
+        return _FailingStream([_delta_chunk("partial")], _make_openai_exc("RateLimitError", 429))
+
+    provider = PerplexityProvider(
+        api_key="pplx-test", config={"model": "sonar", "kind": "immediate"}
+    )
+    provider.client = cast(
+        Any,
+        types.SimpleNamespace(
+            chat=types.SimpleNamespace(completions=types.SimpleNamespace(create=fake_create))
+        ),
+    )
+
+    with pytest.raises(APIRateLimitError):
+        asyncio.run(_drain(provider, prompt="hi", mode="perplexity_quick"))
 
 
 # ---------------------------------------------------------------------------

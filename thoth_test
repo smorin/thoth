@@ -2829,6 +2829,7 @@ all_tests = [
         ],
         expected_exit_code=1,
         env={"PERPLEXITY_API_KEY": "pplx-test-bogus-key"},
+        provider="perplexity",
     ),
     # Signal handling tests
     TestCase(
@@ -3030,6 +3031,7 @@ all_tests = [
             r"Unexpected error during submission",
         ],
         expected_exit_code=1,
+        provider="perplexity",
     ),
     # ============================================================================
     # Interactive Mode Tests (require pexpect)

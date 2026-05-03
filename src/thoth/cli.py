@@ -402,6 +402,11 @@ def _dispatch_click_fallback(
     args, opts = _extract_fallback_options(args, opts)
     _apply_config_path(opts.get("config_path"))
 
+    if opts.get("model") and opts.get("pick_model"):
+        raise click.UsageError(
+            "--model and --pick-model are mutually exclusive; use one or the other."
+        )
+
     if opts.get("interactive"):
         config = _thoth_config.get_config(profile=opts.get("profile"))
         mode, prompt = _resolve_mode_and_prompt(

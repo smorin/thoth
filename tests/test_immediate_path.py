@@ -254,12 +254,20 @@ class _SideChannelProvider:
     model = "perplexity-stub"
 
     async def stream(self, prompt, mode, system_prompt=None, verbose=False):
-        from thoth.providers.base import StreamEvent
+        from thoth.providers.base import Citation, StreamEvent
 
         yield StreamEvent(kind="reasoning", text="thinking step 1")
         yield StreamEvent(kind="text", text="answer body")
-        yield StreamEvent(kind="citation", text="Title One|https://one.example")
-        yield StreamEvent(kind="citation", text="Title Two|https://two.example")
+        yield StreamEvent(
+            kind="citation",
+            text="Title | One",
+            citation=Citation(title="Title | One", url="https://one.example"),
+        )
+        yield StreamEvent(
+            kind="citation",
+            text="Title Two",
+            citation=Citation(title="Title Two", url="https://two.example"),
+        )
         yield StreamEvent(kind="done", text="")
 
 
@@ -289,8 +297,10 @@ def test_immediate_renders_reasoning_event_to_stdout(
         )
     )
     captured = capsys.readouterr().out
+    assert "## Reasoning" in captured
     assert "thinking step 1" in captured
     assert "answer body" in captured
+    assert captured.index("answer body") < captured.index("## Reasoning")
 
 
 def test_immediate_renders_citations_as_sources_block(
@@ -320,7 +330,7 @@ def test_immediate_renders_citations_as_sources_block(
     )
     captured = capsys.readouterr().out
     assert "## Sources" in captured
-    assert "[Title One](https://one.example)" in captured
+    assert "[Title | One](https://one.example)" in captured
     assert "[Title Two](https://two.example)" in captured
 
 
@@ -353,10 +363,11 @@ def test_immediate_persisted_output_contains_reasoning_and_sources(
     )
     assert len(output_stub.calls) == 1
     persisted = output_stub.calls[0]["content"]
+    assert "## Reasoning" in persisted
     assert "thinking step 1" in persisted
     assert "answer body" in persisted
     assert "## Sources" in persisted
-    assert "[Title One](https://one.example)" in persisted
+    assert "[Title | One](https://one.example)" in persisted
     assert "[Title Two](https://two.example)" in persisted
 
 
@@ -390,8 +401,9 @@ def test_immediate_writes_side_channel_events_to_file_sink(
     file_content = out_file.read_text()
     assert "thinking step 1" in file_content
     assert "answer body" in file_content
+    assert "## Reasoning" in file_content
     assert "## Sources" in file_content
-    assert "[Title One](https://one.example)" in file_content
+    assert "[Title | One](https://one.example)" in file_content
 
 
 # ---------------------------------------------------------------------------

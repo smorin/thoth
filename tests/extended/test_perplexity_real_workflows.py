@@ -99,44 +99,51 @@ def test_ext_pplx_imm_stream_tee_writes_stdout_and_file(
     assert target.read_text(encoding="utf-8") == result.stdout
 
 
-def test_ext_pplx_imm_cli_api_key_flag_works_without_env(
+def test_ext_pplx_imm_custom_mode_passes_provider_namespace_without_argv_key(
+    live_perplexity_env: tuple[dict[str, str], Path],
     tmp_path: Path,
 ) -> None:
-    """Live: --api-key-perplexity sk-... works without PERPLEXITY_API_KEY in env;
-    the key never appears in stdout/stderr/logs."""
-    import os
+    """Live: Perplexity mode-specific extra_body settings pass via config/env.
 
-    api_key = os.environ.get("PERPLEXITY_API_KEY")
-    if not api_key:
-        pytest.skip("PERPLEXITY_API_KEY is required for this test")
+    Real Perplexity keys must not be placed on argv; timeout/error paths can
+    print argv before normal no-leak assertions run.
+    """
+    env, _ = live_perplexity_env
+    config_path = tmp_path / "pplx-passthrough.toml"
+    config_path.write_text(
+        """version = "2.0"
 
-    env = {k: v for k, v in os.environ.items() if k != "PERPLEXITY_API_KEY"}
-    env.update(
-        {
-            "HOME": str(tmp_path / "home"),
-            "XDG_CONFIG_HOME": str(tmp_path / "config"),
-            "XDG_STATE_HOME": str(tmp_path / "state"),
-            "XDG_CACHE_HOME": str(tmp_path / "cache"),
-            "PYTHONUNBUFFERED": "1",
-            "COLUMNS": "200",
-        }
+[providers.perplexity]
+api_key = "${PERPLEXITY_API_KEY}"
+
+[modes.pplx_passthrough_live]
+provider = "perplexity"
+model = "sonar"
+kind = "immediate"
+
+[modes.pplx_passthrough_live.perplexity]
+stream_mode = "full"
+web_search_options = { search_context_size = "low" }
+""",
+        encoding="utf-8",
     )
 
+    args = [
+        "--config",
+        str(config_path),
+        "ask",
+        "Reply in one short sentence.",
+        "--mode",
+        "pplx_passthrough_live",
+    ]
+    assert env["PERPLEXITY_API_KEY"] not in args
+
     result, _elapsed = run_thoth(
-        [
-            "ask",
-            "Reply in one short sentence.",
-            "--mode",
-            "perplexity_quick",
-            "--provider",
-            "perplexity",
-            "--api-key-perplexity",
-            api_key,
-        ],
+        args,
         env,
         timeout=120,
     )
 
     assert result.returncode == 0, result.stderr + result.stdout
-    assert api_key not in result.stdout
-    assert api_key not in result.stderr
+    assert_no_secret_leaked(result, env)
+    assert result.stdout.strip()

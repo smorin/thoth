@@ -10,6 +10,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+import yaml
 
 WORKFLOWS = Path(__file__).resolve().parent.parent / ".github" / "workflows"
 
@@ -17,12 +18,19 @@ WORKFLOWS = Path(__file__).resolve().parent.parent / ".github" / "workflows"
 @pytest.mark.parametrize("workflow", ["extended.yml", "live-api.yml"])
 def test_workflow_passes_perplexity_api_key(workflow: str) -> None:
     """TS09: nightly + weekly CI workflows pass PERPLEXITY_API_KEY env var."""
-    text = (WORKFLOWS / workflow).read_text()
-    assert "PERPLEXITY_API_KEY" in text, (
+    parsed = yaml.safe_load((WORKFLOWS / workflow).read_text())
+    jobs = parsed["jobs"]
+    job_name = "extended" if workflow == "extended.yml" else "live_api"
+    test_step = next(
+        step for step in jobs[job_name]["steps"] if str(step.get("run", "")).startswith("uv run")
+    )
+    env = test_step.get("env") or {}
+
+    assert "PERPLEXITY_API_KEY" in env, (
         f"{workflow} missing PERPLEXITY_API_KEY env binding — Perplexity "
         f"extended/live-api tests cannot run in CI"
     )
-    assert "OPENAI_API_KEY" in text, (
+    assert "OPENAI_API_KEY" in env, (
         f"{workflow} should still pass OPENAI_API_KEY (unchanged from P20)"
     )
 

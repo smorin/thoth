@@ -8,7 +8,6 @@ under the `perplexity` mode-config namespace and are forwarded via
 
 from __future__ import annotations
 
-import re
 from collections.abc import AsyncIterator
 from datetime import datetime
 from typing import Any
@@ -28,36 +27,104 @@ from thoth.config import is_background_model
 from thoth.errors import (
     APIKeyError,
     APIQuotaError,
+    APIRateLimitError,
     ModeKindMismatchError,
     ProviderError,
     ThothError,
 )
-from thoth.providers.base import ResearchProvider, StreamEvent
+from thoth.providers.base import Citation, ResearchProvider, StreamEvent
 
-_THINK_PATTERN = re.compile(r"<think>(.*?)</think>", re.DOTALL)
+_THINK_OPEN = "<think>"
+_THINK_CLOSE = "</think>"
 
 
-def _split_think_segments(text: str) -> list[tuple[str, str]]:
-    """Split text on `<think>...</think>` tags.
+def _split_partial_tag_suffix(text: str, tag: str) -> tuple[str, str]:
+    """Split off the longest suffix that could become `tag` in a later chunk."""
+    max_len = min(len(text), len(tag) - 1)
+    for size in range(max_len, 0, -1):
+        suffix = text[-size:]
+        if tag.startswith(suffix):
+            return text[:-size], suffix
+    return text, ""
 
-    Returns a list of ('reasoning', body) and ('text', body) tuples in
-    document order. Handles tags that fully open-and-close within `text`;
-    open tags without a matching close are treated as text (defensive —
-    the model can drop the closing tag mid-stream per community report).
-    """
-    segments: list[tuple[str, str]] = []
-    pos = 0
-    for m in _THINK_PATTERN.finditer(text):
-        if m.start() > pos:
-            segments.append(("text", text[pos : m.start()]))
-        segments.append(("reasoning", m.group(1)))
-        pos = m.end()
-    if pos < len(text):
-        segments.append(("text", text[pos:]))
-    return segments
+
+class _ThinkStreamParser:
+    """Stateful parser for Perplexity reasoning tags split across chunks."""
+
+    def __init__(self) -> None:
+        self._buffer = ""
+        self._in_reasoning = False
+
+    def feed(self, text: str) -> list[tuple[str, str]]:
+        self._buffer += text
+        segments: list[tuple[str, str]] = []
+
+        while self._buffer:
+            if self._in_reasoning:
+                end = self._buffer.find(_THINK_CLOSE)
+                if end == -1:
+                    break
+                if end:
+                    segments.append(("reasoning", self._buffer[:end]))
+                self._buffer = self._buffer[end + len(_THINK_CLOSE) :]
+                self._in_reasoning = False
+                continue
+
+            start = self._buffer.find(_THINK_OPEN)
+            if start != -1:
+                if start:
+                    segments.append(("text", self._buffer[:start]))
+                self._buffer = self._buffer[start + len(_THINK_OPEN) :]
+                self._in_reasoning = True
+                continue
+
+            ready, pending = _split_partial_tag_suffix(self._buffer, _THINK_OPEN)
+            if ready:
+                segments.append(("text", ready))
+            self._buffer = pending
+            break
+
+        return segments
+
+    def finish(self) -> list[tuple[str, str]]:
+        if not self._buffer:
+            return []
+        if self._in_reasoning:
+            text = f"{_THINK_OPEN}{self._buffer}"
+        else:
+            text = self._buffer
+        self._buffer = ""
+        self._in_reasoning = False
+        return [("text", text)]
 
 
 _PROVIDER_NAME = "perplexity"
+
+
+def _rate_limit_error_is_quota(exc: BaseException) -> bool:
+    """Return True when a rate-limit-shaped Perplexity error signals exhausted credits."""
+    body = getattr(exc, "body", None) or {}
+    parts = [str(body), str(exc)]
+    if isinstance(body, dict):
+        err = body.get("error")
+        if isinstance(err, dict):
+            for key in ("code", "type", "message"):
+                value = err.get(key)
+                if value is not None:
+                    parts.append(str(value))
+    text = " ".join(parts).lower()
+    quota_markers = (
+        "insufficient_quota",
+        "quota",
+        "billing",
+        "credit",
+        "credits",
+        "monthly spend",
+        "exhausted",
+        "no credits",
+        "blocked",
+    )
+    return any(marker in text for marker in quota_markers)
 
 
 def _map_perplexity_error(
@@ -74,7 +141,9 @@ def _map_perplexity_error(
         return APIKeyError(_PROVIDER_NAME)
 
     if isinstance(exc, openai.RateLimitError):
-        return APIQuotaError(_PROVIDER_NAME)
+        if _rate_limit_error_is_quota(exc):
+            return APIQuotaError(_PROVIDER_NAME)
+        return APIRateLimitError(_PROVIDER_NAME)
 
     if isinstance(exc, openai.PermissionDeniedError):
         return ProviderError(
@@ -284,44 +353,57 @@ class PerplexityProvider(ResearchProvider):
         is_reasoning_model = "reasoning" in self.model
         last_search_results: list[Any] = []
 
-        async for chunk in stream:
-            sr = getattr(chunk, "search_results", None)
-            if sr:
-                last_search_results = list(sr)
+        think_parser = _ThinkStreamParser() if is_reasoning_model else None
 
-            choices = getattr(chunk, "choices", None) or []
-            if not choices:
-                continue
-            delta = getattr(choices[0], "delta", None)
-            if delta is None:
-                continue
-            content = getattr(delta, "content", None)
-            if not content:
-                continue
+        try:
+            async for chunk in stream:
+                sr = getattr(chunk, "search_results", None)
+                if sr:
+                    last_search_results = list(sr)
 
-            # Cumulative-content guard: if `content` starts with what we've
-            # already seen, the API is sending cumulative state per chunk;
-            # peel off only the new tail.
-            if accumulated and content.startswith(accumulated):
-                new_text = content[len(accumulated) :]
-                accumulated = content
-            else:
-                new_text = content
-                accumulated += content
+                choices = getattr(chunk, "choices", None) or []
+                if not choices:
+                    continue
+                delta = getattr(choices[0], "delta", None)
+                if delta is None:
+                    continue
+                content = getattr(delta, "content", None)
+                if not content:
+                    continue
 
-            if not new_text:
-                continue
+                # Cumulative-content guard: if `content` starts with what we've
+                # already seen, the API is sending cumulative state per chunk;
+                # peel off only the new tail.
+                if accumulated and content.startswith(accumulated):
+                    new_text = content[len(accumulated) :]
+                    accumulated = content
+                else:
+                    new_text = content
+                    accumulated += content
 
-            if is_reasoning_model:
-                for kind, body in _split_think_segments(new_text):
-                    if not body:
-                        continue
-                    if kind == "reasoning":
-                        yield StreamEvent(kind="reasoning", text=body)
-                    else:
-                        yield StreamEvent(kind="text", text=body)
-            else:
-                yield StreamEvent(kind="text", text=new_text)
+                if not new_text:
+                    continue
+
+                if think_parser is not None:
+                    for kind, body in think_parser.feed(new_text):
+                        if not body:
+                            continue
+                        if kind == "reasoning":
+                            yield StreamEvent(kind="reasoning", text=body)
+                        else:
+                            yield StreamEvent(kind="text", text=body)
+                else:
+                    yield StreamEvent(kind="text", text=new_text)
+
+            if think_parser is not None:
+                for kind, body in think_parser.finish():
+                    if body:
+                        if kind == "reasoning":
+                            yield StreamEvent(kind="reasoning", text=body)
+                        else:
+                            yield StreamEvent(kind="text", text=body)
+        except (openai.APIError, Exception) as exc:
+            raise _map_perplexity_error(exc, model=self.model, verbose=verbose) from exc
 
         seen_urls: set[str] = set()
         for entry in last_search_results:
@@ -330,7 +412,11 @@ class PerplexityProvider(ResearchProvider):
                 continue
             seen_urls.add(url)
             title = _entry_get(entry, "title") or url
-            yield StreamEvent(kind="citation", text=f"{title}|{url}")
+            yield StreamEvent(
+                kind="citation",
+                text=str(title),
+                citation=Citation(title=str(title), url=str(url)),
+            )
 
         yield StreamEvent(kind="done", text="")
 

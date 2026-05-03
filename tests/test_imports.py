@@ -20,6 +20,7 @@ PUBLIC_IMPORTED_SYMBOLS: tuple[str, ...] = (
     # Errors (tests/test_openai_errors.py, test_api_key_resolver.py)
     "APIKeyError",
     "APIQuotaError",
+    "APIRateLimitError",
     "ProviderError",
     "ThothError",
     # Models (tests/test_sigint_handler.py, thoth_test inline)

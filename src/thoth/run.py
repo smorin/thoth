@@ -40,6 +40,7 @@ from thoth.models import OperationStatus
 from thoth.output import OutputManager
 from thoth.progress import run_with_spinner, should_show_spinner
 from thoth.providers import ResearchProvider, available_providers, create_provider
+from thoth.providers.base import Citation, StreamEvent
 from thoth.signals import _interrupt_event
 from thoth.utils import check_disk_space, generate_operation_id, mask_api_key
 
@@ -454,8 +455,16 @@ async def run_research(
         raise click.Abort()
 
 
-def _format_citations_block(citations: list[str]) -> str:
-    """Render `title|url` pairs as a `## Sources` markdown block.
+def _format_reasoning_block(reasoning_chunks: list[str]) -> str:
+    """Render buffered reasoning as a clearly separated markdown section."""
+    text = "".join(reasoning_chunks).strip()
+    if not text:
+        return ""
+    return "\n\n## Reasoning\n\n" + text + "\n"
+
+
+def _format_citations_block(citations: list[Citation]) -> str:
+    """Render structured citations as a `## Sources` markdown block.
 
     Deduplicates by URL (the provider already dedupes, but a downstream
     `--combined` run may join two providers' citation streams).
@@ -463,8 +472,8 @@ def _format_citations_block(citations: list[str]) -> str:
     seen_urls: set[str] = set()
     lines: list[str] = []
     for entry in citations:
-        title, _, url = entry.partition("|")
-        url = url.strip()
+        title = entry.title.strip()
+        url = entry.url.strip()
         if not url or url in seen_urls:
             continue
         seen_urls.add(url)
@@ -472,6 +481,20 @@ def _format_citations_block(citations: list[str]) -> str:
     if not lines:
         return ""
     return "\n\n## Sources\n\n" + "\n".join(lines) + "\n"
+
+
+def _citation_from_event(event: StreamEvent) -> Citation | None:
+    """Return structured citation data from a citation stream event.
+
+    P23 remediation stopped using `title|url` for new providers. The string
+    fallback keeps older test doubles or third-party providers from breaking.
+    """
+    if event.citation is not None:
+        return event.citation
+    if "|" not in event.text:
+        return None
+    title, _, url = event.text.partition("|")
+    return Citation(title=title, url=url)
 
 
 async def _execute_immediate(
@@ -520,7 +543,8 @@ async def _execute_immediate(
 
     system_prompt = mode_config.get("system_prompt") or ""
     aggregated: list[str] = []
-    citations: list[str] = []
+    reasoning: list[str] = []
+    citations: list[Citation] = []
 
     # P23-T06: explicit non-stream opt-out via mode_config['stream'] = False.
     # Skips provider.stream() entirely and uses the submit/get_result path.
@@ -546,12 +570,11 @@ async def _execute_immediate(
                             sink.write(event.text)
                             aggregated.append(event.text)
                         elif event.kind == "reasoning":
-                            # P23: side-channel reasoning content streams alongside
-                            # text and persists into the saved output.
-                            sink.write(event.text)
-                            aggregated.append(event.text)
+                            reasoning.append(event.text)
                         elif event.kind == "citation":
-                            citations.append(event.text)
+                            citation = _citation_from_event(event)
+                            if citation is not None:
+                                citations.append(citation)
                         elif event.kind == "done":
                             break
                 except NotImplementedError:
@@ -576,6 +599,10 @@ async def _execute_immediate(
             operation.failure_type = "permanent"
             await checkpoint_manager.save(operation)
             return
+        if reasoning:
+            reasoning_block = _format_reasoning_block(reasoning)
+            sink.write(reasoning_block)
+            aggregated.append(reasoning_block)
         # P23: render buffered citations as a `## Sources` markdown block to
         # every selected sink, after text/reasoning events have flushed.
         if citations:

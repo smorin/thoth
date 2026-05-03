@@ -41,6 +41,55 @@ PROVIDER_CLI_FLAGS: dict[str, str] = {
     "mock": "--api-key-mock",
 }
 
+_MODE_METADATA_KEYS: frozenset[str] = frozenset(
+    {
+        "provider",
+        "providers",
+        "model",
+        "kind",
+        "system_prompt",
+        "description",
+        "previous",
+        "next",
+        "auto_input",
+        "parallel",
+        "stream",
+    }
+)
+
+
+def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
+    merged = dict(base)
+    for key, value in override.items():
+        existing = merged.get(key)
+        if isinstance(existing, dict) and isinstance(value, dict):
+            merged[key] = _deep_merge(existing, value)
+        else:
+            merged[key] = value
+    return merged
+
+
+def _apply_mode_provider_config(
+    provider_name: str,
+    provider_config: dict[str, Any],
+    mode_config: dict[str, Any] | None,
+) -> None:
+    """Thread mode-level request settings into provider constructor config."""
+    if not mode_config or provider_name not in ("openai", "perplexity"):
+        return
+
+    provider_names = set(PROVIDERS)
+    for key, value in mode_config.items():
+        if key in _MODE_METADATA_KEYS or key in provider_names:
+            continue
+        provider_config[key] = value
+
+    provider_namespace = mode_config.get(provider_name)
+    if isinstance(provider_namespace, dict):
+        existing = provider_config.get(provider_name)
+        base = existing if isinstance(existing, dict) else {}
+        provider_config[provider_name] = _deep_merge(base, provider_namespace)
+
 
 def resolve_api_key(
     provider_name: str,
@@ -141,6 +190,8 @@ def create_provider(
     # provider/API surfaces validation, not this factory.
     if mode_config and "model" in mode_config and provider_name in ("openai", "perplexity"):
         provider_config["model"] = mode_config["model"]
+
+    _apply_mode_provider_config(provider_name, provider_config, mode_config)
 
     # Thread the mode's declared `kind` into provider_config so the OpenAI
     # provider's runtime validator (`_validate_kind_for_model`) can detect

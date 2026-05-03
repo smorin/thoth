@@ -143,11 +143,9 @@ def test_create_provider_no_background_for_plain_model() -> None:
 
 
 # ---------------------------------------------------------------------------
-# P23-TS01 — failing tests for `--model` passthrough through create_provider.
-# Currently create_provider gates mode_config["model"] passthrough to OpenAI
-# only (providers/__init__.py:107). T01 must extend it to Perplexity.
-# Currently PerplexityProvider defaults to "sonar-pro"; plan-pinned default
-# is "sonar". T01 must flip the stub default.
+# P23-TS01 — `--model` passthrough through create_provider.
+# P23-RS01 — provider-specific request settings from mode config must reach
+# provider constructors, including nested Perplexity extra_body settings.
 # ---------------------------------------------------------------------------
 
 
@@ -211,3 +209,61 @@ def test_create_provider_perplexity_passes_arbitrary_model_string() -> None:
 
     provider = create_provider("perplexity", config, mode_config=mode_config)
     assert provider.config.get("model") == "future-sonar-2027-preview"
+
+
+def test_create_provider_passes_perplexity_namespace_from_mode_config() -> None:
+    """P23-RS01: mode_config['perplexity'] reaches PerplexityProvider.config."""
+    from types import SimpleNamespace
+
+    from thoth.config import ConfigManager
+    from thoth.providers import create_provider
+
+    config = cast(
+        ConfigManager,
+        SimpleNamespace(data={"providers": {"perplexity": {"api_key": "pplx-test"}}}),
+    )
+    mode_config: dict[str, Any] = {
+        "provider": "perplexity",
+        "model": "sonar",
+        "kind": "immediate",
+        "perplexity": {
+            "web_search_options": {"search_context_size": "low"},
+            "stream_mode": "full",
+            "search_domain_filter": ["perplexity.ai"],
+        },
+    }
+
+    provider = create_provider("perplexity", config, mode_config=mode_config)
+
+    assert provider.config["perplexity"] == {
+        "web_search_options": {"search_context_size": "low"},
+        "stream_mode": "full",
+        "search_domain_filter": ["perplexity.ai"],
+    }
+
+
+def test_create_provider_passes_openai_request_settings_from_mode_config() -> None:
+    """P23-RS01: OpenAI mode request settings reach OpenAIProvider.config."""
+    from types import SimpleNamespace
+
+    from thoth.config import ConfigManager
+    from thoth.providers import create_provider
+
+    config = cast(
+        ConfigManager,
+        SimpleNamespace(data={"providers": {"openai": {"api_key": "sk-test"}}}),
+    )
+    mode_config: dict[str, Any] = {
+        "provider": "openai",
+        "model": "gpt-4.1-mini",
+        "kind": "immediate",
+        "temperature": 0.2,
+        "max_tool_calls": 12,
+        "system_prompt": "not provider config",
+    }
+
+    provider = create_provider("openai", config, mode_config=mode_config)
+
+    assert provider.config["temperature"] == 0.2
+    assert provider.config["max_tool_calls"] == 12
+    assert "system_prompt" not in provider.config
