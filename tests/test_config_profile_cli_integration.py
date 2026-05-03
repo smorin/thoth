@@ -114,6 +114,9 @@ def test_profile_default_mode_used_for_bare_prompt(
     out = tmp_path / "out.txt"
     _write_profile_config(cfg)
 
+    # P35 L1: single-token bare prompts (e.g. "hello") are now treated as
+    # typos and rejected with an "unknown command" error. Use a multi-token
+    # prompt so the bare-prompt fallback still catches it.
     result = CliRunner().invoke(
         cli,
         [
@@ -129,6 +132,7 @@ def test_profile_default_mode_used_for_bare_prompt(
             "--out",
             str(out),
             "hello",
+            "world",
         ],
         catch_exceptions=False,
     )

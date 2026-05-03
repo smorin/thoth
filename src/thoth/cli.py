@@ -17,6 +17,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 import click
+from rich.markup import escape as _rich_escape
 
 import thoth.config as _thoth_config
 import thoth.run as _thoth_run
@@ -263,6 +264,12 @@ def _extract_fallback_options(args: list[str], opts: dict) -> tuple[list[str], d
         "--pick-model": "pick_model",
         "-M": "pick_model",
         "--append": "append",
+        # P35 Layer 1: belt-and-suspenders. ThothGroup.invoke already
+        # short-circuits --help/-h before reaching this fallback parser,
+        # but if anything routes here regardless we want them classified
+        # as flags (not positional prompt tokens).
+        "--help": "help",
+        "-h": "help",
     }
 
     parsed = dict(opts)
@@ -447,7 +454,7 @@ def handle_error(error: Exception):
     if isinstance(error, ThothError):
         console.print(f"\n[red]Error:[/red] {error.message}")
         if error.suggestion:
-            console.print(f"[yellow]Suggestion:[/yellow] {error.suggestion}")
+            console.print(f"[yellow]Suggestion:[/yellow] {_rich_escape(error.suggestion)}")
         sys.exit(error.exit_code)
     elif isinstance(error, KeyboardInterrupt):
         console.print("\n[yellow]Operation cancelled by user[/yellow]")
