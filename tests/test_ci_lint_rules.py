@@ -53,15 +53,21 @@ def test_handler_modules_do_not_reference_as_json(handler_path):
             pytest.fail(f"{handler_path}: handler signature contains as_json=:\n  {line!r}")
 
 
-def _discover_json_commands() -> set[str]:
-    """Walk every cli_subcommands/*.py and return the set of registered command
-    names that declare a `--json` Click option.
+def _discover_json_commands() -> set[tuple[str, ...]]:
+    """Walk every cli_subcommands/*.py and return registered command paths
+    that declare a `--json` Click option.
 
     Detection rule: any `@click.command(name="X")` or
-    `@<group>.command(name="X")` decorator whose function body or sibling
-    decorator stack contains a `@click.option("--json", ...)` declaration.
+    `@<group>.command(name="X")` decorator whose sibling decorator stack
+    contains a `@click.option("--json", ...)` declaration.
     """
-    discovered: set[str] = set()
+    group_prefixes = {
+        "config": ("config",),
+        "config_profiles": ("config", "profiles"),
+        "modes": ("modes",),
+        "providers": ("providers",),
+    }
+    discovered: set[tuple[str, ...]] = set()
     for py_file in _CLI_SUBCOMMANDS_DIR.glob("*.py"):
         if py_file.name.startswith("_"):
             continue
@@ -69,21 +75,24 @@ def _discover_json_commands() -> set[str]:
         for node in ast.walk(tree):
             if not isinstance(node, ast.FunctionDef):
                 continue
-            cmd_name: str | None = None
+            cmd_path: tuple[str, ...] | None = None
             has_json = False
             for deco in node.decorator_list:
                 if not isinstance(deco, ast.Call):
                     continue
                 func = deco.func
+                if not isinstance(func, ast.Attribute):
+                    continue
                 # Match `click.command(name="X")` or `<group>.command(name="X")`.
-                is_command_deco = isinstance(func, ast.Attribute) and func.attr == "command"
-                if is_command_deco:
+                if func.attr == "command":
+                    group_prefix: tuple[str, ...] = ()
+                    if isinstance(func.value, ast.Name):
+                        group_prefix = group_prefixes.get(func.value.id, ())
                     for kw in deco.keywords:
                         if kw.arg == "name" and isinstance(kw.value, ast.Constant):
-                            cmd_name = str(kw.value.value)
+                            cmd_path = (*group_prefix, str(kw.value.value))
                 # Match `click.option("--json", ...)`.
-                is_option_deco = isinstance(func, ast.Attribute) and func.attr == "option"
-                if is_option_deco and deco.args:
+                if func.attr == "option" and deco.args:
                     first = deco.args[0]
                     if isinstance(first, ast.Constant) and first.value == "--json":
                         has_json = True
@@ -95,33 +104,29 @@ def _discover_json_commands() -> set[str]:
                     ):
                         has_json = True
                         break
-            if cmd_name and has_json:
-                discovered.add(cmd_name)
+            if cmd_path and has_json:
+                discovered.add(cmd_path)
     return discovered
 
 
-def test_JSON_COMMANDS_list_covers_every_subcommand_with_json_option():
-    """Spec §6.5 + §9.1 H — every subcommand that has `@click.option("--json", ...)`
-    MUST appear in at least one JSON-envelope test row.
-
-    Coverage rows live primarily in `tests/test_json_envelopes.py::JSON_COMMANDS`
-    (smoke contract assertions), with timing-sensitive `ask` rows in
-    `tests/test_json_non_blocking.py`. The walker scans both.
-
-    If this test fails, a recent PR added `--json` to a subcommand without
-    a covering row — add a row in the appropriate test file.
-    """
+def _json_test_command_paths() -> set[tuple[str, ...]]:
     from tests.test_json_envelopes import JSON_COMMANDS
+    from thoth.cli import cli
 
-    discovered = _discover_json_commands()
-    # Collect every positional token from JSON_COMMANDS and from any argv
-    # literal in test_json_non_blocking.py. Discovered names are subcommand
-    # leaves; any row whose argv mentions the name covers it.
-    listed: set[str] = set()
-    for _label, argv, _exit in JSON_COMMANDS:
+    paths: set[tuple[str, ...]] = set()
+
+    def command_path(argv: list[str]) -> tuple[str, ...]:
+        path: list[str] = []
+        command = cli
         for token in argv:
-            if not token.startswith("-"):
-                listed.add(token)
+            commands = getattr(command, "commands", None)
+            if commands is not None and token in commands:
+                path.append(token)
+                command = commands[token]
+        return tuple(path)
+
+    for _label, argv, _exit in JSON_COMMANDS:
+        paths.add(command_path(argv))
 
     # Also harvest argv tokens from test_json_non_blocking.py — that file
     # owns the timing-sensitive `ask --json` rows by design.
@@ -139,17 +144,30 @@ def test_JSON_COMMANDS_list_covers_every_subcommand_with_json_option():
             )
             if not has_json_flag:
                 continue
-            for e in elts:
-                if (
-                    isinstance(e, ast.Constant)
-                    and isinstance(e.value, str)
-                    and not e.value.startswith("-")
-                ):
-                    listed.add(e.value)
+            argv = [
+                e.value for e in elts if (isinstance(e, ast.Constant) and isinstance(e.value, str))
+            ]
+            paths.add(command_path(argv))
+    return paths
+
+
+def test_JSON_COMMANDS_list_covers_every_subcommand_with_json_option():
+    """Spec §6.5 + §9.1 H — every subcommand that has `@click.option("--json", ...)`
+    MUST appear in at least one JSON-envelope test row.
+
+    Coverage rows live primarily in `tests/test_json_envelopes.py::JSON_COMMANDS`
+    (smoke contract assertions), with timing-sensitive `ask` rows in
+    `tests/test_json_non_blocking.py`. The walker scans both.
+
+    If this test fails, a recent PR added `--json` to a subcommand without
+    a covering row — add a row in the appropriate test file.
+    """
+    discovered = _discover_json_commands()
+    listed = _json_test_command_paths()
 
     missing = discovered - listed
     assert not missing, (
-        f"Subcommands with --json option not covered: {missing}. "
+        f"Subcommands with --json option not covered: {sorted(missing)}. "
         f"Add a parametrize row in tests/test_json_envelopes.py "
         f"(or tests/test_json_non_blocking.py for timing-sensitive cases)."
     )
@@ -159,7 +177,7 @@ def test_AST_walker_finds_at_least_completion_init_status_list():
     """Sanity check on the walker — if it returns nothing, the patterns are wrong."""
     discovered = _discover_json_commands()
     # T04 + T06-T08 ensure these four are present at minimum.
-    assert "completion" in discovered
-    assert "init" in discovered
-    assert "status" in discovered
-    assert "list" in discovered
+    assert ("completion",) in discovered
+    assert ("init",) in discovered
+    assert ("status",) in discovered
+    assert ("list",) in discovered

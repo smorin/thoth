@@ -134,6 +134,14 @@ return an operation ID without blocking.
     {"status": "ok",
      "data": {"modes": [{"name": "thinking", "kind": "immediate", ...}, ...]}}
 
+**`modes set-default NAME --json` / `modes unset-default --json`:**
+
+    {"status": "ok",
+     "data": {"default_mode": "deep_research", "wrote": true, "path": "..."}}
+
+    {"status": "ok",
+     "data": {"removed": true|false, "reason": "NOT_FOUND"?, "path": "..."}}
+
 **`completion <shell> --install --json`:**
 
     {"status": "ok",

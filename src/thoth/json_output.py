@@ -26,6 +26,7 @@ from thoth.errors import (
     ConfigAmbiguousError,
     ConfigNotFoundError,
     ConfigProfileError,
+    ModeNotFoundError,
     ThothError,
 )
 
@@ -89,6 +90,8 @@ def thoth_error_code(exc: ThothError) -> str:
         return "CONFIG_NOT_FOUND"
     if isinstance(exc, ConfigProfileError):
         return "CONFIG_PROFILE_ERROR"
+    if isinstance(exc, ModeNotFoundError):
+        return "MODE_NOT_FOUND"
     return "THOTH_ERROR"
 
 

@@ -88,6 +88,26 @@ def test_cli_modes_unset_default_human(isolated_thoth_home: Path) -> None:
     assert result.exit_code == 0, result.output
 
 
+def test_cli_modes_unset_default_accepts_inline_profile_target(
+    isolated_thoth_home: Path,
+) -> None:
+    runner = CliRunner()
+    assert runner.invoke(cli, ["config", "profiles", "add", "work"]).exit_code == 0
+    assert (
+        runner.invoke(cli, ["--profile", "work", "modes", "set-default", "deep_research"]).exit_code
+        == 0
+    )
+
+    result = runner.invoke(cli, ["modes", "unset-default", "--profile", "work"])
+
+    assert result.exit_code == 0, result.output
+
+    from thoth.paths import user_config_file
+
+    data = tomllib.loads(user_config_file().read_text())
+    assert "default_mode" not in data["profiles"]["work"]
+
+
 def test_cli_modes_unset_default_json_when_absent(isolated_thoth_home: Path) -> None:
     runner = CliRunner()
     result = runner.invoke(cli, ["modes", "unset-default", "--json"])

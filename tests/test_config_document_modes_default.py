@@ -38,6 +38,16 @@ def test_set_default_mode_writes_profile_key(tmp_path: Path) -> None:
     assert 'default_mode = "deep"' in text
 
 
+def test_profile_names_lists_existing_profiles(tmp_path: Path) -> None:
+    p = tmp_path / "thoth.config.toml"
+    p.write_text(
+        'version = "2.0"\n[profiles.work]\ndefault_mode = "thinking"\n[profiles.personal]\n'
+    )
+    doc = _doc(p)
+
+    assert doc.profile_names() == ["personal", "work"]
+
+
 def test_default_mode_name_reads_back(tmp_path: Path) -> None:
     p = tmp_path / "thoth.config.toml"
     doc = _doc(p)

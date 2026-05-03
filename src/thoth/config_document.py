@@ -86,6 +86,13 @@ class ConfigDocument:
         """Return True iff `[profiles.<name>]` exists in this document."""
         return self._table_at(("profiles", name)) is not None
 
+    def profile_names(self) -> list[str]:
+        """Return sorted profile names present in this document."""
+        profiles = self._table_at(("profiles",))
+        if profiles is None:
+            return []
+        return sorted(str(name) for name in profiles.keys())
+
     def set_default_mode(self, name: str, *, profile: str | None = None) -> None:
         if profile is None:
             self.set_config_value("general.default_mode", name)

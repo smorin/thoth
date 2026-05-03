@@ -875,7 +875,7 @@ def get_modes_set_default_data(
          profile scope → builtins ∪ base [modes.*] ∪ [profiles.X.modes.*].
     """
     from thoth.config import BUILTIN_MODES
-    from thoth.errors import ConfigProfileError, ThothError
+    from thoth.errors import ConfigProfileError, ModeNotFoundError
 
     if project and config_path is not None:
         envelope: dict[str, Any] = {
@@ -883,6 +883,7 @@ def get_modes_set_default_data(
             "wrote": False,
             "path": None,
             "error": "PROJECT_CONFIG_CONFLICT",
+            "message": "--config cannot be used with --project",
         }
         if profile is not None:
             envelope["profile"] = profile
@@ -896,7 +897,7 @@ def get_modes_set_default_data(
         # message is actionable.
         if context.target_path.exists():
             target_doc = context.load_document()
-            target_profiles = sorted(_names_under_table(target_doc, ("profiles",)))
+            target_profiles = target_doc.profile_names()
         else:
             target_profiles = []
         tier_label = (
@@ -906,10 +907,18 @@ def get_modes_set_default_data(
             if config_path
             else "user config"
         )
+        suggestion = _same_tier_profile_suggestion(
+            profile,
+            project=project,
+            config_path=config_path,
+            target_profiles=target_profiles,
+            target_path=context.target_path,
+        )
         raise ConfigProfileError(
             f"Profile {profile!r} not found in {tier_label}",
             available_profiles=target_profiles,
             source="thoth modes set-default",
+            suggestion=suggestion,
         )
 
     # Mode NAME resolvability check (cross-tier — β rule).
@@ -920,10 +929,7 @@ def get_modes_set_default_data(
         resolvable.update(base_modes.keys())
 
     if name not in resolvable:
-        raise ThothError(
-            f"Mode {name!r} not found",
-            suggestion=f"Available modes: {', '.join(sorted(resolvable))}",
-        )
+        raise ModeNotFoundError(name, available_modes=sorted(resolvable))
 
     doc = context.load_document()
     doc.set_default_mode(name, profile=profile)
@@ -939,12 +945,32 @@ def get_modes_set_default_data(
     return out
 
 
-def _names_under_table(doc: Any, segments: tuple[str, ...]) -> list[str]:
-    """Helper: list the keys of a nested table, or [] if absent."""
-    table = doc._table_at(segments)
-    if table is None:
-        return []
-    return [str(k) for k in table.keys()]
+def _same_tier_profile_suggestion(
+    profile: str,
+    *,
+    project: bool,
+    config_path: str | Path | None,
+    target_profiles: list[str],
+    target_path: Path,
+) -> str:
+    if project:
+        fix = (
+            f"Create it with `thoth config profiles add {profile} --project`, "
+            "or remove `--project` if you meant the user-tier profile."
+        )
+    elif config_path is not None:
+        fix = (
+            f"Create it with `thoth --config {target_path} config profiles add {profile}`, "
+            "or choose a config file that already defines the profile."
+        )
+    else:
+        fix = (
+            f"Create it with `thoth config profiles add {profile}`, "
+            "or pass `--project` if you meant a project-tier profile."
+        )
+    if target_profiles:
+        return f"{fix} Available profiles in target tier: {', '.join(target_profiles)}."
+    return fix
 
 
 def get_modes_unset_default_data(
@@ -963,6 +989,7 @@ def get_modes_unset_default_data(
             "removed": False,
             "path": None,
             "error": "PROJECT_CONFIG_CONFLICT",
+            "message": "--config cannot be used with --project",
         }
         if profile is not None:
             envelope["profile"] = profile

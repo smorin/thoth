@@ -180,11 +180,124 @@ def test_cli_modes_set_default_with_profile_json(isolated_thoth_home: Path) -> N
     assert data["profile"] == "work"
 
 
+def test_cli_modes_set_default_accepts_inline_profile_target(
+    isolated_thoth_home: Path,
+) -> None:
+    runner = CliRunner()
+    assert runner.invoke(cli, ["config", "profiles", "add", "work"]).exit_code == 0
+
+    result = runner.invoke(cli, ["modes", "set-default", "deep_research", "--profile", "work"])
+
+    assert result.exit_code == 0, result.output
+    assert "profile 'work'" in result.output
+
+    from thoth.paths import user_config_file
+
+    data = tomllib.loads(user_config_file().read_text())
+    assert data["profiles"]["work"]["default_mode"] == "deep_research"
+
+
+def test_cli_modes_set_default_accepts_inline_config_target(
+    isolated_thoth_home: Path, tmp_path: Path
+) -> None:
+    runner = CliRunner()
+    custom = tmp_path / "custom.toml"
+
+    result = runner.invoke(cli, ["modes", "set-default", "deep_research", "--config", str(custom)])
+
+    assert result.exit_code == 0, result.output
+    data = tomllib.loads(custom.read_text())
+    assert data["general"]["default_mode"] == "deep_research"
+
+
+def test_cli_modes_set_default_accepts_project_profile_target(
+    isolated_thoth_home: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    runner = CliRunner()
+    monkeypatch.chdir(tmp_path)
+    assert runner.invoke(cli, ["config", "profiles", "add", "work", "--project"]).exit_code == 0
+
+    result = runner.invoke(
+        cli, ["modes", "set-default", "deep_research", "--profile", "work", "--project"]
+    )
+
+    assert result.exit_code == 0, result.output
+    data = tomllib.loads((tmp_path / "thoth.config.toml").read_text())
+    assert data["profiles"]["work"]["default_mode"] == "deep_research"
+
+
+def test_cli_modes_set_default_accepts_custom_config_profile_target(
+    isolated_thoth_home: Path, tmp_path: Path
+) -> None:
+    runner = CliRunner()
+    custom = tmp_path / "custom.toml"
+    custom.write_text('version = "2.0"\n[profiles.work]\n')
+
+    result = runner.invoke(
+        cli,
+        ["modes", "set-default", "deep_research", "--profile", "work", "--config", str(custom)],
+    )
+
+    assert result.exit_code == 0, result.output
+    data = tomllib.loads(custom.read_text())
+    assert data["profiles"]["work"]["default_mode"] == "deep_research"
+
+
+def test_cli_modes_set_default_accepts_profile_specific_mode_name(
+    isolated_thoth_home: Path,
+) -> None:
+    runner = CliRunner()
+    assert runner.invoke(cli, ["config", "profiles", "add", "work"]).exit_code == 0
+    assert (
+        runner.invoke(
+            cli, ["modes", "add", "work_mode", "--model", "o3", "--profile", "work"]
+        ).exit_code
+        == 0
+    )
+
+    result = runner.invoke(cli, ["modes", "set-default", "work_mode", "--profile", "work"])
+
+    assert result.exit_code == 0, result.output
+    from thoth.paths import user_config_file
+
+    data = tomllib.loads(user_config_file().read_text())
+    assert data["profiles"]["work"]["default_mode"] == "work_mode"
+
+
 def test_cli_modes_set_default_unknown_mode_exit1(isolated_thoth_home: Path) -> None:
     runner = CliRunner()
     result = runner.invoke(cli, ["modes", "set-default", "no-such-mode"])
     assert result.exit_code == 1, result.output
     assert "no-such-mode" in result.output or "not found" in result.output.lower()
+
+
+def test_cli_modes_set_default_unknown_mode_json_uses_mode_not_found(
+    isolated_thoth_home: Path,
+) -> None:
+    runner = CliRunner()
+    result = runner.invoke(cli, ["modes", "set-default", "no-such-mode", "--json"])
+
+    assert result.exit_code == 1, result.output
+    payload = json.loads(result.output)
+    assert payload["status"] == "error"
+    assert payload["error"]["code"] == "MODE_NOT_FOUND"
+
+
+def test_cli_modes_set_default_same_tier_error_suggests_specific_remediation(
+    isolated_thoth_home: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    runner = CliRunner()
+    assert runner.invoke(cli, ["config", "profiles", "add", "work"]).exit_code == 0
+    monkeypatch.chdir(tmp_path)
+
+    result = runner.invoke(
+        cli, ["--profile", "work", "modes", "set-default", "deep_research", "--project"]
+    )
+
+    assert result.exit_code == 1, result.output
+    assert "Profile 'work' not found in project config" in result.output
+    assert "thoth config profiles add work --project" in result.output
+    assert "remove `--project`" in result.output
 
 
 def test_cli_modes_set_default_project_config_conflict_exit2(

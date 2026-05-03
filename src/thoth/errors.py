@@ -116,6 +116,20 @@ class ThothError(Exception):
         super().__init__(message)
 
 
+class ModeNotFoundError(ThothError):
+    """A requested mode name is not in the resolvable mode catalog."""
+
+    def __init__(self, mode_name: str, *, available_modes: list[str] | None = None):
+        suggestion = None
+        if available_modes is not None:
+            suggestion = f"Available modes: {', '.join(available_modes)}"
+        super().__init__(
+            f"Mode {mode_name!r} not found",
+            suggestion,
+            exit_code=1,
+        )
+
+
 class APIKeyError(ThothError):
     """Missing or invalid API key"""
 
@@ -177,14 +191,17 @@ class ConfigProfileError(ThothError):
         *,
         available_profiles: list[str] | None = None,
         source: str | None = None,
+        suggestion: str | None = None,
     ):
         details = message if source is None else f"{message} (from {source})"
-        suggestion_parts = ["Run `thoth config profiles list` to see available profiles."]
-        if available_profiles:
-            suggestion_parts.append(f"Available profiles: {', '.join(available_profiles)}.")
+        if suggestion is None:
+            suggestion_parts = ["Run `thoth config profiles list` to see available profiles."]
+            if available_profiles:
+                suggestion_parts.append(f"Available profiles: {', '.join(available_profiles)}.")
+            suggestion = " ".join(suggestion_parts)
         super().__init__(
             details,
-            " ".join(suggestion_parts),
+            suggestion,
             exit_code=1,
         )
 
