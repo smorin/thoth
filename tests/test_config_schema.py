@@ -60,3 +60,37 @@ def test_every_default_path_resolves_to_a_field() -> None:
         # `resolve_path` returns a (model, field_name) tuple or raises
         # KeyError if the path doesn't reach a declared field.
         resolve_path(ThothConfig, path)
+
+
+def test_resolve_path_recurses_into_dict_of_basemodel() -> None:
+    """`modes: dict[str, ModeConfig]` — paths past the dict key recurse into ModeConfig."""
+    from thoth.config_schema import ModeConfig, ThothConfig, resolve_path
+
+    model, name = resolve_path(ThothConfig, ("modes", "thinking", "provider"))
+    assert model is ModeConfig
+    assert name == "provider"
+
+
+def test_resolve_path_dict_of_any_stops_at_dict_key_level() -> None:
+    """`providers: dict[str, dict[str, Any]]` — value type isn't a BaseModel,
+    so resolve_path accepts the dict-keyed level as resolved.
+
+    This will change in Task 4 once providers becomes typed; until then,
+    document the intentional behavior.
+    """
+    from thoth.config_schema import ThothConfig, resolve_path
+
+    model, name = resolve_path(ThothConfig, ("providers", "openai", "api_key"))
+    assert model is ThothConfig
+    assert name == "providers"
+
+
+def test_resolve_path_raises_on_unknown_leaf() -> None:
+    """Typos like `general.prompy_prefix` must raise KeyError — this is the
+    very behavior P33 exists to guarantee."""
+    import pytest
+
+    from thoth.config_schema import ThothConfig, resolve_path
+
+    with pytest.raises(KeyError):
+        resolve_path(ThothConfig, ("general", "prompy_prefix"))
