@@ -139,6 +139,16 @@ def _map_perplexity_error(
     raw = str(exc) if verbose else None
 
     if isinstance(exc, openai.AuthenticationError):
+        body = getattr(exc, "body", None) or {}
+        combined = (str(exc) + " " + str(body)).lower()
+        _invalid_key_phrases = ("invalid api key", "incorrect api key", "invalid_api_key")
+        if any(phrase in combined for phrase in _invalid_key_phrases):
+            return ThothError(
+                "perplexity API key is invalid",
+                "Your Perplexity API key was rejected by the API. "
+                "Check your key at https://www.perplexity.ai/settings/api",
+                exit_code=2,
+            )
         return APIKeyError(_PROVIDER_NAME)
 
     if isinstance(exc, openai.RateLimitError):

@@ -253,6 +253,55 @@ def test_map_perplexity_error_uses_perplexity_provider_name() -> None:
     assert "perplexity" in str(mapped).lower()
 
 
+def test_map_perplexity_error_invalid_key_distinguished_from_missing() -> None:
+    """TS03: AuthenticationError with 'invalid api key' body maps to ThothError with
+    'invalid' message (not the misleading 'not found' message for absent keys)."""
+    from thoth.errors import APIKeyError, ThothError
+    from thoth.providers.perplexity import _map_perplexity_error
+
+    exc = _make_openai_exc(
+        "AuthenticationError",
+        status=401,
+        body={"error": {"message": "Invalid API key provided"}},
+    )
+    mapped = _map_perplexity_error(exc, model="sonar")
+    # Must be a ThothError but NOT the missing-key APIKeyError subclass
+    assert isinstance(mapped, ThothError)
+    assert not isinstance(mapped, APIKeyError), (
+        "A configured-but-invalid key should not report 'not found'"
+    )
+    assert "invalid" in mapped.message.lower()
+    assert "perplexity" in mapped.message.lower()
+    assert mapped.exit_code == 2
+
+
+def test_map_perplexity_error_invalid_key_incorrect_phrase() -> None:
+    """TS03: 'incorrect api key' phrase also triggers the invalid-key branch."""
+    from thoth.errors import APIKeyError, ThothError
+    from thoth.providers.perplexity import _map_perplexity_error
+
+    exc = _make_openai_exc(
+        "AuthenticationError",
+        status=401,
+        body={"error": {"message": "Incorrect API key provided"}},
+    )
+    mapped = _map_perplexity_error(exc, model="sonar")
+    assert isinstance(mapped, ThothError)
+    assert not isinstance(mapped, APIKeyError)
+    assert mapped.exit_code == 2
+
+
+def test_map_perplexity_error_absent_key_still_maps_to_api_key_error() -> None:
+    """TS03: AuthenticationError with no body (absent key) still maps to APIKeyError."""
+    from thoth.errors import APIKeyError
+    from thoth.providers.perplexity import _map_perplexity_error
+
+    # Default _make_openai_exc has generic message, no 'invalid api key' phrase
+    exc = _make_openai_exc("AuthenticationError")
+    mapped = _map_perplexity_error(exc, model="sonar")
+    assert isinstance(mapped, APIKeyError)
+
+
 def test_map_perplexity_error_falls_back_for_unknown_exception() -> None:
     """TS03: an unrelated exception still maps to a ProviderError (no crash)."""
     from thoth.errors import ProviderError
