@@ -622,9 +622,81 @@ class PerplexityProvider(ResearchProvider):
         yield StreamEvent(kind="done", text="")
 
     async def check_status(self, job_id: str) -> dict[str, Any]:
+        """Status of an in-flight job. Routes by job_info['background'].
+
+        Sync (P23 immediate) jobs were already complete when submit() returned;
+        report `completed` with no upstream call. Background (P27 async) jobs
+        GET /v1/async/sonar/{job_id} and translate Perplexity's status enum.
+
+        Stale-cache fallback on transient errors mirrors OAI-BG-06/07: a poll
+        ConnectError/Timeout that finds a cached COMPLETED state should still
+        report completed (the cached completion is authoritative); a transient
+        error with a cached IN_PROGRESS/CREATED state must NOT report completed.
+        """
         if job_id not in self.jobs:
             return {"status": "not_found", "error": "Job not found"}
-        return {"status": "completed", "progress": 1.0}
+        job_info = self.jobs[job_id]
+        if not job_info.get("background", False):
+            # P23 immediate path — submit() already returned the full response.
+            return {"status": "completed", "progress": 1.0}
+        return await self._poll_async_job(job_id, job_info)
+
+    async def _poll_async_job(self, job_id: str, job_info: dict[str, Any]) -> dict[str, Any]:
+        """Single poll attempt against /v1/async/sonar/{job_id} with translation."""
+        try:
+            response = await self._async_http.get(f"/v1/async/sonar/{job_id}")
+            response.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code == 404:
+                return {
+                    "status": "permanent_error",
+                    "error": "Job expired (7-day TTL) or not found server-side",
+                }
+            return {
+                "status": "transient_error",
+                "error": f"HTTP {exc.response.status_code}",
+                "error_class": "HTTPStatusError",
+            }
+        except (httpx.ConnectError, httpx.TimeoutException) as exc:
+            cached = job_info.get("response_data") or {}
+            if cached.get("status") == "COMPLETED":
+                return {"status": "completed", "progress": 1.0}
+            return {
+                "status": "transient_error",
+                "error": str(exc),
+                "error_class": type(exc).__name__,
+            }
+        except Exception as exc:  # noqa: BLE001 - never silently swallow novel errors
+            cached = job_info.get("response_data") or {}
+            if cached.get("status") == "COMPLETED":
+                return {"status": "completed", "progress": 1.0}
+            return {
+                "status": "transient_error",
+                "error": f"Unexpected error ({type(exc).__name__}): {exc}",
+                "error_class": type(exc).__name__,
+            }
+
+        payload = response.json()
+        status = payload.get("status", "")
+        # Always cache the latest payload so get_result() and the stale-cache
+        # fallback have an authoritative reference.
+        job_info["response_data"] = payload
+
+        if status == "CREATED":
+            return {"status": "queued", "progress": 0.0}
+        if status == "IN_PROGRESS":
+            return {"status": "running", "progress": 0.5}
+        if status == "COMPLETED":
+            return {"status": "completed", "progress": 1.0}
+        if status == "FAILED":
+            return {
+                "status": "permanent_error",
+                "error": payload.get("error_message") or "Perplexity job FAILED",
+            }
+        return {
+            "status": "permanent_error",
+            "error": f"Unexpected Perplexity status: {status!r}",
+        }
 
     async def get_result(self, job_id: str, verbose: bool = False) -> str:
         if job_id not in self.jobs:

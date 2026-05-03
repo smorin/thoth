@@ -335,3 +335,199 @@ def test_async_submit_provider_init_creates_async_http_client() -> None:
     assert isinstance(provider._async_http, httpx.AsyncClient)
     assert str(provider._async_http.base_url).rstrip("/") == "https://api.perplexity.ai"
     asyncio.run(provider._async_http.aclose())
+
+
+# ---------------------------------------------------------------------------
+# P27-TS02 — check_status() async-API status mapping + stale-cache fallback
+# ---------------------------------------------------------------------------
+#
+# Mirrors OpenAI background's check_status contract (status, progress)
+# while mapping Perplexity's status enum (CREATED/IN_PROGRESS/COMPLETED/
+# FAILED) to Thoth's internal enum. Includes the OAI-BG-06/07 stale-cache
+# cases so a transient poll error doesn't masquerade as completion (or
+# fail to honor a genuinely-completed cached result).
+
+
+def _status_response(
+    status: str = "IN_PROGRESS",
+    extra: dict[str, Any] | None = None,
+) -> httpx.Response:
+    payload: dict[str, Any] = {"id": "req-async-123", "status": status}
+    if extra:
+        payload.update(extra)
+    request = httpx.Request("GET", "https://api.perplexity.ai/v1/async/sonar/req-async-123")
+    return httpx.Response(status_code=200, json=payload, request=request)
+
+
+def _attach_get_response(
+    provider: PerplexityProvider,
+    response: httpx.Response | Exception,
+) -> AsyncMock:
+    """Replace provider._async_http with an AsyncMock whose .get yields `response`."""
+    fake_client = AsyncMock()
+    if isinstance(response, Exception):
+        fake_client.get = AsyncMock(side_effect=response)
+    else:
+        fake_client.get = AsyncMock(return_value=response)
+    provider._async_http = fake_client  # type: ignore[attr-defined]
+    return fake_client.get
+
+
+def _seed_background_job(
+    provider: PerplexityProvider,
+    job_id: str = "req-async-123",
+    cached_status: str = "IN_PROGRESS",
+) -> None:
+    """Populate provider.jobs as if _submit_async had run."""
+    provider.jobs[job_id] = {
+        "response_data": {"id": job_id, "status": cached_status},
+        "background": True,
+        "created_at": __import__("datetime").datetime.now(),
+    }
+
+
+def test_check_status_created_maps_to_queued() -> None:
+    """TS02: Perplexity CREATED → {'status': 'queued', 'progress': 0.0}."""
+    provider, _ = _make_background_provider()
+    _seed_background_job(provider, cached_status="CREATED")
+    _attach_get_response(provider, _status_response("CREATED"))
+    result = asyncio.run(provider.check_status("req-async-123"))
+    assert result["status"] == "queued"
+    assert result["progress"] == 0.0
+
+
+def test_check_status_in_progress_maps_to_running() -> None:
+    """TS02: Perplexity IN_PROGRESS → {'status': 'running', 'progress': float}."""
+    provider, _ = _make_background_provider()
+    _seed_background_job(provider, cached_status="IN_PROGRESS")
+    _attach_get_response(provider, _status_response("IN_PROGRESS"))
+    result = asyncio.run(provider.check_status("req-async-123"))
+    assert result["status"] == "running"
+    assert isinstance(result["progress"], float)
+    assert 0.0 <= result["progress"] <= 1.0
+
+
+def test_check_status_completed_caches_response_and_returns_completed() -> None:
+    """TS02: Perplexity COMPLETED → cache the response payload AND return progress 1.0.
+
+    Caching is load-bearing — get_result() can avoid a second GET.
+    """
+    provider, _ = _make_background_provider()
+    _seed_background_job(provider)
+    full_payload = {
+        "id": "req-async-123",
+        "status": "COMPLETED",
+        "response": {"choices": [{"message": {"content": "answer"}}]},
+    }
+    _attach_get_response(provider, _status_response("COMPLETED", extra=full_payload))
+    result = asyncio.run(provider.check_status("req-async-123"))
+    assert result["status"] == "completed"
+    assert result["progress"] == 1.0
+    cached = provider.jobs["req-async-123"].get("response_data")
+    assert cached is not None
+    assert cached.get("status") == "COMPLETED"
+    assert cached.get("response", {}).get("choices") is not None
+
+
+def test_check_status_failed_maps_to_permanent_error_with_message() -> None:
+    """TS02: Perplexity FAILED → {'status': 'permanent_error', 'error': error_message}."""
+    provider, _ = _make_background_provider()
+    _seed_background_job(provider)
+    _attach_get_response(
+        provider,
+        _status_response("FAILED", extra={"error_message": "Search service unavailable"}),
+    )
+    result = asyncio.run(provider.check_status("req-async-123"))
+    assert result["status"] == "permanent_error"
+    assert "Search service unavailable" in str(result.get("error", ""))
+
+
+def test_check_status_404_maps_to_permanent_error_with_ttl_hint() -> None:
+    """TS02: HTTP 404 on poll → permanent_error mentioning the 7-day TTL.
+
+    Async results expire 7 days after submission per Perplexity spec §5.
+    Surfacing the TTL helps users understand "missing job" vs "job failed".
+    """
+    provider, _ = _make_background_provider()
+    _seed_background_job(provider)
+    request = httpx.Request("GET", "https://api.perplexity.ai/v1/async/sonar/req-async-123")
+    response = httpx.Response(status_code=404, content=b"{}", request=request)
+    err = httpx.HTTPStatusError("404", request=request, response=response)
+    _attach_get_response(provider, err)
+    result = asyncio.run(provider.check_status("req-async-123"))
+    assert result["status"] == "permanent_error"
+    error_text = str(result.get("error", "")).lower()
+    assert (
+        "expired" in error_text
+        or "ttl" in error_text
+        or "7-day" in error_text
+        or "7 day" in error_text
+    )
+
+
+def test_check_status_transient_error_with_stale_in_progress_cache_does_not_complete() -> None:
+    """TS02: ConnectError on poll + cached IN_PROGRESS → transient_error.
+
+    Mirrors OAI-BG-06. Critical safety property: a network blip during a
+    long-running poll MUST NOT cause us to declare a job done when the
+    cached state was IN_PROGRESS. Loss of liveness is preferable to false
+    completion.
+    """
+    provider, _ = _make_background_provider()
+    _seed_background_job(provider, cached_status="IN_PROGRESS")
+    _attach_get_response(provider, httpx.ConnectError("network blip"))
+    result = asyncio.run(provider.check_status("req-async-123"))
+    assert result["status"] == "transient_error"
+    assert result["status"] != "completed", (
+        "stale IN_PROGRESS cache must not be reported as completed"
+    )
+
+
+def test_check_status_transient_error_with_stale_completed_cache_returns_completed() -> None:
+    """TS02: ConnectError on poll + cached COMPLETED → completed (safe fallback).
+
+    Mirrors OAI-BG-07. Once we've already seen COMPLETED for this job in a
+    prior poll, a transient error on a later (redundant) poll should not
+    flip the state back to error. The cached completion is authoritative.
+    """
+    provider, _ = _make_background_provider()
+    _seed_background_job(provider, cached_status="COMPLETED")
+    _attach_get_response(provider, httpx.ConnectError("network blip"))
+    result = asyncio.run(provider.check_status("req-async-123"))
+    assert result["status"] == "completed"
+    assert result["progress"] == 1.0
+
+
+def test_check_status_unknown_job_id_returns_not_found() -> None:
+    """TS02: job_id absent from self.jobs → not_found (no HTTP attempted)."""
+    provider, post = _make_background_provider()  # post mock here is for submit, unused
+    fake_client = AsyncMock()
+    fake_client.get = AsyncMock(return_value=_status_response("COMPLETED"))
+    provider._async_http = fake_client  # type: ignore[attr-defined]
+    result = asyncio.run(provider.check_status("never-seen"))
+    assert result["status"] == "not_found"
+    assert fake_client.get.await_count == 0, "no GET should fire for unknown job_id"
+
+
+def test_check_status_immediate_path_returns_completed_without_polling() -> None:
+    """Regression: P23 sync immediate path keeps its 'already completed' behavior.
+
+    For kind=immediate jobs (where `submit()` already ran chat.completions
+    synchronously), `self.jobs[job_id]` lacks `background=True`. check_status
+    must return {completed, 1.0} without GETting the async API.
+    """
+    provider = PerplexityProvider(
+        api_key="pplx-test", config={"model": "sonar", "kind": "immediate"}
+    )
+    fake_client = AsyncMock()
+    fake_client.get = AsyncMock(return_value=_status_response("COMPLETED"))
+    provider._async_http = fake_client  # type: ignore[attr-defined]
+    provider.jobs["sync-job-x"] = {
+        "response": object(),  # opaque sync SDK response (irrelevant for status)
+        "created_at": __import__("datetime").datetime.now(),
+        # no "background" key — that's how the sync path stores jobs
+    }
+    result = asyncio.run(provider.check_status("sync-job-x"))
+    assert result["status"] == "completed"
+    assert result["progress"] == 1.0
+    assert fake_client.get.await_count == 0, "sync jobs must NOT trigger an async-API GET"
