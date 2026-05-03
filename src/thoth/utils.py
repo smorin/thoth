@@ -46,16 +46,22 @@ def _is_placeholder(value: str) -> bool:
 def md_link_title(text: str) -> str:
     """Escape characters that would break the title part of a Markdown link ([...]).
 
-    Replaces ``[`` and ``]`` with their backslash-escaped equivalents so
-    arbitrary web-page titles cannot corrupt the ``[title](url)`` syntax.
+    Replaces ``[``, ``]``, and ``<`` with their safe equivalents so
+    arbitrary web-page titles cannot corrupt the ``[title](url)`` syntax or
+    inject HTML into Markdown renderers that support inline HTML.
     """
-    return text.replace("[", "\\[").replace("]", "\\]")
+    return text.replace("[", "\\[").replace("]", "\\]").replace("<", "&lt;")
 
 
 def md_link_url(url: str) -> str:
-    """Escape characters that would break the URL part of a Markdown link ((...)).
+    """Return ``url`` safe for use in a Markdown link ``(...)`` destination.
 
-    Percent-encodes ``)`` as ``%29`` so URLs that contain a closing parenthesis
-    cannot truncate the link destination and inject unintended Markdown.
+    Only ``http://`` and ``https://`` scheme URLs are allowed; anything else
+    (e.g. ``javascript:`` or ``data:``) is replaced with an empty string so
+    it cannot inject executable content.  Closing parentheses are
+    percent-encoded as ``%29`` to prevent truncating the link destination.
     """
-    return url.replace(")", "%29")
+    stripped = url.strip()
+    if not stripped.startswith(("http://", "https://")):
+        return ""
+    return stripped.replace(")", "%29")
