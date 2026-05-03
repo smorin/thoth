@@ -38,6 +38,7 @@ dependencies = [
     "prompt-toolkit>=3.0",
     "tomlkit>=0.13",
     "thothspinner>=1.2.6",
+    "pydantic>=2.12.5,<3",
 ]
 
 [project.scripts]
