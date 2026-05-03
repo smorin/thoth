@@ -41,9 +41,9 @@ def test_thoth_config_constructs_with_no_overrides() -> None:
 
 def test_get_defaults_equals_root_schema_dump() -> None:
     from thoth.config import ConfigSchema
-    from thoth.config_schema import _ROOT_SCHEMA
+    from thoth.config_schema import _ROOT_DEFAULTS_DICT
 
-    assert ConfigSchema.get_defaults() == _ROOT_SCHEMA.model_dump(mode="python")
+    assert ConfigSchema.get_defaults() == _ROOT_DEFAULTS_DICT
 
 
 # ---------- TS02: coverage (default paths only at this stage) ----------
@@ -73,18 +73,15 @@ def test_resolve_path_recurses_into_dict_of_basemodel() -> None:
     assert name == "provider"
 
 
-def test_resolve_path_dict_of_any_stops_at_dict_key_level() -> None:
-    """`providers: dict[str, dict[str, Any]]` — value type isn't a BaseModel,
-    so resolve_path accepts the dict-keyed level as resolved.
-
-    This will change in Task 4 once providers becomes typed; until then,
-    document the intentional behavior.
+def test_resolve_path_providers_recurses_into_openai_config() -> None:
+    """`providers: ProvidersConfig` — value type is a BaseModel (Task 4),
+    so resolve_path recurses into OpenAIConfig and resolves the leaf field.
     """
-    from thoth.config_schema import ThothConfig, resolve_path
+    from thoth.config_schema import OpenAIConfig, ThothConfig, resolve_path
 
     model, name = resolve_path(ThothConfig, ("providers", "openai", "api_key"))
-    assert model is ThothConfig
-    assert name == "providers"
+    assert model is OpenAIConfig
+    assert name == "api_key"
 
 
 def test_resolve_path_raises_on_unknown_leaf() -> None:
@@ -212,3 +209,47 @@ def test_general_overlay_mirrors_general_config_fields() -> None:
         f"Unexpected overlay-only fields: {overlay_only}. "
         f"Update this test if you intentionally added a new P21-style field."
     )
+
+
+# ---------- TS07: provider-specific schema fields ----------
+
+
+def test_openai_provider_temperature_validates() -> None:
+    from thoth.config_schema import OpenAIConfig
+
+    OpenAIConfig(api_key="${OPENAI_API_KEY}", temperature=0.7)
+
+
+def test_perplexity_provider_search_context_size_validates() -> None:
+    from thoth.config_schema import PerplexityConfig
+
+    PerplexityConfig(api_key="${PERPLEXITY_API_KEY}", search_context_size="high")
+
+
+def test_unknown_openai_field_rejected() -> None:
+    from pydantic import ValidationError
+
+    from thoth.config_schema import OpenAIConfig
+
+    with pytest.raises(ValidationError) as exc:
+        OpenAIConfig(api_key="${OPENAI_API_KEY}", bogus=1)  # type: ignore[call-arg]  # ty: ignore[unknown-argument]
+    assert "bogus" in str(exc.value)
+
+
+def test_perplexity_rejects_openai_specific_fields() -> None:
+    from pydantic import ValidationError
+
+    from thoth.config_schema import PerplexityConfig
+
+    # `organization` is OpenAI-specific; Perplexity must reject it.
+    with pytest.raises(ValidationError) as exc:
+        PerplexityConfig(api_key="${PERPLEXITY_API_KEY}", organization="acme")  # type: ignore[call-arg]  # ty: ignore[unknown-argument]
+    assert "organization" in str(exc.value)
+
+
+def test_providers_config_holds_typed_subsections() -> None:
+    from thoth.config_schema import ProvidersConfig
+
+    p = ProvidersConfig()
+    assert p.openai.api_key == "${OPENAI_API_KEY}"
+    assert p.perplexity.api_key == "${PERPLEXITY_API_KEY}"

@@ -155,8 +155,58 @@ class ModeConfig(BaseModel):
 # Provider configs (filled in Task 4)
 # ---------------------------------------------------------------------------
 
-# Task 4 will replace `providers: dict[str, dict[str, Any]]` with a typed
-# ProvidersConfig model. For now we use a plain dict placeholder.
+
+class ProviderConfigBase(BaseModel):
+    """Common provider config surface — shared by all providers.
+
+    Renamed from `ProviderBase` per P33 review remediation #7 to avoid
+    confusion with the runtime `ResearchProvider` class in
+    `src/thoth/providers/base.py`.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+    api_key: str
+    model: str | None = None
+    temperature: float | None = None
+    max_tokens: int | None = None
+    timeout: float | None = None
+    base_url: str | None = None
+
+
+class OpenAIConfig(ProviderConfigBase):
+    """OpenAI provider config (api_key + organization + base fields)."""
+
+    organization: str | None = None
+
+
+class PerplexityConfig(ProviderConfigBase):
+    """Perplexity provider config (api_key + search_context_size + base fields)."""
+
+    search_context_size: Literal["low", "medium", "high"] | None = None
+
+
+class GeminiConfig(ProviderConfigBase):
+    """Gemini provider config — placeholder for P28.
+
+    No Gemini-specific fields yet; subclassing makes the addition site
+    obvious when P28 lands.
+    """
+
+    pass
+
+
+class ProvidersConfig(BaseModel):
+    """`[providers]` super-table — typed per-provider section."""
+
+    model_config = ConfigDict(extra="forbid")
+    openai: OpenAIConfig = StarterField(
+        default_factory=lambda: OpenAIConfig(api_key="${OPENAI_API_KEY}"),
+    )
+    perplexity: PerplexityConfig = StarterField(
+        default_factory=lambda: PerplexityConfig(api_key="${PERPLEXITY_API_KEY}"),
+    )
+    # Gemini intentionally NOT in starter doc — P28 not landed yet.
+
 
 # ---------------------------------------------------------------------------
 # Top-level model
@@ -173,13 +223,7 @@ class ThothConfig(BaseModel):
     paths: PathsConfig = Field(default_factory=PathsConfig)
     execution: ExecutionConfig = Field(default_factory=ExecutionConfig)
     output: OutputConfig = Field(default_factory=OutputConfig)
-    # `providers` is filled in Task 4 — for now use a placeholder dict.
-    providers: dict[str, dict[str, Any]] = Field(
-        default_factory=lambda: {
-            "openai": {"api_key": "${OPENAI_API_KEY}"},
-            "perplexity": {"api_key": "${PERPLEXITY_API_KEY}"},
-        }
-    )
+    providers: ProvidersConfig = Field(default_factory=ProvidersConfig)
     clarification: ClarificationConfig = Field(default_factory=ClarificationConfig)
     modes: dict[str, ModeConfig] = Field(default_factory=dict)
 
@@ -228,6 +272,7 @@ _PartialPathsConfig: type[BaseModel] = make_partial(PathsConfig)
 _PartialExecutionConfig: type[BaseModel] = make_partial(ExecutionConfig)
 _PartialOutputConfig: type[BaseModel] = make_partial(OutputConfig)
 _PartialClarificationConfig: type[BaseModel] = make_partial(ClarificationConfig)
+_PartialProvidersConfig: type[BaseModel] = make_partial(ProvidersConfig)
 
 
 class GeneralOverlay(BaseModel):
@@ -258,7 +303,7 @@ class ConfigOverlay(BaseModel):
     paths: _PartialPathsConfig | None = None  # type: ignore[valid-type]  # ty:ignore[invalid-type-form]
     execution: _PartialExecutionConfig | None = None  # type: ignore[valid-type]  # ty:ignore[invalid-type-form]
     output: _PartialOutputConfig | None = None  # type: ignore[valid-type]  # ty:ignore[invalid-type-form]
-    providers: dict[str, dict[str, Any]] | None = None  # finalized in Task 4
+    providers: _PartialProvidersConfig | None = None  # type: ignore[valid-type]  # ty:ignore[invalid-type-form]
     clarification: _PartialClarificationConfig | None = None  # type: ignore[valid-type]  # ty:ignore[invalid-type-form]
     modes: dict[str, ModeConfig] | None = None
 
@@ -378,3 +423,4 @@ def resolve_path(
 
 # Built once at import time. Tests assert this dump equals get_defaults().
 _ROOT_SCHEMA = ThothConfig()
+_ROOT_DEFAULTS_DICT = _ROOT_SCHEMA.model_dump(mode="python", exclude_none=True)
