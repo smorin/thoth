@@ -699,10 +699,118 @@ class PerplexityProvider(ResearchProvider):
         }
 
     async def get_result(self, job_id: str, verbose: bool = False) -> str:
+        """Final answer text for a completed job. Routes by job_info['background'].
+
+        Sync (P23 immediate) jobs delegate to _render_answer_with_sources which
+        operates on the OpenAI-SDK response object. Background (P27 async)
+        jobs use the dict-shaped payload cached by check_status, fetching
+        fresh if the cached state isn't COMPLETED yet.
+        """
         if job_id not in self.jobs:
-            raise ProviderError("perplexity", f"Unknown job_id: {job_id}")
-        response = self.jobs[job_id]["response"]
-        return _render_answer_with_sources(response)
+            raise ProviderError(_PROVIDER_NAME, f"Unknown job_id: {job_id}")
+        job_info = self.jobs[job_id]
+        if not job_info.get("background", False):
+            return _render_answer_with_sources(job_info["response"])
+        return await self._get_async_result(job_id, job_info, verbose)
+
+    async def _get_async_result(self, job_id: str, job_info: dict[str, Any], verbose: bool) -> str:
+        """Compose user-facing output from a completed async-API payload.
+
+        Order: content -> truncation warning (placed near the truncation site)
+        -> ## Sources -> ## Cost. Sources and Cost are conditional; truncation
+        warning is conservative-by-design (false positives are user-ignorable).
+        """
+        payload = job_info.get("response_data") or {}
+        if payload.get("status") != "COMPLETED":
+            try:
+                response = await self._async_http.get(f"/v1/async/sonar/{job_id}")
+                response.raise_for_status()
+            except (httpx.HTTPStatusError, httpx.HTTPError, Exception) as exc:
+                raise _map_perplexity_error_async(exc, model=self.model, verbose=verbose) from exc
+            payload = response.json()
+            job_info["response_data"] = payload
+
+        response_part = payload.get("response") or {}
+        return _format_async_response(response_part)
+
+
+def _format_async_response(response: dict[str, Any]) -> str:
+    """Build the user-facing string for a completed async response."""
+    choices = response.get("choices") or []
+    content = ""
+    finish_reason = ""
+    if choices and isinstance(choices[0], dict):
+        message = choices[0].get("message") or {}
+        if isinstance(message, dict):
+            content = message.get("content") or ""
+        finish_reason = choices[0].get("finish_reason") or ""
+
+    parts: list[str] = [content]
+
+    if _is_likely_truncated(content, finish_reason):
+        parts.append("\n\n> ⚠ Possible truncation: response may be incomplete.")
+
+    sources = _format_async_sources_block(response.get("search_results") or [])
+    if sources:
+        parts.append(sources)
+
+    cost = _format_async_cost_block(response.get("usage") or {})
+    if cost:
+        parts.append(cost)
+
+    return "".join(parts)
+
+
+def _is_likely_truncated(content: str, finish_reason: str) -> bool:
+    """Conservative truncation heuristic: stop with no terminal punctuation.
+
+    The documented Perplexity bug (research §17) is that ~25-50% of responses
+    finish with finish_reason='stop' but mid-sentence. We treat the absence
+    of terminal punctuation at the rstripped tail as the signal. Conservative
+    (false-positives tolerated) per Open Question resolution at P27 kickoff.
+    """
+    if finish_reason != "stop":
+        return False
+    stripped = content.rstrip()
+    if not stripped:
+        return False
+    last_char = stripped[-1]
+    return last_char not in ".!?\")]>}*`'"
+
+
+def _format_async_sources_block(search_results: list[Any]) -> str:
+    """Markdown `## Sources` list, URL-deduped. Empty input -> empty string."""
+    if not search_results:
+        return ""
+    seen_urls: set[str] = set()
+    sources: list[str] = []
+    for entry in search_results:
+        if not isinstance(entry, dict):
+            continue
+        url = entry.get("url") or ""
+        if not url or url in seen_urls:
+            continue
+        seen_urls.add(url)
+        title = entry.get("title") or url
+        sources.append(f"- [{md_link_title(str(title))}]({md_link_url(str(url))})")
+    if not sources:
+        return ""
+    return "\n\n## Sources\n\n" + "\n".join(sources)
+
+
+def _format_async_cost_block(usage: dict[str, Any]) -> str:
+    """`## Cost\\n\\nTotal: $X.XXXX` from usage.cost.total_cost (4 decimals)."""
+    cost_obj = usage.get("cost")
+    if not isinstance(cost_obj, dict):
+        return ""
+    total = cost_obj.get("total_cost")
+    if total is None:
+        return ""
+    try:
+        amount = float(total)
+    except (TypeError, ValueError):
+        return ""
+    return f"\n\n## Cost\n\nTotal: ${amount:.4f}"
 
 
 def _render_answer_with_sources(response: Any) -> str:

@@ -531,3 +531,213 @@ def test_check_status_immediate_path_returns_completed_without_polling() -> None
     assert result["status"] == "completed"
     assert result["progress"] == 1.0
     assert fake_client.get.await_count == 0, "sync jobs must NOT trigger an async-API GET"
+
+
+# ---------------------------------------------------------------------------
+# P27-TS03 / TS03b / TS03c — get_result() extraction
+# ---------------------------------------------------------------------------
+#
+# Async-API responses are dict-shaped (no SDK typedefs) so extraction uses
+# dict access throughout. Output composition appends, in order:
+#   1. main content from response.choices[0].message.content
+#   2. truncation warning (if heuristic fires) — placed near the truncation
+#      site so users see it before the metadata blocks
+#   3. ## Sources block from response.search_results, URL-deduped
+#   4. ## Cost block from response.usage.cost.total_cost (4 decimals)
+#
+# Per Open-Question resolution at P27 kickoff, ## Cost is always shown
+# (no --show-cost flag). Per audit gap, truncation gets explicit tests.
+
+
+def _completed_payload(
+    content: str = "Final answer.",
+    finish_reason: str = "stop",
+    search_results: list[dict[str, Any]] | None = None,
+    total_cost: float | None = 0.4137,
+) -> dict[str, Any]:
+    """Build a fully-formed COMPLETED payload from the async API."""
+    payload: dict[str, Any] = {
+        "id": "req-async-123",
+        "status": "COMPLETED",
+        "response": {
+            "choices": [{"message": {"content": content}, "finish_reason": finish_reason}],
+            "search_results": search_results or [],
+            "usage": ({"cost": {"total_cost": total_cost}} if total_cost is not None else {}),
+        },
+    }
+    return payload
+
+
+def _seed_completed_job(
+    provider: PerplexityProvider,
+    job_id: str = "req-async-123",
+    payload: dict[str, Any] | None = None,
+) -> None:
+    provider.jobs[job_id] = {
+        "response_data": payload or _completed_payload(),
+        "background": True,
+        "created_at": __import__("datetime").datetime.now(),
+    }
+
+
+def test_get_result_extracts_content_via_dict_access() -> None:
+    """TS03: content comes from response.choices[0].message.content via dict access."""
+    provider, _ = _make_background_provider()
+    _seed_completed_job(provider, payload=_completed_payload(content="Researched answer."))
+    text = asyncio.run(provider.get_result("req-async-123"))
+    assert "Researched answer." in text
+
+
+def test_get_result_appends_sources_block_with_url_dedup() -> None:
+    """TS03: ## Sources lists each unique URL exactly once."""
+    provider, _ = _make_background_provider()
+    payload = _completed_payload(
+        content="Body.",
+        search_results=[
+            {"url": "https://a.example/x", "title": "A"},
+            {"url": "https://b.example/y", "title": "B"},
+            {"url": "https://a.example/x", "title": "A duplicate"},  # same URL
+        ],
+    )
+    _seed_completed_job(provider, payload=payload)
+    text = asyncio.run(provider.get_result("req-async-123"))
+    assert "## Sources" in text
+    assert text.count("https://a.example/x") == 1, "duplicate URL should be deduped"
+    assert "https://b.example/y" in text
+
+
+def test_get_result_omits_sources_block_when_no_search_results() -> None:
+    """TS03: empty search_results → no `## Sources` section emitted."""
+    provider, _ = _make_background_provider()
+    _seed_completed_job(provider, payload=_completed_payload(search_results=[]))
+    text = asyncio.run(provider.get_result("req-async-123"))
+    assert "## Sources" not in text
+
+
+def test_get_result_appends_cost_footer_with_four_decimals() -> None:
+    """TS03b: ## Cost\\n\\nTotal: $X.XXXX with 4-decimal precision."""
+    provider, _ = _make_background_provider()
+    _seed_completed_job(provider, payload=_completed_payload(total_cost=1.23456))
+    text = asyncio.run(provider.get_result("req-async-123"))
+    assert "## Cost" in text
+    # Per spec: 4 decimals after the dollar sign.
+    assert "Total: $1.2346" in text or "Total: $1.2345" in text  # rounding tolerance
+
+
+def test_get_result_omits_cost_footer_when_usage_missing() -> None:
+    """TS03b: missing usage.cost.total_cost → no Cost section.
+
+    Defensive: if Perplexity ever stops returning cost data we render the
+    answer without an empty `Total: $0.0000` line.
+    """
+    provider, _ = _make_background_provider()
+    _seed_completed_job(provider, payload=_completed_payload(total_cost=None))
+    text = asyncio.run(provider.get_result("req-async-123"))
+    assert "## Cost" not in text
+
+
+def test_get_result_warns_on_truncation_heuristic_match() -> None:
+    """TS03c: finish_reason='stop' AND tail lacks terminal punctuation → warning.
+
+    Heuristic for the documented 25–50% truncation rate (research §17).
+    Conservative (false-positive-tolerant) per Open Question at P27 kickoff.
+    """
+    provider, _ = _make_background_provider()
+    payload = _completed_payload(
+        content="The conclusion is that we should investigate further when",
+        finish_reason="stop",
+    )
+    _seed_completed_job(provider, payload=payload)
+    text = asyncio.run(provider.get_result("req-async-123"))
+    assert "Possible truncation" in text or "truncation" in text.lower()
+
+
+def test_get_result_does_not_warn_when_content_ends_with_terminal_punctuation() -> None:
+    """TS03c: finish_reason='stop' + tail with terminal punctuation → no warning."""
+    provider, _ = _make_background_provider()
+    payload = _completed_payload(
+        content="The conclusion is clear: investigate further.",
+        finish_reason="stop",
+    )
+    _seed_completed_job(provider, payload=payload)
+    text = asyncio.run(provider.get_result("req-async-123"))
+    assert "truncation" not in text.lower()
+
+
+def test_get_result_does_not_warn_when_finish_reason_is_not_stop() -> None:
+    """TS03c: finish_reason != 'stop' → no truncation warning regardless of punctuation.
+
+    Other finish_reasons (length, content_filter, etc.) carry their own
+    semantics; the truncation heuristic is specifically about the documented
+    'stop with no terminal punctuation' Perplexity bug.
+    """
+    provider, _ = _make_background_provider()
+    payload = _completed_payload(content="Cut off abruptly", finish_reason="length")
+    _seed_completed_job(provider, payload=payload)
+    text = asyncio.run(provider.get_result("req-async-123"))
+    assert "truncation" not in text.lower()
+
+
+def test_get_result_uses_cached_completed_response_without_refetch() -> None:
+    """TS03: a cached COMPLETED response is authoritative; no second GET needed."""
+    provider, _ = _make_background_provider()
+    _seed_completed_job(provider)
+    fake_client = AsyncMock()
+    fake_client.get = AsyncMock(return_value=_status_response("COMPLETED"))
+    provider._async_http = fake_client  # type: ignore[attr-defined]
+    asyncio.run(provider.get_result("req-async-123"))
+    assert fake_client.get.await_count == 0, "cached COMPLETED must not trigger refetch"
+
+
+def test_get_result_fetches_when_cached_state_is_not_completed() -> None:
+    """TS03: cached IN_PROGRESS forces a fresh fetch (even though normally check_status
+
+    is called first; defensive against direct callers).
+    """
+    provider, _ = _make_background_provider()
+    # Seed with IN_PROGRESS — get_result must refetch to find the actual completion.
+    provider.jobs["req-async-123"] = {
+        "response_data": {"id": "req-async-123", "status": "IN_PROGRESS"},
+        "background": True,
+        "created_at": __import__("datetime").datetime.now(),
+    }
+    completed_payload = _completed_payload(content="Fresh answer.")
+    request = httpx.Request("GET", "https://api.perplexity.ai/v1/async/sonar/req-async-123")
+    response = httpx.Response(status_code=200, json=completed_payload, request=request)
+    fake_client = AsyncMock()
+    fake_client.get = AsyncMock(return_value=response)
+    provider._async_http = fake_client  # type: ignore[attr-defined]
+    text = asyncio.run(provider.get_result("req-async-123"))
+    assert fake_client.get.await_count == 1
+    assert "Fresh answer." in text
+
+
+def test_get_result_unknown_job_raises_provider_error() -> None:
+    """TS03: get_result for an unknown job_id raises ProviderError (not silent)."""
+    provider, _ = _make_background_provider()
+    with pytest.raises(ProviderError):
+        asyncio.run(provider.get_result("never-seen"))
+
+
+def test_get_result_immediate_path_unchanged() -> None:
+    """Regression: P23 sync immediate path uses the existing _render_answer_with_sources.
+
+    For kind=immediate jobs the cached SDK response is already the answer;
+    P27 must not change that flow.
+    """
+    from types import SimpleNamespace
+
+    provider = PerplexityProvider(
+        api_key="pplx-test", config={"model": "sonar", "kind": "immediate"}
+    )
+    sdk_response = SimpleNamespace(
+        choices=[SimpleNamespace(message=SimpleNamespace(content="Sync answer."))],
+        search_results=[],
+    )
+    provider.jobs["sync-job"] = {
+        "response": sdk_response,
+        "created_at": __import__("datetime").datetime.now(),
+        # no "background" key
+    }
+    text = asyncio.run(provider.get_result("sync-job"))
+    assert "Sync answer." in text
