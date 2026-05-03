@@ -504,12 +504,20 @@ def _collect_starter_paths(
     prefix: tuple[str, ...],
     out: set[tuple[str, ...]],
 ) -> None:
+    """Walk every BaseModel field, descending unconditionally into nested
+    BaseModels. Only fields marked `StarterField(...)` (i.e. with
+    `json_schema_extra["in_starter"]` truthy) are emitted as leaves.
+
+    Containers (like `ThothConfig.general: GeneralConfig`) don't need to
+    be StarterField themselves — only their leaf children do.
+    """
     for name, finfo in model.model_fields.items():
         extra = (finfo.json_schema_extra or {}) if isinstance(finfo.json_schema_extra, dict) else {}
         is_starter = bool(extra.get("in_starter"))
         path = prefix + (name,)
         annotation = finfo.annotation
-        if is_starter and isinstance(annotation, type) and issubclass(annotation, BaseModel):
+        if isinstance(annotation, type) and issubclass(annotation, BaseModel):
+            # Always recurse — the leaf decides shipping.
             _collect_starter_paths(annotation, path, out)
         elif is_starter:
             out.add(path)

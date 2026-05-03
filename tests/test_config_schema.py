@@ -253,3 +253,55 @@ def test_providers_config_holds_typed_subsections() -> None:
     p = ProvidersConfig()
     assert p.openai.api_key == "${OPENAI_API_KEY}"
     assert p.perplexity.api_key == "${PERPLEXITY_API_KEY}"
+
+
+# ---------- starter_keys() coverage ----------
+
+
+def test_starter_keys_includes_top_level_in_starter_leaves() -> None:
+    """Every leaf decorated with StarterField shows up in starter_keys()."""
+    from thoth.config_schema import ConfigSchema
+
+    keys = ConfigSchema.starter_keys()
+    # Expected leaves shipped by `thoth init` per the field declarations:
+    expected_some = {
+        ("general", "default_project"),
+        ("general", "default_mode"),
+        ("paths", "base_output_dir"),
+        ("paths", "checkpoint_dir"),
+        ("execution", "poll_interval"),
+        ("execution", "max_wait"),
+        ("execution", "parallel_providers"),
+        ("execution", "retry_attempts"),
+        ("execution", "auto_input"),
+        ("output", "combine_reports"),
+        ("output", "format"),
+        ("output", "include_metadata"),
+        ("output", "timestamp_format"),
+    }
+    missing = expected_some - keys
+    assert not missing, f"starter_keys() missing expected leaves: {missing}. Got: {sorted(keys)}"
+
+
+def test_starter_keys_excludes_advanced_execution_fields() -> None:
+    """`max_transient_errors`, `prompt_max_bytes`, `cancel_upstream_on_interrupt`
+    are deliberately NOT in starter."""
+    from thoth.config_schema import ConfigSchema
+
+    keys = ConfigSchema.starter_keys()
+    forbidden = {
+        ("execution", "max_transient_errors"),
+        ("execution", "prompt_max_bytes"),
+        ("execution", "cancel_upstream_on_interrupt"),
+    }
+    leaked = forbidden & keys
+    assert not leaked, f"Advanced fields leaked into starter_keys(): {leaked}"
+
+
+def test_starter_keys_excludes_clarification_section() -> None:
+    """The whole `clarification` section is not shipped (no StarterField anywhere)."""
+    from thoth.config_schema import ConfigSchema
+
+    keys = ConfigSchema.starter_keys()
+    leaked = {k for k in keys if k and k[0] == "clarification"}
+    assert not leaked, f"Clarification leaked: {leaked}"
