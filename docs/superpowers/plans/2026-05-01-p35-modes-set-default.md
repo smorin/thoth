@@ -4,7 +4,7 @@
 
 **Goal:** Add `thoth modes set-default NAME` and `thoth modes unset-default` commands plus a runtime resolution change so per-profile `default_mode` overrides the base.
 
-**Architecture:** Mirror the existing `thoth config profiles set-default` pattern: TOML mutation primitives in `ConfigDocument`, pure-data functions in `config_cmd.py`, hand-written click leaves in `cli_subcommands/modes.py`. Extend `_config_default_mode()` in `cli.py` to read `THOTH_DEFAULT_MODE` first, then `profiles.<active>.default_mode`, then `general.default_mode`. Apply a strict same-tier rule when validating `--profile X` for `set-default` only.
+**Architecture:** Mirror the existing `thoth config profiles set-default` pattern for TOML mutation primitives and pure-data functions, but route the CLI leaves through the shared `modes_cmd.py` mutator registry so `set-default` / `unset-default` inherit the same inline `--project` / `--config` / `--profile` targeting behavior as add/set/unset/remove/rename/copy. Extend `_config_default_mode()` in `cli.py` to read `THOTH_DEFAULT_MODE` first, then `profiles.<active>.default_mode`, then `general.default_mode`. Apply a strict same-tier rule when validating `--profile X` for `set-default` only.
 
 **Tech Stack:** Python 3.11+, Click, tomlkit, pytest, ruff/ty, lefthook.
 
@@ -21,7 +21,7 @@
 | `src/thoth/config_document.py` | Modify | Add `has_profile`, `set_default_mode`, `unset_default_mode`, `default_mode_name` (each accepting optional `profile=` kwarg). |
 | `src/thoth/config_write_context.py` | Modify | Add `target_has_profile(name) -> bool` — a convenience wrapper that loads the target document and asks `has_profile`. |
 | `src/thoth/config_cmd.py` | Modify | Add `get_modes_set_default_data`, `get_modes_unset_default_data`. Export in `__all__`. |
-| `src/thoth/cli_subcommands/modes.py` | Modify | Add hand-written click leaves `modes_set_default`, `modes_unset_default`. Update `_MODES_EPILOG`. |
+| `src/thoth/cli_subcommands/modes.py` / `src/thoth/modes_cmd.py` | Modify | Register shared mutator specs/data functions for `set-default` / `unset-default`; generate Click leaves via `_make_modes_leaf`. Update `_MODES_EPILOG`. |
 | `src/thoth/cli.py` | Modify | Update `_config_default_mode()` to honor env + active profile. |
 | `tests/test_config_document_modes_default.py` | Create | Unit tests for the four new `ConfigDocument` methods. |
 | `tests/test_modes_set_default.py` | Create | Data + CLI tests for `set-default` (validation, tier matrix, same-tier rule, JSON envelope). |
@@ -746,7 +746,7 @@ git commit -m "feat(modes): add get_modes_unset_default_data (idempotent, no pro
 ## Task 5: Click leaves + JSON envelope (P35-T03 + P35-TS06)
 
 **Files:**
-- Modify: `src/thoth/cli_subcommands/modes.py` (add hand-written leaves before the `_make_modes_leaf` factory loop)
+- Modify: `src/thoth/modes_cmd.py` (register `set-default` / `unset-default` in `_OP_SPECS` / `_OP_DATA_FNS`) and `src/thoth/cli_subcommands/modes.py` (include both generated leaves in the `_make_modes_leaf` loop)
 - Modify: `tests/test_modes_set_default.py` and `tests/test_modes_unset_default.py` (extend with CliRunner tests)
 
 - [ ] **Step 5.1: Add CLI tests for set-default**

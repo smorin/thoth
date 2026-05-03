@@ -26,15 +26,16 @@ profile selection.
 ## Surface
 
 ```
-thoth [--config PATH] [--profile X] modes set-default NAME [--project] [--json]
-thoth [--config PATH] [--profile X] modes unset-default      [--project] [--json]
+thoth [--config PATH] [--profile X] modes set-default NAME [--project] [--config PATH] [--profile X] [--json]
+thoth [--config PATH] [--profile X] modes unset-default      [--project] [--config PATH] [--profile X] [--json]
 ```
 
-`--config PATH` and `--profile X` are root-level inherited options and
-must appear **before** the `modes` subcommand (matching every other
-`thoth modes` mutator). `--project` and `--json` are leaf-local flags
-on `set-default` / `unset-default`. JSON envelope mirrors
-`config profiles set-default` shape.
+`--config PATH` and `--profile X` are accepted both as root-level
+inherited options before `modes` and as inline target flags after the
+leaf, matching the shared `thoth modes` mutator parser. Inline target
+flags override inherited root values. `--project` and `--json` are
+leaf-local flags on `set-default` / `unset-default`. JSON envelope
+mirrors `config profiles set-default` shape.
 
 ## Tier matrix
 
@@ -202,7 +203,7 @@ precedence holds even when other code paths short-circuit
 |---|---|
 | `src/thoth/config_document.py` | New methods `set_default_mode(name, *, profile=None)`, `unset_default_mode(*, profile=None)`, `default_mode_name(*, profile=None)`. Symmetric with `set_default_profile` / `unset_default_profile` / `default_profile_name`. |
 | `src/thoth/config_cmd.py` | New pure-data functions `get_modes_set_default_data(name, *, project, profile, config_path)` and `get_modes_unset_default_data(*, project, profile, config_path)`. Envelope shape mirrors `get_config_profile_set_default_data`. Exported in `__all__`. |
-| `src/thoth/cli_subcommands/modes.py` | New hand-written click leaves `modes_set_default` and `modes_unset_default`. NOT generated via `_make_modes_leaf` — their flag shape differs from add/set/unset/remove/rename/copy. Update `_MODES_EPILOG` to mention them. |
+| `src/thoth/cli_subcommands/modes.py` / `src/thoth/modes_cmd.py` | Register `set-default` and `unset-default` in the shared modes mutator dispatch, generate leaves via `_make_modes_leaf`, and update `_MODES_EPILOG` to mention them. |
 | `src/thoth/cli.py` | Update `_config_default_mode()` per resolution change above. Add `import os` if not already present (it is). |
 | `tests/test_modes_set_default.py` | TDD test file (new) covering validation + matrix + idempotency + JSON envelope. |
 | `tests/test_default_mode_resolution.py` | TDD test file (new) covering the precedence chain. |
