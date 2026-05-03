@@ -251,18 +251,33 @@ class PerplexityProvider(ResearchProvider):
         ]
 
     def _validate_kind_for_model(self, mode: str) -> None:
-        """Refuse immediate-kind use when the configured model requires background.
+        """Refuse runs whose declared `kind` contradicts the model's required kind.
 
-        Mirrors `OpenAIProvider._validate_kind_for_model`. Specifically blocks
-        `sonar-deep-research` on the immediate path — that model belongs to
-        P27 and uses Perplexity's async API. Raises BEFORE any HTTP call.
+        Two directions, both raised BEFORE any HTTP call:
+
+        1. `kind="immediate"` + DR model (e.g., `sonar-deep-research`) —
+           DR models require Perplexity's async API. P23's TS07 covers this.
+        2. `kind="background"` + non-DR model (e.g., `sonar-pro`) — only DR
+           models accept `/v1/async/sonar`; the upstream HTTP-422s otherwise.
+           P27's TS06 covers this. Perplexity is stricter than OpenAI here:
+           OpenAI lets you force-background any model, so OpenAIProvider only
+           checks direction (1).
         """
-        if self.config.get("kind") == "immediate" and is_background_model(self.model):
+        declared = self.config.get("kind")
+        model_is_background = is_background_model(self.model)
+        if declared == "immediate" and model_is_background:
             raise ModeKindMismatchError(
                 mode_name=mode,
                 model=self.model,
                 declared_kind="immediate",
                 required_kind="background",
+            )
+        if declared == "background" and not model_is_background:
+            raise ModeKindMismatchError(
+                mode_name=mode,
+                model=self.model,
+                declared_kind="background",
+                required_kind="immediate",
             )
 
     def _build_messages(self, prompt: str, system_prompt: str | None) -> list[dict[str, str]]:
