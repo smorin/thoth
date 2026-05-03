@@ -239,10 +239,54 @@ def test_openai_provider_temperature_validates() -> None:
     OpenAIConfig(api_key="${OPENAI_API_KEY}", temperature=0.7)
 
 
-def test_perplexity_provider_search_context_size_validates() -> None:
+def test_perplexity_nested_namespace_validates() -> None:
+    """Perplexity's runtime forwards the `perplexity` namespace dict to
+    `extra_body` — including `web_search_options.search_context_size`,
+    `stream_mode`, and any future SDK options. Schema accepts arbitrary
+    keys under that namespace for forward-compat.
+    """
     from thoth.config_schema import PerplexityConfig
 
-    PerplexityConfig(api_key="${PERPLEXITY_API_KEY}", search_context_size="high")
+    PerplexityConfig(
+        api_key="${PERPLEXITY_API_KEY}",
+        perplexity={
+            "stream_mode": "full",
+            "web_search_options": {"search_context_size": "high"},
+        },
+    )
+
+
+def test_perplexity_direct_sdk_keys_validate() -> None:
+    """Top-level direct SDK keys (per `_DIRECT_SDK_KEYS` in
+    `src/thoth/providers/perplexity.py`): top_p, stop, response_format,
+    plus inherited temperature/max_tokens.
+    """
+    from thoth.config_schema import PerplexityConfig
+
+    PerplexityConfig(
+        api_key="${PERPLEXITY_API_KEY}",
+        temperature=0.5,
+        max_tokens=2000,
+        top_p=0.9,
+        stop=["END"],
+        response_format={"type": "json_object"},
+    )
+
+
+def test_openai_advanced_runtime_fields_validate() -> None:
+    """OpenAI's runtime reads max_tool_calls, code_interpreter, background,
+    organization. All must pass schema validation since the runtime expects
+    them on `provider_config`.
+    """
+    from thoth.config_schema import OpenAIConfig
+
+    OpenAIConfig(
+        api_key="${OPENAI_API_KEY}",
+        organization="org-test",
+        max_tool_calls=50,
+        code_interpreter=False,
+        background=True,
+    )
 
 
 def test_unknown_openai_field_rejected() -> None:

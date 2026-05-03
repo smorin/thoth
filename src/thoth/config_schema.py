@@ -135,6 +135,19 @@ class ClarificationConfig(BaseModel):
 
 
 class ModeConfig(BaseModel):
+    """Schema for `[modes.<name>]` and profile-overlaid mode tables.
+
+    Models the well-known mode-level fields plus per-provider namespace
+    passthrough (`[modes.<name>.openai]`, `[modes.<name>.perplexity]`,
+    `[modes.<name>.gemini]`). The runtime's `_apply_mode_provider_config`
+    threads these namespaces into the provider's constructor config — see
+    `src/thoth/providers/__init__.py:_apply_mode_provider_config`.
+
+    Provider namespaces are typed as permissive `dict[str, Any]` so SDK
+    options can evolve without schema drift; typos in the well-known
+    fields above are still caught by `extra="forbid"`.
+    """
+
     model_config = ConfigDict(extra="forbid")
 
     provider: str | None = None
@@ -144,12 +157,21 @@ class ModeConfig(BaseModel):
     prompt_prefix: str | None = None
     temperature: float | None = None
     max_tokens: int | None = None
+    max_tool_calls: int | None = None
     providers: list[str] | None = None
     parallel: bool | None = None
     previous: str | None = None
     next: str | None = None
     auto_input: bool | None = None
     description: str | None = None
+    stream: bool | None = None
+
+    # Provider-namespace passthrough — _apply_mode_provider_config reads these
+    # and deep-merges into provider_config[<name>]. Permissive shape lets
+    # SDK-specific options flow without schema updates.
+    openai: dict[str, Any] | None = None
+    perplexity: dict[str, Any] | None = None
+    gemini: dict[str, Any] | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -175,22 +197,51 @@ class ProviderConfigBase(BaseModel):
 
 
 class OpenAIConfig(ProviderConfigBase):
-    """OpenAI provider config (api_key + organization + base fields)."""
+    """OpenAI provider config.
+
+    Models the keys that `OpenAIProvider` reads from `self.config` at runtime
+    (see `src/thoth/providers/openai.py`). New runtime keys must be modeled
+    here so `extra="forbid"` doesn't reject valid user configs.
+    """
 
     organization: str | None = None
+    max_tool_calls: int | None = None
+    code_interpreter: bool | None = None
+    background: bool | None = None
 
 
 class PerplexityConfig(ProviderConfigBase):
-    """Perplexity provider config (api_key + search_context_size + base fields)."""
+    """Perplexity provider config.
 
-    search_context_size: Literal["low", "medium", "high"] | None = None
+    Models the keys that `PerplexityProvider` reads from `self.config` at
+    runtime (see `src/thoth/providers/perplexity.py`):
+
+    - Top-level direct SDK keys: `top_p`, `stop`, `response_format`
+      (joined with the inherited `temperature`, `max_tokens`).
+    - `perplexity` nested namespace: forwarded verbatim to the SDK's
+      `extra_body` (e.g. `web_search_options.search_context_size`,
+      `stream_mode`). Modeled as a permissive `dict[str, Any]` because
+      Perplexity's namespace evolves with their API and we don't want
+      schema drift to block valid user configs.
+
+    Note: `search_context_size` lives at
+    `[providers.perplexity.perplexity.web_search_options]` (or the
+    equivalent mode namespace), NOT at the top level. The pre-merge
+    placement was incorrect.
+    """
+
+    top_p: float | None = None
+    stop: list[str] | None = None
+    response_format: dict[str, Any] | None = None
+    perplexity: dict[str, Any] | None = None
 
 
 class GeminiConfig(ProviderConfigBase):
     """Gemini provider config — placeholder for P28.
 
-    No Gemini-specific fields yet; subclassing makes the addition site
-    obvious when P28 lands.
+    Inherits `api_key`, `model`, `temperature`, `max_tokens`, `timeout`,
+    `base_url`. Provider-specific fields (e.g. safety settings) will be
+    added when P28 lands.
     """
 
     pass
