@@ -27,7 +27,7 @@
 - **Forward-compatibility:** the provider does NOT hard-reject other model strings at `__init__`. If Perplexity ships future deep-research models with the async API (e.g., `sonar-deep-research-v2`), they work without code changes — the API returns HTTP 422 for incompatible models, mapped to a clear error with a model hint.
 - **Transport: pure-httpx.** The `/v1/async/sonar` endpoint isn't in the OpenAI SDK. Use `httpx.AsyncClient(base_url="https://api.perplexity.ai", headers={"Authorization": f"Bearer {key}"})`. No `openai` import in this provider.
 - **Built-in mode** in `src/thoth/config.py:BUILTIN_MODES`:
-  - `perplexity_deep_research` (`model: "sonar-deep-research"`, `kind: "background"`, `reasoning_effort: "medium"` (Perplexity's official default; ~$1.19/query — see `research/perplexity-deep-research-api.v1.md` §6)).
+  - `perplexity_deep_research` (`model: "sonar-deep-research"`, `kind: "background"`, `reasoning_effort: "high"` (~$1.32/query — see `research/perplexity-deep-research-api.v1.md` §6; user-locked default per P27 kickoff)).
 - **Lifecycle methods (mirror OpenAI background):**
   - **`submit(prompt, mode, system_prompt, verbose)`** — POST `/v1/async/sonar` with body `{"request": {"model", "messages", "reasoning_effort"?, ...search_options}, "idempotency_key": uuid4().hex}`. The `request` wrapper is required (Perplexity-specific, NOT OpenAI's flat shape). Capture `response.id` (the `request_id`) → `self.jobs[request_id]` → return as `job_id`. **The Perplexity `request_id` IS the job_id** — that lets `reconnect()` work after process restart with no local state.
   - **`check_status(job_id)`** — GET `/v1/async/sonar/{job_id}`. Map Perplexity status → Thoth internal status:
@@ -72,12 +72,15 @@
 
 ### Open questions
 
-- **Cancel support**: P18-T19 said Perplexity doesn't expose server-side cancel for async jobs. **Re-verify against current docs** (T01). If still no: `cancel()` returns `{"status":"upstream_unsupported"}` and the local checkpoint is marked cancelled.
+- ~~**Cancel support**~~ **RESOLVED (T01, 2026-05-02)**: Perplexity does NOT expose server-side cancel for async jobs. Verified against:
+  - https://docs.perplexity.ai/llms.txt — only documents `POST /v1/async/sonar` (submit), `GET /v1/async/sonar` (list), `GET /v1/async/sonar/{id}` (retrieve). No DELETE, no `/cancel`, no `/abort`.
+  - Status enum: `CREATED | IN_PROGRESS | COMPLETED | FAILED` — no `CANCELLED` state (`research/perplexity-deep-research-api.v1.md` §5).
+  - **Decision:** `cancel()` returns `{"status": "upstream_unsupported"}`; the local checkpoint is marked cancelled and `cancel.py:122–129` renders "⚠ {name}: upstream cancel not supported; local checkpoint marked cancelled" — same shape as OpenAI's same-case behavior.
 - **Polling cadence**: reuse Thoth's existing polling-interval config (BUG-03/P03 fix), or pick Perplexity-specific defaults (10s → 30s exponential per Perplexity doc)? Recommend reuse with a per-provider override knob.
 - **Truncation heuristic**: conservative (terminal-punctuation-only) or stricter (minimum response length, expected sections, etc.)? Conservative recommended; users can ignore false positives.
-- **Cost display gating**: always show `## Cost` footer, or only when `--show-cost` flag is set? Recommend always (deep-research is expensive enough that visibility matters).
+- ~~**Cost display gating**~~ **RESOLVED**: always show `## Cost` footer (user-locked at P27 kickoff). Deep-research costs $0.41–$1.32 per query; visibility is load-bearing. No `--show-cost` flag.
 - **VCR cassette IN_PROGRESS sequence**: include 1–2 IN_PROGRESS polls in the happy-path cassette (to test progress reporting), or collapse to submit+COMPLETED for simplicity? Recommend including 1 IN_PROGRESS poll.
-- **`reasoning_effort` default**: `medium` (Perplexity's official default; ~$1.19) vs `low` (~$0.41)? Material cost difference. Recommend `low` for our default mode (cheapest sensible deep-research; users opt up via mode config).
+- ~~**`reasoning_effort` default**~~ **RESOLVED**: `high` (~$1.32/query) — user-locked at P27 kickoff. Matches "deep research means deep" intent; users opt down via mode config.
 - **Async polling delay bug**: `IN_PROGRESS` may show for 30–40 minutes when actual completion is ~2 minutes (per §17). Should we add a "poll-budget" timeout that abandons after N minutes regardless of API status? Out of scope for v1; document in mode docstring.
 
 ### Tests & Tasks
