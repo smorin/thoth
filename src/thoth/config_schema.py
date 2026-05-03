@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, create_model
 
 # ---------------------------------------------------------------------------
 # Module-level loader metadata
@@ -189,6 +189,101 @@ class ThothConfig(BaseModel):
 # ---------------------------------------------------------------------------
 
 
+def make_partial(model: type[BaseModel], *, suffix: str = "Partial") -> type[BaseModel]:
+    """Return a new BaseModel subclass with every field made optional.
+
+    Recursively partials nested BaseModel-typed fields. `dict[str, BaseModel]`
+    fields are kept as-is — their value type is already optional-shaped (e.g.
+    `ModeConfig` has every field optional).
+
+    The returned model has `model_config = ConfigDict(extra="forbid")` so
+    it still catches typos in keys it knows about.
+    """
+    new_fields: dict[str, Any] = {}
+    for name, finfo in model.model_fields.items():
+        annotation = finfo.annotation
+
+        # If the field type is itself a BaseModel, recurse.
+        if isinstance(annotation, type) and issubclass(annotation, BaseModel):
+            sub_partial = make_partial(annotation, suffix=suffix)
+            new_fields[name] = (sub_partial | None, None)
+            continue
+
+        # Otherwise wrap whatever it was in Optional with None default.
+        new_fields[name] = (annotation | None, None)
+
+    return create_model(
+        f"{model.__name__}{suffix}",
+        __config__=ConfigDict(extra="forbid"),
+        **new_fields,
+    )
+
+
+PartialThothConfig: type[BaseModel] = make_partial(ThothConfig)
+"""Mechanically-derived runtime partial — used for CLI/profile-overlay
+internals and as the alignment baseline for TS03."""
+
+# Pre-computed partials used in ConfigOverlay field annotations.
+_PartialPathsConfig: type[BaseModel] = make_partial(PathsConfig)
+_PartialExecutionConfig: type[BaseModel] = make_partial(ExecutionConfig)
+_PartialOutputConfig: type[BaseModel] = make_partial(OutputConfig)
+_PartialClarificationConfig: type[BaseModel] = make_partial(ClarificationConfig)
+
+
+class GeneralOverlay(BaseModel):
+    """`[general]` table as it can appear in user/profile/cli overlays.
+
+    Mirrors `GeneralConfig`'s fields (all optional) plus the P21 user-only
+    fields that are NOT part of `get_defaults()`.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+    default_project: str | None = None
+    default_mode: str | None = None
+    default_profile: str | None = None
+    prompt_prefix: str | None = None
+
+
+class ConfigOverlay(BaseModel):
+    """A user/profile/cli config layer.
+
+    Every runtime-default field is optional (mirror of `make_partial(ThothConfig)`)
+    and `general` is replaced by `GeneralOverlay` so P21 user-only fields are
+    accepted.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+    version: str | None = None
+    general: GeneralOverlay | None = None
+    paths: _PartialPathsConfig | None = None  # type: ignore[valid-type]  # ty:ignore[invalid-type-form]
+    execution: _PartialExecutionConfig | None = None  # type: ignore[valid-type]  # ty:ignore[invalid-type-form]
+    output: _PartialOutputConfig | None = None  # type: ignore[valid-type]  # ty:ignore[invalid-type-form]
+    providers: dict[str, dict[str, Any]] | None = None  # finalized in Task 4
+    clarification: _PartialClarificationConfig | None = None  # type: ignore[valid-type]  # ty:ignore[invalid-type-form]
+    modes: dict[str, ModeConfig] | None = None
+
+
+class ProfileConfig(ConfigOverlay):
+    """Profile overlay schema.
+
+    Same as `ConfigOverlay` plus a profile-root `prompt_prefix` (P21).
+    """
+
+    prompt_prefix: str | None = None
+
+
+class UserConfigFile(ConfigOverlay):
+    """Top-level shape of an actual `thoth.config.toml` on disk.
+
+    `ConfigOverlay` fields plus a `profiles` super-table (validated by
+    `ProfileConfig`) and an `experimental` carve-out (the only field that
+    permits arbitrary keys).
+    """
+
+    profiles: dict[str, ProfileConfig] = Field(default_factory=dict)
+    experimental: dict[str, Any] = Field(default_factory=dict)
+
+
 # ---------------------------------------------------------------------------
 # Validation report types (filled in Task 5)
 # ---------------------------------------------------------------------------
@@ -238,9 +333,11 @@ def resolve_path(
     # Inspect the annotation to decide how to recurse
     annotation = model.model_fields[head].annotation
 
-    # Unwrap Optional[X] → X
+    # Unwrap Optional[X] / X | None → X  (handles both typing.Union and PEP 604 types.UnionType)
+    import types
+
     origin = typing.get_origin(annotation)
-    if origin is typing.Union:
+    if origin is typing.Union or isinstance(annotation, types.UnionType):
         args = [a for a in typing.get_args(annotation) if a is not type(None)]
         if len(args) == 1:
             annotation = args[0]

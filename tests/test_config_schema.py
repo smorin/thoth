@@ -10,6 +10,8 @@ from __future__ import annotations
 
 from typing import Any
 
+import pytest
+
 
 def _walk_leaves(d: dict[str, Any], prefix: tuple[str, ...] = ()) -> list[tuple[str, ...]]:
     """Yield every leaf path through a nested dict.
@@ -88,9 +90,124 @@ def test_resolve_path_dict_of_any_stops_at_dict_key_level() -> None:
 def test_resolve_path_raises_on_unknown_leaf() -> None:
     """Typos like `general.prompy_prefix` must raise KeyError — this is the
     very behavior P33 exists to guarantee."""
-    import pytest
-
     from thoth.config_schema import ThothConfig, resolve_path
 
     with pytest.raises(KeyError):
         resolve_path(ThothConfig, ("general", "prompy_prefix"))
+
+
+# ---------- TS03: make_partial regression ----------
+
+
+def test_make_partial_keeps_field_set() -> None:
+    """make_partial(ThothConfig) must produce a model with the same field
+    set as ThothConfig, all marked optional with `None` defaults."""
+    from thoth.config_schema import PartialThothConfig, ThothConfig
+
+    src_fields = set(ThothConfig.model_fields.keys())
+    partial_fields = set(PartialThothConfig.model_fields.keys())
+    assert src_fields == partial_fields, (
+        f"PartialThothConfig field set drifted from ThothConfig: "
+        f"missing {src_fields - partial_fields}, extra {partial_fields - src_fields}"
+    )
+
+    for name, finfo in PartialThothConfig.model_fields.items():
+        # Each field must have a `None` default, signalling "unset = ok"
+        assert finfo.default is None or finfo.default_factory is not None, (
+            f"PartialThothConfig.{name} should default to None or a factory; got {finfo.default!r}"
+        )
+
+
+def test_make_partial_constructs_empty() -> None:
+    from thoth.config_schema import PartialThothConfig
+
+    PartialThothConfig()  # must not raise
+
+
+# ---------- TS02: overlay-path coverage ----------
+
+
+def test_user_only_overlay_paths_resolve() -> None:
+    """Valid P21 user-only fields must resolve through ConfigOverlay /
+    ProfileConfig, even though they are NOT part of get_defaults()."""
+    from thoth.config_schema import ConfigOverlay, ProfileConfig, resolve_path
+
+    resolve_path(ConfigOverlay, ("general", "default_profile"))
+    resolve_path(ConfigOverlay, ("general", "prompt_prefix"))
+    resolve_path(ConfigOverlay, ("modes", "thinking", "system_prompt"))
+    resolve_path(ConfigOverlay, ("modes", "thinking", "prompt_prefix"))
+    resolve_path(ProfileConfig, ("prompt_prefix",))
+
+
+# ---------- TS08: mode/profile prompt surface validates ----------
+
+
+def test_mode_table_with_prompts_validates() -> None:
+    from thoth.config_schema import ModeConfig
+
+    ModeConfig(system_prompt="Be precise", prompt_prefix="Cite sources")
+
+
+def test_profile_with_root_and_nested_prompts_validates() -> None:
+    from thoth.config_schema import ModeConfig, ProfileConfig
+
+    profile = ProfileConfig(
+        prompt_prefix="Be thorough",
+        modes={"thinking": ModeConfig(system_prompt="Step by step")},
+    )
+    assert profile.prompt_prefix == "Be thorough"
+    assert profile.modes is not None and "thinking" in profile.modes
+
+
+def test_user_file_with_full_p21_shape_validates() -> None:
+    from thoth.config_schema import UserConfigFile
+
+    doc = {
+        "general": {
+            "default_project": "daily-notes",
+            "default_profile": "fast",
+            "prompt_prefix": "Cite sources",
+        },
+        "modes": {"thinking": {"system_prompt": "Be careful"}},
+        "profiles": {
+            "fast": {
+                "prompt_prefix": "Be quick",
+                "modes": {"thinking": {"system_prompt": "Profile prompt"}},
+            }
+        },
+    }
+    UserConfigFile.model_validate(doc)
+
+
+def test_typo_at_each_overlay_level_raises_in_strict() -> None:
+    from pydantic import ValidationError
+
+    from thoth.config_schema import ProfileConfig, UserConfigFile
+
+    with pytest.raises(ValidationError):
+        UserConfigFile.model_validate({"general": {"prompy_prefix": "x"}})
+
+    with pytest.raises(ValidationError):
+        ProfileConfig.model_validate({"prompy_prefix": "x"})
+
+    with pytest.raises(ValidationError):
+        UserConfigFile.model_validate(
+            {"profiles": {"fast": {"modes": {"thinking": {"system_prompy": "x"}}}}}
+        )
+
+
+def test_general_overlay_mirrors_general_config_fields() -> None:
+    from thoth.config_schema import GeneralConfig, GeneralOverlay
+
+    runtime = set(GeneralConfig.model_fields.keys())
+    overlay = set(GeneralOverlay.model_fields.keys())
+    missing = runtime - overlay
+    assert not missing, (
+        f"GeneralOverlay is missing fields present in GeneralConfig: {missing}. "
+        f"Add them as `<name>: T | None = None` to GeneralOverlay."
+    )
+    overlay_only = overlay - runtime
+    assert overlay_only == {"default_profile", "prompt_prefix"}, (
+        f"Unexpected overlay-only fields: {overlay_only}. "
+        f"Update this test if you intentionally added a new P21-style field."
+    )
