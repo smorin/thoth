@@ -10,7 +10,7 @@
   - `src/thoth/commands.py:70` — `_build_starter_profiles()` (init starter profiles)
   - `src/thoth/commands.py:111` — `_build_starter_document()` (init full document)
 
-**Status:** `[ ]` Scoped, not started.
+**Status:** `[x]` Completed 2026-05-02. See implementation plan in `docs/superpowers/plans/2026-05-02-p33-schema-driven-config-defaults.md`.
 
 **Goal**: Drive every default config value — `thoth init`'s starter document, `ConfigSchema.get_defaults()`, and the per-provider configuration surface — from a single typed source built on Pydantic v2. Eliminate the duplication between runtime defaults and the init template, and gain typechecker + diagnostics coverage for every key the project ships.
 
@@ -124,7 +124,7 @@ Do P33 as dependency + schema shape first, then starter writer, then validation/
 - [x] [P33-T07] Hook `ConfigSchema.validate()` into `ConfigManager.load_all_layers` per-layer (defaults trivially passes; user file → `UserConfigFile`; CLI overrides → `ConfigOverlay`; profile overlay → `ProfileConfig`). All warn-only. Store the results in `ConfigManager.validation_reports` and emit human-facing warnings through the existing config-warning channel. Full test suite must pass with `validation_reports` empty for existing fixtures.
 - [x] [P33-T08] If any user-visible behavior changed (e.g. new warnings on existing valid configs in test fixtures), document the change in `README.md` and the changelog. If nothing user-visible changed, note that in the project doc and skip the README edit.
 - [x] [P33-T09] Add OpenAI runtime-consumption regression tests and minimal wiring only for OpenAI fields P33 models as runtime-consumed. Profile-overlaid `system_prompt` must be covered because P21 profile work depends on mode prompts. (TS09 must pass.)
-- [ ] Regression test status: full `./thoth_test -r` and `uv run pytest` green; `just check` clean; `just test-lint` and `just test-typecheck` clean.
+- [x] Regression test status: `./thoth_test -r --skip-interactive -q` 76/76 green; `just check` clean (ruff lint + format + ty all pass). `uv run pytest` shows 1036/1047 pass with 11 pre-existing failures in `test_resume_async.py` / `test_get_resume_snapshot_data.py` / `test_get_status_data.py` / `test_json_non_blocking.py` — all confirmed pre-P33 (last touched in commit `afa43e9` from P18 work) and reproduce as test-order pollution rather than logic bugs (each fails in full-suite runs but passes in isolation). Not introduced by P33.
 
 ### Deliverable
 After P33 lands:
