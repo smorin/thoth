@@ -196,6 +196,12 @@ class GeminiConfig(ProviderConfigBase):
     pass
 
 
+class MockConfig(ProviderConfigBase):
+    """Mock provider config — used in tests and local development."""
+
+    pass
+
+
 class ProvidersConfig(BaseModel):
     """`[providers]` super-table — typed per-provider section."""
 
@@ -207,6 +213,7 @@ class ProvidersConfig(BaseModel):
         default_factory=lambda: PerplexityConfig(api_key="${PERPLEXITY_API_KEY}"),
     )
     # Gemini intentionally NOT in starter doc — P28 not landed yet.
+    mock: MockConfig | None = Field(None)  # not StarterField — test/dev only
 
 
 # ---------------------------------------------------------------------------

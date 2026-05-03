@@ -34,12 +34,12 @@ from thoth.config_profiles import (
     resolve_profile_selection,
     without_profiles,
 )
-from thoth.errors import ConfigAmbiguousError, ConfigNotFoundError, ThothError
+from thoth.errors import ConfigAmbiguousError, ConfigNotFoundError
 from thoth.paths import user_config_file
 
 # Console used for config-warning output only.
-# Distinct from the CLI's main console instance; both write to the same stdout.
-_console = Console()
+# Writes to stderr to avoid contaminating JSON stdout output.
+_console = Console(stderr=True)
 
 # Version tracking
 THOTH_VERSION = __version__
@@ -250,6 +250,22 @@ class ConfigManager:
         self.profile_selection: ProfileSelection = ProfileSelection(None, "none", None)
         self.active_profile: ProfileLayer | None = None
         self.profile_catalog: list[ProfileLayer] = []
+        # P33: per-layer validation reports keyed by layer name.
+        from thoth.config_schema import ValidationReport
+
+        self.validation_reports: dict[str, ValidationReport] = {}
+
+    def _validate_layer(self, layer: str, data: dict[str, Any]) -> None:
+        """Validate a layer's raw data; collect warnings; emit to console."""
+        from thoth.config_schema import ConfigSchema
+
+        report = ConfigSchema.validate(data, layer=layer)
+        self.validation_reports[layer] = report
+        for w in report.warnings:
+            _console.print(
+                f"[yellow]config warning[/yellow] [{layer}] {w.path}: {w.message}",
+                highlight=False,
+            )
 
     def load_all_layers(self, cli_args: dict[str, Any] | None = None):
         """Load all configuration layers in precedence order"""
@@ -299,7 +315,9 @@ class ConfigManager:
             project_path=project_path,
         )
         self.layers["user"] = without_profiles(user_raw)
+        self._validate_layer("user", user_raw)
         self.layers["project"] = without_profiles(project_raw)
+        self._validate_layer("project", project_raw)
 
         # Resolve which profile is active using a base view that contains
         # defaults + user + project (no env, no CLI). This honors
@@ -314,12 +332,14 @@ class ConfigManager:
         )
         self.active_profile = resolve_profile_layer(self.profile_selection, self.profile_catalog)
         self.layers["profile"] = self.active_profile.data if self.active_profile else {}
+        self._validate_layer("profile", self.layers["profile"])
 
         # Layer 5: Environment variables (per-setting overrides only)
         self.layers["env"] = self._get_env_overrides()
 
         # Layer 6: CLI arguments (per-setting overrides only; _profile sentinel stripped)
         self.layers["cli"] = cli_layer
+        self._validate_layer("cli", cli_layer)
 
         # Merge all layers
         self.data = self._merge_layers()
@@ -460,22 +480,12 @@ class ConfigManager:
         return substitute(config)
 
     def _validate_config(self):
-        """Validate the merged configuration"""
-        # Basic validation - can be extended
-        required_keys = [
-            "version",
-            "general",
-            "paths",
-            "execution",
-            "output",
-            "providers",
-        ]
-        for key in required_keys:
-            if key not in self.data:
-                raise ThothError(
-                    f"Missing required configuration key: {key}",
-                    "Check your configuration file",
-                )
+        """Post-merge invariant checks.
+
+        Schema validation runs per-layer in `load_all_layers`; this method
+        only enforces post-merge invariants (e.g. the user-modes kind
+        deprecation nudge).
+        """
         self._validate_user_modes_kind()
 
     def _validate_user_modes_kind(self) -> None:
