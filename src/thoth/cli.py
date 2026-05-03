@@ -158,6 +158,17 @@ def _prompt_max_bytes() -> int:
 
 
 def _config_default_mode(config: ConfigManager) -> str:
+    env = os.getenv("THOTH_DEFAULT_MODE")
+    if env:
+        return env
+
+    profile_layer = getattr(config, "active_profile", None)
+    if profile_layer is not None:
+        data = profile_layer.data if isinstance(profile_layer.data, dict) else {}
+        v = data.get("default_mode")
+        if isinstance(v, str) and v:
+            return v
+
     raw = config.get("general.default_mode", "default")
     return str(raw) if raw else "default"
 

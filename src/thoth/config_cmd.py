@@ -857,6 +857,167 @@ def get_config_profile_unset_default_data(
     return {"removed": True, "path": str(path)}
 
 
+def get_modes_set_default_data(
+    name: str,
+    *,
+    project: bool,
+    profile: str | None = None,
+    config_path: str | Path | None = None,
+) -> dict:
+    """Pure data function for `thoth modes set-default NAME`.
+
+    Validation:
+      1. --project + --config PATH → PROJECT_CONFIG_CONFLICT (exit 2).
+      2. --profile X → X must exist in the target tier (same-tier rule).
+         Else ConfigProfileError (exit 1).
+      3. NAME must be resolvable when the default fires:
+         general scope → builtins ∪ base [modes.*];
+         profile scope → builtins ∪ base [modes.*] ∪ [profiles.X.modes.*].
+    """
+    from thoth.config import BUILTIN_MODES
+    from thoth.errors import ConfigProfileError, ModeNotFoundError
+
+    if project and config_path is not None:
+        envelope: dict[str, Any] = {
+            "default_mode": None,
+            "wrote": False,
+            "path": None,
+            "error": "PROJECT_CONFIG_CONFLICT",
+            "message": "--config cannot be used with --project",
+        }
+        if profile is not None:
+            envelope["profile"] = profile
+        return envelope
+
+    context = _write_context(project, config_path)
+
+    # Same-tier profile-existence rule (P35).
+    if profile is not None and not context.target_has_profile(profile):
+        # Build the available list scoped to the target tier so the error
+        # message is actionable.
+        if context.target_path.exists():
+            target_doc = context.load_document()
+            target_profiles = target_doc.profile_names()
+        else:
+            target_profiles = []
+        tier_label = (
+            "project config"
+            if project
+            else f"config file {context.target_path}"
+            if config_path
+            else "user config"
+        )
+        suggestion = _same_tier_profile_suggestion(
+            profile,
+            project=project,
+            config_path=config_path,
+            target_profiles=target_profiles,
+            target_path=context.target_path,
+        )
+        raise ConfigProfileError(
+            f"Profile {profile!r} not found in {tier_label}",
+            available_profiles=target_profiles,
+            source="thoth modes set-default",
+            suggestion=suggestion,
+        )
+
+    # Mode NAME resolvability check (cross-tier — β rule).
+    cm = _load_manager(config_path, profile=profile)
+    resolvable = set(BUILTIN_MODES.keys())
+    base_modes = cm.get("modes")
+    if isinstance(base_modes, dict):
+        resolvable.update(base_modes.keys())
+
+    if name not in resolvable:
+        raise ModeNotFoundError(name, available_modes=sorted(resolvable))
+
+    doc = context.load_document()
+    doc.set_default_mode(name, profile=profile)
+    doc.save()
+
+    out: dict[str, Any] = {
+        "default_mode": name,
+        "wrote": True,
+        "path": str(context.target_path),
+    }
+    if profile is not None:
+        out["profile"] = profile
+    return out
+
+
+def _same_tier_profile_suggestion(
+    profile: str,
+    *,
+    project: bool,
+    config_path: str | Path | None,
+    target_profiles: list[str],
+    target_path: Path,
+) -> str:
+    if project:
+        fix = (
+            f"Create it with `thoth config profiles add {profile} --project`, "
+            "or remove `--project` if you meant the user-tier profile."
+        )
+    elif config_path is not None:
+        fix = (
+            f"Create it with `thoth --config {target_path} config profiles add {profile}`, "
+            "or choose a config file that already defines the profile."
+        )
+    else:
+        fix = (
+            f"Create it with `thoth config profiles add {profile}`, "
+            "or pass `--project` if you meant a project-tier profile."
+        )
+    if target_profiles:
+        return f"{fix} Available profiles in target tier: {', '.join(target_profiles)}."
+    return fix
+
+
+def get_modes_unset_default_data(
+    *,
+    project: bool,
+    profile: str | None = None,
+    config_path: str | Path | None = None,
+) -> dict:
+    """Pure data function for `thoth modes unset-default`.
+
+    Idempotent: missing file → NO_FILE; key absent → NOT_FOUND; both exit 0.
+    No same-tier profile check (δ rule from P35 spec).
+    """
+    if project and config_path is not None:
+        envelope: dict[str, Any] = {
+            "removed": False,
+            "path": None,
+            "error": "PROJECT_CONFIG_CONFLICT",
+            "message": "--config cannot be used with --project",
+        }
+        if profile is not None:
+            envelope["profile"] = profile
+        return envelope
+
+    context = _write_context(project, config_path)
+    path = context.target_path
+    if not path.exists():
+        out: dict[str, Any] = {"removed": False, "path": str(path), "reason": "NO_FILE"}
+        if profile is not None:
+            out["profile"] = profile
+        return out
+
+    doc = context.load_document()
+    removed = doc.unset_default_mode(profile=profile)
+    if not removed:
+        out = {"removed": False, "path": str(path), "reason": "NOT_FOUND"}
+        if profile is not None:
+            out["profile"] = profile
+        return out
+
+    doc.save()
+    out = {"removed": True, "path": str(path)}
+    if profile is not None:
+        out["profile"] = profile
+    return out
+
+
 def get_config_profile_list_data(
     *,
     config_path: str | Path | None = None,
@@ -944,4 +1105,6 @@ __all__ = [
     "get_config_profile_unset_default_data",
     "get_config_set_data",
     "get_config_unset_data",
+    "get_modes_set_default_data",
+    "get_modes_unset_default_data",
 ]

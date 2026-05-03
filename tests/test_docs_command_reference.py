@@ -72,6 +72,8 @@ def test_json_output_docs_cover_json_command_families() -> None:
         "`config profiles unset NAME KEY --json`",
         "`config profiles remove NAME --json`",
         "`modes list --json`",
+        "`modes set-default NAME --json`",
+        "`modes unset-default --json`",
         "`resume OP_ID --json`",
         "`cancel OP_ID --json`",
         "`completion <shell> --install --json`",

@@ -905,6 +905,87 @@ _OP_SPECS["copy"] = _ModesOpSpec(
 _OP_DATA_FNS["copy"] = get_modes_copy_data
 
 
+# ---------------------------------------------------------------------------
+# `thoth modes set-default` / `unset-default` — P35
+# ---------------------------------------------------------------------------
+
+
+def _thoth_error_envelope(exc: Exception, *, op_name: str) -> dict:
+    from thoth.errors import ThothError
+    from thoth.json_output import thoth_error_code
+
+    if not isinstance(exc, ThothError):
+        raise exc
+    envelope: dict[str, Any] = {
+        "schema_version": SCHEMA_VERSION,
+        "op": op_name,
+        "error": thoth_error_code(exc),
+        "message": exc.message,
+    }
+    if exc.suggestion:
+        envelope["suggestion"] = exc.suggestion
+        envelope["details"] = {"suggestion": exc.suggestion}
+    return envelope
+
+
+def get_modes_set_default_data(
+    name: str,
+    *,
+    project: bool,
+    profile: str | None = None,
+    config_path: str | Path | None = None,
+) -> dict:
+    """Pure data function for `thoth modes set-default NAME` via modes dispatch."""
+    from thoth.config_cmd import get_modes_set_default_data as _set_default
+
+    try:
+        data = _set_default(name, project=project, profile=profile, config_path=config_path)
+    except Exception as exc:
+        return _thoth_error_envelope(exc, op_name="set-default")
+
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "op": "set-default",
+        "mode": data["default_mode"],
+        **data,
+    }
+
+
+_OP_SPECS["set-default"] = _ModesOpSpec(
+    name="set-default",
+    positionals=("NAME",),
+    op_flags={},
+    required_op_flags=frozenset(),
+)
+_OP_DATA_FNS["set-default"] = get_modes_set_default_data
+
+
+def get_modes_unset_default_data(
+    *,
+    project: bool,
+    profile: str | None = None,
+    config_path: str | Path | None = None,
+) -> dict:
+    """Pure data function for `thoth modes unset-default` via modes dispatch."""
+    from thoth.config_cmd import get_modes_unset_default_data as _unset_default
+
+    data = _unset_default(project=project, profile=profile, config_path=config_path)
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "op": "unset-default",
+        **data,
+    }
+
+
+_OP_SPECS["unset-default"] = _ModesOpSpec(
+    name="unset-default",
+    positionals=(),
+    op_flags={},
+    required_op_flags=frozenset(),
+)
+_OP_DATA_FNS["unset-default"] = get_modes_unset_default_data
+
+
 Source = Literal["builtin", "user", "overridden"]
 Kind = Literal["immediate", "background", "unknown"]
 
@@ -1325,6 +1406,8 @@ def _emit_human_receipt(data: dict, exit_code: int) -> int:
     """
     if data.get("error"):
         _emit_usage_error(data.get("message", data["error"]))
+        if data.get("suggestion"):
+            print(f"Suggestion: {data['suggestion']}")
         return exit_code
 
     op = data.get("op")
@@ -1356,6 +1439,16 @@ def _emit_human_receipt(data: dict, exit_code: int) -> int:
         print(f"Renamed '{data['from']}' → '{data['to']}'{suffix}")
     elif op == "copy":
         print(f"Copied '{data['from']}' → '{data['to']}'{suffix}")
+    elif op == "set-default":
+        if data.get("profile"):
+            print(f"Set default mode to '{data['default_mode']}' for profile '{data['profile']}'")
+        else:
+            print(f"Set default mode to '{data['default_mode']}'")
+    elif op == "unset-default":
+        if data.get("profile"):
+            print(f"Unset default mode for profile '{data['profile']}'")
+        else:
+            print("Unset default mode")
     else:
         _emit_usage_error(f"internal error: unknown op {op!r} in receipt emitter")
         return 1

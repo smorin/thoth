@@ -45,6 +45,8 @@ Mutation operations:
   thoth modes remove NAME
   thoth modes rename OLD NEW
   thoth modes copy SRC DST [--from-profile X] [--override]
+  thoth modes set-default NAME
+  thoth modes unset-default
 
 All mutators support: --project | --config PATH | --profile X | --json.
 Use --override with add/copy to create a builtin-name override in the
@@ -202,7 +204,12 @@ def _make_modes_leaf(op_name: str):
 
             data, exit_code = get_modes_data_from_args(op_name, rebuilt, config_path=config_path)
             if data.get("error"):
-                emit_error(data["error"], data.get("message", ""), exit_code=exit_code)
+                emit_error(
+                    data["error"],
+                    data.get("message", ""),
+                    data.get("details"),
+                    exit_code=exit_code,
+                )
             emit_json(data)  # NoReturn
             return  # unreachable; emit_json calls sys.exit
         else:
@@ -217,8 +224,8 @@ def _make_modes_leaf(op_name: str):
     return _leaf
 
 
-# Generate all six mutator leaves at import time. Per-command tasks
+# Generate all mutator leaves at import time. Per-command tasks
 # (4-9) register their _OP_SPECS entries; this loop instantiates the
 # matching click leaf for each.
-for _op_name in ("add", "set", "unset", "remove", "rename", "copy"):
+for _op_name in ("add", "set", "unset", "remove", "rename", "copy", "set-default", "unset-default"):
     _make_modes_leaf(_op_name)
