@@ -29,18 +29,21 @@ class TestMdLinkTitle:
         assert md_link_title("a]b]c[d") == r"a\]b\]c\[d"
 
     def test_escapes_angle_bracket_html_injection(self) -> None:
-        assert md_link_title("<script>alert(1)</script>") == "&lt;script>alert(1)&lt;/script>"
+        assert md_link_title("<script>alert(1)</script>") == "&lt;script&gt;alert(1)&lt;/script&gt;"
+
+    def test_escapes_closing_angle_bracket(self) -> None:
+        assert md_link_title("A > B") == "A &gt; B"
 
     def test_empty_string(self) -> None:
         assert md_link_title("") == ""
 
     def test_only_special_chars(self) -> None:
-        assert md_link_title("][<") == r"\]\[&lt;"
+        assert md_link_title("][<>") == r"\]\[&lt;&gt;"
 
-    def test_no_double_escaping(self) -> None:
-        # A literal backslash + bracket should not be double-escaped
-        result = md_link_title("safe text")
-        assert result == "safe text"
+    def test_already_escaped_backslash_not_double_escaped(self) -> None:
+        # A literal backslash in the input should pass through unchanged;
+        # only [ ] < > characters are touched.
+        assert md_link_title("\\[already escaped\\]") == "\\\\[already escaped\\\\]"
 
 
 class TestMdLinkUrl:

@@ -46,11 +46,11 @@ def _is_placeholder(value: str) -> bool:
 def md_link_title(text: str) -> str:
     """Escape characters that would break the title part of a Markdown link ([...]).
 
-    Replaces ``[``, ``]``, and ``<`` with their safe equivalents so
+    Replaces ``[``, ``]``, ``<``, and ``>`` with their safe equivalents so
     arbitrary web-page titles cannot corrupt the ``[title](url)`` syntax or
     inject HTML into Markdown renderers that support inline HTML.
     """
-    return text.replace("[", "\\[").replace("]", "\\]").replace("<", "&lt;")
+    return text.replace("[", "\\[").replace("]", "\\]").replace("<", "&lt;").replace(">", "&gt;")
 
 
 def md_link_url(url: str) -> str:
