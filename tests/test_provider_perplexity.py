@@ -86,6 +86,25 @@ def test_perplexity_reasoning_builtin_mode_present() -> None:
     assert perp.get("stream_mode") == "concise"
 
 
+def test_perplexity_deep_research_builtin_mode_present() -> None:
+    """P27-TS01: BUILTIN_MODES['perplexity_deep_research'] -> sonar-deep-research/background/high.
+
+    Locked at P27 kickoff: reasoning_effort = "high" (~$1.32/query). The mode
+    targets the async API (POST /v1/async/sonar). `kind: "background"` is
+    required so the runner routes to the polling lifecycle, not the immediate
+    `chat.completions` path that P23's other modes use.
+    """
+    from thoth.config import BUILTIN_MODES
+
+    mode = BUILTIN_MODES.get("perplexity_deep_research")
+    assert mode is not None, "expected built-in mode 'perplexity_deep_research'"
+    assert mode["provider"] == "perplexity"
+    assert mode["model"] == "sonar-deep-research"
+    assert mode["kind"] == "background"
+    perp = cast(dict[str, Any], mode.get("perplexity") or {})
+    assert perp.get("reasoning_effort") == "high"
+
+
 # ---------------------------------------------------------------------------
 # TS02 — request construction
 # ---------------------------------------------------------------------------

@@ -36,15 +36,19 @@ def test_workflow_passes_perplexity_api_key(workflow: str) -> None:
 
 
 def test_perplexity_models_in_known_models_registry() -> None:
-    """TS09: PerplexityProvider's three sync models appear in KNOWN_MODELS."""
+    """TS09: PerplexityProvider's sync models appear in KNOWN_MODELS.
+
+    P27 added `sonar-deep-research` to the registry via the new
+    `perplexity_deep_research` built-in mode, so the original negative guard
+    has been flipped to a positive assertion.
+    """
     from thoth.models import KNOWN_MODELS
 
     perp_ids = {m.id for m in KNOWN_MODELS if m.provider == "perplexity"}
     assert "sonar" in perp_ids
     assert "sonar-pro" in perp_ids
     assert "sonar-reasoning-pro" in perp_ids
-    # Negative: sonar-deep-research belongs to P27, must NOT be present.
-    assert "sonar-deep-research" not in perp_ids
+    assert "sonar-deep-research" in perp_ids
 
 
 def test_extended_skip_for_perplexity_was_removed() -> None:
