@@ -5,7 +5,7 @@
 - **Spec:** [docs/superpowers/specs/2026-05-01-p35-modes-set-default-design.md](../docs/superpowers/specs/2026-05-01-p35-modes-set-default-design.md)
 - **Branch / worktree:** `p35-modes-set-default` at `/Users/stevemorin/c/thoth-worktrees/p35-modes-set-default`
 
-**Status:** `[~] In progress — implementation complete; review fix batch in progress.
+**Status:** `[x]` Done — merged to `main` via PR #47 at commit `d13b2d3` on 2026-05-03.
 
 **Goal**: Add `thoth modes set-default NAME` and `thoth modes unset-default` parallel to the existing `thoth config profiles set-default` / `unset-default`. Two scopes — base `general.default_mode` and per-profile `profiles.<X>.default_mode` — plus a runtime resolution change so the per-profile key actually overrides the base when its profile is active. Replaces the awkward `thoth config set general.default_mode NAME` UX with a validated, mode-aware command.
 
@@ -46,8 +46,10 @@
       Verified the worked examples against real builtin names. Review follow-up restored inline `--profile` / `--config` parity with sibling `modes` mutators and added regression coverage for the same-tier remediation text.
 - [x] [P35-T08] Final pre-commit gate: `make env-check`, `just check`, `just test-lint`, `just test-typecheck`, `pytest`, `./thoth_test -r`. Address any drift; commit when green.
       Review fix batch gate passed: `make env-check`; `just fix`; `just check`; `uv run pytest -q` (`1030 passed, 16 deselected`); `./thoth_test -r` (`93 passed, 11 skipped`); `just test-fix`; `just test-lint`; `just test-typecheck`; `uv run ruff format --check src/ tests/`.
-- [ ] [P35-T09] Update CHANGELOG via release-please-friendly conventional commit messages (`feat(modes): add set-default / unset-default commands`). No hand edits to versioning files.
-- [ ] [P35-T10] Open PR; verify CI passes; merge.
+- [x] [P35-T09] Update CHANGELOG via release-please-friendly conventional commit messages (`feat(modes): add set-default / unset-default commands`). No hand edits to versioning files.
+      All 16 commits on the merged branch use conventional-commits format. release-please will pick up the `feat(...)` entries on its next run and propose a minor bump.
+- [x] [P35-T10] Open PR; verify CI passes; merge.
+      Merged as PR #47 at commit `d13b2d3` on 2026-05-03.
 
 ### Deliverable
 
