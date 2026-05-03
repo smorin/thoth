@@ -6,7 +6,7 @@ Three-layer architecture:
   Layer 2 — Overlay / partial shapes (Task 3): Partial variants used for
              merging user/project config files and CLI overrides.
   Layer 3 — ConfigSchema.get_defaults() (src/thoth/config.py): Legacy dict-
-             based defaults that will be derived from _ROOT_SCHEMA in Task 6.
+             based defaults that are materialized from ThothConfig on demand.
 """
 
 from __future__ import annotations
@@ -443,12 +443,22 @@ def resolve_path(
 # ---------------------------------------------------------------------------
 
 
+def default_config_dict() -> dict[str, Any]:
+    """Materialize runtime defaults from the root schema.
+
+    Instantiate the schema on every call so default_factory fields reflect the
+    current environment. `paths.checkpoint_dir` depends on XDG_STATE_HOME and
+    must not be frozen at module import time.
+    """
+    return ThothConfig().model_dump(mode="python", exclude_none=True)
+
+
 class ConfigSchema:
     """Public façade for the schema module."""
 
     @staticmethod
     def get_defaults() -> dict[str, Any]:
-        return _ROOT_DEFAULTS_DICT
+        return default_config_dict()
 
     @staticmethod
     def model() -> type[BaseModel]:
@@ -527,12 +537,3 @@ def _collect_starter_paths(
             _collect_starter_paths(annotation, path, out)
         elif is_starter:
             out.add(path)
-
-
-# ---------------------------------------------------------------------------
-# Singleton root model
-# ---------------------------------------------------------------------------
-
-# Built once at import time. Tests assert this dump equals get_defaults().
-_ROOT_SCHEMA = ThothConfig()
-_ROOT_DEFAULTS_DICT = _ROOT_SCHEMA.model_dump(mode="python", exclude_none=True)

@@ -228,14 +228,12 @@ class ConfigSchema:
         P33: derived from the typed schema in `thoth.config_schema`. Signature
         unchanged from pre-P33 callers' perspective.
         """
-        import copy
+        from thoth.config_schema import default_config_dict
 
-        from thoth.config_schema import _ROOT_DEFAULTS_DICT
-
-        # Defensive copy so callers can mutate freely without poisoning the
-        # singleton. Pre-P33 contract: get_defaults() always returns a fresh
-        # dict.
-        return copy.deepcopy(_ROOT_DEFAULTS_DICT)
+        # `default_config_dict()` instantiates the schema on every call, so
+        # callers get a fresh dict and default_factory values reflect the
+        # current environment.
+        return default_config_dict()
 
 
 class ConfigManager:

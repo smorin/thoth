@@ -8,6 +8,7 @@ Strict-mode validation uses ConfigSchema.validate(..., strict=True).
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -41,9 +42,27 @@ def test_thoth_config_constructs_with_no_overrides() -> None:
 
 def test_get_defaults_equals_root_schema_dump() -> None:
     from thoth.config import ConfigSchema
-    from thoth.config_schema import _ROOT_DEFAULTS_DICT
+    from thoth.config_schema import default_config_dict
 
-    assert ConfigSchema.get_defaults() == _ROOT_DEFAULTS_DICT
+    assert ConfigSchema.get_defaults() == default_config_dict()
+
+
+def test_get_defaults_recomputes_checkpoint_dir_after_xdg_state_change(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    from thoth.config import ConfigSchema
+
+    # Force the schema module to import and compute any cached defaults before
+    # changing the environment. Runtime defaults must still reflect the active
+    # environment when requested later.
+    ConfigSchema.get_defaults()
+    state_home = tmp_path / "state"
+    monkeypatch.setenv("XDG_STATE_HOME", str(state_home))
+
+    defaults = ConfigSchema.get_defaults()
+
+    assert defaults["paths"]["checkpoint_dir"] == str(state_home / "thoth" / "checkpoints")
 
 
 # ---------- TS02: coverage (default paths only at this stage) ----------
