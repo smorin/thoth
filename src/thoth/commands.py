@@ -22,7 +22,7 @@ from rich.console import Console
 from rich.table import Table
 
 from thoth.checkpoint import CheckpointManager
-from thoth.config import CONFIG_VERSION, ConfigManager, get_config
+from thoth.config import ConfigManager, get_config
 from thoth.errors import APIKeyError, ThothError
 from thoth.hints import print_hint
 from thoth.models import ModelCache, OperationStatus
@@ -33,128 +33,124 @@ from thoth.run import run_research
 console = Console()
 
 
+def _populate_table(table: Any, data: dict[str, Any]) -> None:
+    """Recursively populate a tomlkit table from a nested dict.
+
+    Dict values become sub-tables; all other values become leaf entries.
+    """
+    for key, value in data.items():
+        if isinstance(value, dict):
+            sub = tomlkit.table()
+            _populate_table(sub, value)
+            table[key] = sub
+        else:
+            table[key] = value
+
+
 def _build_profile_section(body: dict[str, Any]) -> tomlkit.items.Table:
-    """Build a `[profiles.<name>]` table containing nested sub-tables.
+    """Build a `[profiles.<name>]` table from a nested-dict body.
 
-    `body` is a flat dict whose keys are TOML section names under the profile
-    (e.g., ``"general"``, ``"modes.deep_research"``) and whose values are
-    dicts of leaf keys.
-
-    Sibling sections sharing a prefix (e.g., ``"modes.deep_research"`` and
-    ``"modes.thinking"``) are merged under the same intermediate table; the
-    helper reuses an existing intermediate when present rather than
-    overwriting it (C14).
+    `body` is a nested mapping that mirrors `ProfileConfig`. Each dict value
+    becomes a TOML sub-table; non-dict values become leaf entries.
     """
     profile_table = tomlkit.table()
-    for section_path, leaves in body.items():
-        section = tomlkit.table()
-        for key, value in leaves.items():
-            section[key] = value
-        # Resolve nested paths like "modes.deep_research" by walking parts.
-        # Reuse an existing intermediate table when it's already present
-        # (so multiple sibling sections under the same prefix coexist).
-        parts = section_path.split(".")
-        cursor: Any = profile_table
-        for part in parts[:-1]:
-            existing = cursor.get(part) if hasattr(cursor, "get") else None
-            if hasattr(existing, "keys"):
-                cursor = existing
-            else:
-                child = tomlkit.table()
-                cursor[part] = child
-                cursor = child
-        cursor[parts[-1]] = section
+    _populate_table(profile_table, body)
     return profile_table
 
 
+WRITER_COMMENTS: dict[str, list[str]] = {
+    "$header": ["Thoth Configuration File"],
+    "profiles": [
+        "Configuration profiles (P21). Activate with --profile NAME,",
+        "THOTH_PROFILE=NAME, or general.default_profile.",
+        "Profile values REPLACE top-level values when the profile is active.",
+    ],
+}
+
+
+def _emit_starter_section(
+    doc: tomlkit.TOMLDocument,
+    section_name: str,
+    section_model: type[Any],
+) -> None:
+    """Walk one top-level section model and emit its in-starter fields.
+
+    Only fields whose `json_schema_extra["in_starter"]` is True are emitted.
+    """
+    from pydantic import BaseModel as _BM
+
+    table = tomlkit.table()
+    for name, finfo in section_model.model_fields.items():
+        extra = finfo.json_schema_extra if isinstance(finfo.json_schema_extra, dict) else {}
+        if not extra.get("in_starter"):
+            continue
+        if finfo.default_factory is not None:
+            value = finfo.default_factory()
+        else:
+            value = finfo.default
+        if isinstance(value, _BM):
+            sub_table = tomlkit.table()
+            for sub_name, sub_finfo in type(value).model_fields.items():
+                sub_extra = (
+                    sub_finfo.json_schema_extra
+                    if isinstance(sub_finfo.json_schema_extra, dict)
+                    else {}
+                )
+                if not sub_extra.get("in_starter"):
+                    continue
+                sub_value = getattr(value, sub_name)
+                sub_table[sub_name] = sub_value
+            table[name] = sub_table
+        else:
+            table[name] = value
+    doc[section_name] = table
+
+
 def _build_starter_profiles() -> tomlkit.items.Table:
-    """Build the `[profiles]` super-table shipped by `thoth init`."""
+    """Build the `[profiles]` super-table shipped by `thoth init`.
+
+    P33: source of truth is `STARTER_PROFILES` in `thoth._starter_data`.
+    """
+    from thoth._starter_data import STARTER_PROFILES
+
     profiles = tomlkit.table()
-
-    profiles["daily"] = _build_profile_section(
-        {"general": {"default_mode": "thinking", "default_project": "daily-notes"}},
-    )
-    profiles["quick"] = _build_profile_section({"general": {"default_mode": "thinking"}})
-    profiles["openai_deep"] = _build_profile_section(
-        {
-            "general": {"default_mode": "deep_research"},
-            "modes.deep_research": {"providers": ["openai"], "parallel": False},
-        },
-    )
-    profiles["all_deep"] = _build_profile_section(
-        {
-            "general": {"default_mode": "deep_research"},
-            "modes.deep_research": {
-                "providers": ["openai", "perplexity"],
-                "parallel": True,
-            },
-        },
-    )
-    profiles["interactive"] = _build_profile_section({"general": {"default_mode": "interactive"}})
-
-    profiles["deep_research"] = _build_profile_section(
-        {
-            "general": {
-                "default_mode": "deep_research",
-                "prompt_prefix": "Be thorough. Cite primary sources where possible.",
-            },
-            "modes.deep_research": {
-                "providers": ["openai", "perplexity"],
-                "parallel": True,
-                "prompt_prefix": ("Be thorough. Cite primary sources. Include counter-arguments."),
-            },
-        },
-    )
+    for entry in STARTER_PROFILES:
+        profiles[entry.name] = _build_profile_section(entry.body)
     return profiles
 
 
 def _build_starter_document() -> tomlkit.TOMLDocument:
-    """Construct the full `~/.config/thoth/thoth.config.toml` shipped by `thoth init`."""
+    """Construct the full starter `~/.config/thoth/thoth.config.toml`.
+
+    P33: schema-driven. The set of in-starter fields and their default
+    values comes from `ThothConfig`'s field metadata; structural prose
+    comes from `WRITER_COMMENTS`.
+    """
+    from thoth.config_schema import (
+        ClarificationConfig,  # noqa: F401 — imported for completeness, not shipped
+        ExecutionConfig,
+        GeneralConfig,
+        OutputConfig,
+        PathsConfig,
+        ProvidersConfig,
+        ThothConfig,
+    )
+
     doc = tomlkit.document()
-    doc.add(tomlkit.comment("Thoth Configuration File"))
-    doc["version"] = CONFIG_VERSION
+    for line in WRITER_COMMENTS.get("$header", []):
+        doc.add(tomlkit.comment(line))
+    doc["version"] = ThothConfig.model_fields["version"].default
 
-    general = tomlkit.table()
-    general["default_project"] = ""
-    general["default_mode"] = "default"
-    doc["general"] = general
-
-    paths = tomlkit.table()
-    paths["base_output_dir"] = "./research-outputs"
-    # Resolved against the user's checkpoint dir at init time.
-    from thoth.paths import user_checkpoints_dir
-
-    paths["checkpoint_dir"] = str(user_checkpoints_dir())
-    doc["paths"] = paths
-
-    execution = tomlkit.table()
-    execution["poll_interval"] = 30
-    execution["max_wait"] = 30
-    execution["parallel_providers"] = True
-    execution["retry_attempts"] = 3
-    execution["auto_input"] = True
-    doc["execution"] = execution
-
-    output = tomlkit.table()
-    output["combine_reports"] = False
-    output["format"] = "markdown"
-    output["include_metadata"] = True
-    output["timestamp_format"] = "%Y-%m-%d_%H%M%S"
-    doc["output"] = output
-
-    providers = tomlkit.table()
-    openai_t = tomlkit.table()
-    openai_t["api_key"] = "${OPENAI_API_KEY}"
-    providers["openai"] = openai_t
-    perplexity_t = tomlkit.table()
-    perplexity_t["api_key"] = "${PERPLEXITY_API_KEY}"
-    providers["perplexity"] = perplexity_t
-    doc["providers"] = providers
+    _emit_starter_section(doc, "general", GeneralConfig)
+    _emit_starter_section(doc, "paths", PathsConfig)
+    _emit_starter_section(doc, "execution", ExecutionConfig)
+    _emit_starter_section(doc, "output", OutputConfig)
+    _emit_starter_section(doc, "providers", ProvidersConfig)
+    # `clarification` is intentionally NOT shipped (no StarterField fields).
 
     doc.add(tomlkit.nl())
-    doc.add(tomlkit.comment("Configuration profiles (P21). Activate with --profile NAME,"))
-    doc.add(tomlkit.comment("THOTH_PROFILE=NAME, or general.default_profile."))
-    doc.add(tomlkit.comment("Profile values REPLACE top-level values when the profile is active."))
+    for line in WRITER_COMMENTS.get("profiles", []):
+        doc.add(tomlkit.comment(line))
     doc["profiles"] = _build_starter_profiles()
     return doc
 

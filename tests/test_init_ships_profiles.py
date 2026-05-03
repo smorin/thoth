@@ -102,12 +102,18 @@ def test_deep_research_profile_carries_prompt_prefix(init_run: Path) -> None:
 
 def test_build_profile_section_preserves_sibling_subsections() -> None:
     """C14: siblings sharing a prefix (e.g., modes.deep_research + modes.thinking)
-    must coexist under the same intermediate table, not overwrite each other."""
+    must coexist under the same intermediate table, not overwrite each other.
+
+    P33: body is now a nested dict; sibling sections are naturally separate keys
+    under the same parent dict (e.g. `{"modes": {"deep_research": {...}, "thinking": {...}}}`).
+    """
     from thoth.commands import _build_profile_section
 
     body = {
-        "modes.deep_research": {"providers": ["openai"], "parallel": False},
-        "modes.thinking": {"prompt_prefix": "Think hard."},
+        "modes": {
+            "deep_research": {"providers": ["openai"], "parallel": False},
+            "thinking": {"prompt_prefix": "Think hard."},
+        },
     }
     table = _build_profile_section(body)
     modes = table.get("modes")

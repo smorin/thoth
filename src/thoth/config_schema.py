@@ -166,7 +166,7 @@ class ProviderConfigBase(BaseModel):
     """
 
     model_config = ConfigDict(extra="forbid")
-    api_key: str
+    api_key: str = StarterField()  # required — no default; shipped in init template
     model: str | None = None
     temperature: float | None = None
     max_tokens: int | None = None
