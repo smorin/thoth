@@ -139,6 +139,7 @@ def ask(
     effective_config = pick_value(config_path, ctx, "config_path")
     effective_profile = pick_value(profile, ctx, "profile")
     effective_cancel_on_interrupt = pick_value(cancel_on_interrupt, ctx, "cancel_on_interrupt")
+    effective_no_validate = bool(no_validate or inherited.get("no_validate"))
     root_api_keys = inherited_api_keys(ctx)
     cli_api_keys = {
         "openai": api_key_openai or root_api_keys["openai"],
@@ -149,6 +150,7 @@ def ask(
     # Local import: avoids cli.py → cli_subcommands → cli.py circular at module load.
     from thoth.cli import (
         _apply_config_path,
+        _apply_no_validate,
         _config_default_mode,
         _config_default_project,
         _prompt_max_bytes_from_config,
@@ -159,6 +161,7 @@ def ask(
 
     def _prepare_request() -> tuple[str, str | None, str]:
         _apply_config_path(effective_config)
+        _apply_no_validate(effective_no_validate)
         config = get_config(profile=effective_profile)
         selected_mode = pick_value(mode_opt, ctx, "mode_opt") or _config_default_mode(config)
         selected_project = pick_value(project, ctx, "project")
