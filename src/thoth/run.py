@@ -42,7 +42,13 @@ from thoth.progress import run_with_spinner, should_show_spinner
 from thoth.providers import ResearchProvider, available_providers, create_provider
 from thoth.providers.base import Citation, StreamEvent
 from thoth.signals import _interrupt_event
-from thoth.utils import check_disk_space, generate_operation_id, mask_api_key
+from thoth.utils import (
+    check_disk_space,
+    generate_operation_id,
+    mask_api_key,
+    md_link_title,
+    md_link_url,
+)
 
 console = Console()
 
@@ -477,7 +483,7 @@ def _format_citations_block(citations: list[Citation]) -> str:
         if not url or url in seen_urls:
             continue
         seen_urls.add(url)
-        lines.append(f"- [{title or url}]({url})")
+        lines.append(f"- [{md_link_title(title or url)}]({md_link_url(url)})")
     if not lines:
         return ""
     return "\n\n## Sources\n\n" + "\n".join(lines) + "\n"

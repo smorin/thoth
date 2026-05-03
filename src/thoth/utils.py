@@ -41,3 +41,21 @@ def check_disk_space(path: Path, required_mb: int = 100) -> bool:
 def _is_placeholder(value: str) -> bool:
     """Unresolved ${VAR} substitution from ConfigManager should count as missing."""
     return value.startswith("${") and value.endswith("}")
+
+
+def md_link_title(text: str) -> str:
+    """Escape characters that would break the title part of a Markdown link ([...]).
+
+    Replaces ``[`` and ``]`` with their backslash-escaped equivalents so
+    arbitrary web-page titles cannot corrupt the ``[title](url)`` syntax.
+    """
+    return text.replace("[", "\\[").replace("]", "\\]")
+
+
+def md_link_url(url: str) -> str:
+    """Escape characters that would break the URL part of a Markdown link ((...)).
+
+    Percent-encodes ``)`` as ``%29`` so URLs that contain a closing parenthesis
+    cannot truncate the link destination and inject unintended Markdown.
+    """
+    return url.replace(")", "%29")

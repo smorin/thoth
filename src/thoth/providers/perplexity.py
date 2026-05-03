@@ -33,6 +33,7 @@ from thoth.errors import (
     ThothError,
 )
 from thoth.providers.base import Citation, ResearchProvider, StreamEvent
+from thoth.utils import md_link_title, md_link_url
 
 _THINK_OPEN = "<think>"
 _THINK_CLOSE = "</think>"
@@ -449,7 +450,7 @@ def _render_answer_with_sources(response: Any) -> str:
             continue
         seen_urls.add(url)
         title = _entry_get(entry, "title") or url
-        sources.append(f"- [{title}]({url})")
+        sources.append(f"- [{md_link_title(title)}]({md_link_url(url)})")
 
     if not sources:
         return content
