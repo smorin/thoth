@@ -100,6 +100,7 @@ class _ThinkStreamParser:
 
 
 _PROVIDER_NAME = "perplexity"
+_INVALID_KEY_PHRASES = ("invalid api key", "incorrect api key", "invalid_api_key")
 
 
 def _rate_limit_error_is_quota(exc: BaseException) -> bool:
@@ -141,8 +142,7 @@ def _map_perplexity_error(
     if isinstance(exc, openai.AuthenticationError):
         body = getattr(exc, "body", None) or {}
         combined = (str(exc) + " " + str(body)).lower()
-        _invalid_key_phrases = ("invalid api key", "incorrect api key", "invalid_api_key")
-        if any(phrase in combined for phrase in _invalid_key_phrases):
+        if any(phrase in combined for phrase in _INVALID_KEY_PHRASES):
             return ThothError(
                 "perplexity API key is invalid",
                 "Your Perplexity API key was rejected by the API. "
