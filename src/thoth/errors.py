@@ -8,6 +8,7 @@ so `handle_error` can render a consistent CLI error banner. Exit codes:
   3  - ProviderError (upstream provider failure)
   8  - DiskSpaceError
   9  - APIQuotaError
+  10 - APIRateLimitError
   127 - uncaught unexpected exception (handled in handle_error)
 """
 
@@ -179,6 +180,17 @@ class APIQuotaError(ThothError):
             f"{provider} API quota exceeded",
             "Wait for quota reset or upgrade your plan",
             exit_code=9,
+        )
+
+
+class APIRateLimitError(ThothError):
+    """API rate limit exceeded"""
+
+    def __init__(self, provider: str):
+        super().__init__(
+            f"{provider} API rate limit exceeded",
+            "Wait and retry later, or reduce request frequency.",
+            exit_code=10,
         )
 
 

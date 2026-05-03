@@ -620,7 +620,7 @@ async def providers_command(
 
     provider_descriptions = {
         "openai": "OpenAI GPT models",
-        "perplexity": "Perplexity search AI (not implemented)",
+        "perplexity": "Perplexity Sonar (web-grounded synchronous search)",
         "mock": "Mock provider for tests",
     }
 

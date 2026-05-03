@@ -22,6 +22,7 @@ from thoth.config import is_background_model
 from thoth.errors import (
     APIKeyError,
     APIQuotaError,
+    APIRateLimitError,
     ModeKindMismatchError,
     ProviderError,
     ThothError,
@@ -30,6 +31,32 @@ from thoth.models import ModelCache
 from thoth.providers.base import ResearchProvider
 
 _console = Console()
+
+
+def _rate_limit_error_is_quota(exc: BaseException) -> bool:
+    """Return True when a 429-style SDK error is actually quota/billing exhaustion."""
+    body = getattr(exc, "body", None) or {}
+    parts = [str(body), str(exc)]
+    if isinstance(body, dict):
+        err = body.get("error")
+        if isinstance(err, dict):
+            for key in ("code", "type", "message"):
+                value = err.get(key)
+                if value is not None:
+                    parts.append(str(value))
+    text = " ".join(parts).lower()
+    quota_markers = (
+        "insufficient_quota",
+        "quota",
+        "billing",
+        "credit",
+        "credits",
+        "monthly spend",
+        "exhausted",
+        "no credits",
+        "blocked",
+    )
+    return any(marker in text for marker in quota_markers)
 
 
 def _map_openai_error(
@@ -53,20 +80,9 @@ def _map_openai_error(
         return APIKeyError("openai")
 
     if isinstance(exc, openai.RateLimitError):
-        body = getattr(exc, "body", None) or {}
-        body_str = str(body)
-        code = None
-        if isinstance(body, dict):
-            err = body.get("error") if isinstance(body.get("error"), dict) else None
-            if isinstance(err, dict):
-                code = err.get("code")
-        if code == "insufficient_quota" or "insufficient_quota" in body_str:
+        if _rate_limit_error_is_quota(exc):
             return APIQuotaError("openai")
-        return ProviderError(
-            "openai",
-            "Rate limit exceeded. Please wait a moment and try again.",
-            raw_error=raw,
-        )
+        return APIRateLimitError("openai")
 
     if isinstance(exc, openai.NotFoundError):
         return ProviderError(

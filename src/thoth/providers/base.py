@@ -22,6 +22,14 @@ from typing import Any, Literal
 
 
 @dataclass
+class Citation:
+    """Structured citation metadata from providers that stream sources."""
+
+    title: str
+    url: str
+
+
+@dataclass
 class StreamEvent:
     """One chunk emitted by `provider.stream()`.
 
@@ -37,6 +45,7 @@ class StreamEvent:
 
     kind: Literal["text", "reasoning", "citation", "done"]
     text: str
+    citation: Citation | None = None
 
 
 class ResearchProvider:

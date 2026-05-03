@@ -160,6 +160,40 @@ BUILTIN_MODES = {
         "system_prompt": "Compare and contrast the given options, technologies, or approaches. Provide a detailed analysis of pros, cons, and recommendations.",
         "description": "Comparative analysis mode for evaluating multiple options.",
     },
+    # P23: Perplexity built-in immediate (synchronous) modes.
+    "perplexity_quick": {
+        "provider": "perplexity",
+        "model": "sonar",
+        "kind": "immediate",
+        "system_prompt": None,
+        "description": "Perplexity Sonar — fast grounded answer with citations.",
+        "perplexity": {
+            "web_search_options": {"search_context_size": "low"},
+            "stream_mode": "full",
+        },
+    },
+    "perplexity_pro": {
+        "provider": "perplexity",
+        "model": "sonar-pro",
+        "kind": "immediate",
+        "system_prompt": None,
+        "description": "Perplexity Sonar Pro — deeper retrieval, richer context.",
+        "perplexity": {
+            "web_search_options": {"search_context_size": "high"},
+            "stream_mode": "full",
+        },
+    },
+    "perplexity_reasoning": {
+        "provider": "perplexity",
+        "model": "sonar-reasoning-pro",
+        "kind": "immediate",
+        "system_prompt": None,
+        "description": "Perplexity Sonar Reasoning Pro — exposes <think> chain-of-thought.",
+        "perplexity": {
+            "web_search_options": {"search_context_size": "medium"},
+            "stream_mode": "concise",
+        },
+    },
 }
 
 

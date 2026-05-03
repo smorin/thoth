@@ -53,6 +53,7 @@ from thoth.config import (  # noqa: F401
 from thoth.errors import (  # noqa: F401
     APIKeyError,
     APIQuotaError,
+    APIRateLimitError,
     DiskSpaceError,
     ProviderError,
     ThothError,

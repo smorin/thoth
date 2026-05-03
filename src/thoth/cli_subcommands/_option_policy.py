@@ -39,6 +39,7 @@ ROOT_OPTION_LABELS: dict[str, str] = {
     "interactive": "--interactive",
     "clarify": "--clarify",
     "pick_model": "--pick-model",
+    "model": "--model",
     "cancel_on_interrupt": "--cancel-on-interrupt/--no-cancel-on-interrupt",
 }
 
