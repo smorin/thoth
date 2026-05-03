@@ -34,7 +34,7 @@ def test_no_validate_global_suppresses_warnings() -> None:
     cs._no_validate = True
     try:
         report = cs.ConfigSchema.validate({"general": {"prompy_prefix": "x"}}, layer="user")
-        assert report.warnings == []
+        assert report.warnings == ()
     finally:
         cs._no_validate = False
 
@@ -62,7 +62,7 @@ def test_experimental_table_accepts_arbitrary_keys() -> None:
         }
     }
     report = ConfigSchema.validate(data, layer="user")
-    assert report.warnings == []
+    assert report.warnings == ()
 
 
 def test_experimental_in_strict_mode_also_accepts() -> None:

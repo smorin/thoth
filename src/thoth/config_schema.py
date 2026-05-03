@@ -12,7 +12,6 @@ Three-layer architecture:
 from __future__ import annotations
 
 from dataclasses import dataclass
-from dataclasses import field as dc_field
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, create_model
@@ -351,7 +350,7 @@ class ValidationReport:
     """Result of `ConfigSchema.validate()`. Empty `warnings` does NOT mean
     fully valid — validation is advisory."""
 
-    warnings: list[ValidationWarning] = dc_field(default_factory=list)
+    warnings: tuple[ValidationWarning, ...] = ()
 
 
 # ---------------------------------------------------------------------------
@@ -470,7 +469,7 @@ class ConfigSchema:
         try:
             target.model_validate(data)
         except ValidationError as exc:
-            warnings = [_pydantic_error_to_warning(layer, e) for e in exc.errors()]
+            warnings = tuple(_pydantic_error_to_warning(layer, e) for e in exc.errors())
             return ValidationReport(warnings=warnings)
         return ValidationReport()
 
