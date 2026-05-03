@@ -108,7 +108,7 @@ def test_async_map_5xx_returns_transient_provider_error(status: int) -> None:
     assert "server error" in str(result).lower() or "5xx" in str(result)
 
 
-def test_async_maphttpx_timeout_returns_provider_error() -> None:
+def test_async_map_httpx_timeout_returns_provider_error() -> None:
     """T04: httpx.TimeoutException → ProviderError with timeout language."""
     exc = httpx.TimeoutException("request timed out")
     result = _map_perplexity_error_async(exc)
@@ -116,7 +116,7 @@ def test_async_maphttpx_timeout_returns_provider_error() -> None:
     assert "timed out" in str(result).lower()
 
 
-def test_async_maphttpx_connect_error_returns_provider_error() -> None:
+def test_async_map_httpx_connect_error_returns_provider_error() -> None:
     """T04: httpx.ConnectError → ProviderError with network language."""
     exc = httpx.ConnectError("DNS resolution failed")
     result = _map_perplexity_error_async(exc)
