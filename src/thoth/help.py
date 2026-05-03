@@ -25,7 +25,7 @@ ADMIN_COMMANDS: tuple[str, ...] = (
 )
 
 
-# P35 Layer 1: curated typed-token → full-invocation map for the
+# P36 Layer 1: curated typed-token → full-invocation map for the
 # unknown-command did-you-mean suggestion. Captures cases where the user
 # typed a leaf name from a multi-level command path (e.g. `profiles`,
 # which lives at `thoth config profiles`).
@@ -44,7 +44,7 @@ _KNOWN_SUBPATHS: dict[str, str] = {
 }
 
 
-# P35 Layer 1: a "single token that looks like a command name" is
+# P36 Layer 1: a "single token that looks like a command name" is
 # overwhelmingly a typo, not a research prompt. Multi-token strings,
 # quoted strings with spaces, and option-only invocations preserve
 # the existing bare-prompt fallback.
@@ -188,7 +188,7 @@ class ThothGroup(click.Group):
         if args:
             first = args[0]
             help_requested = ("--help" in args) or ("-h" in args)
-            # P35 Layer 1: --help/-h short-circuit. Registered subcommands
+            # P36 Layer 1: --help/-h short-circuit. Registered subcommands
             # and builtin modes still flow through their own dispatch (Click
             # handles --help natively for registered commands; the mode
             # dispatcher owns mode help). Anything else is a typo and gets
@@ -196,7 +196,7 @@ class ThothGroup(click.Group):
             # misleading API-key error from the bare-prompt fallback.
             if help_requested and first not in self.commands and first not in BUILTIN_MODES:
                 self._emit_unknown_command_error(ctx, first)
-            # P35 Layer 1: single-token unknown command (no --help). Match
+            # P36 Layer 1: single-token unknown command (no --help). Match
             # the command-name shape so multi-token / quoted / option-only
             # bare prompts still route through the research fallback.
             if (

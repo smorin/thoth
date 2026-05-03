@@ -1,4 +1,4 @@
-"""P35 Layer 1: uniform `--help` + unknown-command dispatch tests.
+"""P36 Layer 1: uniform `--help` + unknown-command dispatch tests.
 
 These tests exercise the subprocess path via the `run_thoth` fixture
 (defined in tests/conftest_p16.py) so we observe the same dispatch
