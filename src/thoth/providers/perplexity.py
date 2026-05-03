@@ -206,6 +206,98 @@ def _map_perplexity_error(
     )
 
 
+def _map_perplexity_error_async(
+    exc: BaseException, model: str | None = None, verbose: bool = False
+) -> ThothError:
+    """Map an httpx-raised exception or HTTP status code from `/v1/async/sonar` to a ThothError.
+
+    Counterpart to `_map_perplexity_error` for the async path: the OpenAI
+    SDK doesn't know about `/v1/async/sonar`, so the async submit/poll uses
+    raw httpx and surfaces httpx exceptions plus Perplexity's documented
+    HTTP status codes. Translates them into the same Thoth error taxonomy
+    (APIKeyError / APIQuotaError / APIRateLimitError / ProviderError) the
+    runner already understands.
+
+    Status code mapping (per `research/perplexity-deep-research-api.v1.md` §8
+    and the live llms.txt verified at P27-T01):
+      * 401 -> APIKeyError, or a friendly invalid-key ThothError if the
+        body identifies the key as rejected (vs. simply missing).
+      * 402 -> APIQuotaError (Perplexity uses 402 for credit exhaustion).
+      * 422 -> ProviderError with a model hint, since the most common cause
+        is using a non-deep-research model on the async endpoint.
+      * 429 -> APIRateLimitError (purely throttle; quota lives at 402 here).
+      * 5xx -> transient ProviderError with a retry suggestion.
+      * Other status -> generic ProviderError.
+
+    httpx exception mapping:
+      * TimeoutException -> ProviderError("Request timed out...").
+      * ConnectError    -> ProviderError("Network connection error...").
+      * Anything else   -> generic ProviderError; never silently swallowed.
+    """
+    raw = str(exc) if verbose else None
+
+    if isinstance(exc, httpx.HTTPStatusError):
+        status = exc.response.status_code
+        body_text = ""
+        try:
+            body_text = exc.response.text
+        except Exception:  # pragma: no cover - defensive: response text unavailable
+            body_text = ""
+        body_lower = body_text.lower()
+
+        if status == 401:
+            if any(phrase in body_lower for phrase in _INVALID_KEY_PHRASES):
+                return ThothError(
+                    "perplexity API key is invalid",
+                    "Your Perplexity API key was rejected by the API. "
+                    "Check your key at https://www.perplexity.ai/settings/api",
+                    exit_code=2,
+                )
+            return APIKeyError(_PROVIDER_NAME)
+        if status == 402:
+            return APIQuotaError(_PROVIDER_NAME)
+        if status == 422:
+            hint = f" (model: {model!r})" if model else ""
+            return ProviderError(
+                _PROVIDER_NAME,
+                f"Invalid async request{hint}. Model may not support /v1/async/sonar.",
+                raw_error=raw,
+            )
+        if status == 429:
+            return APIRateLimitError(_PROVIDER_NAME)
+        if 500 <= status < 600:
+            return ProviderError(
+                _PROVIDER_NAME,
+                "Perplexity server error (5xx). Retry shortly.",
+                raw_error=raw,
+            )
+        return ProviderError(
+            _PROVIDER_NAME,
+            f"HTTP {status} from Perplexity async API: {body_text[:200]}",
+            raw_error=raw,
+        )
+
+    if isinstance(exc, httpx.TimeoutException):
+        return ProviderError(
+            _PROVIDER_NAME,
+            "Request timed out. Try again, or raise --timeout.",
+            raw_error=raw,
+        )
+
+    if isinstance(exc, httpx.ConnectError):
+        return ProviderError(
+            _PROVIDER_NAME,
+            "Network connection error reaching api.perplexity.ai.",
+            raw_error=raw,
+        )
+
+    return ProviderError(
+        _PROVIDER_NAME,
+        f"Unexpected error: {exc}",
+        raw_error=raw,
+    )
+
+
 PERPLEXITY_BASE_URL = "https://api.perplexity.ai"
 
 _DIRECT_SDK_KEYS: tuple[str, ...] = (
