@@ -21,6 +21,7 @@ from typing import Any
 import aiofiles
 import click
 from rich.console import Console
+from rich.markup import escape as _rich_escape
 from rich.progress import (
     BarColumn,
     Progress,
@@ -38,7 +39,7 @@ from thoth.hints import print_hint, print_saved_not_submitted
 from thoth.models import OperationStatus
 from thoth.output import OutputManager
 from thoth.progress import run_with_spinner, should_show_spinner
-from thoth.providers import ResearchProvider, create_provider
+from thoth.providers import ResearchProvider, available_providers, create_provider
 from thoth.signals import _interrupt_event
 from thoth.utils import check_disk_space, generate_operation_id, mask_api_key
 
@@ -168,6 +169,44 @@ def get_estimated_duration(mode: str, provider: str | None) -> float:
         return mode_estimates.get("combined", max(mode_estimates.values(), default=60))
 
 
+def _select_providers(
+    provider: str | None,
+    mode: str,
+    mode_config: dict[str, Any],
+    config: ConfigManager,
+    cli_api_keys: dict[str, str | None] | None,
+) -> list[str]:
+    """Resolve which providers the runner should attempt, in order.
+
+    Precedence (P36 Layer 3):
+
+      1. Explicit ``--provider`` flag wins.
+      2. ``thinking`` mode or a mode pinning a single ``provider``.
+      3. A mode pinning a ``providers`` list (mux flow).
+      4. ``general.default_provider`` config key, when its provider has
+         a resolvable key.
+      5. First entry in ``available_providers(...)`` (PROVIDERS dict order).
+      6. ``["openai"]`` legacy fallback so ``create_provider`` raises
+         Layer 2's enhanced ``APIKeyError`` with full multi-provider
+         status enumeration when zero providers have keys.
+    """
+    if provider:
+        return [provider]
+    if mode == "thinking" or "provider" in mode_config:
+        return [mode_config.get("provider", "openai")]
+    if "providers" in mode_config:
+        return list(mode_config.get("providers", ["openai"]))
+
+    available = available_providers(config, cli_api_keys=cli_api_keys)
+    if not available:
+        return ["openai"]
+
+    configured_default = config.data.get("general", {}).get("default_provider")
+    if configured_default in available:
+        return [configured_default]
+    return [available[0]]
+
+
 async def run_research(
     mode: str,
     prompt: str,
@@ -269,15 +308,13 @@ async def run_research(
     if model_override is not None:
         mode_config = {**mode_config, "model": model_override}
 
-    if provider:
-        providers_to_use = [provider]
-    elif mode == "thinking" or "provider" in mode_config:
-        default_provider = mode_config.get("provider", "openai")
-        providers_to_use = [default_provider]
-    elif "providers" in mode_config:
-        providers_to_use = mode_config.get("providers", ["openai"])
-    else:
-        providers_to_use = ["openai"]
+    providers_to_use = _select_providers(
+        provider=provider,
+        mode=mode,
+        mode_config=mode_config,
+        config=config,
+        cli_api_keys=cli_api_keys,
+    )
 
     providers = {}
     for provider_name in providers_to_use:
@@ -294,17 +331,17 @@ async def run_research(
             )
         except APIKeyError as e:
             console.print(f"[red]Error:[/red] {e.message}")
-            console.print(f"[yellow]Suggestion:[/yellow] {e.suggestion}")
+            console.print(f"[yellow]Suggestion:[/yellow] {_rich_escape(e.suggestion or '')}")
             raise click.Abort()
         except ProviderError as e:
             console.print(f"[red]Error:[/red] {e.message}")
-            console.print(f"[yellow]Suggestion:[/yellow] {e.suggestion}")
+            console.print(f"[yellow]Suggestion:[/yellow] {_rich_escape(e.suggestion or '')}")
             if verbose and hasattr(e, "raw_error") and e.raw_error:
                 console.print(f"[dim]Raw error: {e.raw_error}[/dim]")
             raise click.Abort()
         except ThothError as e:
             console.print(f"[red]Error:[/red] {e.message}")
-            console.print(f"[yellow]Suggestion:[/yellow] {e.suggestion}")
+            console.print(f"[yellow]Suggestion:[/yellow] {_rich_escape(e.suggestion or '')}")
             raise click.Abort()
 
     if verbose:
@@ -341,7 +378,7 @@ async def run_research(
             operation.transition_to("failed", error=e.message)
             await checkpoint_manager.save(operation)
             console.print(f"[red]Error:[/red] {e.message}")
-            console.print(f"[yellow]Suggestion:[/yellow] {e.suggestion}")
+            console.print(f"[yellow]Suggestion:[/yellow] {_rich_escape(e.suggestion or '')}")
             if verbose and hasattr(e, "raw_error") and getattr(e, "raw_error", None):
                 console.print(f"[dim]Raw error: {e.raw_error}[/dim]")
             print_saved_not_submitted(operation_id)
@@ -811,7 +848,7 @@ async def _execute_research(
             }
         except ProviderError as e:
             console.print(f"\n[red]Error:[/red] {e.message}")
-            console.print(f"[yellow]Suggestion:[/yellow] {e.suggestion}")
+            console.print(f"[yellow]Suggestion:[/yellow] {_rich_escape(e.suggestion or '')}")
             if verbose and hasattr(e, "raw_error") and e.raw_error:
                 console.print(f"[dim]Raw error: {e.raw_error}[/dim]")
             raise click.Abort()
@@ -1150,7 +1187,7 @@ async def resume_operation(
             )
         except (APIKeyError, ProviderError, ThothError) as e:
             console.print(f"[red]Error:[/red] {e.message}")
-            console.print(f"[yellow]Suggestion:[/yellow] {e.suggestion}")
+            console.print(f"[yellow]Suggestion:[/yellow] {_rich_escape(e.suggestion or '')}")
             sys.exit(1)
 
         try:

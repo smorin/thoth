@@ -2559,7 +2559,7 @@ all_tests = [
         description="Missing API key shows helpful error",
         command=[THOTH_EXECUTABLE, "clarification", "test"],
         env={"OPENAI_API_KEY": ""},
-        expected_stdout_patterns=[r"openai API key not found", r"Set OPENAI_API_KEY"],
+        expected_stdout_patterns=[r"openai API key not found", r"export OPENAI_API_KEY"],
         expected_exit_code=1,
     ),
     TestCase(

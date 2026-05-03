@@ -35,6 +35,12 @@ PROVIDER_ENV_VARS: dict[str, str] = {
     "mock": "MOCK_API_KEY",
 }
 
+PROVIDER_CLI_FLAGS: dict[str, str] = {
+    "openai": "--api-key-openai",
+    "perplexity": "--api-key-perplexity",
+    "mock": "--api-key-mock",
+}
+
 
 def resolve_api_key(
     provider_name: str,
@@ -63,6 +69,33 @@ def resolve_api_key(
         return cfg_val
 
     raise APIKeyError(provider_name)
+
+
+def available_providers(
+    config: ConfigManager,
+    cli_api_keys: dict[str, str | None] | None = None,
+) -> list[str]:
+    """Return list of provider names that have a resolvable API key.
+
+    Checks CLI-supplied keys, env vars, and the loaded config (in
+    ``resolve_api_key`` precedence order). Does NOT raise on missing keys;
+    for dispatch logic that needs to discover what's available before
+    calling ``create_provider``.
+
+    Order matches ``PROVIDERS`` dict iteration so callers get a stable
+    order (openai, perplexity, mock).
+    """
+    cli_api_keys = cli_api_keys or {}
+    available: list[str] = []
+    for name in PROVIDERS:
+        cli_key = cli_api_keys.get(name)
+        provider_config = config.data.get("providers", {}).get(name, {})
+        try:
+            resolve_api_key(name, cli_key, provider_config)
+            available.append(name)
+        except APIKeyError:
+            continue
+    return available
 
 
 def create_provider(
@@ -124,12 +157,14 @@ def create_provider(
 
 __all__ = [
     "PROVIDERS",
+    "PROVIDER_CLI_FLAGS",
     "PROVIDER_ENV_VARS",
     "MockProvider",
     "OpenAIProvider",
     "PerplexityProvider",
     "ResearchProvider",
     "_map_openai_error",
+    "available_providers",
     "create_provider",
     "resolve_api_key",
 ]
