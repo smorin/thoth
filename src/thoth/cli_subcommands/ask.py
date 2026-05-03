@@ -75,6 +75,7 @@ def ask(
     clarify: bool,
     pick_model: bool,
     cancel_on_interrupt: bool | None,
+    no_validate: bool,
     as_json: bool,
 ) -> None:
     """Run a research operation with the given prompt."""

@@ -125,6 +125,14 @@ _RESEARCH_OPTIONS: list[tuple[tuple, dict]] = [
             ),
         },
     ),
+    (
+        ("--no-validate",),
+        {
+            "is_flag": True,
+            "default": False,
+            "help": "Suppress config schema validation warnings (debug/CI use only)",
+        },
+    ),
 ]
 
 

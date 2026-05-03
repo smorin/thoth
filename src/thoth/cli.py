@@ -95,6 +95,22 @@ def _apply_config_path(config_path: object) -> None:
         _thoth_config._config_path = Path(str(config_path)).expanduser().resolve()
 
 
+def _apply_no_validate(no_validate: bool) -> None:
+    """Mirror of `_apply_config_path` for the `--no-validate` flag.
+
+    Sets the module-global `_no_validate` in `thoth.config_schema` so that
+    `ConfigSchema.validate()` short-circuits to an empty report. This is
+    *loader metadata*, NOT a config root key — it is never threaded into
+    `cli_args` and `ConfigManager.load_all_layers` rejects it as a config
+    root by virtue of the existing `allowed_top_level` defense in
+    `config.py:306`.
+    """
+    if no_validate:
+        from thoth import config_schema as _thoth_config_schema
+
+        _thoth_config_schema._no_validate = True
+
+
 def _has_supplied_value(value: object) -> bool:
     return value is not None and value is not False
 
@@ -575,6 +591,7 @@ def cli(
     clarify,
     pick_model,
     cancel_on_interrupt,
+    no_validate,
 ):
     """thoth — research orchestration.
 
@@ -613,6 +630,7 @@ def cli(
     ctx.obj["clarify"] = clarify
     ctx.obj["pick_model"] = pick_model
     ctx.obj["cancel_on_interrupt"] = cancel_on_interrupt
+    ctx.obj["no_validate"] = no_validate
 
     if version:
         conflicts = _version_conflicts(ctx, ctx.obj)
@@ -626,6 +644,7 @@ def cli(
         sys.exit(0)
 
     _apply_config_path(config_path)
+    _apply_no_validate(no_validate)
 
     # Group-level mutex validators. These assume --async / --prompt-file /
     # --prompt / --input-file / --auto remain top-level global options on

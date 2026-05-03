@@ -11,9 +11,11 @@ Three-layer architecture:
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+from dataclasses import field as dc_field
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, create_model
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, create_model
 
 # ---------------------------------------------------------------------------
 # Module-level loader metadata
@@ -334,6 +336,24 @@ class UserConfigFile(ConfigOverlay):
 # ---------------------------------------------------------------------------
 
 
+@dataclass(frozen=True)
+class ValidationWarning:
+    """A single advisory finding from schema validation."""
+
+    layer: str
+    path: str
+    message: str
+    value_preview: str | None = None
+
+
+@dataclass(frozen=True)
+class ValidationReport:
+    """Result of `ConfigSchema.validate()`. Empty `warnings` does NOT mean
+    fully valid — validation is advisory."""
+
+    warnings: list[ValidationWarning] = dc_field(default_factory=list)
+
+
 # ---------------------------------------------------------------------------
 # Path resolution helper
 # ---------------------------------------------------------------------------
@@ -415,6 +435,84 @@ def resolve_path(
 # ---------------------------------------------------------------------------
 # Public façade (filled in Task 5)
 # ---------------------------------------------------------------------------
+
+
+class ConfigSchema:
+    """Public façade for the schema module."""
+
+    @staticmethod
+    def get_defaults() -> dict[str, Any]:
+        return _ROOT_DEFAULTS_DICT
+
+    @staticmethod
+    def model() -> type[BaseModel]:
+        return ThothConfig
+
+    @staticmethod
+    def starter_keys() -> set[tuple[str, ...]]:
+        result: set[tuple[str, ...]] = set()
+        _collect_starter_paths(ThothConfig, prefix=(), out=result)
+        return result
+
+    @staticmethod
+    def validate(
+        data: dict[str, Any],
+        *,
+        layer: str = "user",
+        strict: bool = False,
+    ) -> ValidationReport:
+        if _no_validate:
+            return ValidationReport()
+        target = _layer_to_model(layer)
+        if strict:
+            target.model_validate(data)
+            return ValidationReport()
+        try:
+            target.model_validate(data)
+        except ValidationError as exc:
+            warnings = [_pydantic_error_to_warning(layer, e) for e in exc.errors()]
+            return ValidationReport(warnings=warnings)
+        return ValidationReport()
+
+
+def _layer_to_model(layer: str) -> type[BaseModel]:
+    if layer == "user" or layer == "project":
+        return UserConfigFile
+    if layer == "profile":
+        return ProfileConfig
+    if layer == "cli" or layer == "env":
+        return ConfigOverlay
+    if layer == "defaults":
+        return ThothConfig
+    raise ValueError(f"unknown validation layer {layer!r}")
+
+
+def _pydantic_error_to_warning(layer: str, error: Any) -> ValidationWarning:
+    loc = error.get("loc", ())
+    path = ".".join(str(p) for p in loc)
+    msg = error.get("msg", "validation error")
+    raw_value = error.get("input", None)
+    preview: str | None = None
+    if raw_value is not None:
+        s = repr(raw_value)
+        preview = s if len(s) <= 80 else s[:77] + "..."
+    return ValidationWarning(layer=layer, path=path, message=msg, value_preview=preview)
+
+
+def _collect_starter_paths(
+    model: type[BaseModel],
+    prefix: tuple[str, ...],
+    out: set[tuple[str, ...]],
+) -> None:
+    for name, finfo in model.model_fields.items():
+        extra = (finfo.json_schema_extra or {}) if isinstance(finfo.json_schema_extra, dict) else {}
+        is_starter = bool(extra.get("in_starter"))
+        path = prefix + (name,)
+        annotation = finfo.annotation
+        if is_starter and isinstance(annotation, type) and issubclass(annotation, BaseModel):
+            _collect_starter_paths(annotation, path, out)
+        elif is_starter:
+            out.add(path)
 
 
 # ---------------------------------------------------------------------------
