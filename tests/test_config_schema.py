@@ -113,8 +113,9 @@ def test_make_partial_keeps_field_set() -> None:
 
     for name, finfo in PartialThothConfig.model_fields.items():
         # Each field must have a `None` default, signalling "unset = ok"
-        assert finfo.default is None or finfo.default_factory is not None, (
-            f"PartialThothConfig.{name} should default to None or a factory; got {finfo.default!r}"
+        assert finfo.default is None and finfo.default_factory is None, (
+            f"PartialThothConfig.{name} should default to None with no factory; "
+            f"got default={finfo.default!r}, factory={finfo.default_factory!r}"
         )
 
 
@@ -179,7 +180,7 @@ def test_user_file_with_full_p21_shape_validates() -> None:
     UserConfigFile.model_validate(doc)
 
 
-def test_typo_at_each_overlay_level_raises_in_strict() -> None:
+def test_typo_at_each_overlay_level_raises() -> None:
     from pydantic import ValidationError
 
     from thoth.config_schema import ProfileConfig, UserConfigFile
