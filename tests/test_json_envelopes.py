@@ -33,6 +33,8 @@ JSON_COMMANDS: list[tuple[str, list[str], int]] = [
     ("config_unset", ["config", "unset", "test.key", "--json"], 0),
     ("modes_list", ["modes", "list", "--json"], 0),
     ("modes_list_by_name", ["modes", "list", "--json", "--name", "default"], 0),
+    ("modes_set_default", ["modes", "set-default", "deep_research", "--json"], 0),
+    ("modes_unset_default", ["modes", "unset-default", "--json"], 0),
     # T13: ask + resume rows. ask rows live in test_json_non_blocking.py
     # (Category G timing tests). The smoke-row below covers the resume
     # OPERATION_NOT_FOUND envelope.

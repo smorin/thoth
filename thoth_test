@@ -711,6 +711,74 @@ def load_checkpoint_data(operation_id: str, config_home: Path) -> dict[str, Any]
         return json.load(f)
 
 
+def _p35_user_config_path(config_home: Path) -> Path:
+    """Return the user-tier thoth config path inside an isolated XDG config home."""
+    return config_home / "thoth" / "thoth.config.toml"
+
+
+def p35_set_default_deep_research_setup(config_home: Path) -> None:
+    """P35-INT-01 setup: persist `general.default_mode = "deep_research"` in the
+    isolated user config, then assert it landed on disk. Raise on any failure
+    so the runner reports a setup failure rather than a misleading test pass.
+    """
+    env = os.environ.copy()
+    env["XDG_CONFIG_HOME"] = str(config_home)
+    env["XDG_STATE_HOME"] = str(config_home)
+    env["XDG_CACHE_HOME"] = str(config_home)
+    env["UV_CACHE_DIR"] = str(Path.home() / ".cache" / "uv")
+    proc = subprocess.run(
+        [THOTH_EXECUTABLE, "modes", "set-default", "deep_research"],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    if proc.returncode != 0:
+        raise AssertionError(
+            f"P35-INT-01 setup: 'thoth modes set-default deep_research' exited "
+            f"{proc.returncode}\nstdout: {proc.stdout}\nstderr: {proc.stderr}"
+        )
+    cfg_path = _p35_user_config_path(config_home)
+    if not cfg_path.exists():
+        raise AssertionError(f"P35-INT-01 setup: expected config file {cfg_path} after set-default")
+    cfg_text = cfg_path.read_text()
+    if 'default_mode = "deep_research"' not in cfg_text:
+        raise AssertionError(
+            f"P35-INT-01 setup: 'default_mode = \"deep_research\"' missing from "
+            f"{cfg_path}; contents:\n{cfg_text}"
+        )
+
+
+def p35_unset_default_teardown(config_home: Path) -> None:
+    """P35-INT-01 teardown: run `thoth modes unset-default` against the same
+    isolated config. Best-effort — the runner swallows teardown exceptions, but
+    failures here surface in --verbose so regressions are still observable.
+    Strong unset-default contract assertions live in pytest (P35-TS04).
+    """
+    env = os.environ.copy()
+    env["XDG_CONFIG_HOME"] = str(config_home)
+    env["XDG_STATE_HOME"] = str(config_home)
+    env["XDG_CACHE_HOME"] = str(config_home)
+    env["UV_CACHE_DIR"] = str(Path.home() / ".cache" / "uv")
+    proc = subprocess.run(
+        [THOTH_EXECUTABLE, "modes", "unset-default"],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    if proc.returncode != 0:
+        raise AssertionError(
+            f"P35-INT-01 teardown: 'thoth modes unset-default' exited "
+            f"{proc.returncode}\nstdout: {proc.stdout}\nstderr: {proc.stderr}"
+        )
+    cfg_path = _p35_user_config_path(config_home)
+    if cfg_path.exists() and 'default_mode = "deep_research"' in cfg_path.read_text():
+        raise AssertionError(
+            f"P35-INT-01 teardown: default_mode key still present in {cfg_path} after unset-default"
+        )
+
+
 def validate_test_environment(
     test_api_keys: dict[str, str], requested_providers: list[str] | None = None
 ) -> None:
@@ -2754,14 +2822,14 @@ all_tests = [
     ),
     TestCase(
         test_id="REAL-02",
-        description="Perplexity provider fails cleanly while not implemented",
+        description="Perplexity rejects invalid API key with mapped APIKeyError",
         command=[THOTH_EXECUTABLE, "test perplexity", "--provider", "perplexity"],
         expected_stdout_patterns=[
-            r"perplexity error: Perplexity provider is not implemented yet",
-            r"Use openai or mock until Perplexity support lands",
+            r"perplexity API key",
         ],
         expected_exit_code=1,
-        env={"PERPLEXITY_API_KEY": "pplx-test-not-implemented"},
+        env={"PERPLEXITY_API_KEY": "pplx-test-bogus-key"},
+        provider="perplexity",
     ),
     # Signal handling tests
     TestCase(
@@ -2932,37 +3000,38 @@ all_tests = [
     ),
     TestCase(
         test_id="P07-M2-01",
-        description="Providers list marks Perplexity as not implemented when configured",
+        description="Providers list marks Perplexity as Ready when API key is set",
         command=[THOTH_EXECUTABLE, "providers", "list"],
-        env={"PERPLEXITY_API_KEY": "pplx-test-not-implemented"},
+        env={"PERPLEXITY_API_KEY": "pplx-test-ready"},
         expected_stdout_patterns=[
             r"perplexity",
-            r"Perplexity search AI \(not.*implemented\)",
+            r"Perplexity Sonar",
+            r"perplexity\s+│\s+✓ Ready",
         ],
         not_expected_stdout_patterns=[
-            r"perplexity\s+│\s+✓ Ready",
+            r"\(not\s+implemented\)",
         ],
         expected_exit_code=0,
     ),
     TestCase(
         test_id="P07-M2-02",
-        description="Direct Perplexity invocation fails with intentional message",
+        description="Direct Perplexity invocation rejects bogus key with mapped APIKeyError",
         command=[
             THOTH_EXECUTABLE,
             "test perplexity regression",
             "--provider",
             "perplexity",
             "--api-key-perplexity",
-            "pplx-test-not-implemented",
+            "pplx-test-bogus-key",
         ],
         expected_stdout_patterns=[
-            r"perplexity error: Perplexity provider is not implemented yet",
-            r"Use openai or mock until Perplexity support lands",
+            r"perplexity API key",
         ],
         not_expected_stdout_patterns=[
             r"Unexpected error during submission",
         ],
         expected_exit_code=1,
+        provider="perplexity",
     ),
     # ============================================================================
     # Interactive Mode Tests (require pexpect)
@@ -3505,6 +3574,39 @@ all_tests = [
         timeout=20,
         provider="mock",
         api_key_method="env",
+    ),
+    # ============================================================================
+    # P35: modes set-default / unset-default end-to-end integration
+    # ============================================================================
+    TestCase(
+        test_id="P35-INT-01",
+        description=(
+            "modes set-default deep_research persists, subsequent ask "
+            "(no --mode) honors it, then unset-default removes it cleanly"
+        ),
+        command=[
+            THOTH_EXECUTABLE,
+            "ask",
+            "p35 integration default mode prompt",
+            "--provider",
+            "mock",
+        ],
+        env={"THOTH_POLL_INTERVAL": "2"},
+        expected_stdout_patterns=[r"(?i)research completed"],
+        expected_files=["*_deep_research_mock_*.md"],
+        expected_file_content_patterns={
+            "*_deep_research_mock_*.md": [
+                r"mode:\s*deep_research",
+                r"prompt:\s*p35 integration default mode prompt",
+            ],
+        },
+        cleanup_files=["*_deep_research_mock_*.md"],
+        expected_exit_code=0,
+        timeout=30,
+        provider="mock",
+        api_key_method="env",
+        setup_func=p35_set_default_deep_research_setup,
+        teardown_func=p35_unset_default_teardown,
     ),
 ]
 

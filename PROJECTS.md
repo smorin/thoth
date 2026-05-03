@@ -72,8 +72,10 @@ Older entries may use `**Primary spec**`, `**Plan**`, or
 <!-- Descending P-number order. Scoped / in-progress / done first;
      ideas last. One row per file; one file per row. -->
 
+- [ ] **P38** — [Perplexity Sync VCR Replay](projects/P38-perplexity-sync-vcr-replay.md)
 - [?] **P37** — [Review starter-profile selection](projects/P37-starter-profile-review-.md)
 - [x] **P36** — [Uniform `--help` + Useful API-Key Errors](projects/P36-help-uniform-errors.md)
+- [x] **P35** — [Modes Set-Default / Unset-Default Commands](projects/P35-modes-set-default.md)
 - [?] **P34** — [Offline testing for OpenAIProvider.stream() (VCR or alternative)](projects/P34-offline-testing-openai-stream-.md)
 - [x] **P33** — [Schema-Driven Config Defaults](projects/P33-schema-driven-config-defaults.md)
 - [ ] **P32** — [Interactive Prompt Refiner](projects/P32-interactive-prompt-refiner.md)
@@ -85,7 +87,7 @@ Older entries may use `**Primary spec**`, `**Plan**`, or
 - [x] **P26** — [OpenAI — Background Deep Research](projects/P26-openai-background-deep-research.md)
 - [ ] **P25** — [Architecture Review & Cleanup — Immediate Providers](projects/P25-arch-review-immediate-providers.md)
 - [ ] **P24** — [Gemini — Immediate (Synchronous) Calls](projects/P24-gemini-immediate-sync.md)
-- [ ] **P23** — [Perplexity — Immediate (Synchronous) Calls](projects/P23-perplexity-immediate-sync.md)
+- [x] **P23** — [Perplexity — Immediate (Synchronous) Calls](projects/P23-perplexity-immediate-sync.md)
 - [x] **P22** — [OpenAI — Immediate (Synchronous) Calls](projects/P22-openai-immediate-sync.md)
 - [x] **P21c** — [Config Filename Standardization](projects/P21c-config-filename-standardization.md)
 - [x] **P21b** — [Configuration Profile CRUD Commands](projects/P21b-configuration-profile-crud.md)

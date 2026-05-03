@@ -203,3 +203,166 @@ def test_bare_admin_groups_reject_inherited_config_path(tmp_path: Path):
         assert result.exit_code == 2
         assert "--config" in result.output
         assert command in result.output
+
+
+# ---------------------------------------------------------------------------
+# P23-TS01 — failing CLI tests for the new `--model` flag.
+# `--model X` does not yet exist; these tests pin its expected wiring:
+# threads through to run_research's `model_override` kwarg without local
+# compatibility validation, and is mutually exclusive with `--pick-model`.
+# ---------------------------------------------------------------------------
+
+
+def test_ask_threads_model_flag_into_run_research(monkeypatch):
+    """P23-TS01: `--model X` populates run_research's model_override kwarg."""
+    captured = _stub_run_research(monkeypatch)
+
+    result = CliRunner().invoke(
+        cli,
+        [
+            "--prompt",
+            "test prompt",
+            "ask",
+            "--provider",
+            "perplexity",
+            "--model",
+            "sonar-pro",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert captured["model_override"] == "sonar-pro"
+    assert captured["provider"] == "perplexity"
+
+
+def test_ask_model_flag_passes_arbitrary_string_without_validation(monkeypatch):
+    """P23-TS01: --model accepts any string; validation is delegated to provider/API."""
+    captured = _stub_run_research(monkeypatch)
+
+    result = CliRunner().invoke(
+        cli,
+        [
+            "--prompt",
+            "test prompt",
+            "ask",
+            "--provider",
+            "perplexity",
+            "--model",
+            "future-sonar-2027-preview",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert captured["model_override"] == "future-sonar-2027-preview"
+
+
+def test_ask_model_and_pick_model_are_mutually_exclusive():
+    """P23-TS01 (design choice C): --model and --pick-model conflict → UsageError.
+
+    Asserts on the literal phrase "mutually exclusive" so the test stays red
+    after T01 adds the --model flag, until T01 also wires the explicit
+    mutual-exclusion rule. Without this phrase check, the test would pass
+    by accident on Click's "no such option" path (also exit code 2).
+    """
+    result = CliRunner().invoke(
+        cli,
+        [
+            "--prompt",
+            "test prompt",
+            "ask",
+            "--provider",
+            "perplexity",
+            "--model",
+            "sonar",
+            "--pick-model",
+        ],
+    )
+
+    assert result.exit_code == 2, result.output
+    assert "mutually exclusive" in result.output.lower()
+    assert "--model" in result.output
+    assert "--pick-model" in result.output
+
+
+def test_ask_honors_inherited_model_flag(monkeypatch):
+    """P23-RS02: root --model is honored by research subcommands."""
+    captured = _stub_run_research(monkeypatch)
+
+    result = CliRunner().invoke(
+        cli,
+        [
+            "--model",
+            "sonar",
+            "--prompt",
+            "test prompt",
+            "ask",
+            "--provider",
+            "perplexity",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert captured["model_override"] == "sonar"
+    assert captured["provider"] == "perplexity"
+
+
+def test_admin_command_rejects_inherited_model_flag(monkeypatch):
+    """P23-RS02: root --model is rejected by non-research subcommands."""
+    captured: dict[str, object] = {}
+
+    async def fake_providers_command(**kwargs):
+        captured.update(kwargs)
+        return 0
+
+    monkeypatch.setattr("thoth.commands.providers_command", fake_providers_command)
+
+    result = CliRunner().invoke(cli, ["--model", "sonar", "providers", "list"])
+
+    assert result.exit_code == 2
+    assert "--model" in result.output
+    assert "providers list" in result.output
+    assert captured == {}
+
+
+def test_bare_prompt_trailing_model_and_pick_model_are_mutually_exclusive(monkeypatch):
+    """P23-RS03: fallback parser rejects trailing --model plus --pick-model."""
+    captured = _stub_run_research(monkeypatch)
+    pick_called = False
+
+    def fake_pick_model_override(mode, config):
+        nonlocal pick_called
+        pick_called = True
+        return "picked-model"
+
+    monkeypatch.setattr("thoth.cli._pick_model_override", fake_pick_model_override)
+
+    result = CliRunner().invoke(cli, ["test prompt", "--model", "sonar", "--pick-model"])
+
+    assert result.exit_code == 2
+    assert "mutually exclusive" in result.output.lower()
+    assert "--model" in result.output
+    assert "--pick-model" in result.output
+    assert pick_called is False
+    assert captured == {}
+
+
+def test_bare_prompt_trailing_pick_model_and_model_are_mutually_exclusive(monkeypatch):
+    """P23-RS03: fallback parser rejects either trailing option order."""
+    captured = _stub_run_research(monkeypatch)
+    pick_called = False
+
+    def fake_pick_model_override(mode, config):
+        nonlocal pick_called
+        pick_called = True
+        return "picked-model"
+
+    monkeypatch.setattr("thoth.cli._pick_model_override", fake_pick_model_override)
+
+    result = CliRunner().invoke(cli, ["test prompt", "--pick-model", "--model", "sonar"])
+
+    assert result.exit_code == 2
+    assert "mutually exclusive" in result.output.lower()
+    assert "--model" in result.output
+    assert "--pick-model" in result.output
+    assert pick_called is False
+    assert captured == {}

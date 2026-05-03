@@ -30,5 +30,6 @@ jobs:
       - name: Run extended contract tests
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          PERPLEXITY_API_KEY: ${{ secrets.PERPLEXITY_API_KEY }}
         run: uv run pytest -m extended -v
         continue-on-error: true

@@ -114,6 +114,15 @@ _RESEARCH_OPTIONS: list[tuple[tuple, dict]] = [
         },
     ),
     (
+        ("--model", "model"),
+        {
+            "help": (
+                "Override the model for this run. Mutually exclusive with --pick-model. "
+                "Strings are passed through to the provider without local validation."
+            ),
+        },
+    ),
+    (
         ("--cancel-on-interrupt/--no-cancel-on-interrupt", "cancel_on_interrupt"),
         {
             "default": None,

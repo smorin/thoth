@@ -204,3 +204,295 @@ def test_immediate_falls_back_to_submit_get_result_when_stream_not_implemented(
     assert operation.providers["mock"]["job_id"] == "job-1"
     assert operation.output_paths == {}
     assert checkpoint.saved_statuses == ["running", "completed"]
+
+
+# ---------------------------------------------------------------------------
+# P23-TS05 — side-channel stream events (reasoning + citation) are rendered
+# to every selected sink and the project-persisted output.
+# ---------------------------------------------------------------------------
+
+
+class _CheckpointStub:
+    def __init__(self) -> None:
+        self.saved_statuses: list[str] = []
+
+    async def save(self, operation) -> None:
+        self.saved_statuses.append(operation.status)
+
+
+class _OutputCaptureStub:
+    """Records the content passed to save_result so tests can assert on it."""
+
+    def __init__(self) -> None:
+        self.calls: list[dict] = []
+
+    async def save_result(
+        self,
+        operation,
+        provider_name,
+        content,
+        output_dir,
+        *,
+        model=None,
+        system_prompt=None,
+    ):
+        self.calls.append(
+            {
+                "provider": provider_name,
+                "content": content,
+                "output_dir": output_dir,
+                "model": model,
+                "system_prompt": system_prompt,
+            }
+        )
+        return "fake-output-path"
+
+
+class _SideChannelProvider:
+    """Yields a mix of text / reasoning / citation events to drive TS05."""
+
+    model = "perplexity-stub"
+
+    async def stream(self, prompt, mode, system_prompt=None, verbose=False):
+        from thoth.providers.base import Citation, StreamEvent
+
+        yield StreamEvent(kind="reasoning", text="thinking step 1")
+        yield StreamEvent(kind="text", text="answer body")
+        yield StreamEvent(
+            kind="citation",
+            text="Title | One",
+            citation=Citation(title="Title | One", url="https://one.example"),
+        )
+        yield StreamEvent(
+            kind="citation",
+            text="Title Two",
+            citation=Citation(title="Title Two", url="https://two.example"),
+        )
+        yield StreamEvent(kind="done", text="")
+
+
+def test_immediate_renders_reasoning_event_to_stdout(
+    stub_config,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """TS05: reasoning event content reaches stdout."""
+    operation = make_operation("research-reasoning")
+    asyncio.run(
+        _execute_immediate(
+            operation=operation,
+            checkpoint_manager=_CheckpointStub(),  # ty: ignore[invalid-argument-type]
+            output_manager=_OutputCaptureStub(),  # ty: ignore[invalid-argument-type]
+            config=stub_config,
+            mode_config={"system_prompt": None},
+            providers={"perplexity": _SideChannelProvider()},
+            quiet=False,
+            verbose=False,
+            output_dir=None,
+            project=None,
+            mode="perplexity_quick",
+            prompt="hi",
+            out_specs=(),
+            append=False,
+            ctx=AppContext(config=stub_config),
+        )
+    )
+    captured = capsys.readouterr().out
+    assert "## Reasoning" in captured
+    assert "thinking step 1" in captured
+    assert "answer body" in captured
+    assert captured.index("answer body") < captured.index("## Reasoning")
+
+
+def test_immediate_renders_citations_as_sources_block(
+    stub_config,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """TS05: citation events render as a `## Sources` markdown block to stdout."""
+    operation = make_operation("research-citation")
+    asyncio.run(
+        _execute_immediate(
+            operation=operation,
+            checkpoint_manager=_CheckpointStub(),  # ty: ignore[invalid-argument-type]
+            output_manager=_OutputCaptureStub(),  # ty: ignore[invalid-argument-type]
+            config=stub_config,
+            mode_config={"system_prompt": None},
+            providers={"perplexity": _SideChannelProvider()},
+            quiet=False,
+            verbose=False,
+            output_dir=None,
+            project=None,
+            mode="perplexity_quick",
+            prompt="hi",
+            out_specs=(),
+            append=False,
+            ctx=AppContext(config=stub_config),
+        )
+    )
+    captured = capsys.readouterr().out
+    assert "## Sources" in captured
+    assert "[Title | One](https://one.example)" in captured
+    assert "[Title Two](https://two.example)" in captured
+
+
+def test_immediate_persisted_output_contains_reasoning_and_sources(
+    stub_config,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    """TS05: with --project set, save_result is called with combined content."""
+    operation = make_operation("research-persisted")
+    output_stub = _OutputCaptureStub()
+    asyncio.run(
+        _execute_immediate(
+            operation=operation,
+            checkpoint_manager=_CheckpointStub(),  # ty: ignore[invalid-argument-type]
+            output_manager=output_stub,  # ty: ignore[invalid-argument-type]
+            config=stub_config,
+            mode_config={"system_prompt": None},
+            providers={"perplexity": _SideChannelProvider()},
+            quiet=True,
+            verbose=False,
+            output_dir=str(tmp_path),
+            project="proj1",
+            mode="perplexity_quick",
+            prompt="hi",
+            out_specs=(),
+            append=False,
+            ctx=AppContext(config=stub_config),
+        )
+    )
+    assert len(output_stub.calls) == 1
+    persisted = output_stub.calls[0]["content"]
+    assert "## Reasoning" in persisted
+    assert "thinking step 1" in persisted
+    assert "answer body" in persisted
+    assert "## Sources" in persisted
+    assert "[Title | One](https://one.example)" in persisted
+    assert "[Title Two](https://two.example)" in persisted
+
+
+def test_immediate_writes_side_channel_events_to_file_sink(
+    stub_config,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    """TS05: file-only sink receives reasoning + sources alongside text."""
+    out_file = tmp_path / "out.md"
+    operation = make_operation("research-file-sink")
+    asyncio.run(
+        _execute_immediate(
+            operation=operation,
+            checkpoint_manager=_CheckpointStub(),  # ty: ignore[invalid-argument-type]
+            output_manager=_OutputCaptureStub(),  # ty: ignore[invalid-argument-type]
+            config=stub_config,
+            mode_config={"system_prompt": None},
+            providers={"perplexity": _SideChannelProvider()},
+            quiet=False,
+            verbose=False,
+            output_dir=None,
+            project=None,
+            mode="perplexity_quick",
+            prompt="hi",
+            out_specs=(str(out_file),),
+            append=False,
+            ctx=AppContext(config=stub_config),
+        )
+    )
+    file_content = out_file.read_text()
+    assert "thinking step 1" in file_content
+    assert "answer body" in file_content
+    assert "## Reasoning" in file_content
+    assert "## Sources" in file_content
+    assert "[Title | One](https://one.example)" in file_content
+
+
+# ---------------------------------------------------------------------------
+# P23-TS06 — explicit stream=False opts out of streaming entirely.
+# ---------------------------------------------------------------------------
+
+
+class _StreamUseTracker:
+    """Tracks whether stream() vs submit/get_result was used."""
+
+    model = "perplexity-nostream"
+
+    def __init__(self) -> None:
+        self.stream_called = False
+        self.submitted: tuple[str, str, str | None] | None = None
+
+    async def stream(self, prompt, mode, system_prompt=None, verbose=False):
+        self.stream_called = True
+        if False:
+            yield None  # pragma: no cover
+
+    async def submit(self, prompt, mode, system_prompt=None, verbose=False):
+        self.submitted = (prompt, mode, system_prompt)
+        return "job-nostream"
+
+    async def get_result(self, job_id, verbose=False):
+        assert job_id == "job-nostream"
+        return "non-stream answer\n\n## Sources\n\n- [t](https://x.example)"
+
+
+def test_immediate_stream_false_skips_stream_and_uses_submit(
+    stub_config,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """TS06: mode_config['stream'] is False -> bypass provider.stream()."""
+    operation = make_operation("research-stream-false")
+    provider = _StreamUseTracker()
+    asyncio.run(
+        _execute_immediate(
+            operation=operation,
+            checkpoint_manager=_CheckpointStub(),  # ty: ignore[invalid-argument-type]
+            output_manager=_OutputCaptureStub(),  # ty: ignore[invalid-argument-type]
+            config=stub_config,
+            mode_config={"system_prompt": None, "stream": False},
+            providers={"perplexity": provider},
+            quiet=False,
+            verbose=False,
+            output_dir=None,
+            project=None,
+            mode="perplexity_quick",
+            prompt="hi",
+            out_specs=(),
+            append=False,
+            ctx=AppContext(config=stub_config),
+        )
+    )
+    assert provider.stream_called is False
+    assert provider.submitted == ("hi", "perplexity_quick", "")
+    captured = capsys.readouterr().out
+    assert "non-stream answer" in captured
+    assert "## Sources" in captured
+
+
+def test_immediate_default_uses_stream(
+    stub_config,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """TS06: when stream is unset, the streaming path runs."""
+    operation = make_operation("research-stream-default")
+    provider = _SideChannelProvider()
+    asyncio.run(
+        _execute_immediate(
+            operation=operation,
+            checkpoint_manager=_CheckpointStub(),  # ty: ignore[invalid-argument-type]
+            output_manager=_OutputCaptureStub(),  # ty: ignore[invalid-argument-type]
+            config=stub_config,
+            mode_config={"system_prompt": None},  # no `stream` key
+            providers={"perplexity": provider},
+            quiet=False,
+            verbose=False,
+            output_dir=None,
+            project=None,
+            mode="perplexity_quick",
+            prompt="hi",
+            out_specs=(),
+            append=False,
+            ctx=AppContext(config=stub_config),
+        )
+    )
+    captured = capsys.readouterr().out
+    assert "answer body" in captured
+    assert "## Sources" in captured

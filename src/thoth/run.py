@@ -40,8 +40,15 @@ from thoth.models import OperationStatus
 from thoth.output import OutputManager
 from thoth.progress import run_with_spinner, should_show_spinner
 from thoth.providers import ResearchProvider, available_providers, create_provider
+from thoth.providers.base import Citation, StreamEvent
 from thoth.signals import _interrupt_event
-from thoth.utils import check_disk_space, generate_operation_id, mask_api_key
+from thoth.utils import (
+    check_disk_space,
+    generate_operation_id,
+    mask_api_key,
+    md_link_title,
+    md_link_url,
+)
 
 console = Console()
 
@@ -454,6 +461,48 @@ async def run_research(
         raise click.Abort()
 
 
+def _format_reasoning_block(reasoning_chunks: list[str]) -> str:
+    """Render buffered reasoning as a clearly separated markdown section."""
+    text = "".join(reasoning_chunks).strip()
+    if not text:
+        return ""
+    return "\n\n## Reasoning\n\n" + text + "\n"
+
+
+def _format_citations_block(citations: list[Citation]) -> str:
+    """Render structured citations as a `## Sources` markdown block.
+
+    Deduplicates by URL (the provider already dedupes, but a downstream
+    `--combined` run may join two providers' citation streams).
+    """
+    seen_urls: set[str] = set()
+    lines: list[str] = []
+    for entry in citations:
+        title = entry.title.strip()
+        url = entry.url.strip()
+        if not url or url in seen_urls:
+            continue
+        seen_urls.add(url)
+        lines.append(f"- [{md_link_title(title or url)}]({md_link_url(url)})")
+    if not lines:
+        return ""
+    return "\n\n## Sources\n\n" + "\n".join(lines) + "\n"
+
+
+def _citation_from_event(event: StreamEvent) -> Citation | None:
+    """Return structured citation data from a citation stream event.
+
+    P23 remediation stopped using `title|url` for new providers. The string
+    fallback keeps older test doubles or third-party providers from breaking.
+    """
+    if event.citation is not None:
+        return event.citation
+    if "|" not in event.text:
+        return None
+    title, _, url = event.text.partition("|")
+    return Citation(title=title, url=url)
+
+
 async def _execute_immediate(
     operation: OperationStatus,
     checkpoint_manager: CheckpointManager,
@@ -500,21 +549,17 @@ async def _execute_immediate(
 
     system_prompt = mode_config.get("system_prompt") or ""
     aggregated: list[str] = []
+    reasoning: list[str] = []
+    citations: list[Citation] = []
+
+    # P23-T06: explicit non-stream opt-out via mode_config['stream'] = False.
+    # Skips provider.stream() entirely and uses the submit/get_result path.
+    explicit_no_stream = mode_config.get("stream") is False
 
     sink = MultiSink.from_specs(list(out_specs), append=append)
     try:
         try:
-            try:
-                async for event in provider_instance.stream(
-                    prompt, mode, system_prompt, verbose=verbose
-                ):
-                    if event.kind == "text":
-                        sink.write(event.text)
-                        aggregated.append(event.text)
-                    elif event.kind == "done":
-                        break
-            except NotImplementedError:
-                # Fallback for providers that haven't implemented stream yet.
+            if explicit_no_stream:
                 job_id = await provider_instance.submit(
                     prompt, mode, system_prompt, verbose=verbose
                 )
@@ -522,6 +567,31 @@ async def _execute_immediate(
                 content = await provider_instance.get_result(job_id, verbose=verbose)
                 sink.write(content)
                 aggregated.append(content)
+            else:
+                try:
+                    async for event in provider_instance.stream(
+                        prompt, mode, system_prompt, verbose=verbose
+                    ):
+                        if event.kind == "text":
+                            sink.write(event.text)
+                            aggregated.append(event.text)
+                        elif event.kind == "reasoning":
+                            reasoning.append(event.text)
+                        elif event.kind == "citation":
+                            citation = _citation_from_event(event)
+                            if citation is not None:
+                                citations.append(citation)
+                        elif event.kind == "done":
+                            break
+                except NotImplementedError:
+                    # Fallback for providers that haven't implemented stream yet.
+                    job_id = await provider_instance.submit(
+                        prompt, mode, system_prompt, verbose=verbose
+                    )
+                    operation.providers[provider_name]["job_id"] = job_id
+                    content = await provider_instance.get_result(job_id, verbose=verbose)
+                    sink.write(content)
+                    aggregated.append(content)
         except Exception as e:
             # Streaming runs treat any exception as a permanent failure —
             # immediate-kind ops have no upstream job to retry/resume against.
@@ -535,6 +605,16 @@ async def _execute_immediate(
             operation.failure_type = "permanent"
             await checkpoint_manager.save(operation)
             return
+        if reasoning:
+            reasoning_block = _format_reasoning_block(reasoning)
+            sink.write(reasoning_block)
+            aggregated.append(reasoning_block)
+        # P23: render buffered citations as a `## Sources` markdown block to
+        # every selected sink, after text/reasoning events have flushed.
+        if citations:
+            sources_block = _format_citations_block(citations)
+            sink.write(sources_block)
+            aggregated.append(sources_block)
     finally:
         sink.close()
 

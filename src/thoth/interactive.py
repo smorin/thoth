@@ -160,7 +160,7 @@ class SlashCommandRegistry:
                 )
                 desc = {
                     "openai": "OpenAI GPT models",
-                    "perplexity": "Perplexity search AI (not implemented)",
+                    "perplexity": "Perplexity Sonar (web-grounded synchronous search)",
                     "mock": "Mock provider for testing",
                     "auto": "Automatic provider selection",
                 }.get(provider, "")
@@ -800,7 +800,7 @@ class InteractiveSession:
             print("\nAvailable providers:")
             providers = [
                 ("openai", "OpenAI GPT models"),
-                ("perplexity", "Perplexity search AI (not implemented)"),
+                ("perplexity", "Perplexity Sonar (web-grounded synchronous search)"),
                 ("mock", "Mock provider for testing"),
                 ("auto", "Automatic provider selection"),
             ]

@@ -17,6 +17,7 @@ import pytest
 from thoth.__main__ import (
     APIKeyError,
     APIQuotaError,
+    APIRateLimitError,
     OpenAIProvider,
     ProviderError,
     ThothError,
@@ -37,8 +38,10 @@ def _fake_sdk_error(
         return exc_class(request=request)
     if exc_class is openai.APIConnectionError:
         return exc_class(message=message, request=request)
+    if exc_class is openai.APIError:
+        return exc_class(message=message, request=request, body=body)
     response = httpx.Response(status_code=status, request=request)
-    return exc_class(message=message, response=response, body=body)
+    return exc_class(message=message, response=response, body=body)  # ty: ignore[missing-argument,unknown-argument]
 
 
 def _make_provider() -> OpenAIProvider:
@@ -69,7 +72,7 @@ class TestMapOpenAIError:
             openai.RateLimitError, message="slow down", status=429, body={"error": {}}
         )
         result = _map_openai_error(exc, model="o3")
-        assert isinstance(result, ProviderError)
+        assert isinstance(result, APIRateLimitError)
         assert not isinstance(result, APIQuotaError)
         assert "rate limit" in result.message.lower()
 
@@ -81,6 +84,21 @@ class TestMapOpenAIError:
             message="quota",
             status=429,
             body={"error": {"code": "insufficient_quota"}},
+        )
+        result = _map_openai_error(exc, model="o3")
+        assert isinstance(result, APIQuotaError)
+
+    def test_rate_limit_error_with_quota_message_maps_to_api_quota_error(self) -> None:
+        exc = _fake_sdk_error(
+            openai.RateLimitError,
+            message="quota",
+            status=429,
+            body={
+                "error": {
+                    "message": "You exceeded your current quota, please check billing.",
+                    "type": "insufficient_quota",
+                }
+            },
         )
         result = _map_openai_error(exc, model="o3")
         assert isinstance(result, APIQuotaError)

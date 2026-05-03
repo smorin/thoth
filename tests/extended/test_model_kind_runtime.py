@@ -54,10 +54,6 @@ def test_model_kind_matches_runtime_behavior(spec) -> None:
     if missing:
         pytest.skip(f"{spec.provider}: required env vars missing: {missing}")
 
-    if spec.provider == "perplexity":
-        # PerplexityProvider.submit raises NotImplementedError as of P18.
-        pytest.skip("perplexity provider is not yet operational")
-
     from thoth.config import ConfigManager
     from thoth.providers import create_provider
 

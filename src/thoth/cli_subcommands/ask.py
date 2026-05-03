@@ -38,6 +38,7 @@ _ASK_HONOR = DEFAULT_HONOR | {
     "timeout",
     "out",
     "append",
+    "model",
     "cancel_on_interrupt",
 }
 
@@ -74,6 +75,7 @@ def ask(
     interactive: bool,
     clarify: bool,
     pick_model: bool,
+    model: str | None,
     cancel_on_interrupt: bool | None,
     no_validate: bool,
     as_json: bool,
@@ -117,6 +119,14 @@ def ask(
             "--clarify does not apply to 'thoth ask'; "
             "use 'thoth --clarify' (interactive mode with clarification) instead."
         )
+    inherited_model = inherited_value(ctx, "model")
+    effective_model = model if model is not None else inherited_model
+
+    if effective_model and pick_model:
+        raise click.UsageError(
+            "--model and --pick-model are mutually exclusive; use one or the other."
+        )
+
     if pick_model:
         raise click.UsageError(
             "--pick-model does not apply to 'thoth ask'; "
@@ -229,7 +239,7 @@ def ask(
                     quiet=True,
                     no_metadata=effective_no_metadata,
                     timeout_override=effective_timeout,
-                    model_override=None,
+                    model_override=effective_model,
                     profile=effective_profile,
                     cancel_on_interrupt=effective_cancel_on_interrupt,
                     as_json=True,
@@ -286,7 +296,7 @@ def ask(
         quiet=effective_quiet,
         no_metadata=effective_no_metadata,
         timeout_override=effective_timeout,
-        model_override=None,
+        model_override=effective_model,
         out=out,
         append=append,
         profile=effective_profile,
