@@ -514,7 +514,9 @@ def test_d8_user_force_overwrites(tmp_path: Path) -> None:
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(_MIN_CONFIG_TOML + "# preexisting\n")
 
-        result = runner.invoke(init_cmd, ["--user", "--force", "--non-interactive"], env=_xdg_env(tmp_path))
+        result = runner.invoke(
+            init_cmd, ["--user", "--force", "--non-interactive"], env=_xdg_env(tmp_path)
+        )
         assert result.exit_code == 0, result.output
         assert "preexisting" not in target.read_text()
 
@@ -539,7 +541,9 @@ def test_d10_hidden_force_overwrites_existing_dotfile(tmp_path: Path) -> None:
     runner = CliRunner()
     with runner.isolated_filesystem(temp_dir=tmp_path):
         Path(".thoth.config.toml").write_text(_MIN_CONFIG_TOML + "# preexisting\n")
-        result = runner.invoke(init_cmd, ["--hidden", "--force", "--non-interactive"], env=_xdg_env(tmp_path))
+        result = runner.invoke(
+            init_cmd, ["--hidden", "--force", "--non-interactive"], env=_xdg_env(tmp_path)
+        )
         assert result.exit_code == 0, result.output
         assert "preexisting" not in Path(".thoth.config.toml").read_text()
 
