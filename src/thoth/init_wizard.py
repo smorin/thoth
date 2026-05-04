@@ -12,6 +12,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
+from thoth.errors import ThothError
+
 PromptFn = Callable[[str], str]
 ProviderName = Literal["openai", "perplexity", "gemini"]
 KeyStorage = Literal["env_ref", "literal", "skip"]
@@ -30,6 +32,82 @@ class WizardAnswers:
     providers: tuple[ProviderChoice, ...]
     default_mode: DefaultMode
     target_path: Path
+
+
+_MAX_RETRIES = 3
+
+
+def _format_menu(options: list[str]) -> str:
+    return "\n".join(f"  {i + 1}) {opt}" for i, opt in enumerate(options))
+
+
+def pick_one(
+    options: list[str],
+    *,
+    prompt_fn: PromptFn,
+    default_index: int,
+    label: str = "Choose",
+) -> str:
+    """Render a numbered list, return the user's pick.
+
+    `default_index` is the 0-based index that an empty input maps to.
+    Retries up to `_MAX_RETRIES` times on garbage input, then raises.
+    """
+    menu = _format_menu(options)
+    default_label = options[default_index]
+    full_prompt = f"{label}:\n{menu}\n[default: {default_label}] > "
+    for _ in range(_MAX_RETRIES):
+        raw = prompt_fn(full_prompt).strip()
+        if not raw:
+            return options[default_index]
+        try:
+            n = int(raw)
+        except ValueError:
+            continue
+        if 1 <= n <= len(options):
+            return options[n - 1]
+    raise ThothError("invalid selection")
+
+
+def pick_many(
+    options: list[str],
+    *,
+    prompt_fn: PromptFn,
+    label: str = "Choose (comma-separated)",
+) -> list[str]:
+    """Render a numbered list, parse comma-separated picks.
+
+    Empty input re-prompts once. A second empty input returns `[]`
+    (interpreted as "skip all" by the caller).
+    """
+    menu = _format_menu(options)
+    full_prompt = f"{label}:\n{menu}\n> "
+    for empty_seen in range(2):
+        raw = prompt_fn(full_prompt).strip()
+        if not raw:
+            if empty_seen == 1:
+                return []
+            continue
+        picked: list[str] = []
+        seen: set[int] = set()
+        valid = True
+        for part in raw.split(","):
+            part = part.strip()
+            try:
+                n = int(part)
+            except ValueError:
+                valid = False
+                break
+            if not (1 <= n <= len(options)):
+                valid = False
+                break
+            if n not in seen:
+                seen.add(n)
+                picked.append(options[n - 1])
+        if valid and picked:
+            return picked
+        # garbage → loop again as if empty (but consume retry budget)
+    raise ThothError("invalid selection")
 
 
 class ScriptedPrompts:

@@ -38,3 +38,43 @@ def test_scripted_prompts_raises_when_exhausted() -> None:
     sp("p")
     with pytest.raises(AssertionError, match="ScriptedPrompts exhausted"):
         sp("p2")
+
+
+from thoth.errors import ThothError  # noqa: E402
+from thoth.init_wizard import pick_many, pick_one  # noqa: E402
+
+
+def test_pick_one_returns_indexed_value() -> None:
+    sp = ScriptedPrompts(["2"])
+    assert pick_one(["a", "b", "c"], prompt_fn=sp, default_index=0) == "b"
+
+
+def test_pick_one_default_on_empty_input() -> None:
+    sp = ScriptedPrompts([""])
+    assert pick_one(["a", "b", "c"], prompt_fn=sp, default_index=2) == "c"
+
+
+def test_pick_one_retries_then_errors_on_garbage() -> None:
+    sp = ScriptedPrompts(["x", "0", "99"])  # 3 bad answers
+    with pytest.raises(ThothError, match="invalid selection"):
+        pick_one(["a", "b"], prompt_fn=sp, default_index=0)
+
+
+def test_pick_many_parses_comma_input() -> None:
+    sp = ScriptedPrompts(["1,3"])
+    assert pick_many(["a", "b", "c"], prompt_fn=sp) == ["a", "c"]
+
+
+def test_pick_many_handles_whitespace() -> None:
+    sp = ScriptedPrompts([" 1 , 2 "])
+    assert pick_many(["a", "b", "c"], prompt_fn=sp) == ["a", "b"]
+
+
+def test_pick_many_dedupes_preserves_order() -> None:
+    sp = ScriptedPrompts(["3,1,3"])
+    assert pick_many(["a", "b", "c"], prompt_fn=sp) == ["c", "a"]
+
+
+def test_pick_many_empty_returns_empty_list() -> None:
+    sp = ScriptedPrompts(["", ""])  # 2 empty re-prompts then accept
+    assert pick_many(["a", "b"], prompt_fn=sp) == []
