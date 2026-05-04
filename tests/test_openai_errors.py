@@ -197,3 +197,20 @@ class TestVCRHappyPathDoesNotInvokeMapper:
         with patch.object(provider.client.responses, "create", new=AsyncMock(return_value=_Resp())):
             job_id = asyncio.run(provider.submit("p", mode="default"))
         assert job_id == "resp_happy"
+
+
+def test_openai_constants_use_suffix_naming() -> None:
+    """OpenAI module-level constants follow the cross-provider suffix convention."""
+    from thoth.providers import openai as op
+
+    assert hasattr(op, "_DIRECT_SDK_KEYS_OPENAI"), (
+        "_DIRECT_SDK_KEYS_OPENAI must exist (introduced for cross-provider parity)"
+    )
+    assert hasattr(op, "_PROVIDER_NAME_OPENAI"), (
+        "_PROVIDER_NAME_OPENAI must exist (introduced for cross-provider parity)"
+    )
+    assert op._PROVIDER_NAME_OPENAI == "openai"
+    # The Responses API kwargs the immediate path passes:
+    assert "temperature" in op._DIRECT_SDK_KEYS_OPENAI
+    assert "max_tool_calls" in op._DIRECT_SDK_KEYS_OPENAI
+    assert "tools" in op._DIRECT_SDK_KEYS_OPENAI

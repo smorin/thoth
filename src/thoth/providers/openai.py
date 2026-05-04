@@ -46,6 +46,18 @@ _OPENAI_STATUS_TABLE: dict[str, dict[str, Any]] = {
 }
 
 
+_PROVIDER_NAME_OPENAI = "openai"
+_DIRECT_SDK_KEYS_OPENAI: tuple[str, ...] = (
+    "model",
+    "input",
+    "reasoning",
+    "tools",
+    "background",
+    "temperature",
+    "max_tool_calls",
+)
+
+
 def _rate_limit_error_is_quota(exc: BaseException) -> bool:
     """Return True when a 429-style SDK error is actually quota/billing exhaustion."""
     body = getattr(exc, "body", None) or {}
@@ -90,16 +102,16 @@ def _map_openai_error(
                 "Invalid OpenAI API key",
                 "Please check your API key at https://platform.openai.com/account/api-keys",
             )
-        return APIKeyError("openai")
+        return APIKeyError(_PROVIDER_NAME_OPENAI)
 
     if isinstance(exc, openai.RateLimitError):
         if _rate_limit_error_is_quota(exc):
-            return APIQuotaError("openai")
-        return APIRateLimitError("openai")
+            return APIQuotaError(_PROVIDER_NAME_OPENAI)
+        return APIRateLimitError(_PROVIDER_NAME_OPENAI)
 
     if isinstance(exc, openai.NotFoundError):
         return ProviderError(
-            "openai",
+            _PROVIDER_NAME_OPENAI,
             f"Model '{model}' not found. Please check available models with "
             f"'thoth providers models --provider openai'",
             raw_error=raw,
@@ -110,7 +122,7 @@ def _map_openai_error(
         msg_lower = msg.lower()
         if "unsupported parameter" in msg_lower and "temperature" in msg_lower:
             return ProviderError(
-                "openai",
+                _PROVIDER_NAME_OPENAI,
                 f"Model '{model}' does not support temperature parameter. "
                 "This is likely a response model (o3, o3-deep-research, etc.)",
                 raw_error=raw,
@@ -119,43 +131,45 @@ def _map_openai_error(
             param_match = re.search(r"'(\w+)'", msg)
             param_name = param_match.group(1) if param_match else "unknown"
             return ProviderError(
-                "openai",
+                _PROVIDER_NAME_OPENAI,
                 f"Model '{model}' does not support parameter '{param_name}'",
                 raw_error=raw,
             )
-        return ProviderError("openai", f"Invalid request: {msg}", raw_error=raw)
+        return ProviderError(_PROVIDER_NAME_OPENAI, f"Invalid request: {msg}", raw_error=raw)
 
     if isinstance(exc, openai.PermissionDeniedError):
-        return ProviderError("openai", "Permission denied by OpenAI API.", raw_error=raw)
+        return ProviderError(
+            _PROVIDER_NAME_OPENAI, "Permission denied by OpenAI API.", raw_error=raw
+        )
 
     if isinstance(exc, openai.InternalServerError):
         return ProviderError(
-            "openai",
+            _PROVIDER_NAME_OPENAI,
             "OpenAI server error. Try again in a moment.",
             raw_error=raw,
         )
 
     if isinstance(exc, openai.APITimeoutError):
         return ProviderError(
-            "openai",
+            _PROVIDER_NAME_OPENAI,
             "Request timed out. Try increasing timeout in config.",
             raw_error=raw,
         )
 
     if isinstance(exc, openai.APIConnectionError):
         return ProviderError(
-            "openai",
+            _PROVIDER_NAME_OPENAI,
             "Failed to connect to OpenAI API. Check your internet connection.",
             raw_error=raw,
         )
 
     if isinstance(exc, openai.APIError):
-        return ProviderError("openai", str(exc), raw_error=raw)
+        return ProviderError(_PROVIDER_NAME_OPENAI, str(exc), raw_error=raw)
 
     # A6 (P27 factor-dedup): intentional defense-in-depth. APIError is the
     # SDK base class so this fallthrough is unreachable in practice; kept to
     # guard against non-SDK exceptions sneaking through future refactors.
-    return ProviderError("openai", str(exc), raw_error=raw)
+    return ProviderError(_PROVIDER_NAME_OPENAI, str(exc), raw_error=raw)
 
 
 class OpenAIProvider(ResearchProvider):
