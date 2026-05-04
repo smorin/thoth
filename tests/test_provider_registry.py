@@ -110,10 +110,18 @@ def test_perplexity_deep_research_mode_resolves_to_sonar_deep_research() -> None
     assert perp_cfg.get("reasoning_effort") == "high"
 
 
-def test_create_provider_returns_perplexity_instance() -> None:
-    """T15: `create_provider('perplexity', cfg)` returns a usable PerplexityProvider."""
+def test_create_provider_returns_perplexity_instance(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """T15: `create_provider('perplexity', cfg)` returns a usable PerplexityProvider.
+
+    monkeypatch.delenv guards against developer machines (and CI runners with
+    PERPLEXITY_API_KEY exported) overriding the stub config's api_key — the
+    factory prefers env-var values when present.
+    """
     from thoth.providers.perplexity import PerplexityProvider
 
+    monkeypatch.delenv("PERPLEXITY_API_KEY", raising=False)
     config = _stub_config({"perplexity": {"api_key": "pplx-test"}})
     provider = create_provider("perplexity", config)  # ty: ignore[invalid-argument-type]
     assert isinstance(provider, PerplexityProvider)
