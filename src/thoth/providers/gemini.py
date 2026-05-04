@@ -11,7 +11,9 @@ and the thinking-budget knob.
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
 from typing import Any
+from urllib.parse import urlparse
 
 import httpx
 from google.genai import errors as genai_errors  # type: ignore[import-not-found]
@@ -20,6 +22,7 @@ from thoth.errors import (
     APIKeyError,
     APIQuotaError,
     APIRateLimitError,
+    ModeKindMismatchError,
     ProviderError,
     ThothError,
 )
@@ -27,7 +30,7 @@ from thoth.providers._helpers import (
     _extract_unsupported_param,
     _invalid_key_thotherror,
 )
-from thoth.providers.base import ResearchProvider
+from thoth.providers.base import Citation, ResearchProvider, StreamEvent
 
 _PROVIDER_NAME_GEMINI = "gemini"
 
@@ -217,6 +220,15 @@ class GeminiProvider(ResearchProvider):
     def implementation_status(self) -> str | None:
         return None
 
+    def _validate_kind_for_model(self, mode: str) -> None:
+        """Validate that the configured kind matches the model's capabilities.
+
+        No-op stub. Task 4.6 will fill in the actual immediate/background
+        guard. Defined here so submit/stream call sites are stable across
+        the 4.4/4.5/4.6 task split.
+        """
+        return None
+
     def _build_messages_and_system(
         self, prompt: str, system_prompt: str | None
     ) -> tuple[list[Any], str | None]:
@@ -292,3 +304,86 @@ class GeminiProvider(ResearchProvider):
                 config_kwargs[key] = gemini_cfg[key]
 
         return types.GenerateContentConfig(**config_kwargs) if config_kwargs else None
+
+    async def stream(
+        self,
+        prompt: str,
+        mode: str,
+        system_prompt: str | None = None,
+        verbose: bool = False,
+    ) -> AsyncIterator[StreamEvent]:
+        """Stream Gemini chunks translated to StreamEvent instances.
+
+        Emits:
+          - StreamEvent("text", part.text) for each non-thought Part.
+          - StreamEvent("reasoning", part.text) for each Part where thought=True.
+          - StreamEvent("citation", Citation(title, url)) for each unique
+            grounding_chunks[i].web entry, deduped by URL across the stream.
+          - StreamEvent("done", "") on clean stream exit.
+
+        Mid-iteration errors map through _map_gemini_error.
+        ModeKindMismatchError (raised by _validate_kind_for_model in Task 4.6)
+        propagates unmapped.
+        """
+        self._validate_kind_for_model(mode)  # implemented by Task 4.6; no-op until then
+
+        # Build the request kwargs
+        contents, system = self._build_messages_and_system(prompt, system_prompt)
+        config = self._build_generate_content_config()
+        if system:
+            from google.genai import types  # type: ignore[import-not-found]
+
+            if config is None:
+                config = types.GenerateContentConfig(system_instruction=system)
+            else:
+                config.system_instruction = system
+
+        kwargs: dict[str, Any] = {"model": self.model, "contents": contents}
+        if config is not None:
+            kwargs["config"] = config
+
+        seen_citation_urls: set[str] = set()
+
+        try:
+            stream_iter = await self.client.aio.models.generate_content_stream(**kwargs)
+            async for chunk in stream_iter:
+                candidates = getattr(chunk, "candidates", None) or []
+                if not candidates:
+                    continue
+                candidate = candidates[0]
+                content = getattr(candidate, "content", None)
+                parts = getattr(content, "parts", None) if content else None
+                if parts:
+                    for part in parts:
+                        text = getattr(part, "text", "") or ""
+                        if not text:
+                            continue
+                        if getattr(part, "thought", False):
+                            yield StreamEvent(kind="reasoning", text=text)
+                        else:
+                            yield StreamEvent(kind="text", text=text)
+
+                grounding = getattr(candidate, "grounding_metadata", None)
+                if grounding is not None:
+                    grounding_chunks = getattr(grounding, "grounding_chunks", None) or []
+                    for gc in grounding_chunks:
+                        web = getattr(gc, "web", None)
+                        if web is None:
+                            continue
+                        url = getattr(web, "uri", None)
+                        if not url or url in seen_citation_urls:
+                            continue
+                        seen_citation_urls.add(url)
+                        title = getattr(web, "title", "") or urlparse(url).netloc
+                        yield StreamEvent(
+                            kind="citation",
+                            text=str(title),
+                            citation=Citation(title=str(title), url=str(url)),
+                        )
+
+            yield StreamEvent(kind="done", text="")
+
+        except ModeKindMismatchError:
+            raise  # propagate unmapped (per error-mapper convention)
+        except Exception as e:
+            raise _map_gemini_error(e, self.model, verbose=verbose) from e

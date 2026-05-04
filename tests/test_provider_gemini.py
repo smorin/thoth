@@ -405,3 +405,263 @@ def test_gemini_retry_classes_excludes_quota_error() -> None:
     from thoth.providers.gemini import _GEMINI_RETRY_CLASSES
 
     assert APIQuotaError not in _GEMINI_RETRY_CLASSES
+
+
+# ---------------------------------------------------------------------------
+# Task 4.4: stream() translation
+# ---------------------------------------------------------------------------
+
+import asyncio  # noqa: E402
+from types import SimpleNamespace  # noqa: E402
+from unittest.mock import patch  # noqa: E402
+
+
+def _make_chunk(parts: list[dict] | None = None, grounding: dict | None = None) -> SimpleNamespace:
+    """Build a fake GenerateContentResponse chunk for stream tests."""
+    candidate_parts = []
+    for p in parts or []:
+        candidate_parts.append(
+            SimpleNamespace(text=p.get("text", ""), thought=p.get("thought", False))
+        )
+    grounding_obj = SimpleNamespace(**grounding) if grounding else None
+    candidate = SimpleNamespace(
+        content=SimpleNamespace(parts=candidate_parts),
+        grounding_metadata=grounding_obj,
+    )
+    return SimpleNamespace(
+        candidates=[candidate],
+        text=" ".join(p.get("text", "") for p in (parts or []) if not p.get("thought")),
+    )
+
+
+async def _consume_events(stream_iter):
+    return [event async for event in stream_iter]
+
+
+def _make_gemini_provider_with_chunks(chunks: list):
+    """Construct a GeminiProvider whose client.aio.models.generate_content_stream
+    yields the given fake chunks. Uses unittest.mock.patch over google.genai.Client.
+
+    The real google-genai SDK exposes generate_content_stream as a coroutine
+    function returning an AsyncIterator (i.e. `async for chunk in await
+    client.aio.models.generate_content_stream(...)`). We mirror that shape
+    here: the outer function is async (returns a coroutine) that resolves
+    to an async generator over the fake chunks.
+    """
+    from thoth.providers.gemini import GeminiProvider
+
+    async def _async_iter():
+        for c in chunks:
+            yield c
+
+    async def fake_stream(**kw):
+        return _async_iter()
+
+    mock_client = SimpleNamespace()
+    mock_client.aio = SimpleNamespace()
+    mock_client.aio.models = SimpleNamespace()
+    mock_client.aio.models.generate_content_stream = fake_stream
+    mock_client.aio.models.generate_content = lambda **kw: None  # not exercised here
+
+    with patch("google.genai.Client", return_value=mock_client):
+        provider = GeminiProvider(api_key="dummy", config={"kind": "immediate"})
+    return provider
+
+
+def test_gemini_stream_emits_text_for_non_thought_parts() -> None:
+    """A chunk with non-thought parts emits StreamEvent('text', text) per part."""
+    chunks = [
+        _make_chunk(
+            parts=[
+                {"text": "Hello "},
+                {"text": "world.", "thought": False},
+            ]
+        ),
+    ]
+    provider = _make_gemini_provider_with_chunks(chunks)
+    events = asyncio.run(_consume_events(provider.stream("Q?", "test_mode")))
+
+    text_events = [e for e in events if e.kind == "text"]
+    assert len(text_events) == 2
+    assert text_events[0].text == "Hello "
+    assert text_events[1].text == "world."
+
+
+def test_gemini_stream_emits_reasoning_for_thought_parts() -> None:
+    """A part with thought=True emits StreamEvent('reasoning', text)."""
+    chunks = [
+        _make_chunk(
+            parts=[
+                {"text": "Let me think: ", "thought": True},
+                {"text": "Answer is 42.", "thought": False},
+            ]
+        ),
+    ]
+    provider = _make_gemini_provider_with_chunks(chunks)
+    events = asyncio.run(_consume_events(provider.stream("Q?", "test_mode")))
+
+    reasoning = [e for e in events if e.kind == "reasoning"]
+    text = [e for e in events if e.kind == "text"]
+    assert len(reasoning) == 1
+    assert reasoning[0].text == "Let me think: "
+    assert len(text) == 1
+    assert text[0].text == "Answer is 42."
+
+
+def test_gemini_stream_emits_citations_from_terminal_grounding_chunks() -> None:
+    """grounding_metadata.grounding_chunks emit deduped StreamEvent('citation', Citation(...))."""
+    grounding = {
+        "grounding_chunks": [
+            SimpleNamespace(
+                web=SimpleNamespace(
+                    uri="https://vertexaisearch.cloud.google.com/grounding-api-redirect/AAA",
+                    title="example.com",
+                )
+            ),
+            SimpleNamespace(
+                web=SimpleNamespace(
+                    uri="https://vertexaisearch.cloud.google.com/grounding-api-redirect/BBB",
+                    title="other.com",
+                )
+            ),
+            # duplicate URL — should dedupe
+            SimpleNamespace(
+                web=SimpleNamespace(
+                    uri="https://vertexaisearch.cloud.google.com/grounding-api-redirect/AAA",
+                    title="example.com",
+                )
+            ),
+        ]
+    }
+
+    chunks = [
+        _make_chunk(parts=[{"text": "Per source A and B."}]),
+        _make_chunk(parts=[], grounding=grounding),  # terminal chunk
+    ]
+    provider = _make_gemini_provider_with_chunks(chunks)
+    events = asyncio.run(_consume_events(provider.stream("Q?", "test_mode")))
+
+    citations = [e for e in events if e.kind == "citation"]
+    assert len(citations) == 2  # deduped
+    from thoth.providers.base import Citation
+
+    assert all(isinstance(e.citation, Citation) for e in citations)
+    assert citations[0].citation.url.startswith("https://vertexaisearch")
+
+
+def test_gemini_stream_terminal_done_event() -> None:
+    """Stream always ends with StreamEvent('done', '')."""
+    chunks = [_make_chunk(parts=[{"text": "Hi."}])]
+    provider = _make_gemini_provider_with_chunks(chunks)
+    events = asyncio.run(_consume_events(provider.stream("Q?", "test_mode")))
+
+    assert events[-1].kind == "done"
+    assert events[-1].text == ""
+
+
+def test_gemini_stream_title_falls_back_to_netloc_when_empty() -> None:
+    """Citation.title = urlparse(uri).netloc when web.title is missing/empty."""
+    grounding = {
+        "grounding_chunks": [
+            SimpleNamespace(
+                web=SimpleNamespace(
+                    uri="https://example.com/path",
+                    title="",
+                )
+            ),
+        ]
+    }
+    chunks = [_make_chunk(parts=[], grounding=grounding)]
+    provider = _make_gemini_provider_with_chunks(chunks)
+    events = asyncio.run(_consume_events(provider.stream("Q?", "test_mode")))
+
+    citations = [e for e in events if e.kind == "citation"]
+    assert len(citations) == 1
+    assert citations[0].citation.title == "example.com"
+
+
+def test_gemini_stream_skips_empty_text_parts() -> None:
+    """Empty-text parts (e.g., placeholder/empty) are skipped, not emitted."""
+    chunks = [
+        _make_chunk(
+            parts=[
+                {"text": ""},  # empty — should be skipped
+                {"text": "Real text."},
+            ]
+        ),
+    ]
+    provider = _make_gemini_provider_with_chunks(chunks)
+    events = asyncio.run(_consume_events(provider.stream("Q?", "test_mode")))
+
+    text_events = [e for e in events if e.kind == "text"]
+    assert len(text_events) == 1
+    assert text_events[0].text == "Real text."
+
+
+def test_gemini_stream_handles_chunk_without_candidates() -> None:
+    """Chunks with no candidates (or empty candidates list) are tolerated, no events emitted."""
+    chunks = [
+        SimpleNamespace(candidates=[], text=""),  # empty candidates list
+        _make_chunk(parts=[{"text": "Real."}]),
+    ]
+    provider = _make_gemini_provider_with_chunks(chunks)
+    events = asyncio.run(_consume_events(provider.stream("Q?", "test_mode")))
+
+    text_events = [e for e in events if e.kind == "text"]
+    assert len(text_events) == 1
+    assert events[-1].kind == "done"
+
+
+def test_gemini_stream_skips_grounding_chunks_without_web_field() -> None:
+    """grounding_chunks of type image/maps/retrievedContext (no .web) are skipped."""
+    grounding = {
+        "grounding_chunks": [
+            # Has web — should produce a citation
+            SimpleNamespace(web=SimpleNamespace(uri="https://example.com", title="example.com")),
+            # No web (e.g. image variant) — should skip
+            SimpleNamespace(web=None),
+        ]
+    }
+    chunks = [_make_chunk(parts=[], grounding=grounding)]
+    provider = _make_gemini_provider_with_chunks(chunks)
+    events = asyncio.run(_consume_events(provider.stream("Q?", "test_mode")))
+
+    citations = [e for e in events if e.kind == "citation"]
+    assert len(citations) == 1
+
+
+def test_gemini_stream_mid_iteration_error_maps_to_provider_error() -> None:
+    """A ClientError raised mid-iteration is mapped via _map_gemini_error."""
+    from google.genai import errors as genai_errors
+
+    from thoth.errors import ProviderError
+
+    fake_response = MagicMock()
+    fake_response.status_code = 400
+
+    async def _iter_raises_mid():
+        yield _make_chunk(parts=[{"text": "Started"}])
+        raise genai_errors.ClientError(
+            code=400,
+            response_json={
+                "error": {"code": 400, "status": "INVALID_ARGUMENT", "message": "Bad mid-stream"}
+            },
+            response=fake_response,
+        )
+
+    async def fake_stream_raises_mid_iter(**kw):
+        return _iter_raises_mid()
+
+    from thoth.providers.gemini import GeminiProvider
+
+    mock_client = SimpleNamespace()
+    mock_client.aio = SimpleNamespace()
+    mock_client.aio.models = SimpleNamespace()
+    mock_client.aio.models.generate_content_stream = fake_stream_raises_mid_iter
+    mock_client.aio.models.generate_content = lambda **kw: None
+
+    with patch("google.genai.Client", return_value=mock_client):
+        provider = GeminiProvider(api_key="dummy", config={"kind": "immediate"})
+    with pytest.raises(ProviderError) as excinfo:
+        asyncio.run(_consume_events(provider.stream("Q?", "test_mode")))
+    assert "Bad mid-stream" in str(excinfo.value) or "bad request" in str(excinfo.value).lower()
