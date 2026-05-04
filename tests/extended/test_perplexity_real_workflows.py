@@ -232,7 +232,7 @@ def test_ext_pplx_bg_submit_async_persists_request_id(
         prompt="Briefly summarize one recent advance in mRNA vaccine research.",
     )
 
-    job_id = wait_for_provider_job_id(state_root, operation_id, timeout=60.0)
+    job_id = wait_for_provider_job_id(state_root, operation_id, provider="perplexity", timeout=60.0)
     assert isinstance(job_id, str) and job_id, "expected non-empty Perplexity request_id"
 
     checkpoint = json.loads(checkpoint_path(state_root, operation_id).read_text())
@@ -260,7 +260,7 @@ def test_ext_pplx_bg_cancel_renders_upstream_unsupported(
         env,
         prompt="Briefly summarize one recent advance in genetic engineering.",
     )
-    assert wait_for_provider_job_id(state_root, operation_id, timeout=60.0)
+    assert wait_for_provider_job_id(state_root, operation_id, provider="perplexity", timeout=60.0)
 
     cancel_result, cancel_elapsed = run_thoth(["cancel", operation_id, "--json"], env, timeout=45)
     assert cancel_result.returncode == 0, cancel_result.stderr + cancel_result.stdout
