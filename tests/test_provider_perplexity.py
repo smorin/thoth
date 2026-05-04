@@ -86,6 +86,25 @@ def test_perplexity_reasoning_builtin_mode_present() -> None:
     assert perp.get("stream_mode") == "concise"
 
 
+def test_perplexity_deep_research_builtin_mode_present() -> None:
+    """P27-TS01: BUILTIN_MODES['perplexity_deep_research'] -> sonar-deep-research/background/high.
+
+    Locked at P27 kickoff: reasoning_effort = "high" (~$1.32/query). The mode
+    targets the async API (POST /v1/async/sonar). `kind: "background"` is
+    required so the runner routes to the polling lifecycle, not the immediate
+    `chat.completions` path that P23's other modes use.
+    """
+    from thoth.config import BUILTIN_MODES
+
+    mode = BUILTIN_MODES.get("perplexity_deep_research")
+    assert mode is not None, "expected built-in mode 'perplexity_deep_research'"
+    assert mode["provider"] == "perplexity"
+    assert mode["model"] == "sonar-deep-research"
+    assert mode["kind"] == "background"
+    perp = cast(dict[str, Any], mode.get("perplexity") or {})
+    assert perp.get("reasoning_effort") == "high"
+
+
 # ---------------------------------------------------------------------------
 # TS02 — request construction
 # ---------------------------------------------------------------------------
@@ -719,6 +738,48 @@ def test_perplexity_allows_plain_models_on_immediate() -> None:
 
 
 # ---------------------------------------------------------------------------
+# P27-TS06 — reverse-direction kind-mismatch defense
+# ---------------------------------------------------------------------------
+#
+# Perplexity's `/v1/async/sonar` endpoint hard-rejects non-deep-research
+# models with HTTP 422. The defense raises ModeKindMismatchError pre-HTTP
+# instead, so users see a config-edit suggestion rather than a confusing
+# upstream error mid-run. Mirrors P23's TS07 (immediate + DR-model) but on
+# the opposite axis: background + non-DR-model.
+#
+# Forward-compat: any future `sonar-deep-research-*` model passes via the
+# substring rule in `is_background_model()` (config.py:200), so we don't
+# need a code change to support new DR models.
+
+
+@pytest.mark.parametrize("bad_model", ["sonar", "sonar-pro", "sonar-reasoning-pro"])
+def test_perplexity_rejects_background_on_non_deep_research(bad_model: str) -> None:
+    """P27-TS06: kind='background' on a non-DR model raises before any HTTP call."""
+    from thoth.errors import ModeKindMismatchError
+
+    provider = PerplexityProvider(
+        api_key="pplx-test", config={"model": bad_model, "kind": "background"}
+    )
+    with pytest.raises(ModeKindMismatchError):
+        asyncio.run(provider.submit("hi", mode="some_misconfigured_mode"))
+
+
+def test_perplexity_allows_sonar_deep_research_on_background() -> None:
+    """P27-TS06: model='sonar-deep-research' + kind='background' is legal (no raise).
+
+    The validation must let this through — it's the canonical happy path for
+    the new async lifecycle.
+    """
+    provider = PerplexityProvider(
+        api_key="pplx-test",
+        config={"model": "sonar-deep-research", "kind": "background"},
+    )
+    # Calling the validator directly avoids tripping the (not-yet-implemented)
+    # async submit path; we only assert no exception is raised here.
+    provider._validate_kind_for_model("perplexity_deep_research")
+
+
+# ---------------------------------------------------------------------------
 # TS08 — implementation status flip + user-facing surface
 # ---------------------------------------------------------------------------
 
@@ -729,13 +790,11 @@ def test_perplexity_is_implemented_returns_true() -> None:
     assert provider.is_implemented() is True
 
 
-def test_perplexity_list_models_returns_supported_sync_models() -> None:
-    """TS08: list_models() returns sonar / sonar-pro / sonar-reasoning-pro."""
+def test_perplexity_list_models_returns_supported_models() -> None:
+    """TS08/P27: list_models() includes built-in Perplexity immediate + background models."""
     provider = PerplexityProvider(api_key="pplx-test")
     ids = {m["id"] for m in asyncio.run(provider.list_models())}
-    assert {"sonar", "sonar-pro", "sonar-reasoning-pro"}.issubset(ids)
-    # sonar-deep-research is P27's domain; it must NOT appear in P23's supported list.
-    assert "sonar-deep-research" not in ids
+    assert {"sonar", "sonar-pro", "sonar-reasoning-pro", "sonar-deep-research"}.issubset(ids)
 
 
 def test_perplexity_provider_description_drops_not_implemented() -> None:
@@ -757,3 +816,29 @@ def test_perplexity_provider_description_drops_not_implemented() -> None:
                 continue
             if "(not implemented)" in line:
                 raise AssertionError(f"stale 'not implemented' copy in {filename}: {line!r}")
+
+
+def test_perplexity_sync_maps_402_status_code_to_api_quota_error() -> None:
+    """A1 (factor-dedup) sync belt: any APIStatusError carrying status_code=402
+    routes to APIQuotaError, regardless of which openai SDK subclass it is.
+
+    Perplexity uses 402 for credit exhaustion. The openai SDK doesn't have a
+    PaymentRequired exception subclass — a 402 may surface as a bare
+    APIStatusError or one of its subclasses (BadRequestError etc., depending
+    on SDK version). The mapper checks `getattr(exc, 'status_code', None) == 402`
+    so any APIStatusError-shaped exception with that status code is upgraded
+    to APIQuotaError before the generic APIError catch-all.
+    """
+    import httpx
+    import openai
+
+    from thoth.errors import APIQuotaError
+    from thoth.providers.perplexity import _map_perplexity_error
+
+    request = httpx.Request("POST", "https://api.perplexity.ai/chat/completions")
+    response = httpx.Response(status_code=402, request=request)
+    exc = openai.BadRequestError(message="402 from upstream", response=response, body=None)
+    result = _map_perplexity_error(exc)
+    assert isinstance(result, APIQuotaError), (
+        f"expected APIQuotaError for status_code=402, got {type(result).__name__}: {result!r}"
+    )

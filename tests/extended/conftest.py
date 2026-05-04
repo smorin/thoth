@@ -231,8 +231,15 @@ def wait_for_provider_job_id(
     state_root: Path,
     operation_id: str,
     *,
+    provider: str = "openai",
     timeout: float = 45.0,
 ) -> str:
+    """Poll the checkpoint until the named provider records a non-empty job_id.
+
+    P27 added the `provider` parameter — previously hardcoded to "openai" —
+    so Perplexity's extended tests can wait on `providers.perplexity.job_id`.
+    Default stays "openai" to keep the existing OpenAI-arc tests intact.
+    """
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         path = checkpoint_path(state_root, operation_id)
@@ -242,8 +249,8 @@ def wait_for_provider_job_id(
             except json.JSONDecodeError:
                 time.sleep(0.1)
                 continue
-            job_id = checkpoint.get("providers", {}).get("openai", {}).get("job_id")
+            job_id = checkpoint.get("providers", {}).get(provider, {}).get("job_id")
             if job_id:
                 return str(job_id)
         time.sleep(0.2)
-    pytest.fail(f"timed out waiting for provider job id in checkpoint for {operation_id}")
+    pytest.fail(f"timed out waiting for {provider} job id in checkpoint for {operation_id}")

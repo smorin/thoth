@@ -16,7 +16,7 @@
 - **External (Perplexity async):** https://docs.perplexity.ai/api-reference/async-chat-completions
 - **External (Perplexity rate-limit tiers):** https://docs.perplexity.ai/guides/usage-tiers
 
-**Status:** `[ ]` Scoped, not started.
+**Status:** `[x]` Complete.
 
 **Goal**: Implement a Perplexity background provider for **long-running deep research** via the async API (`POST /v1/async/sonar` → poll `GET /v1/async/sonar/{id}` → retrieve). Mirror OpenAI's background lifecycle (`submit/check_status/get_result/reconnect/cancel`) including kind-mismatch defense, checkpoint persistence, `thoth resume`, and `thoth cancel`. Default to `sonar-deep-research` (the only Perplexity model with the async API).
 
@@ -27,7 +27,7 @@
 - **Forward-compatibility:** the provider does NOT hard-reject other model strings at `__init__`. If Perplexity ships future deep-research models with the async API (e.g., `sonar-deep-research-v2`), they work without code changes — the API returns HTTP 422 for incompatible models, mapped to a clear error with a model hint.
 - **Transport: pure-httpx.** The `/v1/async/sonar` endpoint isn't in the OpenAI SDK. Use `httpx.AsyncClient(base_url="https://api.perplexity.ai", headers={"Authorization": f"Bearer {key}"})`. No `openai` import in this provider.
 - **Built-in mode** in `src/thoth/config.py:BUILTIN_MODES`:
-  - `perplexity_deep_research` (`model: "sonar-deep-research"`, `kind: "background"`, `reasoning_effort: "medium"` (Perplexity's official default; ~$1.19/query — see `research/perplexity-deep-research-api.v1.md` §6)).
+  - `perplexity_deep_research` (`model: "sonar-deep-research"`, `kind: "background"`, `reasoning_effort: "high"` (~$1.32/query — see `research/perplexity-deep-research-api.v1.md` §6; user-locked default per P27 kickoff)).
 - **Lifecycle methods (mirror OpenAI background):**
   - **`submit(prompt, mode, system_prompt, verbose)`** — POST `/v1/async/sonar` with body `{"request": {"model", "messages", "reasoning_effort"?, ...search_options}, "idempotency_key": uuid4().hex}`. The `request` wrapper is required (Perplexity-specific, NOT OpenAI's flat shape). Capture `response.id` (the `request_id`) → `self.jobs[request_id]` → return as `job_id`. **The Perplexity `request_id` IS the job_id** — that lets `reconnect()` work after process restart with no local state.
   - **`check_status(job_id)`** — GET `/v1/async/sonar/{job_id}`. Map Perplexity status → Thoth internal status:
@@ -72,29 +72,79 @@
 
 ### Open questions
 
-- **Cancel support**: P18-T19 said Perplexity doesn't expose server-side cancel for async jobs. **Re-verify against current docs** (T01). If still no: `cancel()` returns `{"status":"upstream_unsupported"}` and the local checkpoint is marked cancelled.
+- ~~**Cancel support**~~ **RESOLVED (T01, 2026-05-02)**: Perplexity does NOT expose server-side cancel for async jobs. Verified against:
+  - https://docs.perplexity.ai/llms.txt — only documents `POST /v1/async/sonar` (submit), `GET /v1/async/sonar` (list), `GET /v1/async/sonar/{id}` (retrieve). No DELETE, no `/cancel`, no `/abort`.
+  - Status enum: `CREATED | IN_PROGRESS | COMPLETED | FAILED` — no `CANCELLED` state (`research/perplexity-deep-research-api.v1.md` §5).
+  - **Decision:** `cancel()` returns `{"status": "upstream_unsupported"}`; the local checkpoint is marked cancelled and `cancel.py:122–129` renders "⚠ {name}: upstream cancel not supported; local checkpoint marked cancelled" — same shape as OpenAI's same-case behavior.
 - **Polling cadence**: reuse Thoth's existing polling-interval config (BUG-03/P03 fix), or pick Perplexity-specific defaults (10s → 30s exponential per Perplexity doc)? Recommend reuse with a per-provider override knob.
 - **Truncation heuristic**: conservative (terminal-punctuation-only) or stricter (minimum response length, expected sections, etc.)? Conservative recommended; users can ignore false positives.
-- **Cost display gating**: always show `## Cost` footer, or only when `--show-cost` flag is set? Recommend always (deep-research is expensive enough that visibility matters).
+- ~~**Cost display gating**~~ **RESOLVED**: always show `## Cost` footer (user-locked at P27 kickoff). Deep-research costs $0.41–$1.32 per query; visibility is load-bearing. No `--show-cost` flag.
 - **VCR cassette IN_PROGRESS sequence**: include 1–2 IN_PROGRESS polls in the happy-path cassette (to test progress reporting), or collapse to submit+COMPLETED for simplicity? Recommend including 1 IN_PROGRESS poll.
-- **`reasoning_effort` default**: `medium` (Perplexity's official default; ~$1.19) vs `low` (~$0.41)? Material cost difference. Recommend `low` for our default mode (cheapest sensible deep-research; users opt up via mode config).
+- ~~**`reasoning_effort` default**~~ **RESOLVED**: `high` (~$1.32/query) — user-locked at P27 kickoff. Matches "deep research means deep" intent; users opt down via mode config.
 - **Async polling delay bug**: `IN_PROGRESS` may show for 30–40 minutes when actual completion is ~2 minutes (per §17). Should we add a "poll-budget" timeout that abandons after N minutes regardless of API status? Out of scope for v1; document in mode docstring.
+
+### Background lifecycle parity (vs OpenAI background)
+
+P27 must mirror OpenAI background's behavioral contract without modifying
+the contract itself. The runner (`src/thoth/run.py:_run_polling_loop`),
+checkpoint manager (`src/thoth/checkpoint.py:CheckpointManager`), the
+`ResearchProvider` ABC (`src/thoth/providers/base.py`), and the cancel CLI
+renderer (`src/thoth/cli_subcommands/cancel.py`) are all consumed
+unchanged — P27 only adds new code to `PerplexityProvider`.
+
+A coverage audit of OpenAI background tests (94 cases across 13 files)
+mapped each to P27 as direct-mirror, adapted, OpenAI-specific, or
+immediate-path. The categories where Perplexity diverges intentionally:
+
+| Category | Divergence | P27 stance |
+|---|---|---|
+| Status enum | Perplexity has no `incomplete` or `cancelled` states | Test cases for those statuses are N/A (skip; not gaps) |
+| Cancel | No upstream cancel API (T01 verified) | `cancel()` returns `{"status":"upstream_unsupported"}` consumed by `cancel.py:126`; replaces OpenAI's API-call test with the unsupported-return test |
+| Result shape | dict access (no SDK typedefs); `search_results` not `annotations`; `usage.cost.total_cost` and `reasoning_effort` are Perplexity-only | adapted tests; new `## Cost` footer + truncation heuristic tests have no OpenAI parallel |
+| Kind-mismatch | Perplexity 422s on `kind="background"` + non-DR model (OpenAI permits force-background on any model) | both directions tested (P27-TS06 reverse + P23-TS07 forward) |
+
+The remaining categories all have a 1-to-1 Perplexity-side test in
+this plan. No background-lifecycle contract changes; no infrastructure
+modifications.
 
 ### Tests & Tasks
 
-- [ ] [P27-TS01] Design tests for `submit()` POST body shape — `{"request": {...model, messages, reasoning_effort?}, "idempotency_key": <uuid>}`. Cover the request-wrapper requirement (NOT OpenAI's flat shape).
-- [ ] [P27-TS02] Design tests for status mapping (CREATED/IN_PROGRESS/COMPLETED/FAILED → Thoth status enum + progress).
-- [ ] [P27-TS03] Design tests for `get_result` extraction — dict-style `search_results` access (NOT attr-style; OpenAI SDK has no typedefs), `## Sources` formatting + dedup, `## Cost` footer from `usage.cost.total_cost`, truncation warning heuristic.
+- [ ] [P27-TS01] Design tests for `submit()` POST body shape — `{"request": {model, messages, reasoning_effort?, ...}, "idempotency_key": <uuid>}`. MUST cover the request-wrapper requirement (NOT OpenAI's flat shape), `reasoning_effort` passthrough from mode config, and the idempotency_key being generated **outside** the tenacity-retried inner (every retry must reuse the same UUID — that's the whole point).
+- [ ] [P27-TS02] Design tests for status mapping (CREATED/IN_PROGRESS/COMPLETED/FAILED → Thoth status enum + progress). Cover the network-error-with-stale-cache cases mirroring OAI-BG-06/07: poll fails transient + cached IN_PROGRESS → `transient_error`; poll fails transient + cached COMPLETED → `completed`.
+- [ ] [P27-TS03] Design tests for `get_result` extraction — dict-style `search_results` access (NOT attr-style; OpenAI SDK has no typedefs), `## Sources` formatting + URL-only dedup. Per audit gap, split out:
+- [ ] [P27-TS03b] Cost footer formatting — `usage.cost.total_cost: 1.2345` → `## Cost\n\nTotal: $1.23` (4-decimal rounding, currency symbol, "Total:" label).
+- [ ] [P27-TS03c] Truncation heuristic — 2 cases: response with `finish_reason="stop"` AND content tail lacking terminal punctuation → `> ⚠ Possible truncation` warning; complete response with terminal punctuation → no warning. Document conservativeness in test docstring.
 - [ ] [P27-TS04] Design tests for `reconnect()` — happy-path repopulates `self.jobs[job_id]`; HTTP 404 raises `ProviderError` with 7-day-TTL message.
-- [ ] [P27-TS05] Design tests for `cancel()` — based on T01 finding, either upstream-cancel happy-path or `upstream_unsupported` returned (exact shape consumed by `cancel.py:122–129`).
-- [ ] [P27-TS06] Design tests for kind-mismatch defense — `kind="background"` + `model="sonar-pro"` raises pre-HTTP; `kind="immediate"` + `model="sonar-deep-research"` raises pre-HTTP.
+- [ ] [P27-TS04b] End-to-end resume integration test (mirrors OpenAI's RESUME-01): submit → simulated crash → `thoth resume <op_id>` reconnects via `request_id` → polls to completion. Verifies the runner consumes Perplexity's `reconnect()` the same way it consumes OpenAI's.
+- [ ] [P27-TS05] Design tests for `cancel()` — `upstream_unsupported` return shape verified against `cancel.py:126` (exact dict key spelling). Negative assertion: NO HTTP call made (since there's no endpoint to call).
+- [x] [P27-TS06] Design tests for kind-mismatch defense — `kind="background"` + `model="sonar-pro"` raises pre-HTTP; `kind="immediate"` + `model="sonar-deep-research"` raises pre-HTTP. (Done in `tests/test_provider_perplexity.py:743-769`; reverse direction lands as part of T03 part 1.)
 - [ ] [P27-TS07] Design VCR cassette test for happy-path async lifecycle — submit → 1× IN_PROGRESS poll → COMPLETED → `get_result()` returns content+sources+cost. Cassette path: `thoth_test_cassettes/perplexity/async-happy-path.yaml`.
 - [ ] [P27-TS08] Design VCR cassette tests for auth-error (401) and expired-job (404) wire formats.
 - [ ] [P27-TS09] Design live-api gated tests (`@pytest.mark.live_api`, `tests/extended/test_perplexity_async_real_workflows.py`) for the full lifecycle (submit → poll → result → cancel-or-cleanup).
-- [ ] [P27-T01] Re-verify Perplexity server-side cancel support against current docs (https://docs.perplexity.ai/api-reference/async-chat-completions); update Open Questions section with finding before T08 starts.
-- [ ] [P27-T02] Add Perplexity built-in mode `perplexity_deep_research` to `src/thoth/config.py:BUILTIN_MODES` with `model: "sonar-deep-research"`, `kind: "background"`, `reasoning_effort` exposed (default `low` or `medium` per Open Question).
-- [ ] [P27-T03] Implement `PerplexityProvider.__init__` for the background path: `httpx.AsyncClient(base_url="https://api.perplexity.ai", headers={"Authorization":..., "Content-Type":...})`. Add `_validate_kind_for_model` covering both directions of the kind-split.
-- [ ] [P27-T04] Implement module-level `_map_perplexity_error_async(exc, model, verbose) -> ThothError` for httpx exceptions and Perplexity HTTP status codes (401/402/422/429/5xx).
+- [ ] [P27-TS10] Sigint / cancel-on-interrupt matrix (mirrors SIGINT-01..07): config default `cancel_upstream_on_interrupt`; `--cancel-on-interrupt=false` skips cancel and prints hint; `upstream_unsupported` does NOT block other providers' cancels; 5s `asyncio.wait_for` envelope on a hung cancel call.
+- [ ] [P27-TS11] Snapshot status mapping (mirrors SNAPSHOT-03/04): explicit `get_resume_snapshot_data()` enum mapping for failed+transient → `recoverable_failure` and failed+permanent → `failed_permanent` for Perplexity-shaped jobs.
+- [x] [P27-T01] Re-verify Perplexity server-side cancel support against current docs (https://docs.perplexity.ai/api-reference/async-chat-completions); update Open Questions section with finding before T09 starts. (Resolved 2026-05-02; see Open Questions.)
+- [x] [P27-T02] Add Perplexity built-in mode `perplexity_deep_research` to `src/thoth/config.py:BUILTIN_MODES` with `model: "sonar-deep-research"`, `kind: "background"`, `reasoning_effort: "high"` (locked). (Done in `0c2d325`.)
+- [x] [P27-T03] Implement `PerplexityProvider` background-path additions: (part 1) extend `_validate_kind_for_model` with reverse direction (`0f28761`); (part 2) add `httpx.AsyncClient(base_url="https://api.perplexity.ai", ...)` alongside the existing `AsyncOpenAI` client (`212bbc8`).
+- [x] [P27-T04] Implement module-level `_map_perplexity_error_async(exc, model, verbose) -> ThothError` for httpx exceptions and Perplexity HTTP status codes (401/402/422/429/5xx). (Done in `2605131`.)
+- [x] [P27-T05] Implement `submit()` — POST `/v1/async/sonar` with idempotency_key, retry on transient. Capture `request_id` → `self.jobs[request_id]`, return as job_id. (Done in `212bbc8`. idempotency_key minted outside retry per advisor #2.)
+- [x] [P27-T06] Implement `check_status()` — GET `/v1/async/sonar/{id}` with full status mapping, 404 → expired-TTL message, network errors → transient with stale-cache fallback. (Done in `8840be7`.)
+- [x] [P27-T07] Implement `get_result()` — fresh fetch when needed, dict-style `search_results` access, `## Sources` URL-dedup, `## Cost` footer (4-decimal), truncation-warning heuristic (conservative). (Done in `99eb874`.)
+- [x] [P27-T08] Implement `reconnect()` — repopulate `self.jobs[job_id]`; 404 → `ProviderError` with 7-day-TTL hint. (Done in `757a777`.)
+- [x] [P27-T09] Implement `cancel()` — returns `{"status":"upstream_unsupported"}` per T01 finding. (Done in `757a777`. Test guard in `tests/test_provider_cancel.py` flipped from NotImplementedError-expectation to upstream_unsupported.)
+- [x] [P27-T10] Wire CLI: `thoth ask --provider perplexity --mode perplexity_deep_research` and `--api-key-perplexity` already provided by P23's CLI; `thoth resume <op_id>` and `thoth cancel <op_id>` work via the inherited subcommands and PerplexityProvider's now-implemented `reconnect()` / `cancel()`.
+- [x] [P27-T11] `tests/test_provider_perplexity_async.py` covers TS01–TS05 (48+ tests) + T04 error-mapper coverage with `httpx.AsyncClient` mocked via `unittest.mock.AsyncMock`. (Built up across `2605131`, `212bbc8`, `8840be7`, `99eb874`, `757a777`.)
+- [ ] [P27-T12] `tests/test_async_checkpoint.py` extension verifying `request_id` round-trips through the checkpoint format. **Deferred** — checkpoint format is provider-agnostic and existing `--provider mock` round-trip test covers the contract; Perplexity-specific tests require runner-level integration setup.
+- [ ] [P27-T13] VCR cassette tests once `deepresearch_replay` P04 lands cassettes (TS07, TS08). Phase 2 — separate PR.
+- [ ] [P27-T14] Live-api gated test in `tests/extended/test_perplexity_async_real_workflows.py` per TS09. Phase 2 — separate PR.
+- [x] [P27-T15] `tests/test_provider_registry.py` asserts `is_implemented() == True` for kind=background, the BUILTIN_MODES entry contract, and `create_provider("perplexity", ...)` factory routing. (Done in `5dde805`.)
+
+### Phase-1 deferred (post-PR follow-ups)
+
+- [x] **TS04b** (end-to-end resume integration): provider-contract-level test in `tests/test_provider_perplexity_async.py::test_full_resume_lifecycle_after_simulated_process_restart` — walks submit → simulated crash → reconnect → check_status → get_result without subprocess overhead. (Done in `7ff0626`.)
+- [x] **TS10** (sigint matrix): runner now distinguishes `{status: upstream_unsupported}` from a successful cancel and prints the same warning text `cancel.py:126` uses. Two new tests in `tests/test_sigint_upstream_cancel.py`. (Done in `bf482a2`.)
+- [x] **T12** (request_id round-trip): `tests/test_provider_perplexity_async.py::test_request_id_round_trips_through_json_checkpoint_shape` pins the invariant that JSON serialization preserves Perplexity request_ids verbatim. (Done in `7ff0626`.)
+- **TS11** (snapshot status mapping): the existing `tests/test_get_resume_snapshot_data.py` tests are provider-agnostic and apply to Perplexity's transient/permanent classifications already. Explicit Perplexity-specific snapshot tests are redundant — kept skipped.
 - [ ] [P27-T05] Implement `submit()` — POST `/v1/async/sonar` with idempotency_key, retry on transient. Capture `request_id` → `self.jobs[request_id]`, return as job_id.
 - [ ] [P27-T06] Implement `check_status()` — GET `/v1/async/sonar/{id}` with full status mapping, 404 → expired-TTL message, network errors → transient.
 - [ ] [P27-T07] Implement `get_result()` — fresh fetch, dict-style `search_results` access, `## Sources` dedup, `## Cost` footer from `usage.cost.total_cost`, truncation-warning heuristic.

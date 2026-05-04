@@ -32,6 +32,7 @@ from thoth.errors import (
     ProviderError,
     ThothError,
 )
+from thoth.providers._status import _translate_provider_status
 from thoth.providers.base import Citation, ResearchProvider, StreamEvent
 from thoth.utils import md_link_title, md_link_url
 
@@ -102,6 +103,16 @@ class _ThinkStreamParser:
 _PROVIDER_NAME = "perplexity"
 _INVALID_KEY_PHRASES = ("invalid api key", "incorrect api key", "invalid_api_key")
 
+# Provider-status → Thoth-status template for the async API. Caller fills in
+# `error` for the FAILED branch from payload["error_message"]. Unknown
+# statuses fall through to the helper's default permanent_error.
+_PERPLEXITY_STATUS_TABLE: dict[str, dict[str, Any]] = {
+    "CREATED": {"status": "queued", "progress": 0.0},
+    "IN_PROGRESS": {"status": "running", "progress": 0.5},
+    "COMPLETED": {"status": "completed", "progress": 1.0},
+    "FAILED": {"status": "permanent_error"},
+}
+
 
 def _rate_limit_error_is_quota(exc: BaseException) -> bool:
     """Return True when a rate-limit-shaped Perplexity error signals exhausted credits."""
@@ -129,6 +140,26 @@ def _rate_limit_error_is_quota(exc: BaseException) -> bool:
     return any(marker in text for marker in quota_markers)
 
 
+def _invalid_key_thotherror(provider: str, settings_url: str) -> ThothError:
+    """Friendly ThothError for an upstream-rejected API key.
+
+    Distinct from APIKeyError (which signals 'no key found'); this one
+    signals 'a key was supplied but the upstream rejected it'. Different
+    user actions (rotate vs. set), different exit_code semantics.
+
+    Currently called by both `_map_perplexity_error` (sync) and
+    `_map_perplexity_error_async` to keep the wording byte-identical
+    across the two error-mapping paths. If a third caller emerges
+    (e.g., Gemini in P28), promote this helper to `thoth/errors.py`.
+    """
+    return ThothError(
+        f"{provider} API key is invalid",
+        f"Your {provider.title()} API key was rejected by the API. "
+        f"Check your key at {settings_url}",
+        exit_code=2,
+    )
+
+
 def _map_perplexity_error(
     exc: BaseException, model: str | None = None, verbose: bool = False
 ) -> ThothError:
@@ -143,12 +174,7 @@ def _map_perplexity_error(
         body = getattr(exc, "body", None) or {}
         combined = (str(exc) + " " + str(body)).lower()
         if any(phrase in combined for phrase in _INVALID_KEY_PHRASES):
-            return ThothError(
-                "perplexity API key is invalid",
-                "Your Perplexity API key was rejected by the API. "
-                "Check your key at https://www.perplexity.ai/settings/api",
-                exit_code=2,
-            )
+            return _invalid_key_thotherror(_PROVIDER_NAME, "https://www.perplexity.ai/settings/api")
         return APIKeyError(_PROVIDER_NAME)
 
     if isinstance(exc, openai.RateLimitError):
@@ -163,8 +189,19 @@ def _map_perplexity_error(
             raw_error=raw,
         )
 
+    # A1 belt-and-suspenders: any APIStatusError with status_code == 402
+    # routes to APIQuotaError. The openai SDK doesn't ship a PaymentRequired
+    # exception subclass, so a 402 from Perplexity (their credit-exhaustion
+    # code per docs §8) may surface here as a bare APIStatusError or as
+    # BadRequestError depending on SDK version. Checked BEFORE BadRequestError
+    # so a 402 surfacing as BadRequestError still routes to APIQuotaError.
+    if getattr(exc, "status_code", None) == 402:
+        return APIQuotaError(_PROVIDER_NAME)
+
     if isinstance(exc, openai.BadRequestError):
-        hint = f" (model: {model})" if model else ""
+        # A4: use {model!r} for parity with _map_perplexity_error_async — repr
+        # quoting is more correct for free-form upstream model strings.
+        hint = f" (model: {model!r})" if model else ""
         return ProviderError(
             _PROVIDER_NAME,
             f"Bad request{hint}. Check model name and request shape.",
@@ -206,6 +243,130 @@ def _map_perplexity_error(
     )
 
 
+def _map_perplexity_error_async(
+    exc: BaseException, model: str | None = None, verbose: bool = False
+) -> ThothError:
+    """Map an httpx-raised exception or HTTP status code from `/v1/async/sonar` to a ThothError.
+
+    Counterpart to `_map_perplexity_error` for the async path: the OpenAI
+    SDK doesn't know about `/v1/async/sonar`, so the async submit/poll uses
+    raw httpx and surfaces httpx exceptions plus Perplexity's documented
+    HTTP status codes. Translates them into the same Thoth error taxonomy
+    (APIKeyError / APIQuotaError / APIRateLimitError / ProviderError) the
+    runner already understands.
+
+    Status code mapping (per `research/perplexity-deep-research-api.v1.md` §8
+    and the live llms.txt verified at P27-T01):
+      * 401 -> APIKeyError, or a friendly invalid-key ThothError if the
+        body identifies the key as rejected (vs. simply missing).
+      * 402 -> APIQuotaError (Perplexity uses 402 for credit exhaustion).
+      * 422 -> ProviderError with a model hint, since the most common cause
+        is using a non-deep-research model on the async endpoint.
+      * 429 -> APIRateLimitError (purely throttle; quota lives at 402 here).
+      * 5xx -> transient ProviderError with a retry suggestion.
+      * Other status -> generic ProviderError.
+
+    httpx exception mapping:
+      * TimeoutException -> ProviderError("Request timed out...").
+      * ConnectError    -> ProviderError("Network connection error...").
+      * Anything else   -> generic ProviderError; never silently swallowed.
+    """
+    raw = str(exc) if verbose else None
+
+    if isinstance(exc, httpx.HTTPStatusError):
+        status = exc.response.status_code
+        body_text = ""
+        try:
+            body_text = exc.response.text
+        except Exception:  # pragma: no cover - defensive: response text unavailable
+            body_text = ""
+        body_lower = body_text.lower()
+
+        # A5 (P27 factor-dedup): async inspects exc.response.text only; the
+        # sync mapper inspects exc.body + str(exc) because openai SDK exceptions
+        # carry different surfaces. Both inspections are correct for their
+        # respective contexts; do not try to unify the two.
+        if status == 401:
+            if any(phrase in body_lower for phrase in _INVALID_KEY_PHRASES):
+                return _invalid_key_thotherror(
+                    _PROVIDER_NAME, "https://www.perplexity.ai/settings/api"
+                )
+            return APIKeyError(_PROVIDER_NAME)
+        if status == 402:
+            return APIQuotaError(_PROVIDER_NAME)
+        if status == 403:
+            # A2: parity with _map_perplexity_error's PermissionDeniedError
+            # handler — emit the same hint so users see the tier/model-access
+            # diagnostic on both sync and async paths.
+            return ProviderError(
+                _PROVIDER_NAME,
+                "Permission denied (check tier / model access).",
+                raw_error=raw,
+            )
+        if status == 422:
+            hint = f" (model: {model!r})" if model else ""
+            return ProviderError(
+                _PROVIDER_NAME,
+                f"Invalid async request{hint}. Model may not support /v1/async/sonar.",
+                raw_error=raw,
+            )
+        if status == 429:
+            # A1: upgrade to APIQuotaError when the body carries quota
+            # markers (parity with _rate_limit_error_is_quota in the sync
+            # path). Without this, Perplexity returning 429 + insufficient_quota
+            # would be classified as a rate limit while the sync mapper would
+            # call it a quota error — same upstream, different taxonomy.
+            quota_markers = (
+                "insufficient_quota",
+                "quota",
+                "billing",
+                "credit",
+                "credits",
+                "monthly spend",
+                "exhausted",
+                "no credits",
+                "blocked",
+            )
+            if any(marker in body_lower for marker in quota_markers):
+                return APIQuotaError(_PROVIDER_NAME)
+            return APIRateLimitError(_PROVIDER_NAME)
+        if 500 <= status < 600:
+            return ProviderError(
+                _PROVIDER_NAME,
+                "Perplexity server error (5xx). Retry shortly.",
+                raw_error=raw,
+            )
+        # A3 (P27 factor-dedup): no explicit 400 BadRequest branch — Perplexity's
+        # async API documents 422 (not 400) for invalid requests, so a 400 falls
+        # through to the generic HTTP-{status} bucket on purpose. Keeping it
+        # explicit so future maintainers don't add a redundant 400 branch.
+        return ProviderError(
+            _PROVIDER_NAME,
+            f"HTTP {status} from Perplexity async API: {body_text[:200]}",
+            raw_error=raw,
+        )
+
+    if isinstance(exc, httpx.TimeoutException):
+        return ProviderError(
+            _PROVIDER_NAME,
+            "Request timed out. Try again, or raise --timeout.",
+            raw_error=raw,
+        )
+
+    if isinstance(exc, httpx.ConnectError):
+        return ProviderError(
+            _PROVIDER_NAME,
+            "Network connection error reaching api.perplexity.ai.",
+            raw_error=raw,
+        )
+
+    return ProviderError(
+        _PROVIDER_NAME,
+        f"Unexpected error: {exc}",
+        raw_error=raw,
+    )
+
+
 PERPLEXITY_BASE_URL = "https://api.perplexity.ai"
 
 _DIRECT_SDK_KEYS: tuple[str, ...] = (
@@ -232,6 +393,18 @@ class PerplexityProvider(ResearchProvider):
             base_url=PERPLEXITY_BASE_URL,
             timeout=httpx.Timeout(timeout, connect=5.0),
         )
+        # Raw httpx client for the async API (P27): /v1/async/sonar lives
+        # outside the OpenAI SDK's surface, so the background lifecycle uses
+        # this client instead of self.client. Tests patch this attribute via
+        # AsyncMock; production code constructs a real AsyncClient here.
+        self._async_http = httpx.AsyncClient(
+            base_url=PERPLEXITY_BASE_URL,
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
+            timeout=httpx.Timeout(timeout, connect=5.0),
+        )
 
     def is_implemented(self) -> bool:
         return True
@@ -248,21 +421,41 @@ class PerplexityProvider(ResearchProvider):
                 "created": 1700000000,
                 "owned_by": "perplexity",
             },
+            {
+                "id": "sonar-deep-research",
+                "created": 1700000000,
+                "owned_by": "perplexity",
+            },
         ]
 
     def _validate_kind_for_model(self, mode: str) -> None:
-        """Refuse immediate-kind use when the configured model requires background.
+        """Refuse runs whose declared `kind` contradicts the model's required kind.
 
-        Mirrors `OpenAIProvider._validate_kind_for_model`. Specifically blocks
-        `sonar-deep-research` on the immediate path — that model belongs to
-        P27 and uses Perplexity's async API. Raises BEFORE any HTTP call.
+        Two directions, both raised BEFORE any HTTP call:
+
+        1. `kind="immediate"` + DR model (e.g., `sonar-deep-research`) —
+           DR models require Perplexity's async API. P23's TS07 covers this.
+        2. `kind="background"` + non-DR model (e.g., `sonar-pro`) — only DR
+           models accept `/v1/async/sonar`; the upstream HTTP-422s otherwise.
+           P27's TS06 covers this. Perplexity is stricter than OpenAI here:
+           OpenAI lets you force-background any model, so OpenAIProvider only
+           checks direction (1).
         """
-        if self.config.get("kind") == "immediate" and is_background_model(self.model):
+        declared = self.config.get("kind")
+        model_is_background = is_background_model(self.model)
+        if declared == "immediate" and model_is_background:
             raise ModeKindMismatchError(
                 mode_name=mode,
                 model=self.model,
                 declared_kind="immediate",
                 required_kind="background",
+            )
+        if declared == "background" and not model_is_background:
+            raise ModeKindMismatchError(
+                mode_name=mode,
+                model=self.model,
+                declared_kind="background",
+                required_kind="immediate",
             )
 
     def _build_messages(self, prompt: str, system_prompt: str | None) -> list[dict[str, str]]:
@@ -311,12 +504,16 @@ class PerplexityProvider(ResearchProvider):
         system_prompt: str | None = None,
         verbose: bool = False,
     ) -> str:
-        """One-shot synchronous chat completion.
+        """Submit a research request; routes by declared `kind`.
 
-        Wraps the inner retryable call to map any openai.* exception to a
-        ThothError before reaching the caller.
+        - `kind="background"` (P27, sonar-deep-research) -> `_submit_async`
+          (POST /v1/async/sonar; returns the upstream request_id as job_id).
+        - Anything else (P23 immediate path) -> the existing one-shot
+          /chat/completions submit, unchanged.
         """
         self._validate_kind_for_model(mode)
+        if self.config.get("kind") == "background":
+            return await self._submit_async(prompt, mode, system_prompt, verbose)
         try:
             response = await self._submit_with_retry(prompt, system_prompt)
         except ModeKindMismatchError:
@@ -340,6 +537,75 @@ class PerplexityProvider(ResearchProvider):
     async def _submit_with_retry(self, prompt: str, system_prompt: str | None) -> Any:
         params = self._build_request_params(prompt, system_prompt)
         return await self.client.chat.completions.create(**params)
+
+    def _build_async_request_body(
+        self, prompt: str, system_prompt: str | None, idempotency_key: str
+    ) -> dict[str, Any]:
+        """Build the /v1/async/sonar POST body with the request wrapper.
+
+        Wrapper shape is Perplexity-specific (NOT OpenAI's flat shape) per
+        https://docs.perplexity.ai/api-reference/async-chat-completions.
+        Forwards Perplexity request options from the `perplexity` config
+        namespace into the request part. `model` and `messages` stay owned by
+        Thoth so provider-namespace options cannot rewrite the structural
+        request.
+        """
+        messages: list[dict[str, str]] = []
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+        messages.append({"role": "user", "content": prompt})
+        request_part: dict[str, Any] = {
+            "model": self.model,
+            "messages": messages,
+        }
+        perp_cfg = dict(self.config.get("perplexity") or {})
+        for key, value in perp_cfg.items():
+            if key in {"model", "messages"}:
+                continue
+            request_part[key] = value
+        return {"request": request_part, "idempotency_key": idempotency_key}
+
+    async def _submit_async(
+        self, prompt: str, mode: str, system_prompt: str | None, verbose: bool
+    ) -> str:
+        """POST /v1/async/sonar; capture upstream request_id; map errors.
+
+        idempotency_key is generated ONCE here and reused across tenacity
+        retries — minting a fresh key per attempt would defeat idempotency.
+        """
+        idempotency_key = uuid4().hex
+        body = self._build_async_request_body(prompt, system_prompt, idempotency_key)
+        try:
+            response = await self._submit_async_with_retry(body)
+        except (httpx.HTTPStatusError, httpx.HTTPError, Exception) as exc:
+            raise _map_perplexity_error_async(exc, model=self.model, verbose=verbose) from exc
+
+        payload = response.json()
+        request_id = payload.get("id")
+        if not request_id:
+            raise ProviderError(
+                _PROVIDER_NAME,
+                "Async submit response missing 'id' field",
+                raw_error=str(payload) if verbose else None,
+            )
+        self.jobs[request_id] = {
+            "response_data": payload,
+            "background": True,
+            "created_at": datetime.now(),
+        }
+        return request_id
+
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=4, max=10),
+        retry=retry_if_exception_type((httpx.ConnectError, httpx.TimeoutException)),
+        reraise=True,
+    )
+    async def _submit_async_with_retry(self, body: dict[str, Any]) -> httpx.Response:
+        """Inner retryable POST. Raises raw httpx exceptions; outer maps."""
+        response = await self._async_http.post("/v1/async/sonar", json=body)
+        response.raise_for_status()
+        return response
 
     async def stream(
         self,
@@ -432,15 +698,255 @@ class PerplexityProvider(ResearchProvider):
         yield StreamEvent(kind="done", text="")
 
     async def check_status(self, job_id: str) -> dict[str, Any]:
+        """Status of an in-flight job. Routes by job_info['background'].
+
+        Sync (P23 immediate) jobs were already complete when submit() returned;
+        report `completed` with no upstream call. Background (P27 async) jobs
+        GET /v1/async/sonar/{job_id} and translate Perplexity's status enum.
+
+        Stale-cache fallback on transient errors mirrors OAI-BG-06/07: a poll
+        ConnectError/Timeout that finds a cached COMPLETED state should still
+        report completed (the cached completion is authoritative); a transient
+        error with a cached IN_PROGRESS/CREATED state must NOT report completed.
+        """
         if job_id not in self.jobs:
             return {"status": "not_found", "error": "Job not found"}
-        return {"status": "completed", "progress": 1.0}
+        job_info = self.jobs[job_id]
+        # B4 (P27 factor-dedup): P18 non-background shortcut — kept symmetric
+        # with OpenAIProvider for defense-in-depth. TODO(P19): remove both
+        # shortcuts when the immediate-kind path no longer transits
+        # check_status at all.
+        if not job_info.get("background", False):
+            # P23 immediate path — submit() already returned the full response.
+            return {"status": "completed", "progress": 1.0}
+        return await self._poll_async_job(job_id, job_info)
+
+    async def _poll_async_job(self, job_id: str, job_info: dict[str, Any]) -> dict[str, Any]:
+        """Single poll attempt against /v1/async/sonar/{job_id} with translation.
+
+        Stale-cache fallback fires on transient errors AND on HTTPStatusError 5xx
+        (per OAI-BG-07 parity, P27 factor-dedup B1): a network or server blip
+        immediately after a previously-cached COMPLETED state must not regress
+        the runner's polling loop back to transient_error.
+        """
+        try:
+            response = await self._async_http.get(f"/v1/async/sonar/{job_id}")
+            response.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            status = exc.response.status_code
+            if status == 404:
+                return {
+                    "status": "permanent_error",
+                    "error": "Job expired (7-day TTL) or not found server-side",
+                }
+            mapped = _map_perplexity_error_async(exc, model=self.model)
+            if 500 <= status < 600 or isinstance(mapped, APIRateLimitError):
+                # B1: stale-cache fallback on retryable HTTP errors — a
+                # previously-cached COMPLETED is authoritative even when a
+                # later poll hits a server blip or ordinary rate limit.
+                cached = job_info.get("response_data") or {}
+                if cached.get("status") == "COMPLETED":
+                    return {"status": "completed", "progress": 1.0}
+                return {
+                    "status": "transient_error",
+                    "error": f"HTTP {status}",
+                    # B2: derive class name from type(exc) instead of hardcoding
+                    # the literal string, matching the convention used by the
+                    # other except branches and OpenAIProvider.check_status.
+                    "error_class": type(exc).__name__,
+                }
+            return {
+                "status": "permanent_error",
+                "error": str(mapped),
+                "error_class": type(mapped).__name__,
+            }
+        except (httpx.ConnectError, httpx.TimeoutException) as exc:
+            cached = job_info.get("response_data") or {}
+            if cached.get("status") == "COMPLETED":
+                return {"status": "completed", "progress": 1.0}
+            return {
+                "status": "transient_error",
+                "error": str(exc),
+                "error_class": type(exc).__name__,
+            }
+        except Exception as exc:  # noqa: BLE001 - never silently swallow novel errors
+            # Intentional: named exception branches use bare str(exc); the
+            # catch-all prepends `({type(exc).__name__})` so users can
+            # distinguish a known exception class from an unexpected one in
+            # error logs. (P27 factor-dedup B3 — kept as intentional divergence.)
+            cached = job_info.get("response_data") or {}
+            if cached.get("status") == "COMPLETED":
+                return {"status": "completed", "progress": 1.0}
+            return {
+                "status": "transient_error",
+                "error": f"Unexpected error ({type(exc).__name__}): {exc}",
+                "error_class": type(exc).__name__,
+            }
+
+        payload = response.json()
+        status_str = payload.get("status", "")
+        # Always cache the latest payload so get_result() and the stale-cache
+        # fallback have an authoritative reference.
+        job_info["response_data"] = payload
+
+        translated = _translate_provider_status(status_str, _PERPLEXITY_STATUS_TABLE)
+        if status_str == "FAILED":
+            translated["error"] = payload.get("error_message") or "Perplexity job FAILED"
+        return translated
+
+    async def reconnect(self, job_id: str) -> None:
+        """Re-attach to an existing async job after a process restart.
+
+        Called by `thoth resume <op_id>` before the runner re-enters the
+        polling loop. Repopulates self.jobs[job_id] from a fresh GET; a 404
+        means the 7-day TTL elapsed (or the id is wrong) and we surface
+        that specifically.
+        """
+        try:
+            response = await self._async_http.get(f"/v1/async/sonar/{job_id}")
+            response.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code == 404:
+                raise ProviderError(
+                    _PROVIDER_NAME,
+                    f"Job {job_id!r} not found. Async results expire 7 days after submission.",
+                ) from exc
+            raise _map_perplexity_error_async(exc, model=self.model) from exc
+        except (httpx.ConnectError, httpx.TimeoutException, Exception) as exc:
+            raise _map_perplexity_error_async(exc, model=self.model) from exc
+
+        payload = response.json()
+        self.jobs[job_id] = {
+            "response_data": payload,
+            "background": True,
+            "created_at": datetime.now(),
+        }
+
+    async def cancel(self, job_id: str) -> dict[str, Any]:
+        """Best-effort cancel — Perplexity has no upstream cancel API.
+
+        T01 verified against the live llms.txt and research §5: the only
+        documented endpoints are POST /v1/async/sonar (submit), GET
+        /v1/async/sonar (list), GET /v1/async/sonar/{id} (retrieve). No
+        DELETE, no /cancel, no CANCELLED status. We return the sentinel
+        consumed by cancel.py:126 so the runner marks the local checkpoint
+        cancelled and prints "upstream cancel not supported".
+        """
+        return {"status": "upstream_unsupported"}
 
     async def get_result(self, job_id: str, verbose: bool = False) -> str:
+        """Final answer text for a completed job. Routes by job_info['background'].
+
+        Sync (P23 immediate) jobs delegate to _render_answer_with_sources which
+        operates on the OpenAI-SDK response object. Background (P27 async)
+        jobs use the dict-shaped payload cached by check_status, fetching
+        fresh if the cached state isn't COMPLETED yet.
+        """
         if job_id not in self.jobs:
-            raise ProviderError("perplexity", f"Unknown job_id: {job_id}")
-        response = self.jobs[job_id]["response"]
-        return _render_answer_with_sources(response)
+            raise ProviderError(_PROVIDER_NAME, f"Unknown job_id: {job_id}")
+        job_info = self.jobs[job_id]
+        if not job_info.get("background", False):
+            return _render_answer_with_sources(job_info["response"])
+        return await self._get_async_result(job_id, job_info, verbose)
+
+    async def _get_async_result(self, job_id: str, job_info: dict[str, Any], verbose: bool) -> str:
+        """Compose user-facing output from a completed async-API payload.
+
+        Order: content -> truncation warning (placed near the truncation site)
+        -> ## Sources -> ## Cost. Sources and Cost are conditional; truncation
+        warning is conservative-by-design (false positives are user-ignorable).
+        """
+        payload = job_info.get("response_data") or {}
+        if payload.get("status") != "COMPLETED":
+            try:
+                response = await self._async_http.get(f"/v1/async/sonar/{job_id}")
+                response.raise_for_status()
+            except (httpx.HTTPStatusError, httpx.HTTPError, Exception) as exc:
+                raise _map_perplexity_error_async(exc, model=self.model, verbose=verbose) from exc
+            payload = response.json()
+            job_info["response_data"] = payload
+
+        response_part = payload.get("response") or {}
+        return _format_async_response(response_part)
+
+
+def _format_async_response(response: dict[str, Any]) -> str:
+    """Build the user-facing string for a completed async response."""
+    choices = response.get("choices") or []
+    content = ""
+    finish_reason = ""
+    if choices and isinstance(choices[0], dict):
+        message = choices[0].get("message") or {}
+        if isinstance(message, dict):
+            content = message.get("content") or ""
+        finish_reason = choices[0].get("finish_reason") or ""
+
+    parts: list[str] = [content]
+
+    if _is_likely_truncated(content, finish_reason):
+        parts.append("\n\n> ⚠ Possible truncation: response may be incomplete.")
+
+    sources = _format_async_sources_block(response.get("search_results") or [])
+    if sources:
+        parts.append(sources)
+
+    cost = _format_async_cost_block(response.get("usage") or {})
+    if cost:
+        parts.append(cost)
+
+    return "".join(parts)
+
+
+def _is_likely_truncated(content: str, finish_reason: str) -> bool:
+    """Conservative truncation heuristic: stop with no terminal punctuation.
+
+    The documented Perplexity bug (research §17) is that ~25-50% of responses
+    finish with finish_reason='stop' but mid-sentence. We treat the absence
+    of terminal punctuation at the rstripped tail as the signal. Conservative
+    (false-positives tolerated) per Open Question resolution at P27 kickoff.
+    """
+    if finish_reason != "stop":
+        return False
+    stripped = content.rstrip()
+    if not stripped:
+        return False
+    last_char = stripped[-1]
+    return last_char not in ".!?\")]>}*`'"
+
+
+def _format_async_sources_block(search_results: list[Any]) -> str:
+    """Markdown `## Sources` list, URL-deduped. Empty input -> empty string."""
+    if not search_results:
+        return ""
+    seen_urls: set[str] = set()
+    sources: list[str] = []
+    for entry in search_results:
+        if not isinstance(entry, dict):
+            continue
+        url = entry.get("url") or ""
+        if not url or url in seen_urls:
+            continue
+        seen_urls.add(url)
+        title = entry.get("title") or url
+        sources.append(f"- [{md_link_title(str(title))}]({md_link_url(str(url))})")
+    if not sources:
+        return ""
+    return "\n\n## Sources\n\n" + "\n".join(sources)
+
+
+def _format_async_cost_block(usage: dict[str, Any]) -> str:
+    """`## Cost\\n\\nTotal: $X.XXXX` from usage.cost.total_cost (4 decimals)."""
+    cost_obj = usage.get("cost")
+    if not isinstance(cost_obj, dict):
+        return ""
+    total = cost_obj.get("total_cost")
+    if total is None:
+        return ""
+    try:
+        amount = float(total)
+    except (TypeError, ValueError):
+        return ""
+    return f"\n\n## Cost\n\nTotal: ${amount:.4f}"
 
 
 def _render_answer_with_sources(response: Any) -> str:
