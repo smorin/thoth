@@ -140,6 +140,26 @@ def _rate_limit_error_is_quota(exc: BaseException) -> bool:
     return any(marker in text for marker in quota_markers)
 
 
+def _invalid_key_thotherror(provider: str, settings_url: str) -> ThothError:
+    """Friendly ThothError for an upstream-rejected API key.
+
+    Distinct from APIKeyError (which signals 'no key found'); this one
+    signals 'a key was supplied but the upstream rejected it'. Different
+    user actions (rotate vs. set), different exit_code semantics.
+
+    Currently called by both `_map_perplexity_error` (sync) and
+    `_map_perplexity_error_async` to keep the wording byte-identical
+    across the two error-mapping paths. If a third caller emerges
+    (e.g., Gemini in P28), promote this helper to `thoth/errors.py`.
+    """
+    return ThothError(
+        f"{provider} API key is invalid",
+        f"Your {provider.title()} API key was rejected by the API. "
+        f"Check your key at {settings_url}",
+        exit_code=2,
+    )
+
+
 def _map_perplexity_error(
     exc: BaseException, model: str | None = None, verbose: bool = False
 ) -> ThothError:
@@ -154,12 +174,7 @@ def _map_perplexity_error(
         body = getattr(exc, "body", None) or {}
         combined = (str(exc) + " " + str(body)).lower()
         if any(phrase in combined for phrase in _INVALID_KEY_PHRASES):
-            return ThothError(
-                "perplexity API key is invalid",
-                "Your Perplexity API key was rejected by the API. "
-                "Check your key at https://www.perplexity.ai/settings/api",
-                exit_code=2,
-            )
+            return _invalid_key_thotherror(_PROVIDER_NAME, "https://www.perplexity.ai/settings/api")
         return APIKeyError(_PROVIDER_NAME)
 
     if isinstance(exc, openai.RateLimitError):
@@ -258,11 +273,8 @@ def _map_perplexity_error_async(
 
         if status == 401:
             if any(phrase in body_lower for phrase in _INVALID_KEY_PHRASES):
-                return ThothError(
-                    "perplexity API key is invalid",
-                    "Your Perplexity API key was rejected by the API. "
-                    "Check your key at https://www.perplexity.ai/settings/api",
-                    exit_code=2,
+                return _invalid_key_thotherror(
+                    _PROVIDER_NAME, "https://www.perplexity.ai/settings/api"
                 )
             return APIKeyError(_PROVIDER_NAME)
         if status == 402:
