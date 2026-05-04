@@ -86,6 +86,25 @@ def test_perplexity_reasoning_builtin_mode_present() -> None:
     assert perp.get("stream_mode") == "concise"
 
 
+def test_perplexity_deep_research_builtin_mode_present() -> None:
+    """P27-TS01: BUILTIN_MODES['perplexity_deep_research'] -> sonar-deep-research/background/high.
+
+    Locked at P27 kickoff: reasoning_effort = "high" (~$1.32/query). The mode
+    targets the async API (POST /v1/async/sonar). `kind: "background"` is
+    required so the runner routes to the polling lifecycle, not the immediate
+    `chat.completions` path that P23's other modes use.
+    """
+    from thoth.config import BUILTIN_MODES
+
+    mode = BUILTIN_MODES.get("perplexity_deep_research")
+    assert mode is not None, "expected built-in mode 'perplexity_deep_research'"
+    assert mode["provider"] == "perplexity"
+    assert mode["model"] == "sonar-deep-research"
+    assert mode["kind"] == "background"
+    perp = cast(dict[str, Any], mode.get("perplexity") or {})
+    assert perp.get("reasoning_effort") == "high"
+
+
 # ---------------------------------------------------------------------------
 # TS02 — request construction
 # ---------------------------------------------------------------------------
@@ -716,6 +735,48 @@ def test_perplexity_allows_plain_models_on_immediate() -> None:
     provider.client = _stub_client(captured)
     job_id = asyncio.run(provider.submit("hi", mode="perplexity_pro"))
     assert job_id  # no exception
+
+
+# ---------------------------------------------------------------------------
+# P27-TS06 — reverse-direction kind-mismatch defense
+# ---------------------------------------------------------------------------
+#
+# Perplexity's `/v1/async/sonar` endpoint hard-rejects non-deep-research
+# models with HTTP 422. The defense raises ModeKindMismatchError pre-HTTP
+# instead, so users see a config-edit suggestion rather than a confusing
+# upstream error mid-run. Mirrors P23's TS07 (immediate + DR-model) but on
+# the opposite axis: background + non-DR-model.
+#
+# Forward-compat: any future `sonar-deep-research-*` model passes via the
+# substring rule in `is_background_model()` (config.py:200), so we don't
+# need a code change to support new DR models.
+
+
+@pytest.mark.parametrize("bad_model", ["sonar", "sonar-pro", "sonar-reasoning-pro"])
+def test_perplexity_rejects_background_on_non_deep_research(bad_model: str) -> None:
+    """P27-TS06: kind='background' on a non-DR model raises before any HTTP call."""
+    from thoth.errors import ModeKindMismatchError
+
+    provider = PerplexityProvider(
+        api_key="pplx-test", config={"model": bad_model, "kind": "background"}
+    )
+    with pytest.raises(ModeKindMismatchError):
+        asyncio.run(provider.submit("hi", mode="some_misconfigured_mode"))
+
+
+def test_perplexity_allows_sonar_deep_research_on_background() -> None:
+    """P27-TS06: model='sonar-deep-research' + kind='background' is legal (no raise).
+
+    The validation must let this through — it's the canonical happy path for
+    the new async lifecycle.
+    """
+    provider = PerplexityProvider(
+        api_key="pplx-test",
+        config={"model": "sonar-deep-research", "kind": "background"},
+    )
+    # Calling the validator directly avoids tripping the (not-yet-implemented)
+    # async submit path; we only assert no exception is raised here.
+    provider._validate_kind_for_model("perplexity_deep_research")
 
 
 # ---------------------------------------------------------------------------

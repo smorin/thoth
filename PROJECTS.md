@@ -82,7 +82,7 @@ Older entries may use `**Primary spec**`, `**Plan**`, or
 - [ ] **P30** — [Claude Code Skills Support](projects/P30-claude-code-skills-support.md)
 - [ ] **P29** — [Architecture Review & Cleanup — Background Deep Research Providers](projects/P29-arch-review-background-deep-research.md)
 - [ ] **P28** — [Gemini — Background Deep Research](projects/P28-gemini-background-deep-research.md)
-- [ ] **P27** — [Perplexity — Background Deep Research](projects/P27-perplexity-background-deep-research.md)
+- [~] **P27** — [Perplexity — Background Deep Research](projects/P27-perplexity-background-deep-research.md)
 - [x] **P26** — [OpenAI — Background Deep Research](projects/P26-openai-background-deep-research.md)
 - [ ] **P25** — [Architecture Review & Cleanup — Immediate Providers](projects/P25-arch-review-immediate-providers.md)
 - [ ] **P24** — [Gemini — Immediate (Synchronous) Calls](projects/P24-gemini-immediate-sync.md)

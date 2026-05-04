@@ -50,10 +50,12 @@ class _StubProvider:
         self,
         *,
         raise_not_implemented: bool = False,
+        return_upstream_unsupported: bool = False,
         hang_seconds: float = 0.0,
     ) -> None:
         self.cancel_calls: list[str] = []
         self.raise_not_implemented = raise_not_implemented
+        self.return_upstream_unsupported = return_upstream_unsupported
         self.hang_seconds = hang_seconds
 
     async def cancel(self, job_id: str) -> dict[str, Any]:
@@ -62,6 +64,8 @@ class _StubProvider:
             await asyncio.sleep(self.hang_seconds)
         if self.raise_not_implemented:
             raise NotImplementedError("upstream cancel not supported")
+        if self.return_upstream_unsupported:
+            return {"status": "upstream_unsupported"}
         return {"status": "cancelled"}
 
 
@@ -192,6 +196,71 @@ def test_not_implemented_in_one_provider_does_not_block_others() -> None:
     out = buf.getvalue()
     assert "Cancelled upstream: openai" in out
     # The perplexity attempt failed with NotImplementedError → no success line.
+    assert "Cancelled upstream: perplexity" not in out
+
+
+# ---------------------------------------------------------------------------
+# P27-TS10 — upstream_unsupported return shape
+# ---------------------------------------------------------------------------
+#
+# Perplexity's cancel() returns {"status": "upstream_unsupported"} (T01) instead
+# of raising NotImplementedError as the pre-P27 default did. The runner must
+# distinguish this case from a genuine cancel: print the unsupported notice,
+# not the misleading "Cancelled upstream" success line.
+
+
+def test_upstream_unsupported_does_not_print_cancelled_upstream() -> None:
+    """TS10: a {status: upstream_unsupported} return prints the unsupported notice.
+
+    Mirrors `cancel.py:126` rendering for the polling-loop path. Without
+    this, P27's PerplexityProvider.cancel() succeeds silently with a
+    misleading "Cancelled upstream: perplexity" line — even though no
+    upstream cancel actually happened.
+    """
+    p_oai = _StubProvider()
+    p_pplx = _StubProvider(return_upstream_unsupported=True)
+    ctx, buf = _make_ctx()
+    config = ctx.config
+    jobs = _make_jobs(("openai", p_oai, "job-1"), ("perplexity", p_pplx, "job-2"))
+
+    thoth_signals._interrupt_event.set()
+    with pytest.raises(KeyboardInterrupt):
+        asyncio.run(_maybe_cancel_upstream_and_raise(jobs, set(), set(), ctx, config))
+
+    # Both cancel attempts fired (best-effort; the runner doesn't pre-filter).
+    assert p_oai.cancel_calls == ["job-1"]
+    assert p_pplx.cancel_calls == ["job-2"]
+
+    out = buf.getvalue()
+    # OpenAI: genuine cancel → success line.
+    assert "Cancelled upstream: openai" in out
+    # Perplexity: upstream_unsupported → MUST NOT claim success.
+    assert "Cancelled upstream: perplexity" not in out, (
+        "upstream_unsupported result misreported as a successful cancel"
+    )
+    # The user-visible warning is exactly what cancel.py:126 renders for the
+    # `thoth cancel` subcommand path — the polling-loop path mirrors it.
+    assert "perplexity" in out
+    assert "upstream cancel not supported" in out
+
+
+def test_upstream_unsupported_alone_still_raises_keyboard_interrupt() -> None:
+    """TS10: even when EVERY provider returns upstream_unsupported, KI still raises.
+
+    Local checkpoint marking happens via the bubbled-up KeyboardInterrupt;
+    the runner must still raise so the operation gets marked cancelled.
+    """
+    p = _StubProvider(return_upstream_unsupported=True)
+    ctx, buf = _make_ctx()
+    config = ctx.config
+    jobs = _make_jobs(("perplexity", p, "job-1"))
+
+    thoth_signals._interrupt_event.set()
+    with pytest.raises(KeyboardInterrupt):
+        asyncio.run(_maybe_cancel_upstream_and_raise(jobs, set(), set(), ctx, config))
+
+    out = buf.getvalue()
+    assert "Cancelled upstream: perplexity" not in out
     assert "Cancelled upstream: perplexity" not in out
 
 

@@ -194,6 +194,17 @@ BUILTIN_MODES = {
             "stream_mode": "concise",
         },
     },
+    # P27: Perplexity background deep-research mode (async API).
+    "perplexity_deep_research": {
+        "provider": "perplexity",
+        "model": "sonar-deep-research",
+        "kind": "background",
+        "system_prompt": None,
+        "description": "Perplexity Sonar Deep Research — multi-step research via async API. ~$1.32/query at reasoning_effort=high.",
+        "perplexity": {
+            "reasoning_effort": "high",
+        },
+    },
 }
 
 

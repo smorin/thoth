@@ -690,6 +690,16 @@ async def _maybe_cancel_upstream_and_raise(
                     if isinstance(result, BaseException):
                         # Swallow NotImplementedError / network failures; best-effort.
                         continue
+                    if isinstance(result, dict) and result.get("status") == "upstream_unsupported":
+                        # P27: Perplexity has no upstream cancel API, so cancel()
+                        # returns this sentinel instead of raising. Mirror
+                        # cancel.py:126's user-facing wording so the polling-loop
+                        # path doesn't misleadingly claim a successful cancel.
+                        ctx.console.print(
+                            f"[yellow]⚠ {name}: upstream cancel not supported; "
+                            f"local checkpoint marked cancelled[/yellow]"
+                        )
+                        continue
                     ctx.console.print(f"[yellow]Cancelled upstream:[/yellow] {name}")
             except TimeoutError:
                 pass  # 5s envelope exceeded; exit anyway
