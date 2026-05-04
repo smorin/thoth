@@ -1352,8 +1352,13 @@ class TestRunner:
                     exit_code=0,
                     skipped=True,
                 )
+            # Pre-clean any leftover artifacts so reruns start fresh
+            cleanup_test_files(test_case.cleanup_files)
             interactive_runner = InteractiveTestRunner(self.verbose)
-            return interactive_runner.run_interactive_test(test_case)
+            result = interactive_runner.run_interactive_test(test_case)
+            if result.passed:
+                cleanup_test_files(test_case.cleanup_files)
+            return result
 
         tmpdir, prepared_cmd, prepared_env, output_base = _prepare_test_isolation(test_case)
         try:
