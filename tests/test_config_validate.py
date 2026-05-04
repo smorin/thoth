@@ -1,0 +1,182 @@
+"""P33 validation behavior tests.
+
+TS05: typos produce warnings (one per typo) but never raise.
+TS06: `[experimental]` super-table accepts arbitrary keys.
+"""
+
+from __future__ import annotations
+
+import pytest
+
+# ---------- TS05: warn-only behavior ----------
+
+
+def test_prompy_prefix_typo_produces_one_warning_no_raise() -> None:
+    from thoth.config_schema import ConfigSchema
+
+    data = {"general": {"prompy_prefix": "x"}}
+    report = ConfigSchema.validate(data, layer="user")
+    assert len(report.warnings) == 1
+    w = report.warnings[0]
+    assert w.path == "general.prompy_prefix"
+    assert "extra" in w.message.lower() or "unknown" in w.message.lower()
+
+
+def test_validate_does_not_raise_on_unknown_field() -> None:
+    from thoth.config_schema import ConfigSchema
+
+    ConfigSchema.validate({"general": {"prompy_prefix": "x"}}, layer="user")
+
+
+def test_no_validate_global_suppresses_warnings() -> None:
+    from thoth import config_schema as cs
+
+    cs._no_validate = True
+    try:
+        report = cs.ConfigSchema.validate({"general": {"prompy_prefix": "x"}}, layer="user")
+        assert report.warnings == ()
+    finally:
+        cs._no_validate = False
+
+
+def test_strict_mode_raises_on_unknown_field() -> None:
+    from pydantic import ValidationError
+
+    from thoth.config_schema import ConfigSchema
+
+    with pytest.raises(ValidationError):
+        ConfigSchema.validate({"general": {"prompy_prefix": "x"}}, layer="user", strict=True)
+
+
+# ---------- TS06: [experimental] carve-out ----------
+
+
+def test_experimental_table_accepts_arbitrary_keys() -> None:
+    from thoth.config_schema import ConfigSchema
+
+    data = {
+        "experimental": {
+            "anything": True,
+            "nested": {"deep": {"keys": [1, 2, 3]}},
+            "weird_thing": {"plugin_name": "foo"},
+        }
+    }
+    report = ConfigSchema.validate(data, layer="user")
+    assert report.warnings == ()
+
+
+def test_experimental_in_strict_mode_also_accepts() -> None:
+    from thoth.config_schema import ConfigSchema
+
+    ConfigSchema.validate({"experimental": {"plugin_name": "foo"}}, layer="user", strict=True)
+
+
+# ---------- --no-validate CLI integration ----------
+
+
+def test_no_validate_flag_suppresses_runtime_warnings(tmp_path) -> None:
+    """`thoth --no-validate ...` must not surface warnings for config typos."""
+    import subprocess
+
+    cfg = tmp_path / "thoth.config.toml"
+    cfg.write_text(
+        "\n".join(
+            [
+                'version = "2.0"',
+                "[general]",
+                'prompy_prefix = "x"  # typo',
+            ]
+        )
+    )
+
+    result = subprocess.run(
+        ["uv", "run", "thoth", "--no-validate", "--config", str(cfg), "config", "list"],
+        capture_output=True,
+        text=True,
+    )
+    combined = result.stdout + result.stderr
+    assert "config warning" not in combined, (
+        f"--no-validate should suppress validation warnings; saw: {combined}"
+    )
+
+
+def test_validate_flag_omitted_surfaces_warning(tmp_path) -> None:
+    """Without --no-validate, the same typo should warn on stdout."""
+    import subprocess
+
+    cfg = tmp_path / "thoth.config.toml"
+    cfg.write_text(
+        "\n".join(
+            [
+                'version = "2.0"',
+                "[general]",
+                'prompy_prefix = "x"',
+            ]
+        )
+    )
+
+    result = subprocess.run(
+        ["uv", "run", "thoth", "--config", str(cfg), "config", "list"],
+        capture_output=True,
+        text=True,
+    )
+    combined = result.stdout + result.stderr
+    assert "prompy_prefix" in combined
+
+
+def test_validation_reports_populated_per_layer(tmp_path) -> None:
+    """ConfigManager.validation_reports must contain a report per layer."""
+    from thoth.config import ConfigManager
+
+    cfg = tmp_path / "thoth.config.toml"
+    cfg.write_text(
+        "\n".join(
+            [
+                'version = "2.0"',
+                "[general]",
+                'prompy_prefix = "x"',  # typo
+            ]
+        )
+    )
+
+    mgr = ConfigManager(config_path=cfg)
+    mgr.load_all_layers()
+
+    assert "user" in mgr.validation_reports
+    assert "project" in mgr.validation_reports
+    assert "profile" in mgr.validation_reports
+    assert "cli" in mgr.validation_reports
+
+    user_warns = mgr.validation_reports["user"].warnings
+    assert any("prompy_prefix" in w.path for w in user_warns), (
+        f"expected prompy_prefix warning in user layer; got {user_warns}"
+    )
+
+
+def test_existing_test_fixtures_produce_zero_warnings(tmp_path) -> None:
+    """A *valid* P21-shape config produces no warnings."""
+    from thoth.config import ConfigManager
+
+    cfg = tmp_path / "thoth.config.toml"
+    cfg.write_text(
+        "\n".join(
+            [
+                'version = "2.0"',
+                "[general]",
+                'default_profile = "fast"',
+                'prompt_prefix = "Cite sources"',
+                "[profiles.fast]",
+                'prompt_prefix = "Be quick"',
+                "[profiles.fast.modes.thinking]",
+                'system_prompt = "Step by step"',
+            ]
+        )
+    )
+
+    mgr = ConfigManager(config_path=cfg)
+    mgr.load_all_layers()
+
+    for layer, report in mgr.validation_reports.items():
+        assert report.warnings == (), (
+            f"layer {layer} produced unexpected warnings: {report.warnings}"
+        )

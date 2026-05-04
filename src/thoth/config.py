@@ -34,12 +34,12 @@ from thoth.config_profiles import (
     resolve_profile_selection,
     without_profiles,
 )
-from thoth.errors import ConfigAmbiguousError, ConfigNotFoundError, ThothError
-from thoth.paths import user_checkpoints_dir, user_config_file
+from thoth.errors import ConfigAmbiguousError, ConfigNotFoundError
+from thoth.paths import user_config_file
 
 # Console used for config-warning output only.
-# Distinct from the CLI's main console instance; both write to the same stdout.
-_console = Console()
+# Writes to stderr to avoid contaminating JSON stdout output.
+_console = Console(stderr=True)
 
 # Version tracking
 THOTH_VERSION = __version__
@@ -268,61 +268,17 @@ class ConfigSchema:
 
     @staticmethod
     def get_defaults() -> dict[str, Any]:
-        """Return default configuration"""
-        return {
-            "version": CONFIG_VERSION,
-            "general": {
-                "default_project": "",  # Empty means ad-hoc mode
-                "default_mode": "default",
-            },
-            "paths": {
-                "base_output_dir": "./research-outputs",
-                "checkpoint_dir": str(user_checkpoints_dir()),
-            },
-            "execution": {
-                "poll_interval": 30,
-                "max_wait": 30,
-                "parallel_providers": True,
-                "retry_attempts": 3,
-                "max_transient_errors": 5,
-                "auto_input": True,
-                "prompt_max_bytes": 1024 * 1024,
-                "cancel_upstream_on_interrupt": True,
-            },
-            "output": {
-                "combine_reports": False,
-                "format": "markdown",
-                "include_metadata": True,
-                "timestamp_format": "%Y-%m-%d_%H%M%S",
-            },
-            "providers": {
-                "openai": {"api_key": "${OPENAI_API_KEY}"},
-                "perplexity": {"api_key": "${PERPLEXITY_API_KEY}"},
-            },
-            "clarification": {
-                "cli": {
-                    "provider": "openai",
-                    "model": "gpt-4o-mini",
-                    "temperature": 0.7,
-                    "max_tokens": 500,
-                    "system_prompt": """I don't want you to follow the above question and instructions; I want you to tell me the ways this is unclear, point out any ambiguities or anything you don't understand. Follow that by asking questions to help clarify the ambiguous points. Once there are no more unclear, ambiguous or not understood portions, help me draft a clear version of the question/instruction.""",
-                    "retry_attempts": 3,
-                    "retry_delay": 2.0,
-                },
-                "interactive": {
-                    "provider": "openai",
-                    "model": "gpt-4o-mini",
-                    "temperature": 0.7,
-                    "max_tokens": 800,
-                    "system_prompt": """I don't want you to follow the above question and instructions; I want you to tell me the ways this is unclear, point out any ambiguities or anything you don't understand. Follow that by asking questions to help clarify the ambiguous points. Once there are no more unclear, ambiguous or not understood portions, help me draft a clear version of the question/instruction.""",
-                    "retry_attempts": 3,
-                    "retry_delay": 2.0,
-                    "input_height": 6,
-                    "max_input_height": 15,
-                },
-            },
-            "modes": {},  # Modes will be merged with built-in modes
-        }
+        """Return default configuration.
+
+        P33: derived from the typed schema in `thoth.config_schema`. Signature
+        unchanged from pre-P33 callers' perspective.
+        """
+        from thoth.config_schema import default_config_dict
+
+        # `default_config_dict()` instantiates the schema on every call, so
+        # callers get a fresh dict and default_factory values reflect the
+        # current environment.
+        return default_config_dict()
 
 
 class ConfigManager:
@@ -337,6 +293,22 @@ class ConfigManager:
         self.profile_selection: ProfileSelection = ProfileSelection(None, "none", None)
         self.active_profile: ProfileLayer | None = None
         self.profile_catalog: list[ProfileLayer] = []
+        # P33: per-layer validation reports keyed by layer name.
+        from thoth.config_schema import ValidationReport
+
+        self.validation_reports: dict[str, ValidationReport] = {}
+
+    def _validate_layer(self, layer: str, data: dict[str, Any]) -> None:
+        """Validate a layer's raw data; collect warnings; emit to console."""
+        from thoth.config_schema import ConfigSchema
+
+        report = ConfigSchema.validate(data, layer=layer)
+        self.validation_reports[layer] = report
+        for w in report.warnings:
+            _console.print(
+                f"[yellow]config warning[/yellow] [{layer}] {w.path}: {w.message}",
+                highlight=False,
+            )
 
     def load_all_layers(self, cli_args: dict[str, Any] | None = None):
         """Load all configuration layers in precedence order"""
@@ -386,7 +358,9 @@ class ConfigManager:
             project_path=project_path,
         )
         self.layers["user"] = without_profiles(user_raw)
+        self._validate_layer("user", user_raw)
         self.layers["project"] = without_profiles(project_raw)
+        self._validate_layer("project", project_raw)
 
         # Resolve which profile is active using a base view that contains
         # defaults + user + project (no env, no CLI). This honors
@@ -401,12 +375,14 @@ class ConfigManager:
         )
         self.active_profile = resolve_profile_layer(self.profile_selection, self.profile_catalog)
         self.layers["profile"] = self.active_profile.data if self.active_profile else {}
+        self._validate_layer("profile", self.layers["profile"])
 
         # Layer 5: Environment variables (per-setting overrides only)
         self.layers["env"] = self._get_env_overrides()
 
         # Layer 6: CLI arguments (per-setting overrides only; _profile sentinel stripped)
         self.layers["cli"] = cli_layer
+        self._validate_layer("cli", cli_layer)
 
         # Merge all layers
         self.data = self._merge_layers()
@@ -547,22 +523,12 @@ class ConfigManager:
         return substitute(config)
 
     def _validate_config(self):
-        """Validate the merged configuration"""
-        # Basic validation - can be extended
-        required_keys = [
-            "version",
-            "general",
-            "paths",
-            "execution",
-            "output",
-            "providers",
-        ]
-        for key in required_keys:
-            if key not in self.data:
-                raise ThothError(
-                    f"Missing required configuration key: {key}",
-                    "Check your configuration file",
-                )
+        """Post-merge invariant checks.
+
+        Schema validation runs per-layer in `load_all_layers`; this method
+        only enforces post-merge invariants (e.g. the user-modes kind
+        deprecation nudge).
+        """
         self._validate_user_modes_kind()
 
     def _validate_user_modes_kind(self) -> None:
