@@ -1099,6 +1099,8 @@ Per spec parity row 3 + research doc §3, §6.
 
 **Convention reference (P26+P27):** the `GeminiProvider` class adopts P27's async-internal helper layout. Public `submit()` is a thin async wrapper that delegates to `_submit_async()` (mirrors `perplexity.py:537,568`). The class also implements `_validate_kind_for_model(mode)` (P27 — `perplexity.py:431`) raising `ModeKindMismatchError` when a `kind="immediate"` mode is dispatched against a Gemini Deep Research model. The `@retry` decorator on `_submit_async` mirrors P26's tenacity shape (`openai.py:182-187`), with the exception filter swapped to `google.genai.errors.APIError` subclasses identified in the spike.
 
+**Spike-dependent parameter name:** the test fixtures and assertions below assume the create-call uses `agent=` (consistent with the original research doc and the v1 SDK shape). **If Task 2 step 2 found that the live SDK rejects `agent=` and accepts `model=` instead, swap the parameter name throughout this task AND Task 8 (submit impl)** before running the failing test. Specifically, every `assert call["agent"] == ...` becomes `assert call["model"] == ...`, and the implementation's `client.aio.interactions.create(agent=...)` becomes `client.aio.interactions.create(model=...)`. Do this swap consistently — Tasks 7+8 must agree.
+
 **Files:**
 - Test: `tests/test_gem_background.py` (append)
 
@@ -2039,7 +2041,7 @@ Append:
 
 ```python
 class TestGeminiListModels:
-    """list_models() returns the deep-research agent. Gemini exposes only one."""
+    """list_models() returns the speed-efficiency Deep Research agent shipped in P28 v1."""
 
     @pytest.mark.asyncio
     async def test_list_models_includes_deep_research_agent(self, provider):
@@ -2078,8 +2080,11 @@ Append to `GeminiProvider` in `src/thoth/providers/gemini.py`:
     async def list_models(self) -> list[dict[str, Any]]:
         """Return available Gemini Deep Research agents.
 
-        Per research doc §3: deep-research-preview-04-2026 is the only
-        built-in agent currently. Hardcoded; revisit if Google ships variants.
+        Returns only the speed-efficiency tier (deep-research-preview-04-2026)
+        shipped in P28 v1. The max-comprehensiveness tier
+        (deep-research-max-preview-04-2026) is intentionally not surfaced here;
+        opt-in is deferred to a successor project per the resolved Open
+        Question #6 in the project spec.
         """
         return [
             {
