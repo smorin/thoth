@@ -30,6 +30,7 @@ from thoth.errors import (
 from thoth.models import ModelCache
 from thoth.providers._status import _translate_provider_status
 from thoth.providers.base import ResearchProvider
+from thoth.utils import md_link_title, md_link_url
 
 _console = Console()
 
@@ -645,7 +646,7 @@ class OpenAIProvider(ResearchProvider):
             for c in citations:
                 if c["url"] not in seen:
                     seen.add(c["url"])
-                    source_lines.append(f"- [{c['title']}]({c['url']})")
+                    source_lines.append(f"- [{md_link_title(c['title'])}]({md_link_url(c['url'])})")
             content += "\n\n## Sources\n\n" + "\n".join(source_lines)
 
         return content if content else "No content in response"

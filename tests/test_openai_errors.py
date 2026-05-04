@@ -214,3 +214,69 @@ def test_openai_constants_use_suffix_naming() -> None:
     assert "temperature" in op._DIRECT_SDK_KEYS_OPENAI
     assert "max_tool_calls" in op._DIRECT_SDK_KEYS_OPENAI
     assert "tools" in op._DIRECT_SDK_KEYS_OPENAI
+
+
+def test_openai_sources_block_escapes_html_in_title() -> None:
+    """OpenAI's ## Sources block must use md_link_title to escape HTML in titles."""
+    from types import SimpleNamespace
+
+    from thoth.providers.openai import OpenAIProvider
+
+    provider = OpenAIProvider(api_key="dummy", config={})
+    fake_response = SimpleNamespace(
+        output=[
+            SimpleNamespace(
+                type="message",
+                status="completed",
+                phase="final_answer",
+                content=[
+                    SimpleNamespace(
+                        type="output_text",
+                        text="Answer body.",
+                        annotations=[
+                            {"url": "https://example.com", "title": "<script>alert(1)</script>"},
+                        ],
+                    )
+                ],
+            )
+        ],
+    )
+    provider.jobs["test"] = {"response": fake_response, "background": False, "created_at": 0}
+
+    rendered = asyncio.run(provider.get_result("test"))
+    assert "<script>" not in rendered, (
+        "raw HTML in title leaked into output (md_link_title not applied)"
+    )
+
+
+def test_openai_sources_block_blocks_javascript_scheme_in_url() -> None:
+    """OpenAI's ## Sources block must use md_link_url to neutralize javascript: URLs."""
+    from types import SimpleNamespace
+
+    from thoth.providers.openai import OpenAIProvider
+
+    provider = OpenAIProvider(api_key="dummy", config={})
+    fake_response = SimpleNamespace(
+        output=[
+            SimpleNamespace(
+                type="message",
+                status="completed",
+                phase="final_answer",
+                content=[
+                    SimpleNamespace(
+                        type="output_text",
+                        text="Answer.",
+                        annotations=[
+                            {"url": "javascript:alert(1)", "title": "Click me"},
+                        ],
+                    )
+                ],
+            )
+        ],
+    )
+    provider.jobs["test"] = {"response": fake_response, "background": False, "created_at": 0}
+
+    rendered = asyncio.run(provider.get_result("test"))
+    assert "javascript:" not in rendered, (
+        "javascript: scheme not neutralized (md_link_url not applied)"
+    )
