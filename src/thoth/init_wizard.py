@@ -12,6 +12,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
+import click
+
 from thoth.errors import ThothError
 
 PromptFn = Callable[[str], str]
@@ -210,3 +212,81 @@ class ScriptedPrompts:
         reply = self._answers[self._idx]
         self._idx += 1
         return reply
+
+
+@dataclass(frozen=True)
+class _Prefill:
+    providers: tuple[ProviderChoice, ...] = ()
+    default_mode: DefaultMode | None = None
+
+
+def _format_review(answers: WizardAnswers) -> str:
+    lines = [f"Target: {answers.target_path}"]
+    if not answers.providers:
+        lines.append("Providers: (none — `${ENV}` references kept as-is)")
+    else:
+        for p in answers.providers:
+            if p.storage == "env_ref":
+                lines.append(f"  {p.name} → ${ENV_VAR_BY_PROVIDER[p.name]}")
+            elif p.storage == "literal":
+                tail = _last4(p.literal_value or "")
+                lines.append(f"  {p.name} → literal (...{tail})")
+            else:
+                lines.append(f"  {p.name} → skip")
+    lines.append(f"Default mode: {answers.default_mode}")
+    return "\n".join(lines)
+
+
+def _collect(
+    *,
+    target: Path,
+    prefill: _Prefill,
+    prompt_fn: PromptFn,
+    env: dict[str, str],
+) -> WizardAnswers:
+    picked = prompt_providers(prompt_fn=prompt_fn)
+    provider_choices: list[ProviderChoice] = []
+    for name in picked:
+        provider_choices.append(
+            prompt_key_for_provider(provider=name, env=env, prompt_fn=prompt_fn)
+        )
+    default_mode = prompt_default_mode(prompt_fn=prompt_fn, current=prefill.default_mode)
+    return WizardAnswers(
+        providers=tuple(provider_choices),
+        default_mode=default_mode,
+        target_path=target,
+    )
+
+
+def run(
+    *,
+    target: Path,
+    prefill: _Prefill | None,
+    prompt_fn: PromptFn,
+    env: dict[str, str],
+) -> WizardAnswers | None:
+    """Run the interactive wizard. Return answers, or None if cancelled.
+
+    `prefill` carries values from an existing TOML file when `--force` is
+    passed. None means a clean run.
+    """
+    pf = prefill or _Prefill()
+    try:
+        while True:
+            answers = _collect(target=target, prefill=pf, prompt_fn=prompt_fn, env=env)
+            review = _format_review(answers)
+            decision = (
+                prompt_fn(f"\n{review}\n\nWrite this? [Y]es / [n]o / [e]dit > ").strip().lower()
+            )
+            if decision in ("", "y", "yes"):
+                return answers
+            if decision in ("n", "no"):
+                return None
+            # treat anything else as edit; loop
+            pf = _Prefill(
+                providers=answers.providers,
+                default_mode=answers.default_mode,
+            )
+    except KeyboardInterrupt:
+        click.echo("Init cancelled.", err=True)
+        raise click.Abort() from None

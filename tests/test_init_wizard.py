@@ -194,3 +194,86 @@ def test_default_mode_empty_keeps_current() -> None:
 def test_default_mode_empty_with_no_current_uses_default() -> None:
     sp = ScriptedPrompts([""])
     assert prompt_default_mode(prompt_fn=sp, current=None) == "default"
+
+
+from thoth.init_wizard import run  # noqa: E402
+
+
+def test_run_happy_path_openai_only(tmp_path: Path) -> None:
+    answers = run(
+        target=tmp_path / "thoth.config.toml",
+        prefill=None,
+        prompt_fn=ScriptedPrompts(
+            [
+                "1",  # Q1: openai only
+                "y",  # Q2: use $OPENAI_API_KEY
+                "2",  # Q3: thinking
+                "y",  # review: write
+            ]
+        ),
+        env={"OPENAI_API_KEY": "sk-test"},
+    )
+    assert answers is not None
+    assert answers.providers == (ProviderChoice("openai", "env_ref", None),)
+    assert answers.default_mode == "thinking"
+
+
+def test_run_review_cancel_returns_none(tmp_path: Path) -> None:
+    result = run(
+        target=tmp_path / "thoth.config.toml",
+        prefill=None,
+        prompt_fn=ScriptedPrompts(["4", "1", "n"]),  # skip all, mode default, cancel
+        env={},
+    )
+    assert result is None
+
+
+def test_run_review_edit_reprompts(tmp_path: Path) -> None:
+    answers = run(
+        target=tmp_path / "thoth.config.toml",
+        prefill=None,
+        prompt_fn=ScriptedPrompts(
+            [
+                # First pass
+                "1",  # openai
+                "y",  # env-var
+                "1",  # default mode
+                "e",  # edit
+                # Second pass
+                "2",  # perplexity
+                "y",  # env-var
+                "2",  # thinking
+                "y",  # write
+            ]
+        ),
+        env={"OPENAI_API_KEY": "sk-1", "PERPLEXITY_API_KEY": "sk-2"},
+    )
+    assert answers is not None
+    assert answers.providers == (ProviderChoice("perplexity", "env_ref", None),)
+    assert answers.default_mode == "thinking"
+
+
+def test_run_keyboard_interrupt_aborts(tmp_path: Path) -> None:
+    import click
+
+    def boom(_: str) -> str:
+        raise KeyboardInterrupt
+
+    with pytest.raises(click.Abort):
+        run(
+            target=tmp_path / "thoth.config.toml",
+            prefill=None,
+            prompt_fn=boom,
+            env={},
+        )
+
+
+def test_run_skip_all_zero_providers(tmp_path: Path) -> None:
+    answers = run(
+        target=tmp_path / "thoth.config.toml",
+        prefill=None,
+        prompt_fn=ScriptedPrompts(["4", "1", "y"]),  # skip all, default, write
+        env={},
+    )
+    assert answers is not None
+    assert answers.providers == ()
