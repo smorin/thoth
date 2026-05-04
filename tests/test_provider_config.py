@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import types
+import warnings
 from pathlib import Path
 from typing import Any, cast
 
@@ -29,7 +30,8 @@ def test_max_tool_calls_reaches_request_payload() -> None:
         return types.SimpleNamespace(id="job-gap01-1")
 
     provider = OpenAIProvider(
-        api_key="dummy", config={"model": "o3-deep-research", "max_tool_calls": 80}
+        api_key="dummy",
+        config={"model": "o3-deep-research", "openai": {"max_tool_calls": 80}},
     )
     provider.client = cast(
         Any, types.SimpleNamespace(responses=types.SimpleNamespace(create=fake_create))
@@ -52,7 +54,8 @@ def test_code_interpreter_false_excludes_tool() -> None:
         return types.SimpleNamespace(id="job-gap01-2")
 
     provider = OpenAIProvider(
-        api_key="dummy", config={"model": "o3-deep-research", "code_interpreter": False}
+        api_key="dummy",
+        config={"model": "o3-deep-research", "openai": {"code_interpreter": False}},
     )
     provider.client = cast(
         Any, types.SimpleNamespace(responses=types.SimpleNamespace(create=fake_create))
@@ -267,3 +270,66 @@ def test_create_provider_passes_openai_request_settings_from_mode_config() -> No
     assert provider.config["temperature"] == 0.2
     assert provider.config["max_tool_calls"] == 12
     assert "system_prompt" not in provider.config
+
+
+# ---------------------------------------------------------------------------
+# P24 Task 3.1 — [modes.X.openai] namespace migration with backwards-compat
+# deprecation. Mirrors P23/Perplexity's [modes.X.perplexity] namespace pattern.
+# ---------------------------------------------------------------------------
+
+
+def test_openai_reads_namespaced_temperature() -> None:
+    """OpenAIProvider reads [modes.X.openai].temperature."""
+    provider = OpenAIProvider(
+        api_key="dummy",
+        config={"openai": {"temperature": 0.42}, "kind": "immediate"},
+    )
+    assert provider._resolve_provider_config_value("temperature", 0.7) == 0.42
+
+
+def test_openai_reads_flat_temperature_with_deprecation_warning() -> None:
+    """Flat top-level temperature still works but emits DeprecationWarning."""
+    provider = OpenAIProvider(
+        api_key="dummy",
+        config={"temperature": 0.42, "kind": "immediate"},
+    )
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        resolved = provider._resolve_provider_config_value("temperature", 0.7)
+
+    assert resolved == 0.42
+    dep_warnings = [w for w in caught if issubclass(w.category, DeprecationWarning)]
+    assert any(
+        "namespace" in str(w.message).lower()
+        or "flat config" in str(w.message).lower()
+        or "modes." in str(w.message)
+        for w in dep_warnings
+    ), "expected DeprecationWarning advising migration to [modes.X.openai] namespace"
+
+
+def test_openai_namespaced_overrides_flat_silently() -> None:
+    """When both namespaced and flat keys exist, namespaced wins. No deprecation."""
+    provider = OpenAIProvider(
+        api_key="dummy",
+        config={
+            "temperature": 0.1,
+            "openai": {"temperature": 0.9},
+            "kind": "immediate",
+        },
+    )
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        resolved = provider._resolve_provider_config_value("temperature", 0.7)
+
+    assert resolved == 0.9
+    dep_warnings = [w for w in caught if issubclass(w.category, DeprecationWarning)]
+    assert not dep_warnings, "DeprecationWarning fired even though user is on the namespace path"
+
+
+def test_openai_default_when_neither_present() -> None:
+    """Returns the default when neither namespaced nor flat key is set."""
+    provider = OpenAIProvider(api_key="dummy", config={"kind": "immediate"})
+    assert provider._resolve_provider_config_value("temperature", 0.7) == 0.7
+    assert provider._resolve_provider_config_value("max_tool_calls", None) is None

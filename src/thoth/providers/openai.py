@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import warnings
 from datetime import datetime
 from typing import Any
 from uuid import uuid4
@@ -56,6 +57,13 @@ _DIRECT_SDK_KEYS_OPENAI: tuple[str, ...] = (
     "background",
     "temperature",
     "max_tool_calls",
+)
+
+# Framework-level config keys that stay flat on `provider.config` and are NOT
+# eligible for the [modes.X.openai] namespace migration. Reading any of these
+# from the flat top level must NOT emit a DeprecationWarning.
+_FRAMEWORK_FLAT_KEYS_OPENAI: frozenset[str] = frozenset(
+    {"openai", "kind", "model", "timeout", "background"}
 )
 
 
@@ -184,6 +192,43 @@ class OpenAIProvider(ResearchProvider):
         timeout = self.config.get("timeout", 30.0)
         self.client = AsyncOpenAI(api_key=api_key, timeout=httpx.Timeout(timeout, connect=5.0))
 
+    def _resolve_provider_config_value(
+        self,
+        key: str,
+        default: Any = None,
+    ) -> Any:
+        """Read a provider-specific config key.
+
+        Resolution chain:
+          1. ``self.config["openai"][key]``  -- the ``[modes.X.openai]``
+             namespace (preferred).
+          2. ``self.config[key]``            -- flat top-level (deprecated;
+             emits ``DeprecationWarning``).
+          3. ``default``.
+
+        Mirrors Perplexity's ``[modes.X.perplexity]`` namespace pattern. Flat
+        keys are supported for backwards-compat with mode TOMLs that pre-date
+        P24, but emit a ``DeprecationWarning`` telling users to migrate.
+        Framework-level keys (``kind``, ``model``, ``timeout``, ``background``,
+        ``openai``) are never warned on — they are framework-owned, not
+        user-owned, and are read directly from ``self.config`` elsewhere.
+        """
+        nested = self.config.get(_PROVIDER_NAME_OPENAI) or {}
+        if not isinstance(nested, dict):
+            nested = {}
+        if key in nested:
+            return nested[key]
+        if key in self.config and key not in _FRAMEWORK_FLAT_KEYS_OPENAI:
+            warnings.warn(
+                f"OpenAI provider read flat config key {key!r}; migrate to "
+                f"[modes.X.openai].{key} namespace. Flat-key support will be "
+                f"removed in a future release.",
+                DeprecationWarning,
+                stacklevel=3,
+            )
+            return self.config[key]
+        return default
+
     def _validate_kind_for_model(self, mode: str) -> None:
         """Refuse to submit when declared `kind` contradicts the model's required kind.
 
@@ -249,7 +294,7 @@ class OpenAIProvider(ResearchProvider):
         tools: list[dict[str, Any]] = []
         if is_background_model(self.model):
             tools = [{"type": "web_search_preview"}]
-            if self.config.get("code_interpreter", True):
+            if self._resolve_provider_config_value("code_interpreter", True):
                 tools.append({"type": "code_interpreter", "container": {"type": "auto"}})
 
         # Determine if background mode should be used
@@ -257,7 +302,7 @@ class OpenAIProvider(ResearchProvider):
         use_background = is_background_model(self.model) or self.config.get("background", False)
 
         # Get configuration parameters
-        temperature = self.config.get("temperature", 0.7)
+        temperature = self._resolve_provider_config_value("temperature", 0.7)
 
         # Build request parameters
         request_params: dict[str, Any] = {
@@ -274,7 +319,7 @@ class OpenAIProvider(ResearchProvider):
             request_params["temperature"] = temperature
 
         # Apply max_tool_calls if configured — primary lever for cost and latency control
-        max_tool_calls = self.config.get("max_tool_calls")
+        max_tool_calls = self._resolve_provider_config_value("max_tool_calls")
         if max_tool_calls is not None:
             request_params["max_tool_calls"] = max_tool_calls
 
@@ -473,7 +518,7 @@ class OpenAIProvider(ResearchProvider):
         }
         # o-series response models reject `temperature`; only set it on chat-style models
         if not self.model.startswith("o"):
-            request_params["temperature"] = self.config.get("temperature", 0.7)
+            request_params["temperature"] = self._resolve_provider_config_value("temperature", 0.7)
 
         try:
             async with self.client.responses.stream(**request_params) as stream:
