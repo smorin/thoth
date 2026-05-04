@@ -8,6 +8,7 @@ under the `perplexity` mode-config namespace and are forwarded via
 
 from __future__ import annotations
 
+import sys
 from collections.abc import AsyncIterator
 from datetime import datetime
 from typing import Any
@@ -16,6 +17,7 @@ from uuid import uuid4
 import httpx
 import openai
 from openai import AsyncOpenAI
+from rich.console import Console
 from tenacity import (
     retry,
     retry_if_exception_type,
@@ -843,7 +845,7 @@ class PerplexityProvider(ResearchProvider):
             raise ProviderError(_PROVIDER_NAME_PERPLEXITY, f"Unknown job_id: {job_id}")
         job_info = self.jobs[job_id]
         if not job_info.get("background", False):
-            return _render_answer_with_sources(job_info["response"])
+            return _render_answer_with_sources(job_info["response"], verbose=verbose)
         return await self._get_async_result(job_id, job_info, verbose)
 
     async def _get_async_result(self, job_id: str, job_info: dict[str, Any], verbose: bool) -> str:
@@ -946,13 +948,43 @@ def _format_async_cost_block(usage: dict[str, Any]) -> str:
     return f"\n\n## Cost\n\nTotal: ${amount:.4f}"
 
 
-def _render_answer_with_sources(response: Any) -> str:
-    """Extract content + append a deduped `## Sources` block from search_results."""
+def _debug_print_empty_response(response: Any) -> None:
+    """Emit an empty-content debug ladder to stderr.
+
+    Mirrors openai.py's pattern: try ``model_dump_json`` first, fall back to a
+    truncated ``__dict__`` view, and finally ``repr``. Wrapped so any failure
+    in the introspection itself still produces a single readable line.
+    """
+    err_console = Console(file=sys.stderr)
+    try:
+        if hasattr(response, "model_dump_json"):
+            debug_info = response.model_dump_json()
+        elif hasattr(response, "__dict__"):
+            debug_info = str(
+                {k: str(v)[:100] for k, v in response.__dict__.items() if not k.startswith("_")}
+            )
+        else:
+            debug_info = repr(response)
+    except Exception:
+        debug_info = f"<{type(response).__name__}>"
+    err_console.print(f"[dim]Debug: no content found in response. Structure: {debug_info}[/dim]")
+
+
+def _render_answer_with_sources(response: Any, verbose: bool = False) -> str:
+    """Extract content + append a deduped `## Sources` block from search_results.
+
+    When ``verbose`` is True and the response carries no content, emit a debug
+    ladder to stderr (model_dump_json -> __dict__ -> repr). Mirrors openai.py's
+    pattern so an empty Perplexity response is not silently swallowed.
+    """
     choices = getattr(response, "choices", None) or []
     content = ""
     if choices:
         message = getattr(choices[0], "message", None)
         content = getattr(message, "content", "") or ""
+
+    if verbose and not content and response is not None:
+        _debug_print_empty_response(response)
 
     search_results = getattr(response, "search_results", None) or []
     seen_urls: set[str] = set()

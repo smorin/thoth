@@ -949,3 +949,51 @@ def test_perplexity_bad_request_without_unsupported_parameter_falls_through() ->
     assert mapped.provider == "perplexity"
     # Generic 400 message should still be present (don't break existing handling).
     assert "bad request" in mapped.message.lower()
+
+
+def test_perplexity_empty_content_debug_print(capsys) -> None:
+    """When response content is empty and verbose=True, emit debug ladder to stderr."""
+    import asyncio
+    from types import SimpleNamespace
+
+    from thoth.providers.perplexity import PerplexityProvider
+
+    provider = PerplexityProvider(api_key="dummy", config={})
+    fake_response = SimpleNamespace(
+        choices=[SimpleNamespace(message=SimpleNamespace(content=""))],
+        search_results=[],
+    )
+    # Simulate model_dump_json so the first step of the ladder hits
+    fake_response.model_dump_json = lambda **kwargs: '{"choices": [{"message": {"content": ""}}]}'
+    provider.jobs["test"] = {"response": fake_response}
+
+    asyncio.run(provider.get_result("test", verbose=True))
+    captured = capsys.readouterr()
+    # Debug print should fire when content is empty + verbose
+    combined = (captured.err + captured.out).lower()
+    assert "empty" in combined or "debug" in combined or "no content" in combined, (
+        "expected an empty-content debug message on stderr/stdout when verbose=True"
+    )
+
+
+def test_perplexity_empty_content_no_debug_when_verbose_false(capsys) -> None:
+    """verbose=False: empty content does not emit debug output."""
+    import asyncio
+    from types import SimpleNamespace
+
+    from thoth.providers.perplexity import PerplexityProvider
+
+    provider = PerplexityProvider(api_key="dummy", config={})
+    fake_response = SimpleNamespace(
+        choices=[SimpleNamespace(message=SimpleNamespace(content=""))],
+        search_results=[],
+    )
+    provider.jobs["test"] = {"response": fake_response}
+
+    asyncio.run(provider.get_result("test", verbose=False))
+    captured = capsys.readouterr()
+    combined = (captured.err + captured.out).lower()
+    # No debug ladder output when verbose is off
+    assert "empty" not in combined and "debug" not in combined, (
+        "verbose=False must not produce debug output"
+    )
