@@ -38,6 +38,7 @@ dependencies = [
     "prompt-toolkit>=3.0",
     "tomlkit>=0.13",
     "thothspinner>=1.2.6",
+    "google-genai>=1.74.0",
 ]
 
 [project.scripts]
