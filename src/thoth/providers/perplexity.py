@@ -100,7 +100,7 @@ class _ThinkStreamParser:
         return [("text", text)]
 
 
-_PROVIDER_NAME = "perplexity"
+_PROVIDER_NAME_PERPLEXITY = "perplexity"
 _INVALID_KEY_PHRASES = ("invalid api key", "incorrect api key", "invalid_api_key")
 
 # Provider-status → Thoth-status template for the async API. Caller fills in
@@ -174,17 +174,19 @@ def _map_perplexity_error(
         body = getattr(exc, "body", None) or {}
         combined = (str(exc) + " " + str(body)).lower()
         if any(phrase in combined for phrase in _INVALID_KEY_PHRASES):
-            return _invalid_key_thotherror(_PROVIDER_NAME, "https://www.perplexity.ai/settings/api")
-        return APIKeyError(_PROVIDER_NAME)
+            return _invalid_key_thotherror(
+                _PROVIDER_NAME_PERPLEXITY, "https://www.perplexity.ai/settings/api"
+            )
+        return APIKeyError(_PROVIDER_NAME_PERPLEXITY)
 
     if isinstance(exc, openai.RateLimitError):
         if _rate_limit_error_is_quota(exc):
-            return APIQuotaError(_PROVIDER_NAME)
-        return APIRateLimitError(_PROVIDER_NAME)
+            return APIQuotaError(_PROVIDER_NAME_PERPLEXITY)
+        return APIRateLimitError(_PROVIDER_NAME_PERPLEXITY)
 
     if isinstance(exc, openai.PermissionDeniedError):
         return ProviderError(
-            _PROVIDER_NAME,
+            _PROVIDER_NAME_PERPLEXITY,
             "Permission denied (check tier / model access).",
             raw_error=raw,
         )
@@ -196,48 +198,48 @@ def _map_perplexity_error(
     # BadRequestError depending on SDK version. Checked BEFORE BadRequestError
     # so a 402 surfacing as BadRequestError still routes to APIQuotaError.
     if getattr(exc, "status_code", None) == 402:
-        return APIQuotaError(_PROVIDER_NAME)
+        return APIQuotaError(_PROVIDER_NAME_PERPLEXITY)
 
     if isinstance(exc, openai.BadRequestError):
         # A4: use {model!r} for parity with _map_perplexity_error_async — repr
         # quoting is more correct for free-form upstream model strings.
         hint = f" (model: {model!r})" if model else ""
         return ProviderError(
-            _PROVIDER_NAME,
+            _PROVIDER_NAME_PERPLEXITY,
             f"Bad request{hint}. Check model name and request shape.",
             raw_error=raw,
         )
 
     if isinstance(exc, openai.APITimeoutError):
         return ProviderError(
-            _PROVIDER_NAME,
+            _PROVIDER_NAME_PERPLEXITY,
             "Request timed out. Try again, or raise --timeout.",
             raw_error=raw,
         )
 
     if isinstance(exc, openai.APIConnectionError):
         return ProviderError(
-            _PROVIDER_NAME,
+            _PROVIDER_NAME_PERPLEXITY,
             "Network connection error reaching api.perplexity.ai.",
             raw_error=raw,
         )
 
     if isinstance(exc, openai.InternalServerError):
         return ProviderError(
-            _PROVIDER_NAME,
+            _PROVIDER_NAME_PERPLEXITY,
             "Perplexity server error (5xx). Retry shortly.",
             raw_error=raw,
         )
 
     if isinstance(exc, openai.APIError):
         return ProviderError(
-            _PROVIDER_NAME,
+            _PROVIDER_NAME_PERPLEXITY,
             f"Perplexity API error: {exc}",
             raw_error=raw,
         )
 
     return ProviderError(
-        _PROVIDER_NAME,
+        _PROVIDER_NAME_PERPLEXITY,
         f"Unexpected error: {exc}",
         raw_error=raw,
     )
@@ -289,24 +291,24 @@ def _map_perplexity_error_async(
         if status == 401:
             if any(phrase in body_lower for phrase in _INVALID_KEY_PHRASES):
                 return _invalid_key_thotherror(
-                    _PROVIDER_NAME, "https://www.perplexity.ai/settings/api"
+                    _PROVIDER_NAME_PERPLEXITY, "https://www.perplexity.ai/settings/api"
                 )
-            return APIKeyError(_PROVIDER_NAME)
+            return APIKeyError(_PROVIDER_NAME_PERPLEXITY)
         if status == 402:
-            return APIQuotaError(_PROVIDER_NAME)
+            return APIQuotaError(_PROVIDER_NAME_PERPLEXITY)
         if status == 403:
             # A2: parity with _map_perplexity_error's PermissionDeniedError
             # handler — emit the same hint so users see the tier/model-access
             # diagnostic on both sync and async paths.
             return ProviderError(
-                _PROVIDER_NAME,
+                _PROVIDER_NAME_PERPLEXITY,
                 "Permission denied (check tier / model access).",
                 raw_error=raw,
             )
         if status == 422:
             hint = f" (model: {model!r})" if model else ""
             return ProviderError(
-                _PROVIDER_NAME,
+                _PROVIDER_NAME_PERPLEXITY,
                 f"Invalid async request{hint}. Model may not support /v1/async/sonar.",
                 raw_error=raw,
             )
@@ -328,11 +330,11 @@ def _map_perplexity_error_async(
                 "blocked",
             )
             if any(marker in body_lower for marker in quota_markers):
-                return APIQuotaError(_PROVIDER_NAME)
-            return APIRateLimitError(_PROVIDER_NAME)
+                return APIQuotaError(_PROVIDER_NAME_PERPLEXITY)
+            return APIRateLimitError(_PROVIDER_NAME_PERPLEXITY)
         if 500 <= status < 600:
             return ProviderError(
-                _PROVIDER_NAME,
+                _PROVIDER_NAME_PERPLEXITY,
                 "Perplexity server error (5xx). Retry shortly.",
                 raw_error=raw,
             )
@@ -341,27 +343,27 @@ def _map_perplexity_error_async(
         # through to the generic HTTP-{status} bucket on purpose. Keeping it
         # explicit so future maintainers don't add a redundant 400 branch.
         return ProviderError(
-            _PROVIDER_NAME,
+            _PROVIDER_NAME_PERPLEXITY,
             f"HTTP {status} from Perplexity async API: {body_text[:200]}",
             raw_error=raw,
         )
 
     if isinstance(exc, httpx.TimeoutException):
         return ProviderError(
-            _PROVIDER_NAME,
+            _PROVIDER_NAME_PERPLEXITY,
             "Request timed out. Try again, or raise --timeout.",
             raw_error=raw,
         )
 
     if isinstance(exc, httpx.ConnectError):
         return ProviderError(
-            _PROVIDER_NAME,
+            _PROVIDER_NAME_PERPLEXITY,
             "Network connection error reaching api.perplexity.ai.",
             raw_error=raw,
         )
 
     return ProviderError(
-        _PROVIDER_NAME,
+        _PROVIDER_NAME_PERPLEXITY,
         f"Unexpected error: {exc}",
         raw_error=raw,
     )
@@ -369,7 +371,7 @@ def _map_perplexity_error_async(
 
 PERPLEXITY_BASE_URL = "https://api.perplexity.ai"
 
-_DIRECT_SDK_KEYS: tuple[str, ...] = (
+_DIRECT_SDK_KEYS_PERPLEXITY: tuple[str, ...] = (
     "max_tokens",
     "temperature",
     "top_p",
@@ -492,7 +494,7 @@ class PerplexityProvider(ResearchProvider):
             "messages": self._build_messages(prompt, system_prompt),
             "extra_body": self._build_extra_body(),
         }
-        for key in _DIRECT_SDK_KEYS:
+        for key in _DIRECT_SDK_KEYS_PERPLEXITY:
             if key in self.config:
                 params[key] = self.config[key]
         return params
@@ -584,7 +586,7 @@ class PerplexityProvider(ResearchProvider):
         request_id = payload.get("id")
         if not request_id:
             raise ProviderError(
-                _PROVIDER_NAME,
+                _PROVIDER_NAME_PERPLEXITY,
                 "Async submit response missing 'id' field",
                 raw_error=str(payload) if verbose else None,
             )
@@ -808,7 +810,7 @@ class PerplexityProvider(ResearchProvider):
         except httpx.HTTPStatusError as exc:
             if exc.response.status_code == 404:
                 raise ProviderError(
-                    _PROVIDER_NAME,
+                    _PROVIDER_NAME_PERPLEXITY,
                     f"Job {job_id!r} not found. Async results expire 7 days after submission.",
                 ) from exc
             raise _map_perplexity_error_async(exc, model=self.model) from exc
@@ -843,7 +845,7 @@ class PerplexityProvider(ResearchProvider):
         fresh if the cached state isn't COMPLETED yet.
         """
         if job_id not in self.jobs:
-            raise ProviderError(_PROVIDER_NAME, f"Unknown job_id: {job_id}")
+            raise ProviderError(_PROVIDER_NAME_PERPLEXITY, f"Unknown job_id: {job_id}")
         job_info = self.jobs[job_id]
         if not job_info.get("background", False):
             return _render_answer_with_sources(job_info["response"])

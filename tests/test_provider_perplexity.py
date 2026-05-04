@@ -842,3 +842,26 @@ def test_perplexity_sync_maps_402_status_code_to_api_quota_error() -> None:
     assert isinstance(result, APIQuotaError), (
         f"expected APIQuotaError for status_code=402, got {type(result).__name__}: {result!r}"
     )
+
+
+def test_perplexity_constants_use_suffix_naming() -> None:
+    """Perplexity module-level constants follow the cross-provider suffix convention."""
+    from thoth.providers import perplexity as pp
+
+    assert hasattr(pp, "_DIRECT_SDK_KEYS_PERPLEXITY"), (
+        "_DIRECT_SDK_KEYS_PERPLEXITY must exist (renamed from bare _DIRECT_SDK_KEYS)"
+    )
+    assert hasattr(pp, "_PROVIDER_NAME_PERPLEXITY"), (
+        "_PROVIDER_NAME_PERPLEXITY must exist (renamed from bare _PROVIDER_NAME)"
+    )
+    assert pp._PROVIDER_NAME_PERPLEXITY == "perplexity"
+    assert "max_tokens" in pp._DIRECT_SDK_KEYS_PERPLEXITY
+    assert "temperature" in pp._DIRECT_SDK_KEYS_PERPLEXITY
+
+
+def test_perplexity_bare_constant_names_removed() -> None:
+    """Bare unsuffixed names must NOT exist after the rename."""
+    from thoth.providers import perplexity as pp
+
+    assert not hasattr(pp, "_DIRECT_SDK_KEYS"), "bare _DIRECT_SDK_KEYS leaked through rename"
+    assert not hasattr(pp, "_PROVIDER_NAME"), "bare _PROVIDER_NAME leaked through rename"
