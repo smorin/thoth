@@ -6,7 +6,12 @@ from pathlib import Path
 
 import tomlkit
 
-from thoth.commands import _apply_wizard_answers, _build_starter_document
+from thoth.commands import (
+    _apply_wizard_answers,
+    _build_starter_document,
+    _load_or_build_doc,
+    _prefill_from_doc,
+)
 from thoth.init_wizard import ProviderChoice, WizardAnswers
 
 
@@ -67,3 +72,38 @@ def test_apply_creates_missing_provider_table() -> None:
     doc = tomlkit.document()  # totally empty
     _apply_wizard_answers(doc, _make((ProviderChoice("gemini", "env_ref", None),), mode="default"))
     assert doc["providers"]["gemini"]["api_key"] == "${GEMINI_API_KEY}"  # ty: ignore[not-subscriptable]
+
+
+def test_prefill_extracts_default_mode() -> None:
+    doc = _build_starter_document()
+    doc["general"]["default_mode"] = "deep_research"  # ty: ignore[invalid-assignment]
+    pf = _prefill_from_doc(doc)
+    assert pf.default_mode == "deep_research"
+
+
+def test_prefill_returns_none_when_missing() -> None:
+    doc = tomlkit.document()
+    pf = _prefill_from_doc(doc)
+    assert pf.default_mode is None
+    assert pf.providers == ()
+
+
+def test_prefill_ignores_unknown_default_mode() -> None:
+    doc = _build_starter_document()
+    doc["general"]["default_mode"] = "made-up"  # ty: ignore[invalid-assignment]
+    pf = _prefill_from_doc(doc)
+    assert pf.default_mode is None  # don't pre-fill garbage
+
+
+def test_load_or_build_returns_existing_doc(tmp_path: Path) -> None:
+    p = tmp_path / "thoth.config.toml"
+    p.write_text('version = 1\n[general]\ndefault_mode = "thinking"\n')
+    doc = _load_or_build_doc(p, force=True)
+    assert doc["general"]["default_mode"] == "thinking"  # ty: ignore[not-subscriptable]
+
+
+def test_load_or_build_returns_starter_when_missing(tmp_path: Path) -> None:
+    p = tmp_path / "thoth.config.toml"
+    doc = _load_or_build_doc(p, force=False)
+    # starter doc has known shape
+    assert "profiles" in doc
