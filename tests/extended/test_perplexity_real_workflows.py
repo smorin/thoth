@@ -216,15 +216,16 @@ def _submit_perplexity_background_json(
 def test_ext_pplx_bg_submit_async_persists_request_id(
     live_perplexity_env: tuple[dict[str, str], Path],
 ) -> None:
-    """EXT-PPLX-BG-SUBMIT: background ask --async --json submits and persists request_id.
+    """EXT-PPLX-BG-SUBMIT: background ask --async --json persists and resumes.
 
-    Mirrors `test_ext_oai_bg_json_explicit_async_submits_and_can_cancel`. Verifies
-    that the upstream Perplexity request_id (the async job_id) lands in the
-    checkpoint via the runner's existing checkpoint format. If this passes,
-    P27's `submit()` is wire-compatible with the runner contract.
+    Verifies that the upstream Perplexity request_id (the async job_id) lands
+    in the checkpoint via the runner's existing checkpoint format, then runs
+    `resume --async --json` in a fresh subprocess to prove the user can exit
+    after submission and later reconnect without blocking for completion.
 
     NOTE: ~$1.32 per run; upstream job continues running after this test
-    returns and there is no way to stop it (T01). Cost is unavoidable.
+    returns and there is no way to stop it (T01). Cost is unavoidable; this
+    test intentionally does NOT call `thoth cancel`.
     """
     env, state_root = live_perplexity_env
     operation_id, _result, _elapsed = _submit_perplexity_background_json(
@@ -241,6 +242,26 @@ def test_ext_pplx_bg_submit_async_persists_request_id(
     assert providers["perplexity"].get("status") in PERPLEXITY_BACKGROUND_STATUSES
     assert providers["perplexity"].get("job_id") == job_id
 
+    resume_result, resume_elapsed = run_thoth(
+        ["resume", operation_id, "--async", "--json"], env, timeout=120
+    )
+    assert resume_result.returncode == 0, resume_result.stderr + resume_result.stdout
+    assert resume_elapsed < 120
+    assert_no_secret_leaked(resume_result, env)
+
+    resume_envelope = payload(resume_result)
+    assert resume_envelope["status"] == "ok", resume_envelope
+    resume_data: dict[str, Any] = resume_envelope["data"]
+    assert resume_data["operation_id"] == operation_id
+    assert "newly_completed" in resume_data
+    resumed_provider = resume_data["providers"]["perplexity"]
+    assert resumed_provider["job_id"] == job_id
+    assert resumed_provider.get("status") in {"running", "completed"}
+
+    checkpoint = json.loads(checkpoint_path(state_root, operation_id).read_text())
+    assert checkpoint["status"] in {"running", "completed"}
+    assert checkpoint["providers"]["perplexity"]["status"] in {"running", "completed"}
+
 
 def test_ext_pplx_bg_cancel_renders_upstream_unsupported(
     live_perplexity_env: tuple[dict[str, str], Path],
@@ -250,17 +271,40 @@ def test_ext_pplx_bg_cancel_renders_upstream_unsupported(
     Perplexity returns {status: upstream_unsupported} from cancel(); the
     user-facing CLI (cancel.py:126) must render the warning string
     'upstream cancel not supported; local checkpoint marked cancelled'.
-    Mirrors OpenAI's `test_ext_oai_bg_cancel_cmd_json_cancels_live_background_job`
-    but for the no-upstream-cancel-API case.
-
-    NOTE: ~$1.32 per run; cancel does NOT abort the upstream job.
+    This uses a local checkpoint with a synthetic request_id. Perplexity has
+    no cancel endpoint, so submitting a real paid job would add cost without
+    increasing coverage.
     """
     env, state_root = live_perplexity_env
-    operation_id, _result, _elapsed = _submit_perplexity_background_json(
-        env,
-        prompt="Briefly summarize one recent advance in genetic engineering.",
+    operation_id = "research-20260503-120000-aaaaaaaaaaaaaaaa"
+    checkpoint_file = checkpoint_path(state_root, operation_id)
+    checkpoint_file.parent.mkdir(parents=True, exist_ok=True)
+    checkpoint_file.write_text(
+        json.dumps(
+            {
+                "id": operation_id,
+                "prompt": "synthetic Perplexity cancel checkpoint",
+                "mode": "perplexity_deep_research",
+                "status": "running",
+                "created_at": "2026-05-03T12:00:00",
+                "updated_at": "2026-05-03T12:00:00",
+                "providers": {
+                    "perplexity": {
+                        "status": "running",
+                        "job_id": "req-synthetic-no-upstream-cancel",
+                    }
+                },
+                "output_paths": {},
+                "error": None,
+                "progress": 0.0,
+                "project": None,
+                "input_files": [],
+                "failure_type": None,
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
     )
-    assert wait_for_provider_job_id(state_root, operation_id, provider="perplexity", timeout=60.0)
 
     cancel_result, cancel_elapsed = run_thoth(["cancel", operation_id, "--json"], env, timeout=45)
     assert cancel_result.returncode == 0, cancel_result.stderr + cancel_result.stdout
@@ -275,13 +319,11 @@ def test_ext_pplx_bg_cancel_renders_upstream_unsupported(
     # Perplexity must surface upstream_unsupported (the runner records the
     # exact status returned by provider.cancel).
     perp_status = data["providers"]["perplexity"]["status"]
-    assert perp_status in {"upstream_unsupported", "cancelled", "completed"}, (
-        f"unexpected provider cancel status: {perp_status!r}"
-    )
+    assert perp_status == "upstream_unsupported"
 
     # Local checkpoint must reflect cancelled regardless of upstream support.
     checkpoint = json.loads(checkpoint_path(state_root, operation_id).read_text())
-    assert checkpoint["status"] in {"cancelled", "completed", "failed"}
+    assert checkpoint["status"] == "cancelled"
 
 
 @pytest.mark.extended_slow

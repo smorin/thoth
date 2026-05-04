@@ -290,6 +290,33 @@ def test_async_submit_includes_reasoning_effort_from_mode_config() -> None:
     assert body["request"].get("reasoning_effort") == "high"
 
 
+def test_async_submit_forwards_provider_namespace_request_options() -> None:
+    """P27: background async path forwards Perplexity request options.
+
+    Mirrors the immediate path's arbitrary provider-namespace passthrough so
+    custom background modes can constrain search/cost without each key being
+    copied by hand.
+    """
+    provider, post = _make_background_provider(
+        extra_config={
+            "perplexity": {
+                "reasoning_effort": "high",
+                "web_search_options": {"search_context_size": "low"},
+                "search_domain_filter": ["perplexity.ai"],
+                "return_related_questions": True,
+            }
+        }
+    )
+    asyncio.run(provider.submit("hello", mode="perplexity_deep_research"))
+    assert post.await_args is not None
+    body = post.await_args.kwargs["json"]
+    request = body["request"]
+    assert request["reasoning_effort"] == "high"
+    assert request["web_search_options"] == {"search_context_size": "low"}
+    assert request["search_domain_filter"] == ["perplexity.ai"]
+    assert request["return_related_questions"] is True
+
+
 def test_async_submit_omits_reasoning_effort_when_unset() -> None:
     """TS01: omitting reasoning_effort from config also omits it from the request body.
 
@@ -497,6 +524,39 @@ def test_check_status_404_maps_to_permanent_error_with_ttl_hint() -> None:
         or "7-day" in error_text
         or "7 day" in error_text
     )
+
+
+@pytest.mark.parametrize("status", [401, 402, 403, 422])
+def test_check_status_non_retryable_http_error_maps_to_permanent_error(status: int) -> None:
+    """P27 review: non-retryable poll HTTP errors must not burn transient retries."""
+    provider, _ = _make_background_provider()
+    _seed_background_job(provider)
+    request = httpx.Request("GET", "https://api.perplexity.ai/v1/async/sonar/req-async-123")
+    response = httpx.Response(status_code=status, content=b"{}", request=request)
+    err = httpx.HTTPStatusError(str(status), request=request, response=response)
+    _attach_get_response(provider, err)
+    result = asyncio.run(provider.check_status("req-async-123"))
+    assert result["status"] == "permanent_error"
+    assert result["status"] != "transient_error"
+    assert result["error_class"] in {
+        "APIKeyError",
+        "APIQuotaError",
+        "ProviderError",
+    }
+
+
+@pytest.mark.parametrize("status", [429, 503])
+def test_check_status_retryable_http_error_stays_transient(status: int) -> None:
+    """P27 review: rate limits and server errors remain retryable while job is running."""
+    provider, _ = _make_background_provider()
+    _seed_background_job(provider, cached_status="IN_PROGRESS")
+    request = httpx.Request("GET", "https://api.perplexity.ai/v1/async/sonar/req-async-123")
+    response = httpx.Response(status_code=status, content=b"{}", request=request)
+    err = httpx.HTTPStatusError(str(status), request=request, response=response)
+    _attach_get_response(provider, err)
+    result = asyncio.run(provider.check_status("req-async-123"))
+    assert result["status"] == "transient_error"
+    assert result["error_class"] == "HTTPStatusError"
 
 
 def test_check_status_transient_error_with_stale_in_progress_cache_does_not_complete() -> None:

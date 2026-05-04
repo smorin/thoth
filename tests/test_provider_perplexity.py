@@ -790,13 +790,11 @@ def test_perplexity_is_implemented_returns_true() -> None:
     assert provider.is_implemented() is True
 
 
-def test_perplexity_list_models_returns_supported_sync_models() -> None:
-    """TS08: list_models() returns sonar / sonar-pro / sonar-reasoning-pro."""
+def test_perplexity_list_models_returns_supported_models() -> None:
+    """TS08/P27: list_models() includes built-in Perplexity immediate + background models."""
     provider = PerplexityProvider(api_key="pplx-test")
     ids = {m["id"] for m in asyncio.run(provider.list_models())}
-    assert {"sonar", "sonar-pro", "sonar-reasoning-pro"}.issubset(ids)
-    # sonar-deep-research is P27's domain; it must NOT appear in P23's supported list.
-    assert "sonar-deep-research" not in ids
+    assert {"sonar", "sonar-pro", "sonar-reasoning-pro", "sonar-deep-research"}.issubset(ids)
 
 
 def test_perplexity_provider_description_drops_not_implemented() -> None:
