@@ -35,7 +35,7 @@ def init_run(isolated_thoth_home: Path) -> Path:
     from thoth.paths import user_config_file
 
     handler = CommandHandler(ConfigManager())
-    handler.init_command()
+    handler.init_command(non_interactive=True)
     path = user_config_file()
     assert path.exists(), f"init did not create config at {path}"
     return path
@@ -129,7 +129,7 @@ def test_cli_init_custom_config_path_writes_starter_profiles(
     from thoth.cli import cli
 
     target = tmp_path / "custom-cfg.toml"
-    result = CliRunner().invoke(cli, ["--config", str(target), "init"])
+    result = CliRunner().invoke(cli, ["--config", str(target), "init", "--non-interactive"])
 
     assert result.exit_code == 0, result.output
     assert target.exists()

@@ -258,6 +258,7 @@ class CommandHandler:
         user: bool = False,
         hidden: bool = False,
         force: bool = False,
+        non_interactive: bool = False,
         **params,
     ):
         """Initialize Thoth configuration"""
@@ -273,22 +274,46 @@ class CommandHandler:
             )
 
         console.print("[bold]Welcome to Thoth Research Assistant Setup![/bold]\n")
-
         console.print("Checking environment...")
         console.print(f"✓ Python {sys.version.split()[0]} detected")
         console.print("✓ UV package manager available")
         console.print(f"✓ Operating System: {sys.platform} (supported)\n")
-
         console.print(f"Configuration file will be created at: {target}\n")
 
         target.parent.mkdir(parents=True, exist_ok=True)
 
-        console.print("[yellow]Interactive setup wizard not yet implemented.[/yellow]")
-        console.print("Creating default configuration...")
+        if non_interactive:
+            doc = _build_starter_document()
+            target.write_text(tomlkit.dumps(doc))
+            console.print(f"\n[green]✓[/green] Configuration saved to {target}")
+            console.print('\nYou can now run: thoth deep_research "your prompt"')
+            return
 
-        doc = _build_starter_document()
-        target.write_text(tomlkit.dumps(doc))
+        # Interactive wizard path
+        import os
 
+        from thoth import init_wizard
+
+        base_doc = _load_or_build_doc(target, force=force)
+        prefill = _prefill_from_doc(base_doc) if force and target.exists() else None
+
+        def _real_prompt(p: str) -> str:
+            from rich.prompt import Prompt
+
+            return Prompt.ask(p, default="")
+
+        answers = init_wizard.run(
+            target=target,
+            prefill=prefill,
+            prompt_fn=_real_prompt,
+            env=dict(os.environ),
+        )
+        if answers is None:
+            console.print("[yellow]Init cancelled — no file written.[/yellow]")
+            return
+
+        _apply_wizard_answers(base_doc, answers)
+        target.write_text(tomlkit.dumps(base_doc))
         console.print(f"\n[green]✓[/green] Configuration saved to {target}")
         console.print('\nYou can now run: thoth deep_research "your prompt"')
 
