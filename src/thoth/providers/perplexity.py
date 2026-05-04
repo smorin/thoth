@@ -32,7 +32,7 @@ from thoth.errors import (
     ProviderError,
     ThothError,
 )
-from thoth.providers._helpers import _invalid_key_thotherror
+from thoth.providers._helpers import _extract_unsupported_param, _invalid_key_thotherror
 from thoth.providers._status import _translate_provider_status
 from thoth.providers.base import Citation, ResearchProvider, StreamEvent
 from thoth.utils import md_link_title, md_link_url
@@ -188,6 +188,14 @@ def _map_perplexity_error(
         return APIQuotaError(_PROVIDER_NAME_PERPLEXITY)
 
     if isinstance(exc, openai.BadRequestError):
+        param = _extract_unsupported_param(str(exc))
+        if param:
+            return ProviderError(
+                _PROVIDER_NAME_PERPLEXITY,
+                f"Perplexity does not support parameter '{param}' for this model. "
+                "Remove it from the mode config or its provider namespace.",
+                raw_error=raw,
+            )
         # A4: use {model!r} for parity with _map_perplexity_error_async — repr
         # quoting is more correct for free-form upstream model strings.
         hint = f" (model: {model!r})" if model else ""

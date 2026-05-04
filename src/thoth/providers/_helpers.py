@@ -8,7 +8,28 @@ copy-paste drift.
 
 from __future__ import annotations
 
+import re
+
 from thoth.errors import ThothError
+
+_UNSUPPORTED_PARAM_RE = re.compile(r"'(\w+)'")
+
+
+def _extract_unsupported_param(message: str) -> str | None:
+    """Extract the offending parameter name from an "unsupported parameter X" error.
+
+    Used by provider error mappers when an OpenAI SDK BadRequestError surfaces
+    a message of the form "Unsupported parameter 'X' ...". Returns None when
+    the message doesn't match the unsupported-parameter shape.
+
+    Both OpenAI and Perplexity use the OpenAI SDK exception body, which is
+    why they share this extractor. Gemini uses google-genai's ClientError
+    body shape and may need its own extractor.
+    """
+    if "unsupported parameter" not in message.lower():
+        return None
+    match = _UNSUPPORTED_PARAM_RE.search(message)
+    return match.group(1) if match else None
 
 
 def _invalid_key_thotherror(display_name: str, settings_url: str) -> ThothError:

@@ -897,3 +897,55 @@ def test_perplexity_not_found_error_maps_with_model_hint() -> None:
     assert "not found" in msg_lower
     assert "models" in msg_lower, "ProviderError message must point users at the models CLI command"
     assert "perplexity" in msg_lower
+
+
+def _bad_request_with_message(message: str, body: Any = None) -> BaseException:
+    """Build a real openai.BadRequestError carrying a custom user-facing message.
+
+    `_make_openai_exc` hardcodes the message for parametrized testing; for
+    Task 2.4 we need to control the exact wording so the regex extraction
+    has something to find.
+    """
+    import httpx
+    import openai
+
+    request = httpx.Request("POST", "https://api.perplexity.ai/chat/completions")
+    response = httpx.Response(status_code=400, request=request)
+    return openai.BadRequestError(message=message, response=response, body=body)
+
+
+def test_perplexity_unsupported_parameter_regex_extraction() -> None:
+    """BadRequestError with 'Unsupported parameter X' surfaces the parameter name."""
+    from thoth.errors import ProviderError
+    from thoth.providers.perplexity import _map_perplexity_error
+
+    exc = _bad_request_with_message(
+        "Unsupported parameter 'frequency_penalty' for sonar-pro.",
+        body={
+            "error": {
+                "code": "invalid_request_error",
+                "message": "Unsupported parameter 'frequency_penalty' for sonar-pro.",
+            }
+        },
+    )
+    mapped = _map_perplexity_error(exc, model="sonar-pro", verbose=False)
+    assert isinstance(mapped, ProviderError)
+    assert mapped.provider == "perplexity"
+    # Extracted parameter name must surface in the user-facing message.
+    assert "frequency_penalty" in mapped.message
+
+
+def test_perplexity_bad_request_without_unsupported_parameter_falls_through() -> None:
+    """BadRequestError without an 'unsupported parameter' marker keeps generic message."""
+    from thoth.errors import ProviderError
+    from thoth.providers.perplexity import _map_perplexity_error
+
+    exc = _bad_request_with_message(
+        "Some other 400 error",
+        body={"error": {"code": "invalid_request_error", "message": "Some other 400 error"}},
+    )
+    mapped = _map_perplexity_error(exc, model="sonar", verbose=False)
+    assert isinstance(mapped, ProviderError)
+    assert mapped.provider == "perplexity"
+    # Generic 400 message should still be present (don't break existing handling).
+    assert "bad request" in mapped.message.lower()

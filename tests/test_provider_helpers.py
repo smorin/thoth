@@ -29,3 +29,37 @@ def test_invalid_key_thotherror_openai_url() -> None:
     assert err.suggestion is not None
     assert "Your OpenAI API key" in err.suggestion
     assert "https://platform.openai.com/account/api-keys" in err.suggestion
+
+
+def test_extract_unsupported_param_finds_parameter_name() -> None:
+    """The helper pulls the quoted parameter name from a BadRequestError message."""
+    from thoth.providers._helpers import _extract_unsupported_param
+
+    assert (
+        _extract_unsupported_param("Unsupported parameter 'frequency_penalty' for sonar-pro.")
+        == "frequency_penalty"
+    )
+
+
+def test_extract_unsupported_param_returns_none_when_marker_missing() -> None:
+    """No 'unsupported parameter' marker -> None (don't false-match)."""
+    from thoth.providers._helpers import _extract_unsupported_param
+
+    assert _extract_unsupported_param("Some other 400 error") is None
+
+
+def test_extract_unsupported_param_case_insensitive_marker() -> None:
+    """Marker check is case-insensitive (upstream wording varies)."""
+    from thoth.providers._helpers import _extract_unsupported_param
+
+    assert _extract_unsupported_param("UNSUPPORTED PARAMETER 'temperature'") == "temperature"
+
+
+def test_extract_unsupported_param_handles_colon_form() -> None:
+    """OpenAI's wording uses 'Unsupported parameter:' — also recognized."""
+    from thoth.providers._helpers import _extract_unsupported_param
+
+    assert (
+        _extract_unsupported_param("Unsupported parameter: 'temperature' for o3-deep-research")
+        == "temperature"
+    )

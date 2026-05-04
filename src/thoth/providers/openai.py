@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import re
 from datetime import datetime
 from typing import Any
 from uuid import uuid4
@@ -28,7 +27,7 @@ from thoth.errors import (
     ThothError,
 )
 from thoth.models import ModelCache
-from thoth.providers._helpers import _invalid_key_thotherror
+from thoth.providers._helpers import _extract_unsupported_param, _invalid_key_thotherror
 from thoth.providers._status import _translate_provider_status
 from thoth.providers.base import ResearchProvider
 from thoth.utils import md_link_title, md_link_url
@@ -127,8 +126,7 @@ def _map_openai_error(
                 raw_error=raw,
             )
         if "unsupported parameter" in msg_lower:
-            param_match = re.search(r"'(\w+)'", msg)
-            param_name = param_match.group(1) if param_match else "unknown"
+            param_name = _extract_unsupported_param(msg) or "unknown"
             return ProviderError(
                 _PROVIDER_NAME_OPENAI,
                 f"Model '{model}' does not support parameter '{param_name}'",
