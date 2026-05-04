@@ -193,3 +193,215 @@ def test_gemini_build_generate_content_config_include_thoughts_only_defaults_thi
         "include_thoughts=True without explicit thinking_budget must default to -1 (dynamic)"
     )
     assert thinking_config.include_thoughts is True
+
+
+# ---------------------------------------------------------------------------
+# Task 4.3: error mapping + retry policy
+# ---------------------------------------------------------------------------
+
+from unittest.mock import MagicMock  # noqa: E402
+
+import pytest  # noqa: E402
+
+
+def _make_gemini_client_error(code: int, status: str, message: str, details: list | None = None):
+    """Construct a google.genai.errors.ClientError for testing.
+
+    The SDK's ClientError takes (code, response_json, response). We build a
+    minimal response_json dict with the error.status / error.message / error.details
+    that _map_gemini_error inspects.
+    """
+    from google.genai import errors as genai_errors
+
+    error_obj: dict[str, object] = {"code": code, "status": status, "message": message}
+    if details is not None:
+        error_obj["details"] = details
+    response_json: dict[str, object] = {"error": error_obj}
+    fake_response = MagicMock()
+    fake_response.status_code = code
+    return genai_errors.ClientError(code=code, response_json=response_json, response=fake_response)
+
+
+def _make_gemini_server_error(code: int, status: str = "INTERNAL", message: str = "server error"):
+    from google.genai import errors as genai_errors
+
+    response_json = {"error": {"code": code, "status": status, "message": message}}
+    fake_response = MagicMock()
+    fake_response.status_code = code
+    return genai_errors.ServerError(code=code, response_json=response_json, response=fake_response)
+
+
+@pytest.mark.parametrize(
+    "code,status,message,expected_cls,expected_substr",
+    [
+        # Auth-invalid (matched by phrase in message)
+        (
+            401,
+            "UNAUTHENTICATED",
+            "API key not valid. Please pass a valid API key.",
+            "ThothError",
+            "key is invalid",
+        ),
+        # Auth-missing (different phrasing)
+        (401, "UNAUTHENTICATED", "Missing authentication credential.", "APIKeyError", "gemini"),
+        # Rate-limit (per-minute, no quota markers)
+        (
+            429,
+            "RESOURCE_EXHAUSTED",
+            "Quota exceeded for quota metric 'Generate content requests per minute'",
+            "APIRateLimitError",
+            "rate",
+        ),
+        # Bad request (no offending param)
+        (400, "INVALID_ARGUMENT", "Some bad request error", "ProviderError", "Bad request"),
+        # NotFound
+        (404, "NOT_FOUND", "Model not found", "ProviderError", "not found"),
+        # Permission denied
+        (
+            403,
+            "PERMISSION_DENIED",
+            "API key does not have permission",
+            "ProviderError",
+            "Permission",
+        ),
+    ],
+)
+def test_gemini_error_mapping_table(code, status, message, expected_cls, expected_substr) -> None:
+    from thoth.errors import (
+        APIKeyError,
+        APIQuotaError,
+        APIRateLimitError,
+        ProviderError,
+        ThothError,
+    )
+    from thoth.providers.gemini import _map_gemini_error
+
+    fake_exc = _make_gemini_client_error(code, status, message)
+    mapped = _map_gemini_error(fake_exc, "gemini-2.5-flash-lite", verbose=False)
+    expected = {
+        "ThothError": ThothError,
+        "APIKeyError": APIKeyError,
+        "APIRateLimitError": APIRateLimitError,
+        "APIQuotaError": APIQuotaError,
+        "ProviderError": ProviderError,
+    }[expected_cls]
+    assert isinstance(mapped, expected), (
+        f"expected {expected.__name__}, got {type(mapped).__name__}: {mapped}"
+    )
+    assert expected_substr.lower() in str(mapped).lower()
+
+
+def test_gemini_quota_per_day_maps_to_apiquotaerror() -> None:
+    """429 with 'per day' in message maps to APIQuotaError, not APIRateLimitError."""
+    from thoth.errors import APIQuotaError
+    from thoth.providers.gemini import _map_gemini_error
+
+    fake_exc = _make_gemini_client_error(
+        429,
+        "RESOURCE_EXHAUSTED",
+        "Quota exceeded for quota metric 'Generate content requests per day'",
+    )
+    mapped = _map_gemini_error(fake_exc, "gemini-2.5-pro", verbose=False)
+    assert isinstance(mapped, APIQuotaError)
+
+
+def test_gemini_quota_free_tier_maps_to_apiquotaerror() -> None:
+    """429 with FREE_TIER_LIMIT_EXCEEDED reason maps to APIQuotaError."""
+    from thoth.errors import APIQuotaError
+    from thoth.providers.gemini import _map_gemini_error
+
+    fake_exc = _make_gemini_client_error(
+        429,
+        "RESOURCE_EXHAUSTED",
+        "Quota exceeded",
+        details=[{"reason": "FREE_TIER_LIMIT_EXCEEDED"}],
+    )
+    mapped = _map_gemini_error(fake_exc, "gemini-2.5-pro", verbose=False)
+    assert isinstance(mapped, APIQuotaError)
+
+
+def test_gemini_invalid_key_thotherror_has_exit_code_2() -> None:
+    """The shared _invalid_key_thotherror helper guarantees exit_code=2 with brand-correct casing."""
+    from thoth.errors import ThothError
+    from thoth.providers.gemini import _map_gemini_error
+
+    fake_exc = _make_gemini_client_error(401, "UNAUTHENTICATED", "API key not valid")
+    mapped = _map_gemini_error(fake_exc, "gemini-2.5-pro", verbose=False)
+    assert isinstance(mapped, ThothError)
+    assert mapped.exit_code == 2
+    assert "Gemini" in str(mapped)  # capitalized brand name
+
+
+def test_gemini_invalid_argument_extracts_offending_param() -> None:
+    """400 INVALID_ARGUMENT with 'parameter X' extracts X via the shared helper."""
+    from thoth.providers.gemini import _map_gemini_error
+
+    fake_exc = _make_gemini_client_error(
+        400,
+        "INVALID_ARGUMENT",
+        "Unsupported parameter 'frequency_penalty' for gemini-2.5-pro",
+    )
+    mapped = _map_gemini_error(fake_exc, "gemini-2.5-pro", verbose=False)
+    assert "frequency_penalty" in str(mapped)
+
+
+def test_gemini_server_error_5xx_maps_to_provider_error() -> None:
+    from thoth.errors import ProviderError
+    from thoth.providers.gemini import _map_gemini_error
+
+    fake_exc = _make_gemini_server_error(500)
+    mapped = _map_gemini_error(fake_exc, "gemini-2.5-pro", verbose=False)
+    assert isinstance(mapped, ProviderError)
+    assert "server error" in str(mapped).lower()
+
+
+def test_gemini_httpx_timeout_maps_to_provider_error() -> None:
+    import httpx
+
+    from thoth.errors import ProviderError
+    from thoth.providers.gemini import _map_gemini_error
+
+    fake_exc = httpx.TimeoutException("Request timed out")
+    mapped = _map_gemini_error(fake_exc, "gemini-2.5-pro", verbose=False)
+    assert isinstance(mapped, ProviderError)
+    assert "timed out" in str(mapped).lower() or "timeout" in str(mapped).lower()
+
+
+def test_gemini_httpx_connect_error_maps_to_provider_error() -> None:
+    import httpx
+
+    from thoth.errors import ProviderError
+    from thoth.providers.gemini import _map_gemini_error
+
+    fake_exc = httpx.ConnectError("Connection refused")
+    mapped = _map_gemini_error(fake_exc, "gemini-2.5-pro", verbose=False)
+    assert isinstance(mapped, ProviderError)
+
+
+def test_gemini_unknown_exception_maps_to_provider_error() -> None:
+    from thoth.errors import ProviderError
+    from thoth.providers.gemini import _map_gemini_error
+
+    mapped = _map_gemini_error(RuntimeError("???"), "gemini-2.5-pro", verbose=False)
+    assert isinstance(mapped, ProviderError)
+    assert "Unexpected" in str(mapped) or "???" in str(mapped)
+
+
+def test_gemini_retry_classes_includes_rate_limit() -> None:
+    """The Gemini retry-class set includes APIRateLimitError per Google's 429 guidance."""
+    import httpx
+
+    from thoth.errors import APIRateLimitError
+    from thoth.providers.gemini import _GEMINI_RETRY_CLASSES
+
+    assert APIRateLimitError in _GEMINI_RETRY_CLASSES
+    assert httpx.TimeoutException in _GEMINI_RETRY_CLASSES
+    assert httpx.ConnectError in _GEMINI_RETRY_CLASSES
+
+
+def test_gemini_retry_classes_excludes_quota_error() -> None:
+    """APIQuotaError is NOT in the retry set (quota is permanent until reset)."""
+    from thoth.errors import APIQuotaError
+    from thoth.providers.gemini import _GEMINI_RETRY_CLASSES
+
+    assert APIQuotaError not in _GEMINI_RETRY_CLASSES

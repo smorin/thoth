@@ -13,9 +13,38 @@ from __future__ import annotations
 
 from typing import Any
 
+import httpx
+from google.genai import errors as genai_errors  # type: ignore[import-not-found]
+
+from thoth.errors import (
+    APIKeyError,
+    APIQuotaError,
+    APIRateLimitError,
+    ProviderError,
+    ThothError,
+)
+from thoth.providers._helpers import (
+    _extract_unsupported_param,
+    _invalid_key_thotherror,
+)
 from thoth.providers.base import ResearchProvider
 
 _PROVIDER_NAME_GEMINI = "gemini"
+
+_INVALID_KEY_PHRASES_GEMINI: tuple[str, ...] = (
+    "api key not valid",
+    "api_key_invalid",
+    "invalid api key",
+    "api key expired",
+)
+
+_QUOTA_MARKERS_GEMINI: tuple[str, ...] = (
+    "per day",
+    "you exceeded your current quota",
+    "free tier",
+    "billing",
+    "credit",
+)
 
 _DIRECT_SDK_KEYS_GEMINI: tuple[str, ...] = (
     # Allowlist of [modes.X.gemini].* keys recognized by
@@ -35,6 +64,129 @@ _DIRECT_SDK_KEYS_GEMINI: tuple[str, ...] = (
     "safety_settings",
     "thinking_budget",
     "include_thoughts",
+)
+
+
+def _is_gemini_quota_exhaustion(message: str, details: list[dict[str, Any]] | None) -> bool:
+    """Distinguish quota/credits exhaustion from ordinary rate-limiting on a 429.
+
+    Inspect the message for known quota-exhaustion phrases AND structurally inspect
+    error.details[].reason for FREE_TIER_LIMIT_EXCEEDED / BILLING_DISABLED / daily-metric markers.
+    """
+    msg_lower = message.lower()
+    if any(marker in msg_lower for marker in _QUOTA_MARKERS_GEMINI):
+        return True
+    if details:
+        for entry in details:
+            if not isinstance(entry, dict):
+                continue
+            reason = (entry.get("reason") or "").upper()
+            if reason in {"FREE_TIER_LIMIT_EXCEEDED", "BILLING_DISABLED"}:
+                return True
+            if reason == "RATE_LIMIT_EXCEEDED":
+                metric = (entry.get("quotaMetric") or entry.get("metric") or "").lower()
+                if "per day" in metric or "daily" in metric:
+                    return True
+    return False
+
+
+def _map_gemini_error(exc: Exception, model: str | None, verbose: bool = False) -> ThothError:
+    """Translate google-genai SDK and httpx exceptions into ThothError subclasses.
+
+    Mirrors _map_openai_error / _map_perplexity_error's shape.
+    Note: ModeKindMismatchError is propagated unmapped by the caller (provider's
+    submit/stream methods); this function only handles SDK + httpx exceptions.
+    """
+    if isinstance(exc, genai_errors.ClientError):
+        # ClientError stores response_json under .details (full body) and pre-extracts
+        # .code / .status / .message. We dig into .details for the structured
+        # error.details list (used by quota discrimination).
+        body = getattr(exc, "details", None) or {}
+        if not isinstance(body, dict):
+            body = {}
+        err_obj = body.get("error") or {}
+        if not isinstance(err_obj, dict):
+            err_obj = {}
+        message = getattr(exc, "message", None) or err_obj.get("message") or str(exc) or ""
+        status_raw = getattr(exc, "status", None) or err_obj.get("status") or ""
+        status = status_raw.upper() if isinstance(status_raw, str) else ""
+        details = err_obj.get("details")
+        code = getattr(exc, "code", None)
+
+        if code == 401 or status == "UNAUTHENTICATED":
+            if any(p in message.lower() for p in _INVALID_KEY_PHRASES_GEMINI):
+                return _invalid_key_thotherror(
+                    "Gemini",
+                    "https://aistudio.google.com/app/apikey",
+                )
+            return APIKeyError(_PROVIDER_NAME_GEMINI)
+
+        if code == 429 or status == "RESOURCE_EXHAUSTED":
+            if _is_gemini_quota_exhaustion(message, details if isinstance(details, list) else None):
+                return APIQuotaError(_PROVIDER_NAME_GEMINI)
+            return APIRateLimitError(_PROVIDER_NAME_GEMINI)
+
+        if code == 404 or status == "NOT_FOUND":
+            model_str = repr(model) if model else "(unknown)"
+            return ProviderError(
+                _PROVIDER_NAME_GEMINI,
+                f"Model {model_str} not found or unavailable. "
+                f"Run `thoth providers --models --provider gemini` to list valid models.",
+            )
+
+        if code == 400 or status in {
+            "INVALID_ARGUMENT",
+            "FAILED_PRECONDITION",
+            "OUT_OF_RANGE",
+        }:
+            param = _extract_unsupported_param(message)
+            if param:
+                return ProviderError(
+                    _PROVIDER_NAME_GEMINI,
+                    f"Gemini does not support parameter {param!r} for this model. "
+                    f"Remove it from the mode config or its provider namespace.",
+                )
+            return ProviderError(_PROVIDER_NAME_GEMINI, f"Bad request: {message}")
+
+        if code == 403 or status == "PERMISSION_DENIED":
+            return ProviderError(
+                _PROVIDER_NAME_GEMINI,
+                f"Permission denied: {message}",
+            )
+
+        # Other ClientError (e.g. unrecognized 4xx)
+        return ProviderError(_PROVIDER_NAME_GEMINI, f"Gemini API error ({code}): {message}")
+
+    if isinstance(exc, genai_errors.ServerError):
+        code = getattr(exc, "code", "5xx")
+        return ProviderError(
+            _PROVIDER_NAME_GEMINI,
+            f"Gemini server error ({code}). Retry shortly.",
+        )
+
+    if isinstance(exc, httpx.TimeoutException):
+        return ProviderError(
+            _PROVIDER_NAME_GEMINI,
+            "Request timed out. Try again, or raise --timeout.",
+        )
+
+    if isinstance(exc, (httpx.ConnectError, httpx.RemoteProtocolError, httpx.RequestError)):
+        return ProviderError(
+            _PROVIDER_NAME_GEMINI,
+            "Network connection error reaching the Gemini API.",
+        )
+
+    if isinstance(exc, genai_errors.APIError):
+        return ProviderError(_PROVIDER_NAME_GEMINI, f"Gemini API error: {exc}")
+
+    return ProviderError(_PROVIDER_NAME_GEMINI, f"Unexpected error: {exc}")
+
+
+_GEMINI_RETRY_CLASSES: tuple[type[BaseException], ...] = (
+    httpx.TimeoutException,
+    httpx.ConnectError,
+    httpx.RemoteProtocolError,
+    APIRateLimitError,
 )
 
 
