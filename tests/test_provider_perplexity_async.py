@@ -741,3 +741,91 @@ def test_get_result_immediate_path_unchanged() -> None:
     }
     text = asyncio.run(provider.get_result("sync-job"))
     assert "Sync answer." in text
+
+
+# ---------------------------------------------------------------------------
+# P27-TS04 — reconnect()
+# ---------------------------------------------------------------------------
+#
+# reconnect() re-attaches the in-process job table to a server-side
+# request_id after a fresh process start. The runner calls this in
+# `thoth resume <op_id>` before re-entering the polling loop.
+
+
+def test_reconnect_happy_path_repopulates_jobs() -> None:
+    """TS04: GET success populates self.jobs[job_id] with background=True."""
+    provider, _ = _make_background_provider()
+    payload = {"id": "req-async-123", "status": "IN_PROGRESS"}
+    request = httpx.Request("GET", "https://api.perplexity.ai/v1/async/sonar/req-async-123")
+    fake_client = AsyncMock()
+    fake_client.get = AsyncMock(
+        return_value=httpx.Response(status_code=200, json=payload, request=request)
+    )
+    provider._async_http = fake_client  # type: ignore[attr-defined]
+    asyncio.run(provider.reconnect("req-async-123"))
+    assert "req-async-123" in provider.jobs
+    job_info = provider.jobs["req-async-123"]
+    assert job_info.get("background") is True
+    assert job_info.get("response_data", {}).get("status") == "IN_PROGRESS"
+
+
+def test_reconnect_404_raises_provider_error_with_ttl_hint() -> None:
+    """TS04: HTTP 404 → ProviderError mentioning the 7-day TTL.
+
+    Async jobs expire 7 days after submission per Perplexity spec §5;
+    the user-visible error must explain that.
+    """
+    provider, _ = _make_background_provider()
+    request = httpx.Request("GET", "https://api.perplexity.ai/v1/async/sonar/expired")
+    response = httpx.Response(status_code=404, content=b"{}", request=request)
+    err = httpx.HTTPStatusError("404", request=request, response=response)
+    fake_client = AsyncMock()
+    fake_client.get = AsyncMock(side_effect=err)
+    provider._async_http = fake_client  # type: ignore[attr-defined]
+    with pytest.raises(ProviderError) as info:
+        asyncio.run(provider.reconnect("expired"))
+    msg = str(info.value).lower()
+    assert "7" in msg and ("ttl" in msg or "expir" in msg or "day" in msg)
+
+
+# ---------------------------------------------------------------------------
+# P27-TS05 — cancel()
+# ---------------------------------------------------------------------------
+#
+# T01 verified Perplexity has no upstream cancel endpoint. cancel() returns
+# {"status": "upstream_unsupported"} per cancel.py:126 contract — that
+# exact dict-key spelling is consumed by the renderer.
+
+
+def test_cancel_returns_upstream_unsupported_with_no_http_call() -> None:
+    """TS05: cancel() returns {status: upstream_unsupported}; no HTTP fired.
+
+    Perplexity has no DELETE endpoint and no CANCELLED status (T01); the
+    runner uses this return shape to mark the local checkpoint cancelled
+    via cancel.py:126's "upstream cancel not supported" rendering.
+    """
+    provider, post = _make_background_provider()
+    fake_client = AsyncMock()
+    fake_client.post = post
+    fake_client.get = AsyncMock(return_value=_async_response())
+    fake_client.delete = AsyncMock(return_value=_async_response())
+    provider._async_http = fake_client  # type: ignore[attr-defined]
+    result = asyncio.run(provider.cancel("req-async-123"))
+    assert result == {"status": "upstream_unsupported"}, (
+        "cancel.py:126 keys exactly on this dict shape"
+    )
+    assert fake_client.post.await_count == 0
+    assert fake_client.get.await_count == 0
+    assert fake_client.delete.await_count == 0
+
+
+def test_cancel_works_for_unknown_job_id() -> None:
+    """TS05: cancel() doesn't require the job to be in self.jobs.
+
+    A user can issue `thoth cancel <op_id>` after a process restart before
+    reconnect runs; cancel() should still return the unsupported sentinel
+    rather than blowing up on KeyError.
+    """
+    provider, _ = _make_background_provider()
+    result = asyncio.run(provider.cancel("never-seen"))
+    assert result == {"status": "upstream_unsupported"}

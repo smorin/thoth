@@ -698,6 +698,46 @@ class PerplexityProvider(ResearchProvider):
             "error": f"Unexpected Perplexity status: {status!r}",
         }
 
+    async def reconnect(self, job_id: str) -> None:
+        """Re-attach to an existing async job after a process restart.
+
+        Called by `thoth resume <op_id>` before the runner re-enters the
+        polling loop. Repopulates self.jobs[job_id] from a fresh GET; a 404
+        means the 7-day TTL elapsed (or the id is wrong) and we surface
+        that specifically.
+        """
+        try:
+            response = await self._async_http.get(f"/v1/async/sonar/{job_id}")
+            response.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code == 404:
+                raise ProviderError(
+                    _PROVIDER_NAME,
+                    f"Job {job_id!r} not found. Async results expire 7 days after submission.",
+                ) from exc
+            raise _map_perplexity_error_async(exc, model=self.model) from exc
+        except (httpx.ConnectError, httpx.TimeoutException, Exception) as exc:
+            raise _map_perplexity_error_async(exc, model=self.model) from exc
+
+        payload = response.json()
+        self.jobs[job_id] = {
+            "response_data": payload,
+            "background": True,
+            "created_at": datetime.now(),
+        }
+
+    async def cancel(self, job_id: str) -> dict[str, Any]:
+        """Best-effort cancel — Perplexity has no upstream cancel API.
+
+        T01 verified against the live llms.txt and research §5: the only
+        documented endpoints are POST /v1/async/sonar (submit), GET
+        /v1/async/sonar (list), GET /v1/async/sonar/{id} (retrieve). No
+        DELETE, no /cancel, no CANCELLED status. We return the sentinel
+        consumed by cancel.py:126 so the runner marks the local checkpoint
+        cancelled and prints "upstream cancel not supported".
+        """
+        return {"status": "upstream_unsupported"}
+
     async def get_result(self, job_id: str, verbose: bool = False) -> str:
         """Final answer text for a completed job. Routes by job_info['background'].
 
