@@ -421,6 +421,11 @@ class PerplexityProvider(ResearchProvider):
                 "created": 1700000000,
                 "owned_by": "perplexity",
             },
+            {
+                "id": "sonar-deep-research",
+                "created": 1700000000,
+                "owned_by": "perplexity",
+            },
         ]
 
     def _validate_kind_for_model(self, mode: str) -> None:
@@ -728,23 +733,32 @@ class PerplexityProvider(ResearchProvider):
             response = await self._async_http.get(f"/v1/async/sonar/{job_id}")
             response.raise_for_status()
         except httpx.HTTPStatusError as exc:
-            if exc.response.status_code == 404:
+            status = exc.response.status_code
+            if status == 404:
                 return {
                     "status": "permanent_error",
                     "error": "Job expired (7-day TTL) or not found server-side",
                 }
-            # B1: stale-cache fallback on 5xx — a previously-cached COMPLETED
-            # is authoritative even when a later poll hits a server blip.
-            cached = job_info.get("response_data") or {}
-            if cached.get("status") == "COMPLETED":
-                return {"status": "completed", "progress": 1.0}
+            mapped = _map_perplexity_error_async(exc, model=self.model)
+            if 500 <= status < 600 or isinstance(mapped, APIRateLimitError):
+                # B1: stale-cache fallback on retryable HTTP errors — a
+                # previously-cached COMPLETED is authoritative even when a
+                # later poll hits a server blip or ordinary rate limit.
+                cached = job_info.get("response_data") or {}
+                if cached.get("status") == "COMPLETED":
+                    return {"status": "completed", "progress": 1.0}
+                return {
+                    "status": "transient_error",
+                    "error": f"HTTP {status}",
+                    # B2: derive class name from type(exc) instead of hardcoding
+                    # the literal string, matching the convention used by the
+                    # other except branches and OpenAIProvider.check_status.
+                    "error_class": type(exc).__name__,
+                }
             return {
-                "status": "transient_error",
-                "error": f"HTTP {exc.response.status_code}",
-                # B2: derive class name from type(exc) instead of hardcoding
-                # the literal string, matching the convention used by the
-                # other except branches and OpenAIProvider.check_status.
-                "error_class": type(exc).__name__,
+                "status": "permanent_error",
+                "error": str(mapped),
+                "error_class": type(mapped).__name__,
             }
         except (httpx.ConnectError, httpx.TimeoutException) as exc:
             cached = job_info.get("response_data") or {}

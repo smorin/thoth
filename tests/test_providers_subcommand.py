@@ -14,6 +14,16 @@ def test_providers_models_exits_zero():
     assert r.exit_code == 0
 
 
+def test_providers_models_rich_includes_perplexity_deep_research():
+    r = CliRunner().invoke(
+        cli,
+        ["providers", "models", "--provider", "perplexity"],
+        env={"PERPLEXITY_API_KEY": "pplx-test"},
+    )
+    assert r.exit_code == 0, r.output
+    assert "sonar-deep-research" in r.output
+
+
 def test_providers_check_returns_status():
     r = CliRunner().invoke(cli, ["providers", "check"])
     # 0 if all keys present, 2 if any missing — both are valid clean exits.
