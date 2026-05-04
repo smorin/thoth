@@ -32,6 +32,7 @@ from thoth.errors import (
     ProviderError,
     ThothError,
 )
+from thoth.providers._status import _translate_provider_status
 from thoth.providers.base import Citation, ResearchProvider, StreamEvent
 from thoth.utils import md_link_title, md_link_url
 
@@ -101,6 +102,16 @@ class _ThinkStreamParser:
 
 _PROVIDER_NAME = "perplexity"
 _INVALID_KEY_PHRASES = ("invalid api key", "incorrect api key", "invalid_api_key")
+
+# Provider-status → Thoth-status template for the async API. Caller fills in
+# `error` for the FAILED branch from payload["error_message"]. Unknown
+# statuses fall through to the helper's default permanent_error.
+_PERPLEXITY_STATUS_TABLE: dict[str, dict[str, Any]] = {
+    "CREATED": {"status": "queued", "progress": 0.0},
+    "IN_PROGRESS": {"status": "running", "progress": 0.5},
+    "COMPLETED": {"status": "completed", "progress": 1.0},
+    "FAILED": {"status": "permanent_error"},
+}
 
 
 def _rate_limit_error_is_quota(exc: BaseException) -> bool:
@@ -642,7 +653,13 @@ class PerplexityProvider(ResearchProvider):
         return await self._poll_async_job(job_id, job_info)
 
     async def _poll_async_job(self, job_id: str, job_info: dict[str, Any]) -> dict[str, Any]:
-        """Single poll attempt against /v1/async/sonar/{job_id} with translation."""
+        """Single poll attempt against /v1/async/sonar/{job_id} with translation.
+
+        Stale-cache fallback fires on transient errors AND on HTTPStatusError 5xx
+        (per OAI-BG-07 parity, P27 factor-dedup B1): a network or server blip
+        immediately after a previously-cached COMPLETED state must not regress
+        the runner's polling loop back to transient_error.
+        """
         try:
             response = await self._async_http.get(f"/v1/async/sonar/{job_id}")
             response.raise_for_status()
@@ -652,10 +669,18 @@ class PerplexityProvider(ResearchProvider):
                     "status": "permanent_error",
                     "error": "Job expired (7-day TTL) or not found server-side",
                 }
+            # B1: stale-cache fallback on 5xx — a previously-cached COMPLETED
+            # is authoritative even when a later poll hits a server blip.
+            cached = job_info.get("response_data") or {}
+            if cached.get("status") == "COMPLETED":
+                return {"status": "completed", "progress": 1.0}
             return {
                 "status": "transient_error",
                 "error": f"HTTP {exc.response.status_code}",
-                "error_class": "HTTPStatusError",
+                # B2: derive class name from type(exc) instead of hardcoding
+                # the literal string, matching the convention used by the
+                # other except branches and OpenAIProvider.check_status.
+                "error_class": type(exc).__name__,
             }
         except (httpx.ConnectError, httpx.TimeoutException) as exc:
             cached = job_info.get("response_data") or {}
@@ -667,6 +692,10 @@ class PerplexityProvider(ResearchProvider):
                 "error_class": type(exc).__name__,
             }
         except Exception as exc:  # noqa: BLE001 - never silently swallow novel errors
+            # Intentional: named exception branches use bare str(exc); the
+            # catch-all prepends `({type(exc).__name__})` so users can
+            # distinguish a known exception class from an unexpected one in
+            # error logs. (P27 factor-dedup B3 — kept as intentional divergence.)
             cached = job_info.get("response_data") or {}
             if cached.get("status") == "COMPLETED":
                 return {"status": "completed", "progress": 1.0}
@@ -677,26 +706,15 @@ class PerplexityProvider(ResearchProvider):
             }
 
         payload = response.json()
-        status = payload.get("status", "")
+        status_str = payload.get("status", "")
         # Always cache the latest payload so get_result() and the stale-cache
         # fallback have an authoritative reference.
         job_info["response_data"] = payload
 
-        if status == "CREATED":
-            return {"status": "queued", "progress": 0.0}
-        if status == "IN_PROGRESS":
-            return {"status": "running", "progress": 0.5}
-        if status == "COMPLETED":
-            return {"status": "completed", "progress": 1.0}
-        if status == "FAILED":
-            return {
-                "status": "permanent_error",
-                "error": payload.get("error_message") or "Perplexity job FAILED",
-            }
-        return {
-            "status": "permanent_error",
-            "error": f"Unexpected Perplexity status: {status!r}",
-        }
+        translated = _translate_provider_status(status_str, _PERPLEXITY_STATUS_TABLE)
+        if status_str == "FAILED":
+            translated["error"] = payload.get("error_message") or "Perplexity job FAILED"
+        return translated
 
     async def reconnect(self, job_id: str) -> None:
         """Re-attach to an existing async job after a process restart.

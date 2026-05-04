@@ -498,6 +498,26 @@ def test_check_status_transient_error_with_stale_completed_cache_returns_complet
     assert result["progress"] == 1.0
 
 
+def test_check_status_http_5xx_with_stale_completed_cache_returns_completed() -> None:
+    """B1 (TS02): HTTPStatusError 5xx + cached COMPLETED → completed (stale-cache fallback).
+
+    Mirrors test_check_status_transient_error_with_stale_completed_cache_returns_completed
+    but for the HTTPStatusError branch — a 5xx blip after a previously-cached
+    COMPLETED state must not regress the runner's polling loop. Per OAI-BG-07
+    parity (OpenAI fires the stale-cache fallback in its transient-SDK-error
+    branch; Perplexity must do the same in its HTTPStatusError 5xx branch).
+    """
+    provider, _ = _make_background_provider()
+    _seed_background_job(provider, cached_status="COMPLETED")
+    request = httpx.Request("GET", "https://api.perplexity.ai/v1/async/sonar/req-async-123")
+    response = httpx.Response(status_code=503, content=b"{}", request=request)
+    err = httpx.HTTPStatusError("503", request=request, response=response)
+    _attach_get_response(provider, err)
+    result = asyncio.run(provider.check_status("req-async-123"))
+    assert result["status"] == "completed"
+    assert result["progress"] == 1.0
+
+
 def test_check_status_unknown_job_id_returns_not_found() -> None:
     """TS02: job_id absent from self.jobs → not_found (no HTTP attempted)."""
     provider, post = _make_background_provider()  # post mock here is for submit, unused
