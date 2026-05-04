@@ -865,3 +865,35 @@ def test_perplexity_bare_constant_names_removed() -> None:
 
     assert not hasattr(pp, "_DIRECT_SDK_KEYS"), "bare _DIRECT_SDK_KEYS leaked through rename"
     assert not hasattr(pp, "_PROVIDER_NAME"), "bare _PROVIDER_NAME leaked through rename"
+
+
+def test_perplexity_not_found_error_maps_with_model_hint() -> None:
+    """openai.NotFoundError must map to ProviderError with the 'models' CLI hint.
+
+    Mirrors OpenAI's existing mapping at openai.py:_map_openai_error so
+    Perplexity model-id typos produce a clear, actionable error instead of
+    falling through to the generic APIError catch-all.
+    """
+    from thoth.errors import ProviderError
+    from thoth.providers.perplexity import _map_perplexity_error
+
+    exc = _make_openai_exc(
+        "NotFoundError",
+        status=404,
+        body={
+            "error": {
+                "code": "model_not_found",
+                "message": "Model 'sonar-imaginary' not found",
+            }
+        },
+    )
+    mapped = _map_perplexity_error(exc, model="sonar-imaginary", verbose=False)
+    assert isinstance(mapped, ProviderError)
+    assert mapped.provider == "perplexity"
+    # User-facing message should mention the bad model name and route users
+    # at the models CLI subcommand.
+    msg_lower = mapped.message.lower()
+    assert "sonar-imaginary" in mapped.message
+    assert "not found" in msg_lower
+    assert "models" in msg_lower, "ProviderError message must point users at the models CLI command"
+    assert "perplexity" in msg_lower

@@ -170,6 +170,14 @@ def _map_perplexity_error(
             raw_error=raw,
         )
 
+    if isinstance(exc, openai.NotFoundError):
+        return ProviderError(
+            _PROVIDER_NAME_PERPLEXITY,
+            f"Model '{model}' not found. Please check available models with "
+            f"'thoth providers models --provider perplexity'",
+            raw_error=raw,
+        )
+
     # A1 belt-and-suspenders: any APIStatusError with status_code == 402
     # routes to APIQuotaError. The openai SDK doesn't ship a PaymentRequired
     # exception subclass, so a 402 from Perplexity (their credit-exhaustion
