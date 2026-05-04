@@ -306,11 +306,20 @@ def test_ext_pplx_bg_blocking_resume_complete_lifecycle(
     project = "ext-pplx-bg-slow"
     output_root = tmp_path / "outputs"
     config_path = tmp_path / "thoth.config.toml"
+    # [providers.perplexity] is REQUIRED here — there's a pre-existing bug
+    # in the --config + --async + --json path where the env-var fallback for
+    # api_key doesn't fire when the config omits the providers section.
+    # The ${PERPLEXITY_API_KEY} placeholder resolves at config-load time
+    # using the env var the live_perplexity_env fixture exports. Same shape
+    # as test_ext_pplx_imm_custom_mode_passes_provider_namespace_without_argv_key.
     config_path.write_text(
         f"""version = "2.0"
 
 [paths]
 base_output_dir = "{output_root}"
+
+[providers.perplexity]
+api_key = "${{PERPLEXITY_API_KEY}}"
 
 [execution]
 poll_interval = 10
