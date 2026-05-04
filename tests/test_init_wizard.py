@@ -78,3 +78,28 @@ def test_pick_many_dedupes_preserves_order() -> None:
 def test_pick_many_empty_returns_empty_list() -> None:
     sp = ScriptedPrompts(["", ""])  # 2 empty re-prompts then accept
     assert pick_many(["a", "b"], prompt_fn=sp) == []
+
+
+from thoth.init_wizard import prompt_providers  # noqa: E402
+
+
+def test_prompt_providers_picks_openai_only() -> None:
+    sp = ScriptedPrompts(["1"])
+    picks = prompt_providers(prompt_fn=sp)
+    assert picks == ["openai"]
+
+
+def test_prompt_providers_multi_input() -> None:
+    sp = ScriptedPrompts(["1,3"])
+    assert prompt_providers(prompt_fn=sp) == ["openai", "gemini"]
+
+
+def test_prompt_providers_skip_all_picks_skip() -> None:
+    # 4 = "skip all" sentinel — distinct from empty input
+    sp = ScriptedPrompts(["4"])
+    assert prompt_providers(prompt_fn=sp) == []
+
+
+def test_prompt_providers_empty_then_empty_is_skip_all() -> None:
+    sp = ScriptedPrompts(["", ""])
+    assert prompt_providers(prompt_fn=sp) == []
