@@ -51,6 +51,32 @@ def test_perplexity_models_in_known_models_registry() -> None:
     assert "sonar-deep-research" in perp_ids
 
 
+def test_perplexity_deep_research_runtime_check_deferred_to_weekly_live_api() -> None:
+    """P27: expensive non-cancellable DR is not exercised by nightly extended."""
+    from tests.extended import test_model_kind_runtime as runtime
+    from thoth.models import ModelSpec
+
+    skip_reason = getattr(runtime, "_runtime_check_skip_reason", None)
+    assert callable(skip_reason), (
+        "test_model_kind_runtime needs an explicit skip helper so expensive "
+        "Perplexity deep-research is covered by live_api, not nightly extended"
+    )
+    assert skip_reason(ModelSpec("sonar-deep-research", "perplexity", "background"))
+    assert skip_reason(ModelSpec("sonar", "perplexity", "immediate")) is None
+
+
+def test_weekly_perplexity_live_api_exercises_resume_without_cancel() -> None:
+    """P27: weekly Perplexity DR coverage should test resumability, not fake cancel."""
+    text = (
+        Path(__file__).resolve().parent / "extended" / "test_perplexity_real_workflows.py"
+    ).read_text()
+    submit_test = text.split("def test_ext_pplx_bg_submit_async_persists_request_id", 1)[1]
+    submit_test = submit_test.split("\ndef test_", 1)[0]
+
+    assert '"resume", operation_id, "--async", "--json"' in submit_test
+    assert '"cancel", operation_id' not in submit_test
+
+
 def test_extended_skip_for_perplexity_was_removed() -> None:
     """TS09: P23 unblocked the perplexity skip in test_model_kind_runtime."""
     text = (Path(__file__).resolve().parent / "extended" / "test_model_kind_runtime.py").read_text()

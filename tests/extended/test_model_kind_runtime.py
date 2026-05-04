@@ -9,6 +9,8 @@ declared `kind` matches the model's actual API behavior:
     `"running"`, `"queued"`, or `"completed"` (the latter only if the
     upstream API was very fast). For background hits, we then `cancel()`
     to limit cost.
+  * Background models whose upstream jobs cannot be cancelled are deferred to
+    the weekly `live_api` workflow instead.
 
 Gated by `@pytest.mark.extended`. Default `pytest` skips this entire
 module (`addopts = "-m 'not extended'"`); run explicitly with
@@ -43,6 +45,15 @@ def _missing_keys_for(provider: str) -> list[str]:
     return [k for k in needs if not os.environ.get(k)]
 
 
+def _runtime_check_skip_reason(spec) -> str | None:
+    if spec.provider == "perplexity" and spec.id == "sonar-deep-research":
+        return (
+            "Perplexity sonar-deep-research has no upstream cancel API; "
+            "weekly live_api coverage submits once and verifies resume instead."
+        )
+    return None
+
+
 @pytest.mark.parametrize(
     "spec",
     KNOWN_MODELS,
@@ -50,6 +61,10 @@ def _missing_keys_for(provider: str) -> list[str]:
 )
 def test_model_kind_matches_runtime_behavior(spec) -> None:
     """Submit a tiny ping; assert kind contract holds against the live API."""
+    skip_reason = _runtime_check_skip_reason(spec)
+    if skip_reason:
+        pytest.skip(skip_reason)
+
     missing = _missing_keys_for(spec.provider)
     if missing:
         pytest.skip(f"{spec.provider}: required env vars missing: {missing}")
