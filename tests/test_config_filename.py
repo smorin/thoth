@@ -418,7 +418,7 @@ def test_d1_default_writes_visible_project_file(tmp_path: Path) -> None:
     """D1: `thoth init` with no flags writes ./thoth.config.toml."""
     runner = CliRunner()
     with runner.isolated_filesystem(temp_dir=tmp_path):
-        result = runner.invoke(init_cmd, [], env=_xdg_env(tmp_path))
+        result = runner.invoke(init_cmd, ["--non-interactive"], env=_xdg_env(tmp_path))
         assert result.exit_code == 0, result.output
         assert Path("thoth.config.toml").exists()
         assert not Path(".thoth.config.toml").exists()
@@ -428,7 +428,7 @@ def test_d2_hidden_writes_dotfile_project(tmp_path: Path) -> None:
     """D2: `thoth init --hidden` writes ./.thoth.config.toml."""
     runner = CliRunner()
     with runner.isolated_filesystem(temp_dir=tmp_path):
-        result = runner.invoke(init_cmd, ["--hidden"], env=_xdg_env(tmp_path))
+        result = runner.invoke(init_cmd, ["--hidden", "--non-interactive"], env=_xdg_env(tmp_path))
         assert result.exit_code == 0, result.output
         assert Path(".thoth.config.toml").exists()
         assert not Path("thoth.config.toml").exists()
@@ -438,7 +438,7 @@ def test_d3_user_writes_xdg_canonical(tmp_path: Path) -> None:
     """D3: `thoth init --user` writes $XDG_CONFIG_HOME/thoth/thoth.config.toml."""
     runner = CliRunner()
     with runner.isolated_filesystem(temp_dir=tmp_path):
-        result = runner.invoke(init_cmd, ["--user"], env=_xdg_env(tmp_path))
+        result = runner.invoke(init_cmd, ["--user", "--non-interactive"], env=_xdg_env(tmp_path))
         assert result.exit_code == 0, result.output
         target = tmp_path / "xdg" / "thoth" / "thoth.config.toml"
         assert target.exists(), f"expected {target} to exist; output:\n{result.output}"
@@ -451,7 +451,7 @@ def test_d12_user_init_ignores_project_config_ambiguity(tmp_path: Path) -> None:
         Path("thoth.config.toml").write_text(_MIN_CONFIG_TOML + "# visible\n")
         Path(".thoth.config.toml").write_text(_MIN_CONFIG_TOML + "# hidden\n")
 
-        result = runner.invoke(init_cmd, ["--user"], env=_xdg_env(tmp_path))
+        result = runner.invoke(init_cmd, ["--user", "--non-interactive"], env=_xdg_env(tmp_path))
 
         assert result.exit_code == 0, result.output
         target = tmp_path / "xdg" / "thoth" / "thoth.config.toml"
@@ -487,7 +487,7 @@ def test_d6_force_overwrites_visible_project_file(tmp_path: Path) -> None:
     runner = CliRunner()
     with runner.isolated_filesystem(temp_dir=tmp_path):
         Path("thoth.config.toml").write_text(_MIN_CONFIG_TOML + "# preexisting\n")
-        result = runner.invoke(init_cmd, ["--force"], env=_xdg_env(tmp_path))
+        result = runner.invoke(init_cmd, ["--force", "--non-interactive"], env=_xdg_env(tmp_path))
         assert result.exit_code == 0, result.output
         # Pre-existing content was replaced.
         assert "preexisting" not in Path("thoth.config.toml").read_text()
@@ -514,7 +514,9 @@ def test_d8_user_force_overwrites(tmp_path: Path) -> None:
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(_MIN_CONFIG_TOML + "# preexisting\n")
 
-        result = runner.invoke(init_cmd, ["--user", "--force"], env=_xdg_env(tmp_path))
+        result = runner.invoke(
+            init_cmd, ["--user", "--force", "--non-interactive"], env=_xdg_env(tmp_path)
+        )
         assert result.exit_code == 0, result.output
         assert "preexisting" not in target.read_text()
 
@@ -527,7 +529,7 @@ def test_d9_hidden_writes_alongside_existing_visible(tmp_path: Path) -> None:
     runner = CliRunner()
     with runner.isolated_filesystem(temp_dir=tmp_path):
         Path("thoth.config.toml").write_text(_MIN_CONFIG_TOML + "# preexisting\n")
-        result = runner.invoke(init_cmd, ["--hidden"], env=_xdg_env(tmp_path))
+        result = runner.invoke(init_cmd, ["--hidden", "--non-interactive"], env=_xdg_env(tmp_path))
         assert result.exit_code == 0, result.output
         assert Path(".thoth.config.toml").exists()
         # Visible file untouched.
@@ -539,7 +541,9 @@ def test_d10_hidden_force_overwrites_existing_dotfile(tmp_path: Path) -> None:
     runner = CliRunner()
     with runner.isolated_filesystem(temp_dir=tmp_path):
         Path(".thoth.config.toml").write_text(_MIN_CONFIG_TOML + "# preexisting\n")
-        result = runner.invoke(init_cmd, ["--hidden", "--force"], env=_xdg_env(tmp_path))
+        result = runner.invoke(
+            init_cmd, ["--hidden", "--force", "--non-interactive"], env=_xdg_env(tmp_path)
+        )
         assert result.exit_code == 0, result.output
         assert "preexisting" not in Path(".thoth.config.toml").read_text()
 

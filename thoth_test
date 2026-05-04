@@ -1352,8 +1352,13 @@ class TestRunner:
                     exit_code=0,
                     skipped=True,
                 )
+            # Pre-clean any leftover artifacts so reruns start fresh
+            cleanup_test_files(test_case.cleanup_files)
             interactive_runner = InteractiveTestRunner(self.verbose)
-            return interactive_runner.run_interactive_test(test_case)
+            result = interactive_runner.run_interactive_test(test_case)
+            if result.passed:
+                cleanup_test_files(test_case.cleanup_files)
+            return result
 
         tmpdir, prepared_cmd, prepared_env, output_base = _prepare_test_isolation(test_case)
         try:
@@ -2069,9 +2074,30 @@ all_tests = [
     TestCase(
         test_id="M2T-02",
         description="Init command creates user XDG config directory",
-        command=[THOTH_EXECUTABLE, "init", "--user"],
+        command=[THOTH_EXECUTABLE, "init", "--user", "--non-interactive"],
         expected_stdout_patterns=[r"Configuration saved to"],
         expected_exit_code=0,
+    ),
+    TestCase(
+        test_id="M2T-INTERACTIVE-INIT",
+        description="Interactive init wizard collects answers and writes config",
+        command=[THOTH_EXECUTABLE, "--config", "./test_interactive.toml", "init"],
+        test_type="interactive",
+        is_interactive=True,
+        env={"OPENAI_API_KEY": "sk-test-fake-1234567890abcdef"},
+        interactive_scenario=[
+            # Q1: Pick providers — wait for menu, pick openai (1)
+            ("Pick providers", "1" + Keys.ENTER),
+            # Q2: env-var detected — wait for detection prompt, say yes
+            (r"OPENAI_API_KEY detected", "y" + Keys.ENTER),
+            # Q3: Default mode — wait for menu, pick thinking (2)
+            ("Default mode", "2" + Keys.ENTER),
+            # Review screen — wait for "Write this", confirm
+            ("Write this", "y" + Keys.ENTER),
+        ],
+        expected_stdout_patterns=[r"Configuration saved to"],
+        expected_exit_code=0,
+        cleanup_files=["test_interactive.toml"],
     ),
     # Config flag test (F-40/T-CFG-06)
     TestCase(

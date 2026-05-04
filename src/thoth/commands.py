@@ -155,6 +155,75 @@ def _build_starter_document() -> tomlkit.TOMLDocument:
     return doc
 
 
+def _apply_wizard_answers(doc: tomlkit.TOMLDocument, answers) -> None:
+    """Merge `WizardAnswers` into a tomlkit document in place.
+
+    Touches only `[general].default_mode` and `[providers.<name>].api_key`.
+    All other sections are preserved verbatim. Missing tables are created.
+    """
+    from thoth.init_wizard import ENV_VAR_BY_PROVIDER
+
+    # general.default_mode
+    general = doc.get("general")
+    if general is None or not hasattr(general, "keys"):
+        general = tomlkit.table()
+        doc["general"] = general
+    general["default_mode"] = answers.default_mode
+
+    # providers.<name>.api_key
+    providers = doc.get("providers")
+    if providers is None or not hasattr(providers, "keys"):
+        providers = tomlkit.table()
+        doc["providers"] = providers
+    for choice in answers.providers:
+        if choice.storage == "skip":
+            continue
+        prov_table = providers.get(choice.name)
+        if prov_table is None or not hasattr(prov_table, "keys"):
+            prov_table = tomlkit.table()
+            providers[choice.name] = prov_table
+        if choice.storage == "env_ref":
+            var = ENV_VAR_BY_PROVIDER[choice.name]
+            prov_table["api_key"] = f"${{{var}}}"
+        else:  # literal
+            prov_table["api_key"] = choice.literal_value or ""
+
+
+def _prefill_from_doc(doc: tomlkit.TOMLDocument):
+    """Extract wizard-relevant fields from an existing tomlkit doc."""
+    from thoth.init_wizard import (
+        DEFAULT_MODE_OPTIONS,
+        _Prefill,
+    )
+
+    general = doc.get("general") or {}
+    raw_mode = general.get("default_mode") if hasattr(general, "get") else None
+    mode = raw_mode if raw_mode in DEFAULT_MODE_OPTIONS else None
+
+    # Provider pre-fill is intentionally empty: api_key strings can't be
+    # round-tripped without exposing user secrets in prompts. The wizard
+    # re-asks each picked provider's key from scratch on `--force`.
+    return _Prefill(providers=(), default_mode=mode)
+
+
+def _load_or_build_doc(target: Path, *, force: bool) -> tomlkit.TOMLDocument:
+    """Return the doc to merge wizard answers into.
+
+    Existing file + force → parse it (preserves unknown sections).
+    Anything else → fresh starter doc.
+    """
+    if force and target.exists():
+        try:
+            return tomlkit.parse(target.read_text())
+        except Exception as exc:  # tomlkit raises a variety of errors
+            raise ThothError(
+                f"Cannot parse existing config at {target}: {exc}. "
+                "Pass --non-interactive to overwrite with defaults, "
+                "or fix the file."
+            ) from exc
+    return _build_starter_document()
+
+
 class CommandHandler:
     """Unified command execution for CLI and interactive modes"""
 
@@ -185,6 +254,7 @@ class CommandHandler:
         user: bool = False,
         hidden: bool = False,
         force: bool = False,
+        non_interactive: bool = False,
         **params,
     ):
         """Initialize Thoth configuration"""
@@ -200,22 +270,46 @@ class CommandHandler:
             )
 
         console.print("[bold]Welcome to Thoth Research Assistant Setup![/bold]\n")
-
         console.print("Checking environment...")
         console.print(f"✓ Python {sys.version.split()[0]} detected")
         console.print("✓ UV package manager available")
         console.print(f"✓ Operating System: {sys.platform} (supported)\n")
-
         console.print(f"Configuration file will be created at: {target}\n")
 
         target.parent.mkdir(parents=True, exist_ok=True)
 
-        console.print("[yellow]Interactive setup wizard not yet implemented.[/yellow]")
-        console.print("Creating default configuration...")
+        if non_interactive:
+            doc = _build_starter_document()
+            target.write_text(tomlkit.dumps(doc))
+            console.print(f"\n[green]✓[/green] Configuration saved to {target}")
+            console.print('\nYou can now run: thoth deep_research "your prompt"')
+            return
 
-        doc = _build_starter_document()
-        target.write_text(tomlkit.dumps(doc))
+        # Interactive wizard path
+        import os
 
+        from thoth import init_wizard
+
+        base_doc = _load_or_build_doc(target, force=force)
+        prefill = _prefill_from_doc(base_doc) if force and target.exists() else None
+
+        def _real_prompt(p: str) -> str:
+            from rich.prompt import Prompt
+
+            return Prompt.ask(p, default="")
+
+        answers = init_wizard.run(
+            target=target,
+            prefill=prefill,
+            prompt_fn=_real_prompt,
+            env=dict(os.environ),
+        )
+        if answers is None:
+            console.print("[yellow]Init cancelled — no file written.[/yellow]")
+            return
+
+        _apply_wizard_answers(base_doc, answers)
+        target.write_text(tomlkit.dumps(base_doc))
         console.print(f"\n[green]✓[/green] Configuration saved to {target}")
         console.print('\nYou can now run: thoth deep_research "your prompt"')
 
