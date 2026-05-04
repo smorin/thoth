@@ -167,6 +167,30 @@ def prompt_key_for_provider(
     return ProviderChoice(provider, "skip", None)
 
 
+DEFAULT_MODE_OPTIONS: tuple[DefaultMode, ...] = (
+    "default",
+    "thinking",
+    "deep_research",
+    "interactive",
+)
+DEFAULT_MODE_DESCRIPTIONS: dict[DefaultMode, str] = {
+    "default": "default — the shipped research mode",
+    "thinking": "thinking — fast / cheap reasoning",
+    "deep_research": "deep_research — multi-provider deep research",
+    "interactive": "interactive — drop into REPL on bare `thoth`",
+}
+
+
+def prompt_default_mode(*, prompt_fn: PromptFn, current: DefaultMode | None) -> DefaultMode:
+    """Q3: pick general.default_mode."""
+    descs = [DEFAULT_MODE_DESCRIPTIONS[m] for m in DEFAULT_MODE_OPTIONS]
+    base = current if current in DEFAULT_MODE_OPTIONS else "default"
+    default_index = DEFAULT_MODE_OPTIONS.index(base)
+    label = "Default mode"
+    chosen_desc = pick_one(descs, prompt_fn=prompt_fn, default_index=default_index, label=label)
+    return DEFAULT_MODE_OPTIONS[descs.index(chosen_desc)]
+
+
 class ScriptedPrompts:
     """Deterministic stub for `prompt_fn` in tests.
 

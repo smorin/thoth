@@ -176,3 +176,21 @@ def test_key_literal_value_trimmed_once() -> None:
         prompt_fn=sp,
     )
     assert pc == ProviderChoice("openai", "literal", "sk-pad")
+
+
+from thoth.init_wizard import prompt_default_mode  # noqa: E402
+
+
+def test_default_mode_pick_thinking() -> None:
+    sp = ScriptedPrompts(["2"])
+    assert prompt_default_mode(prompt_fn=sp, current="default") == "thinking"
+
+
+def test_default_mode_empty_keeps_current() -> None:
+    sp = ScriptedPrompts([""])
+    assert prompt_default_mode(prompt_fn=sp, current="deep_research") == "deep_research"
+
+
+def test_default_mode_empty_with_no_current_uses_default() -> None:
+    sp = ScriptedPrompts([""])
+    assert prompt_default_mode(prompt_fn=sp, current=None) == "default"
