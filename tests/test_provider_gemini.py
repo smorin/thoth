@@ -169,3 +169,27 @@ def test_gemini_build_generate_content_config_returns_none_when_empty() -> None:
     provider = GeminiProvider(api_key="dummy", config={})
     gen_config = provider._build_generate_content_config()
     assert gen_config is None
+
+
+def test_gemini_build_generate_content_config_include_thoughts_only_defaults_thinking_budget_to_dynamic() -> (
+    None
+):
+    """When only include_thoughts is set (no explicit thinking_budget), helper defaults to thinking_budget=-1 ('dynamic').
+
+    This is a deliberate policy: setting include_thoughts=True is opting INTO
+    thinking-related output, so 'dynamic' (-1) is the most useful default.
+    Locked by this test; change requires changing the policy and the test together.
+    """
+    from thoth.providers.gemini import GeminiProvider
+
+    config = {"gemini": {"include_thoughts": True}, "kind": "immediate"}
+    provider = GeminiProvider(api_key="dummy", config=config)
+    gen_config = provider._build_generate_content_config()
+
+    assert gen_config is not None
+    thinking_config = getattr(gen_config, "thinking_config", None)
+    assert thinking_config is not None
+    assert thinking_config.thinking_budget == -1, (
+        "include_thoughts=True without explicit thinking_budget must default to -1 (dynamic)"
+    )
+    assert thinking_config.include_thoughts is True

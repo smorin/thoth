@@ -123,6 +123,10 @@ class GeminiProvider(ResearchProvider):
         thinking_budget = gemini_cfg.get("thinking_budget")
         include_thoughts = gemini_cfg.get("include_thoughts", False)
         if thinking_budget is not None or include_thoughts:
+            # Policy: when the user opts INTO thinking-related output (either by
+            # setting an explicit budget OR by enabling include_thoughts), default
+            # the budget to -1 ("dynamic") rather than letting the SDK default
+            # apply. Pinned by test_gemini_build_generate_content_config_include_thoughts_only_defaults_thinking_budget_to_dynamic.
             config_kwargs["thinking_config"] = types.ThinkingConfig(
                 thinking_budget=thinking_budget if thinking_budget is not None else -1,
                 include_thoughts=bool(include_thoughts),
