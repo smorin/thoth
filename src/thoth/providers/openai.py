@@ -30,7 +30,7 @@ from thoth.errors import (
 from thoth.models import ModelCache
 from thoth.providers._helpers import _extract_unsupported_param, _invalid_key_thotherror
 from thoth.providers._status import _translate_provider_status
-from thoth.providers.base import ResearchProvider
+from thoth.providers.base import Citation, ResearchProvider
 from thoth.utils import md_link_title, md_link_url
 
 _console = Console()
@@ -482,16 +482,32 @@ class OpenAIProvider(ResearchProvider):
         system_prompt: str | None = None,
         verbose: bool = False,
     ):
-        """Yield text deltas from the OpenAI Responses streaming API.
+        """Yield text/reasoning/citation/done events from the OpenAI Responses streaming API.
 
         P18 Phase E: only legal for non-background (immediate-kind) models.
         Background models require server-side async submission and don't
         stream tokens. The `_validate_kind_for_model` runtime check upstream
         catches the mismatch; this method is defense-in-depth.
 
-        Translates OpenAI's `response.output_text.delta` events into our
-        `StreamEvent(kind="text", text=delta)` and emits a terminal
-        `StreamEvent(kind="done", text="")` when the stream completes.
+        Event mapping (P24 Task 6.1 — see planning/p24-openai-stream-audit.v1.md):
+          * `response.output_text.delta`              -> kind="text"
+          * `response.reasoning_summary_text.delta`   -> kind="reasoning"
+          * `response.output_text.annotation.added`   -> kind="citation"
+            (only when the annotation carries a URL; file_citation /
+            container_file_citation / file_path variants are skipped to
+            mirror `get_result()`'s URL-only filter at lines ~602-610)
+          * (terminal stream exit)                    -> kind="done"
+
+        Caveat — request shape limits what the API actually emits:
+          The current request omits `reasoning={"summary": "auto"}` and
+          tools (`web_search_preview` etc.), so the upstream API will not
+          fire reasoning-summary or annotation-added events for the typical
+          immediate-path request. The handlers below are wired through for
+          cross-provider parity (matches Perplexity / Gemini four-kind
+          contract) and to future-proof against config changes that enable
+          reasoning-on-immediate or search-on-immediate. Whether to enable
+          those request fields here is a product decision tracked as a
+          follow-up to P24, not an audit finding.
         """
         from thoth.providers.base import StreamEvent
 
@@ -528,8 +544,34 @@ class OpenAIProvider(ResearchProvider):
                         delta = getattr(event, "delta", "") or ""
                         if delta:
                             yield StreamEvent(kind="text", text=delta)
-                    # Other event types (response.created, response.completed, etc.)
-                    # are skipped — we only surface text deltas to consumers for now.
+                    elif event_type == "response.reasoning_summary_text.delta":
+                        delta = getattr(event, "delta", "") or ""
+                        if delta:
+                            yield StreamEvent(kind="reasoning", text=delta)
+                    elif event_type == "response.output_text.annotation.added":
+                        ann = getattr(event, "annotation", None)
+                        # Annotation may be a pydantic model or a dict; mirror
+                        # get_result()'s defensive attr-or-key access. Skip
+                        # non-URL annotations (file_citation, file_path, etc.).
+                        if ann is None:
+                            continue
+                        url = getattr(ann, "url", None) or (
+                            ann.get("url") if isinstance(ann, dict) else None
+                        )
+                        if not url:
+                            continue
+                        title = (
+                            getattr(ann, "title", None)
+                            or (ann.get("title") if isinstance(ann, dict) else None)
+                            or url
+                        )
+                        yield StreamEvent(
+                            kind="citation",
+                            text=str(title),
+                            citation=Citation(title=str(title), url=str(url)),
+                        )
+                    # Other event types (response.created, response.completed,
+                    # response.output_item.*, etc.) are intentionally skipped.
             yield StreamEvent(kind="done", text="")
         except (openai.APIError, Exception) as e:
             raise _map_openai_error(e, model=self.model, verbose=verbose) from e

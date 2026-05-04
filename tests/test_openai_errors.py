@@ -305,3 +305,161 @@ def test_openai_invalid_key_thotherror_has_exit_code_2() -> None:
     assert mapped.exit_code == 2, (
         f"expected exit_code=2 (Perplexity parity), got {mapped.exit_code}"
     )
+
+
+# ---------------------------------------------------------------------------
+# P24 Task 6.1: OpenAI Responses streaming events — four-kind parity.
+#
+# Audit (planning/p24-openai-stream-audit.v1.md, outcome SHIP) confirmed the
+# Responses API SDK emits both `response.reasoning_summary_text.delta` and
+# `response.output_text.annotation.added` events. These tests pin
+# OpenAIProvider.stream() to translate them into StreamEvent reasoning/citation
+# events, matching Perplexity and Gemini's four-kind stream contract.
+# ---------------------------------------------------------------------------
+
+
+class _FakeStreamEvent:
+    """Minimal stand-in for an SDK ResponseStreamEvent (attribute access only)."""
+
+    def __init__(self, **fields: Any) -> None:
+        for key, value in fields.items():
+            setattr(self, key, value)
+
+
+class _FakeURLAnnotation:
+    """Stand-in for AnnotationURLCitation (pydantic-attr access)."""
+
+    def __init__(self, *, url: str, title: str) -> None:
+        self.type = "url_citation"
+        self.url = url
+        self.title = title
+
+
+class _FakeFileAnnotation:
+    """Stand-in for AnnotationFileCitation — no `url` attribute (must be skipped)."""
+
+    def __init__(self, *, file_id: str, filename: str) -> None:
+        self.type = "file_citation"
+        self.file_id = file_id
+        self.filename = filename
+
+
+class _FakeAsyncStreamCM:
+    """Async context manager whose iterator yields a fixed event sequence."""
+
+    def __init__(self, events: list[_FakeStreamEvent]) -> None:
+        self._events = events
+
+    async def __aenter__(self) -> _FakeAsyncStreamCM:
+        return self
+
+    async def __aexit__(self, exc_type: Any, exc: Any, tb: Any) -> None:
+        return None
+
+    def __aiter__(self) -> _FakeAsyncStreamCM:
+        self._iter = iter(self._events)
+        return self
+
+    async def __anext__(self) -> _FakeStreamEvent:
+        try:
+            return next(self._iter)
+        except StopIteration:  # noqa: B904 — translate sync→async sentinel
+            raise StopAsyncIteration
+
+
+def _consume_stream_with_events(
+    provider: OpenAIProvider,
+    fake_events: list[_FakeStreamEvent],
+    prompt: str = "p",
+) -> list[Any]:
+    """Patch `responses.stream` to yield `fake_events`, drive `provider.stream()`."""
+
+    def _fake_stream(**_: Any) -> _FakeAsyncStreamCM:
+        return _FakeAsyncStreamCM(fake_events)
+
+    async def _drive() -> list[Any]:
+        return [event async for event in provider.stream(prompt, mode="default")]
+
+    with patch.object(provider.client.responses, "stream", new=_fake_stream):
+        return asyncio.run(_drive())
+
+
+def test_openai_stream_emits_text_reasoning_citation_done_in_order() -> None:
+    """SHIP-outcome regression lock for P24 Task 6.1.
+
+    Wires `response.reasoning_summary_text.delta` and
+    `response.output_text.annotation.added` SDK events through to
+    StreamEvent(kind='reasoning'|'citation'). See
+    planning/p24-openai-stream-audit.v1.md.
+    """
+    from thoth.providers.base import Citation, StreamEvent
+
+    fake_events = [
+        _FakeStreamEvent(type="response.created"),  # ignored
+        _FakeStreamEvent(type="response.output_text.delta", delta="Hello "),
+        _FakeStreamEvent(
+            type="response.reasoning_summary_text.delta",
+            delta="Thinking step 1.",
+            summary_index=0,
+        ),
+        _FakeStreamEvent(type="response.output_text.delta", delta="world."),
+        _FakeStreamEvent(
+            type="response.output_text.annotation.added",
+            annotation=_FakeURLAnnotation(url="https://example.com/a", title="Example A"),
+            annotation_index=0,
+        ),
+        # Non-URL annotation MUST be filtered out — mirrors get_result()
+        _FakeStreamEvent(
+            type="response.output_text.annotation.added",
+            annotation=_FakeFileAnnotation(file_id="file-x", filename="x.pdf"),
+            annotation_index=1,
+        ),
+        # Empty-delta reasoning event MUST NOT yield (defensive)
+        _FakeStreamEvent(type="response.reasoning_summary_text.delta", delta=""),
+        _FakeStreamEvent(type="response.completed"),  # ignored; provider emits its own done
+    ]
+
+    provider = OpenAIProvider(api_key="k", config={"model": "gpt-4o-mini"})
+    events = _consume_stream_with_events(provider, fake_events)
+
+    # Filter to (kind, payload) tuples for readable assertions.
+    summary = [
+        (e.kind, e.text, getattr(e.citation, "url", None) if e.citation else None) for e in events
+    ]
+    assert summary == [
+        ("text", "Hello ", None),
+        ("reasoning", "Thinking step 1.", None),
+        ("text", "world.", None),
+        ("citation", "Example A", "https://example.com/a"),
+        ("done", "", None),
+    ], f"unexpected stream sequence: {summary}"
+
+    citation_event = next(e for e in events if e.kind == "citation")
+    assert isinstance(citation_event, StreamEvent)
+    assert citation_event.citation == Citation(title="Example A", url="https://example.com/a")
+
+
+def test_openai_stream_url_annotation_via_dict_shape() -> None:
+    """Annotation may also arrive as a plain dict (untyped `object` payload).
+
+    The SDK types `annotation` as bare `object`, so the provider must accept
+    both pydantic-attr access AND dict-key access — same defensive style as
+    `get_result()`'s parser.
+    """
+    fake_events = [
+        _FakeStreamEvent(
+            type="response.output_text.annotation.added",
+            annotation={"type": "url_citation", "url": "https://example.com/b"},
+            annotation_index=0,
+        ),
+    ]
+    provider = OpenAIProvider(api_key="k", config={"model": "gpt-4o-mini"})
+    events = _consume_stream_with_events(provider, fake_events)
+
+    citation_events = [e for e in events if e.kind == "citation"]
+    assert len(citation_events) == 1
+    citation = citation_events[0].citation
+    assert citation is not None
+    assert citation.url == "https://example.com/b"
+    # Title falls back to URL when missing.
+    assert citation.title == "https://example.com/b"
