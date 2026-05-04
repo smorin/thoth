@@ -11,12 +11,17 @@ and the thinking-budget knob.
 
 from __future__ import annotations
 
+import sys
+import time
+import uuid
 from collections.abc import AsyncIterator
 from typing import Any
 from urllib.parse import urlparse
 
 import httpx
 from google.genai import errors as genai_errors  # type: ignore[import-not-found]
+from rich.console import Console
+from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from thoth.errors import (
     APIKeyError,
@@ -31,6 +36,7 @@ from thoth.providers._helpers import (
     _invalid_key_thotherror,
 )
 from thoth.providers.base import Citation, ResearchProvider, StreamEvent
+from thoth.utils import md_link_title, md_link_url
 
 _PROVIDER_NAME_GEMINI = "gemini"
 
@@ -387,3 +393,148 @@ class GeminiProvider(ResearchProvider):
             raise  # propagate unmapped (per error-mapper convention)
         except Exception as e:
             raise _map_gemini_error(e, self.model, verbose=verbose) from e
+
+    async def submit(
+        self,
+        prompt: str,
+        mode: str,
+        system_prompt: str | None = None,
+        verbose: bool = False,
+    ) -> str:
+        """One-shot non-stream generate_content. Stashes response under a job_id."""
+        self._validate_kind_for_model(mode)
+
+        try:
+            response = await self._submit_with_retry(prompt, mode, system_prompt, verbose)
+        except ModeKindMismatchError:
+            raise
+        except Exception as e:
+            raise _map_gemini_error(e, self.model, verbose=verbose) from e
+
+        job_id = (
+            getattr(response, "id", None)
+            or f"gemini-{time.strftime('%Y%m%d%H%M%S')}-{uuid.uuid4().hex[:8]}"
+        )
+        self.jobs[job_id] = {"response": response, "created_at": time.time()}
+        return job_id
+
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=4, max=10),
+        retry=retry_if_exception_type(_GEMINI_RETRY_CLASSES),
+        reraise=True,
+    )
+    async def _submit_with_retry(
+        self,
+        prompt: str,
+        mode: str,
+        system_prompt: str | None,
+        verbose: bool,
+    ) -> Any:
+        """Build request and invoke generate_content with retry on transient errors."""
+        contents, system = self._build_messages_and_system(prompt, system_prompt)
+        config = self._build_generate_content_config()
+        if system:
+            from google.genai import types  # type: ignore[import-not-found]
+
+            if config is None:
+                config = types.GenerateContentConfig(system_instruction=system)
+            else:
+                config.system_instruction = system
+
+        kwargs: dict[str, Any] = {"model": self.model, "contents": contents}
+        if config is not None:
+            kwargs["config"] = config
+        return await self.client.aio.models.generate_content(**kwargs)
+
+    async def check_status(self, job_id: str) -> dict[str, Any]:
+        """Return completion status for a previously-submitted job."""
+        if job_id not in self.jobs:
+            return {"status": "not_found", "error": f"Unknown job_id: {job_id}"}
+        return {"status": "completed", "progress": 1.0}
+
+    async def get_result(self, job_id: str, verbose: bool = False) -> str:
+        """Render the stashed response as text + ## Reasoning + ## Sources."""
+        if job_id not in self.jobs:
+            raise ProviderError(_PROVIDER_NAME_GEMINI, f"Unknown job_id: {job_id}")
+
+        response = self.jobs[job_id]["response"]
+        candidates = getattr(response, "candidates", None) or []
+        if not candidates:
+            if verbose:
+                self._debug_print_empty_response(response)
+            return ""
+
+        candidate = candidates[0]
+        content = getattr(candidate, "content", None)
+        if content is None:
+            if verbose:
+                self._debug_print_empty_response(response)
+            return ""
+
+        text_parts: list[str] = []
+        thought_parts: list[str] = []
+        for part in getattr(content, "parts", None) or []:
+            text = getattr(part, "text", "") or ""
+            if not text:
+                continue
+            if getattr(part, "thought", False):
+                thought_parts.append(text)
+            else:
+                text_parts.append(text)
+
+        answer = "".join(text_parts).strip()
+        if not answer and verbose:
+            self._debug_print_empty_response(response)
+
+        sources = self._render_sources(getattr(candidate, "grounding_metadata", None))
+        reasoning = "\n".join(thought_parts).strip()
+
+        sections: list[str] = []
+        if reasoning:
+            sections.append(f"## Reasoning\n\n{reasoning}")
+        if answer:
+            sections.append(answer)
+        if sources:
+            sections.append(sources)
+        return "\n\n".join(sections)
+
+    def _render_sources(self, grounding_metadata: Any) -> str:
+        """Render grounding_metadata.grounding_chunks as a ## Sources block."""
+        if grounding_metadata is None:
+            return ""
+        chunks = getattr(grounding_metadata, "grounding_chunks", None) or []
+        seen: set[str] = set()
+        lines: list[str] = []
+        for gc in chunks:
+            web = getattr(gc, "web", None)
+            if web is None:
+                continue
+            url = getattr(web, "uri", None)
+            if not url or url in seen:
+                continue
+            seen.add(url)
+            title = getattr(web, "title", "") or urlparse(url).netloc
+            lines.append(f"- [{md_link_title(title)}]({md_link_url(url)})")
+        if not lines:
+            return ""
+        return "## Sources\n\n" + "\n".join(lines)
+
+    def _debug_print_empty_response(self, response: Any) -> None:
+        """Emit a debug ladder to stderr when verbose=True and content is empty.
+
+        Mirrors openai.py's pattern (model_dump_json -> __dict__ -> repr).
+        """
+        err_console = Console(file=sys.stderr)
+        try:
+            if hasattr(response, "model_dump_json"):
+                debug_info = response.model_dump_json(indent=2)[:1000]
+            elif hasattr(response, "__dict__"):
+                debug_info = repr(response.__dict__)[:1000]
+            else:
+                debug_info = repr(response)[:1000]
+        except Exception:
+            debug_info = f"<{type(response).__name__}>"
+        err_console.print(
+            f"[dim]Debug: no content found in response. Structure: {debug_info}[/dim]"
+        )

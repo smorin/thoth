@@ -665,3 +665,302 @@ def test_gemini_stream_mid_iteration_error_maps_to_provider_error() -> None:
     with pytest.raises(ProviderError) as excinfo:
         asyncio.run(_consume_events(provider.stream("Q?", "test_mode")))
     assert "Bad mid-stream" in str(excinfo.value) or "bad request" in str(excinfo.value).lower()
+
+
+# ---------------------------------------------------------------------------
+# Task 4.5: submit / check_status / get_result + tenacity retry
+# ---------------------------------------------------------------------------
+
+
+def test_gemini_submit_returns_job_id_and_stashes_response() -> None:
+    """submit() runs generate_content once and stashes response under a job_id starting with 'gemini-'."""
+    import asyncio
+    from types import SimpleNamespace
+    from unittest.mock import patch
+
+    from thoth.providers.gemini import GeminiProvider
+
+    fake_response = SimpleNamespace(
+        candidates=[
+            SimpleNamespace(
+                content=SimpleNamespace(parts=[SimpleNamespace(text="Answer.", thought=False)]),
+                grounding_metadata=None,
+            )
+        ],
+        text="Answer.",
+    )
+
+    async def fake_generate_content(**kw):
+        return fake_response
+
+    mock_client = SimpleNamespace()
+    mock_client.aio = SimpleNamespace()
+    mock_client.aio.models = SimpleNamespace()
+    mock_client.aio.models.generate_content = fake_generate_content
+    mock_client.aio.models.generate_content_stream = lambda **kw: None  # not exercised
+
+    with patch("google.genai.Client", return_value=mock_client):
+        provider = GeminiProvider(api_key="dummy", config={"kind": "immediate"})
+    job_id = asyncio.run(provider.submit("Q?", "test_mode"))
+
+    assert job_id.startswith("gemini-")
+    assert job_id in provider.jobs
+    assert provider.jobs[job_id]["response"] is fake_response
+
+
+def test_gemini_check_status_returns_completed_for_known_job() -> None:
+    """check_status returns {'status': 'completed', 'progress': 1.0} for known immediate jobs."""
+    import asyncio
+
+    from thoth.providers.gemini import GeminiProvider
+
+    provider = GeminiProvider(api_key="dummy", config={})
+    provider.jobs["test-job"] = {"response": object(), "created_at": 0}
+    status = asyncio.run(provider.check_status("test-job"))
+
+    assert status["status"] == "completed"
+    assert status["progress"] == 1.0
+
+
+def test_gemini_check_status_returns_not_found_for_unknown_job() -> None:
+    """check_status returns 'not_found' for unknown job_ids."""
+    import asyncio
+
+    from thoth.providers.gemini import GeminiProvider
+
+    provider = GeminiProvider(api_key="dummy", config={})
+    status = asyncio.run(provider.check_status("nonexistent"))
+
+    assert status["status"] == "not_found"
+
+
+def test_gemini_get_result_renders_text_only_when_no_reasoning_or_sources() -> None:
+    """get_result returns just the answer text when no thoughts and no grounding."""
+    import asyncio
+    from types import SimpleNamespace
+
+    from thoth.providers.gemini import GeminiProvider
+
+    fake_response = SimpleNamespace(
+        candidates=[
+            SimpleNamespace(
+                content=SimpleNamespace(
+                    parts=[SimpleNamespace(text="Final answer.", thought=False)]
+                ),
+                grounding_metadata=None,
+            )
+        ],
+        text="Final answer.",
+    )
+    provider = GeminiProvider(api_key="dummy", config={})
+    provider.jobs["test"] = {"response": fake_response, "created_at": 0}
+
+    rendered = asyncio.run(provider.get_result("test"))
+    assert rendered == "Final answer."  # no extra sections
+
+
+def test_gemini_get_result_renders_reasoning_section_when_thoughts_present() -> None:
+    """Thought parts collected into a ## Reasoning section above the answer."""
+    import asyncio
+    from types import SimpleNamespace
+
+    from thoth.providers.gemini import GeminiProvider
+
+    fake_response = SimpleNamespace(
+        candidates=[
+            SimpleNamespace(
+                content=SimpleNamespace(
+                    parts=[
+                        SimpleNamespace(text="Reasoning bit. ", thought=True),
+                        SimpleNamespace(text="Final answer.", thought=False),
+                    ]
+                ),
+                grounding_metadata=None,
+            )
+        ],
+        text="Final answer.",
+    )
+    provider = GeminiProvider(api_key="dummy", config={})
+    provider.jobs["test"] = {"response": fake_response, "created_at": 0}
+
+    rendered = asyncio.run(provider.get_result("test"))
+    assert "## Reasoning" in rendered
+    assert "Reasoning bit." in rendered
+    assert "Final answer." in rendered
+
+
+def test_gemini_get_result_renders_sources_section_with_sanitized_links() -> None:
+    """Grounding chunks become a ## Sources section using md_link_title/md_link_url."""
+    import asyncio
+    from types import SimpleNamespace
+
+    from thoth.providers.gemini import GeminiProvider
+
+    grounding = SimpleNamespace(
+        grounding_chunks=[
+            SimpleNamespace(web=SimpleNamespace(uri="https://example.com", title="example.com")),
+        ]
+    )
+    fake_response = SimpleNamespace(
+        candidates=[
+            SimpleNamespace(
+                content=SimpleNamespace(parts=[SimpleNamespace(text="Body.", thought=False)]),
+                grounding_metadata=grounding,
+            )
+        ],
+        text="Body.",
+    )
+    provider = GeminiProvider(api_key="dummy", config={})
+    provider.jobs["test"] = {"response": fake_response, "created_at": 0}
+
+    rendered = asyncio.run(provider.get_result("test"))
+    assert "## Sources" in rendered
+    assert "[example.com](https://example.com)" in rendered
+
+
+def test_gemini_get_result_sanitizes_adversarial_citation() -> None:
+    """Adversarial titles (HTML) and URLs (javascript:) are neutralized via md_link_*."""
+    import asyncio
+    from types import SimpleNamespace
+
+    from thoth.providers.gemini import GeminiProvider
+
+    grounding = SimpleNamespace(
+        grounding_chunks=[
+            SimpleNamespace(
+                web=SimpleNamespace(uri="javascript:alert(1)", title="<script>x</script>")
+            ),
+        ]
+    )
+    fake_response = SimpleNamespace(
+        candidates=[
+            SimpleNamespace(
+                content=SimpleNamespace(parts=[SimpleNamespace(text="Body.", thought=False)]),
+                grounding_metadata=grounding,
+            )
+        ],
+        text="Body.",
+    )
+    provider = GeminiProvider(api_key="dummy", config={})
+    provider.jobs["test"] = {"response": fake_response, "created_at": 0}
+
+    rendered = asyncio.run(provider.get_result("test"))
+    assert "<script>" not in rendered
+    assert "javascript:" not in rendered
+
+
+def test_gemini_get_result_unknown_job_raises() -> None:
+    """get_result for unknown job_id raises ProviderError."""
+    import asyncio
+
+    import pytest
+
+    from thoth.errors import ProviderError
+    from thoth.providers.gemini import GeminiProvider
+
+    provider = GeminiProvider(api_key="dummy", config={})
+    with pytest.raises(ProviderError) as excinfo:
+        asyncio.run(provider.get_result("nonexistent"))
+    assert "nonexistent" in str(excinfo.value) or "not found" in str(excinfo.value).lower()
+
+
+def test_gemini_get_result_dedupes_sources_by_url() -> None:
+    """Duplicate URLs in grounding_chunks are deduped in the Sources block."""
+    import asyncio
+    from types import SimpleNamespace
+
+    from thoth.providers.gemini import GeminiProvider
+
+    grounding = SimpleNamespace(
+        grounding_chunks=[
+            SimpleNamespace(web=SimpleNamespace(uri="https://a.com", title="A")),
+            SimpleNamespace(web=SimpleNamespace(uri="https://a.com", title="A again")),  # dup
+            SimpleNamespace(web=SimpleNamespace(uri="https://b.com", title="B")),
+        ]
+    )
+    fake_response = SimpleNamespace(
+        candidates=[
+            SimpleNamespace(
+                content=SimpleNamespace(parts=[SimpleNamespace(text="Body.", thought=False)]),
+                grounding_metadata=grounding,
+            )
+        ],
+        text="Body.",
+    )
+    provider = GeminiProvider(api_key="dummy", config={})
+    provider.jobs["test"] = {"response": fake_response, "created_at": 0}
+
+    rendered = asyncio.run(provider.get_result("test"))
+    # Should have only 2 source lines (a.com once, b.com once)
+    sources_block = rendered.split("## Sources")[1] if "## Sources" in rendered else ""
+    a_count = sources_block.count("a.com")
+    assert a_count == 1, f"expected 1 occurrence of a.com in sources, got {a_count}"
+
+
+def test_gemini_get_result_empty_content_with_verbose_emits_debug(capsys) -> None:
+    """verbose=True + empty content emits debug ladder to stderr."""
+    import asyncio
+    from types import SimpleNamespace
+
+    from thoth.providers.gemini import GeminiProvider
+
+    fake_response = SimpleNamespace(
+        candidates=[
+            SimpleNamespace(
+                content=SimpleNamespace(parts=[]),  # empty
+                grounding_metadata=None,
+            )
+        ],
+        text="",
+    )
+    fake_response.model_dump_json = lambda **kw: '{"empty": true}'
+    provider = GeminiProvider(api_key="dummy", config={})
+    provider.jobs["test"] = {"response": fake_response, "created_at": 0}
+
+    asyncio.run(provider.get_result("test", verbose=True))
+    captured = capsys.readouterr()
+    combined = (captured.err + captured.out).lower()
+    assert "empty" in combined or "debug" in combined or "no content" in combined
+
+
+def test_gemini_submit_retry_decorator_retries_transient_errors() -> None:
+    """tenacity retry on httpx.TimeoutException — succeeds after 2 transient failures."""
+    import asyncio
+    from types import SimpleNamespace
+    from unittest.mock import patch
+
+    import httpx
+
+    from thoth.providers.gemini import GeminiProvider
+
+    call_count = {"n": 0}
+    fake_response = SimpleNamespace(
+        candidates=[
+            SimpleNamespace(
+                content=SimpleNamespace(parts=[SimpleNamespace(text="OK.", thought=False)]),
+                grounding_metadata=None,
+            )
+        ],
+        text="OK.",
+    )
+
+    async def fake_generate_content(**kw):
+        call_count["n"] += 1
+        if call_count["n"] < 3:
+            raise httpx.TimeoutException("transient")
+        return fake_response
+
+    mock_client = SimpleNamespace()
+    mock_client.aio = SimpleNamespace()
+    mock_client.aio.models = SimpleNamespace()
+    mock_client.aio.models.generate_content = fake_generate_content
+
+    with patch("google.genai.Client", return_value=mock_client):
+        provider = GeminiProvider(api_key="dummy", config={"kind": "immediate"})
+
+    # Patch tenacity wait to instant for test speed
+    with patch("thoth.providers.gemini.wait_exponential", return_value=lambda r: 0):
+        job_id = asyncio.run(provider.submit("Q?", "test_mode"))
+
+    assert call_count["n"] == 3  # 2 fails + 1 success
+    assert job_id in provider.jobs
