@@ -964,3 +964,103 @@ def test_gemini_submit_retry_decorator_retries_transient_errors() -> None:
 
     assert call_count["n"] == 3  # 2 fails + 1 success
     assert job_id in provider.jobs
+
+
+def test_gemini_kind_mismatch_rejects_deep_research_in_immediate_submit() -> None:
+    """deep-research-pro-preview-12-2025 with kind=immediate raises ModeKindMismatchError on submit()."""
+    import asyncio
+
+    import pytest
+
+    from thoth.errors import ModeKindMismatchError
+    from thoth.providers.gemini import GeminiProvider
+
+    mock_client = SimpleNamespace()
+    mock_client.aio = SimpleNamespace()
+    mock_client.aio.models = SimpleNamespace()
+    mock_client.aio.models.generate_content = lambda **kw: None  # should NOT be called
+    mock_client.aio.models.generate_content_stream = lambda **kw: None
+
+    with patch("google.genai.Client", return_value=mock_client):
+        provider = GeminiProvider(
+            api_key="dummy",
+            config={"kind": "immediate", "model": "deep-research-pro-preview-12-2025"},
+        )
+    with pytest.raises(ModeKindMismatchError):
+        asyncio.run(provider.submit("Q?", "test_mode"))
+
+
+def test_gemini_kind_mismatch_rejects_deep_research_in_immediate_stream() -> None:
+    """deep-research-pro-preview-12-2025 with kind=immediate raises ModeKindMismatchError on stream() entry."""
+    import asyncio
+
+    import pytest
+
+    from thoth.errors import ModeKindMismatchError
+    from thoth.providers.gemini import GeminiProvider
+
+    captured = {"called": False}
+
+    async def fake_stream(**kw):
+        captured["called"] = True
+        if False:
+            yield  # pragma: no cover
+
+    mock_client = SimpleNamespace()
+    mock_client.aio = SimpleNamespace()
+    mock_client.aio.models = SimpleNamespace()
+    mock_client.aio.models.generate_content_stream = fake_stream
+    mock_client.aio.models.generate_content = lambda **kw: None
+
+    with patch("google.genai.Client", return_value=mock_client):
+        provider = GeminiProvider(
+            api_key="dummy",
+            config={"kind": "immediate", "model": "deep-research-pro-preview-12-2025"},
+        )
+
+    async def consume():
+        async for _ in provider.stream("Q?", "test_mode"):
+            pass
+
+    with pytest.raises(ModeKindMismatchError):
+        asyncio.run(consume())
+
+    # CRITICAL: the SDK call MUST NOT have been made — guard fires before HTTP.
+    assert captured["called"] is False, "stream API was called despite kind-mismatch"
+
+
+def test_gemini_kind_mismatch_allows_regular_models() -> None:
+    """gemini-2.5-pro / gemini-2.5-flash-lite with kind=immediate are allowed (validate is no-op)."""
+    from thoth.providers.gemini import GeminiProvider
+
+    for model in ("gemini-2.5-pro", "gemini-2.5-flash-lite"):
+        provider = GeminiProvider(
+            api_key="dummy",
+            config={"kind": "immediate", "model": model},
+        )
+        # Direct call to the validator should not raise
+        provider._validate_kind_for_model("test_mode")  # no exception
+
+
+def test_gemini_kind_mismatch_allows_when_kind_is_background() -> None:
+    """deep-research model with kind=background is allowed (this is P28's territory)."""
+    from thoth.providers.gemini import GeminiProvider
+
+    provider = GeminiProvider(
+        api_key="dummy",
+        config={"kind": "background", "model": "deep-research-pro-preview-12-2025"},
+    )
+    # Direct call to the validator should not raise
+    provider._validate_kind_for_model("test_mode")
+
+
+def test_gemini_kind_mismatch_no_kind_in_config_no_op() -> None:
+    """When kind is missing from config, the guard is a no-op (silent passthrough)."""
+    from thoth.providers.gemini import GeminiProvider
+
+    provider = GeminiProvider(
+        api_key="dummy",
+        config={"model": "deep-research-pro-preview-12-2025"},  # no kind
+    )
+    # No exception (matches OpenAI/Perplexity pattern)
+    provider._validate_kind_for_model("test_mode")

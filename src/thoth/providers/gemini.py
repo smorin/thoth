@@ -23,6 +23,7 @@ from google.genai import errors as genai_errors  # type: ignore[import-not-found
 from rich.console import Console
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
+from thoth.config import is_background_model
 from thoth.errors import (
     APIKeyError,
     APIQuotaError,
@@ -227,13 +228,21 @@ class GeminiProvider(ResearchProvider):
         return None
 
     def _validate_kind_for_model(self, mode: str) -> None:
-        """Validate that the configured kind matches the model's capabilities.
+        """Reject background-only models when kind=immediate.
 
-        No-op stub. Task 4.6 will fill in the actual immediate/background
-        guard. Defined here so submit/stream call sites are stable across
-        the 4.4/4.5/4.6 task split.
+        Raises ModeKindMismatchError BEFORE any HTTP attempt. Mirrors
+        openai.py and perplexity.py's pattern. is_background_model() is the
+        single source of truth — currently substring-matches "deep-research",
+        which covers Gemini's `deep-research-pro-preview-12-2025`.
         """
-        return None
+        declared_kind = (self.config or {}).get("kind")
+        if declared_kind == "immediate" and is_background_model(self.model):
+            raise ModeKindMismatchError(
+                mode_name=mode,
+                model=self.model,
+                declared_kind="immediate",
+                required_kind="background",
+            )
 
     def _build_messages_and_system(
         self, prompt: str, system_prompt: str | None
