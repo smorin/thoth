@@ -2,8 +2,10 @@
 
 **References**
 - **Trunk:** [PROJECTS.md](../PROJECTS.md)
+- **Spec:** `docs/superpowers/specs/2026-05-03-p31-interactive-init-design.md`
+- **Plan:** `docs/superpowers/plans/2026-05-03-p31-interactive-init.md`
 
-**Status:** `[ ]` Scoped, not started.
+**Status:** `[~]` In progress.
 
 **Goal**: Add an interactive `init` command.
 
