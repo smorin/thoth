@@ -159,6 +159,40 @@ def _build_starter_document() -> tomlkit.TOMLDocument:
     return doc
 
 
+def _apply_wizard_answers(doc: tomlkit.TOMLDocument, answers) -> None:
+    """Merge `WizardAnswers` into a tomlkit document in place.
+
+    Touches only `[general].default_mode` and `[providers.<name>].api_key`.
+    All other sections are preserved verbatim. Missing tables are created.
+    """
+    from thoth.init_wizard import ENV_VAR_BY_PROVIDER
+
+    # general.default_mode
+    general = doc.get("general")
+    if general is None or not hasattr(general, "keys"):
+        general = tomlkit.table()
+        doc["general"] = general
+    general["default_mode"] = answers.default_mode
+
+    # providers.<name>.api_key
+    providers = doc.get("providers")
+    if providers is None or not hasattr(providers, "keys"):
+        providers = tomlkit.table()
+        doc["providers"] = providers
+    for choice in answers.providers:
+        if choice.storage == "skip":
+            continue
+        prov_table = providers.get(choice.name)
+        if prov_table is None or not hasattr(prov_table, "keys"):
+            prov_table = tomlkit.table()
+            providers[choice.name] = prov_table
+        if choice.storage == "env_ref":
+            var = ENV_VAR_BY_PROVIDER[choice.name]
+            prov_table["api_key"] = f"${{{var}}}"
+        else:  # literal
+            prov_table["api_key"] = choice.literal_value or ""
+
+
 class CommandHandler:
     """Unified command execution for CLI and interactive modes"""
 
