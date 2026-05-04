@@ -152,6 +152,9 @@ def _map_openai_error(
     if isinstance(exc, openai.APIError):
         return ProviderError("openai", str(exc), raw_error=raw)
 
+    # A6 (P27 factor-dedup): intentional defense-in-depth. APIError is the
+    # SDK base class so this fallthrough is unreachable in practice; kept to
+    # guard against non-SDK exceptions sneaking through future refactors.
     return ProviderError("openai", str(exc), raw_error=raw)
 
 

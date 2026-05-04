@@ -282,6 +282,10 @@ def _map_perplexity_error_async(
             body_text = ""
         body_lower = body_text.lower()
 
+        # A5 (P27 factor-dedup): async inspects exc.response.text only; the
+        # sync mapper inspects exc.body + str(exc) because openai SDK exceptions
+        # carry different surfaces. Both inspections are correct for their
+        # respective contexts; do not try to unify the two.
         if status == 401:
             if any(phrase in body_lower for phrase in _INVALID_KEY_PHRASES):
                 return _invalid_key_thotherror(
@@ -332,6 +336,10 @@ def _map_perplexity_error_async(
                 "Perplexity server error (5xx). Retry shortly.",
                 raw_error=raw,
             )
+        # A3 (P27 factor-dedup): no explicit 400 BadRequest branch — Perplexity's
+        # async API documents 422 (not 400) for invalid requests, so a 400 falls
+        # through to the generic HTTP-{status} bucket on purpose. Keeping it
+        # explicit so future maintainers don't add a redundant 400 branch.
         return ProviderError(
             _PROVIDER_NAME,
             f"HTTP {status} from Perplexity async API: {body_text[:200]}",
@@ -532,8 +540,10 @@ class PerplexityProvider(ResearchProvider):
 
         Wrapper shape is Perplexity-specific (NOT OpenAI's flat shape) per
         https://docs.perplexity.ai/api-reference/async-chat-completions.
-        Forwards `reasoning_effort` and `web_search_options` from the
-        `perplexity` config namespace into the request part.
+        Forwards Perplexity request options from the `perplexity` config
+        namespace into the request part. `model` and `messages` stay owned by
+        Thoth so provider-namespace options cannot rewrite the structural
+        request.
         """
         messages: list[dict[str, str]] = []
         if system_prompt:
@@ -544,10 +554,10 @@ class PerplexityProvider(ResearchProvider):
             "messages": messages,
         }
         perp_cfg = dict(self.config.get("perplexity") or {})
-        if "reasoning_effort" in perp_cfg:
-            request_part["reasoning_effort"] = perp_cfg["reasoning_effort"]
-        if "web_search_options" in perp_cfg:
-            request_part["web_search_options"] = perp_cfg["web_search_options"]
+        for key, value in perp_cfg.items():
+            if key in {"model", "messages"}:
+                continue
+            request_part[key] = value
         return {"request": request_part, "idempotency_key": idempotency_key}
 
     async def _submit_async(
@@ -697,6 +707,10 @@ class PerplexityProvider(ResearchProvider):
         if job_id not in self.jobs:
             return {"status": "not_found", "error": "Job not found"}
         job_info = self.jobs[job_id]
+        # B4 (P27 factor-dedup): P18 non-background shortcut — kept symmetric
+        # with OpenAIProvider for defense-in-depth. TODO(P19): remove both
+        # shortcuts when the immediate-kind path no longer transits
+        # check_status at all.
         if not job_info.get("background", False):
             # P23 immediate path — submit() already returned the full response.
             return {"status": "completed", "progress": 1.0}
