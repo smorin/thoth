@@ -4,13 +4,13 @@
 
 **Goal:** Add a `GeminiProvider` to Thoth that mirrors the OpenAI (P26) and Perplexity (P27) background Deep Research surface (submit → poll → get_result → cancel/reconnect), wired into the existing provider-agnostic runtime.
 
-**Architecture:** New `src/thoth/providers/gemini.py` module implementing `ResearchProvider` against the `google-genai>=1.55.0` SDK using the Interactions API. As of 2026-05-04 the upstream Gemini docs list **two** Deep Research agent IDs — `deep-research-preview-04-2026` (speed/efficiency) and `deep-research-max-preview-04-2026` (max comprehensiveness) — replacing the single `deep-research-pro-preview-12-2025` referenced when this plan was first written. The exact create() API shape (`agent=` vs `model=` parameter, sync vs async client surface, `background=True` flag), the cancel-method's existence, and the §10 known-bug behaviors are all validated empirically in **Task 2 (Pre-implementation API spike)** before any framework code is written. All polling, checkpointing, SIGINT cancel, and output-sink integration is inherited unchanged from the runtime; P28 only adds the provider class, error mapper, mode entries, CLI flag, and config defaults. Tests follow the OpenAI three-layer pattern: monkeypatched-SDK unit tests + VCR cassette replays + gated `live_api` (weekly) + gated `extended` (nightly).
+**Architecture:** New `src/thoth/providers/gemini.py` module implementing `ResearchProvider` against the `google-genai>=1.55.0` SDK using the Interactions API. As of 2026-05-04 the upstream Gemini docs list **two** Deep Research agent IDs — `deep-research-preview-04-2026` (speed/efficiency) and `deep-research-max-preview-04-2026` (max comprehensiveness) — replacing the single `deep-research-pro-preview-12-2025` referenced when this plan was first written. P28 v1 ships the speed-efficiency tier across all 9 modes; the max tier is deferred to a successor project (mirrors how OpenAI's P26 lets users opt into a larger model per-mode rather than baking it into v1's default mode set). The exact create() API shape (`agent=` vs `model=` parameter, sync vs async client surface, `background=True` flag), the cancel-method's existence, and the §10 known-bug behaviors are all validated empirically in **Task 2 (Pre-implementation API spike)** before any framework code is written. All polling, checkpointing, SIGINT cancel, and output-sink integration is inherited unchanged from the runtime; P28 only adds the provider class, error mapper, mode entries, CLI flag, and config defaults. Tests follow the OpenAI three-layer pattern: monkeypatched-SDK unit tests + VCR cassette replays + gated `live_api` (weekly) + gated `extended` (nightly).
 
 **Tech Stack:** Python 3.11+, `google-genai>=1.55.0,<2`, `httpx`, `tenacity`, `pytest`, `pytest-vcr`, `rich`, existing Thoth runtime.
 
 **Spec:** `projects/P28-gemini-background-deep-research.md` (committed in `b173538`). Read it first — every task here references concrete decisions and parity rows from that file. The "Conventions to carry forward from P26 + P27" section in the spec is the source of truth for cross-provider conventions threaded through these tasks.
 
-> **Updated 2026-05-04:** P26 (OpenAI) and P27 (Perplexity) shipped after this plan was first written; conventions to carry forward are now documented in the project file under "Conventions to carry forward from P26 + P27". A new **Task 2 (Pre-implementation API spike)** was inserted; original Tasks 2-25 renumbered to 3-26. Upstream Gemini Deep Research docs now list two agent IDs (`deep-research-preview-04-2026` and `deep-research-max-preview-04-2026`) replacing the single `deep-research-pro-preview-12-2025`; the spike resolves which tier(s) P28 ships and updates downstream tasks (Task 17 mode set, Task 19 config defaults) accordingly. **Tasks 5-6 (error-mapper failing tests + implementation) MAY require fixture-class adjustment after Task 2 reveals the actual `google.genai.errors.*` exception classes** — do not write Task 5 with placeholder exception classes; finalize them once the spike completes. Pre-existing body cross-ref drift in Task 3's stub comments (the implementation task numbers in the `_map_gemini_error` `NotImplementedError` and the per-method "filled in by Task N" hints) is **not** corrected in this refresh — that is a separate audit.
+> **Updated 2026-05-04:** P26 (OpenAI) and P27 (Perplexity) shipped after this plan was first written; conventions to carry forward are now documented in the project file under "Conventions to carry forward from P26 + P27". A new **Task 2 (Pre-implementation API spike)** was inserted; original Tasks 2-25 renumbered to 3-26. Upstream Gemini Deep Research docs now list two agent IDs (`deep-research-preview-04-2026` and `deep-research-max-preview-04-2026`) replacing the single legacy `deep-research-pro-preview-12-2025`; v1 ships the speed-efficiency tier (`deep-research-preview-04-2026`) across all 9 modes, with the max tier deferred to a successor project. The spike's Block-if-failed catches if `deep-research-preview-04-2026` is not actually listed by the live API. **Tasks 5-6 (error-mapper failing tests + implementation) MAY require fixture-class adjustment after Task 2 reveals the actual `google.genai.errors.*` exception classes** — do not write Task 5 with placeholder exception classes; finalize them once the spike completes. Pre-existing body cross-ref drift in Task 3's stub comments (the implementation task numbers in the `_map_gemini_error` `NotImplementedError` and the per-method "filled in by Task N" hints) is **not** corrected in this refresh — that is a separate audit.
 
 ---
 
@@ -70,7 +70,7 @@ git commit -m "feat(deps): add google-genai>=1.55.0,<2 for P28 Gemini provider"
 
 ### Task 2: Pre-implementation API spike — validate Gemini Interactions API behavior
 
-**Why this task exists:** the existing P28 spec (`projects/P28-gemini-background-deep-research.md`) bakes in eight assumptions about the Gemini Interactions API surface (async client, `agent=` create-param, `cancel()` method exists, status enum values, annotation shape, the four §10 known-bug behaviors). At the time this refresh was written (2026-05-04), upstream docs additionally bifurcated the single `deep-research-pro-preview-12-2025` agent into two tiers (`deep-research-preview-04-2026`, `deep-research-max-preview-04-2026`) — meaning Tasks 5-6 (error-mapper fixtures), Task 17 (KNOWN_MODELS entries), and Task 19 (`[providers.gemini]` defaults) all depend on facts that are now uncertain. **Validating empirically before writing failing tests is the cheapest way to avoid placeholder-driven test bugs.** The spike's deliverable is **learning** captured in a research note, not provider code.
+**Why this task exists:** the existing P28 spec (`projects/P28-gemini-background-deep-research.md`) bakes in eight assumptions about the Gemini Interactions API surface (async client, `agent=` create-param, `cancel()` method exists, status enum values, annotation shape, the four §10 known-bug behaviors). At the time this refresh was written (2026-05-04), upstream docs additionally bifurcated the legacy `deep-research-pro-preview-12-2025` agent into two tiers (`deep-research-preview-04-2026`, `deep-research-max-preview-04-2026`) — meaning Tasks 5-6 (error-mapper fixtures), Task 17 (KNOWN_MODELS entries), and Task 19 (`[providers.gemini]` defaults) all depend on facts that are now uncertain. **Validating empirically before writing failing tests is the cheapest way to avoid placeholder-driven test bugs.** The spike's deliverable is **learning** captured in a research note, not provider code.
 
 **Files:**
 - Create: `scripts/spike/p28/spike_gemini_models.py`
@@ -586,6 +586,8 @@ tests)."
 
 Lay down the file with imports and a class that can be imported without errors. No methods yet — just enough that `from thoth.providers.gemini import GeminiProvider` succeeds.
 
+**Convention reference (P26+P27):** the skeleton must define a module-level `_PROVIDER_NAME = "gemini"` constant near the top (P27 convention — see project file's "Conventions to carry forward from P26 + P27" table). Every `ProviderError(_PROVIDER_NAME, ...)` raise downstream uses this constant rather than a string literal. Provider-specific helpers (citation extraction, Sources block formatting) go *below* the `GeminiProvider` class, matching the Perplexity layout (`perplexity.py:873-979`).
+
 **Files:**
 - Create: `src/thoth/providers/gemini.py`
 
@@ -623,7 +625,7 @@ from thoth.errors import APIKeyError, APIQuotaError, ProviderError, ThothError
 from thoth.models import ModelCache
 from thoth.providers.base import ResearchProvider
 
-DEEP_RESEARCH_AGENT_ID = "deep-research-pro-preview-12-2025"
+DEEP_RESEARCH_AGENT_ID = "deep-research-preview-04-2026"
 """Only built-in Gemini Deep Research agent as of 2026-04 (research doc §3)."""
 
 DEFAULT_POLL_INTERVAL_SECONDS = 10
@@ -692,7 +694,7 @@ class GeminiProvider(ResearchProvider):
 uv run python -c "from thoth.providers.gemini import GeminiProvider, DEEP_RESEARCH_AGENT_ID; print(DEEP_RESEARCH_AGENT_ID)"
 ```
 
-Expected: prints `deep-research-pro-preview-12-2025`.
+Expected: prints `deep-research-preview-04-2026`.
 
 - [ ] **Step 3: Run lint and typecheck**
 
@@ -824,6 +826,8 @@ git commit -m "feat(gemini): register GeminiProvider in PROVIDERS dict"
 
 Per spec parity row 4 + provider-specific deltas. The mapper handles google-genai SDK exception classes plus the doc §10 known bugs. Test cases enumerate each branch.
 
+**Convention reference (P26+P27):** Gemini's Interactions API surface is async-only (`client.aio.interactions.*`), so P28 ships a single `_map_gemini_error` (async form), NOT the sync+async split P27 ships for Perplexity. Document this divergence in the module docstring so the future P29 cross-provider refactor understands it. The invalid-key branch must use the shared `_invalid_key_thotherror(provider, settings_url)` helper (P27 convention — `perplexity.py:143`) with `provider="gemini"` and the AI Studio API-key URL. **Block-if-blocked:** finalize the SDK exception classes the test fixtures import from `google.genai.errors` only AFTER Task 2 step 5 completes — those classes are the spike's deliverable, not assumptions.
+
 **Files:**
 - Test: `tests/test_gem_background.py` (append)
 
@@ -953,6 +957,8 @@ git commit -m "test(gemini): add failing tests for _map_gemini_error 8-branch ma
 ---
 
 ### Task 6: Implement `_map_gemini_error`
+
+**Convention reference (P26+P27):** mirror the 12-branch shape of `_map_openai_error` (`openai.py:75-126`) and the helper-extraction pattern of `_map_perplexity_error_async` (`perplexity.py:246-378`). Reuse `_invalid_key_thotherror`. If the `_rate_limit_error_is_quota` 429-quota-vs-rate-limit distinction applies (verify against spike step 5 output), replicate the helper at module top.
 
 **Files:**
 - Modify: `src/thoth/providers/gemini.py:_map_gemini_error`
@@ -1091,6 +1097,8 @@ git commit -m "feat(gemini): implement _map_gemini_error 8-branch error mapping"
 
 Per spec parity row 3 + research doc §3, §6.
 
+**Convention reference (P26+P27):** the `GeminiProvider` class adopts P27's async-internal helper layout. Public `submit()` is a thin async wrapper that delegates to `_submit_async()` (mirrors `perplexity.py:537,568`). The class also implements `_validate_kind_for_model(mode)` (P27 — `perplexity.py:431`) raising `ModeKindMismatchError` when a `kind="immediate"` mode is dispatched against a Gemini Deep Research model. The `@retry` decorator on `_submit_async` mirrors P26's tenacity shape (`openai.py:182-187`), with the exception filter swapped to `google.genai.errors.APIError` subclasses identified in the spike.
+
 **Files:**
 - Test: `tests/test_gem_background.py` (append)
 
@@ -1201,7 +1209,7 @@ class TestGeminiSubmit:
         assert job_id == "interaction-abc-123"
         assert len(fake_client._fake_interactions.create_calls) == 1
         call = fake_client._fake_interactions.create_calls[0]
-        assert call["agent"] == "deep-research-pro-preview-12-2025"
+        assert call["agent"] == "deep-research-preview-04-2026"
         assert call["background"] is True
         assert call["input"] == "Research quantum computing"
 
@@ -1765,6 +1773,8 @@ git commit -m "test(gemini): add failing tests for get_result() + citation extra
 
 ### Task 13: get_result() — implement to make tests pass
 
+**Convention reference (P26+P27):** annotation parsing + Sources-block formatting helpers (`_format_gemini_sources_block` etc.) live *below* the `GeminiProvider` class at module bottom, matching P27's layout (`perplexity.py:917,952`). Public `get_result()` delegates to `_get_async_result()` (P27 internal-helper convention). Mirror the empty-annotations conditional rendering pattern from `openai.py:599-606`.
+
 **Files:**
 - Modify: `src/thoth/providers/gemini.py:GeminiProvider`
 
@@ -2036,7 +2046,7 @@ class TestGeminiListModels:
         models = await provider.list_models()
 
         ids = [m["id"] for m in models]
-        assert "deep-research-pro-preview-12-2025" in ids
+        assert "deep-research-preview-04-2026" in ids
 
     @pytest.mark.asyncio
     async def test_list_models_cached_uses_cache(self, provider, monkeypatch, tmp_path):
@@ -2068,7 +2078,7 @@ Append to `GeminiProvider` in `src/thoth/providers/gemini.py`:
     async def list_models(self) -> list[dict[str, Any]]:
         """Return available Gemini Deep Research agents.
 
-        Per research doc §3: deep-research-pro-preview-12-2025 is the only
+        Per research doc §3: deep-research-preview-04-2026 is the only
         built-in agent currently. Hardcoded; revisit if Google ships variants.
         """
         return [
@@ -2152,7 +2162,7 @@ class TestGeminiModes:
         cfg = KNOWN_MODELS[mode_name]
         assert cfg["provider"] == "gemini"
         assert cfg["kind"] == "background"
-        assert cfg["model"] == "deep-research-pro-preview-12-2025"
+        assert cfg["model"] == "deep-research-preview-04-2026"
 ```
 
 - [ ] **Step 2: Run to verify failure**
@@ -2171,7 +2181,7 @@ In `src/thoth/config.py`, find the existing `KNOWN_MODELS` dict (around line 53)
     "gemini_quick_research": {
         "provider": "gemini",
         "kind": "background",
-        "model": "deep-research-pro-preview-12-2025",
+        "model": "deep-research-preview-04-2026",
         "description": "Lightweight Gemini Deep Research (~10-20 min, ~$2-3/run).",
         "system_prompt": "You are a helpful research assistant. Provide concise, well-sourced answers.",
         "auto_input": False,
@@ -2179,7 +2189,7 @@ In `src/thoth/config.py`, find the existing `KNOWN_MODELS` dict (around line 53)
     "gemini_exploration": {
         "provider": "gemini",
         "kind": "background",
-        "model": "deep-research-pro-preview-12-2025",
+        "model": "deep-research-preview-04-2026",
         "description": "Gemini exploration of a topic — broad-scope research.",
         "system_prompt": "Conduct broad exploratory research on the topic. Identify key dimensions, sources, and open questions.",
         "auto_input": False,
@@ -2188,7 +2198,7 @@ In `src/thoth/config.py`, find the existing `KNOWN_MODELS` dict (around line 53)
     "gemini_deep_dive": {
         "provider": "gemini",
         "kind": "background",
-        "model": "deep-research-pro-preview-12-2025",
+        "model": "deep-research-preview-04-2026",
         "description": "Gemini deep dive into a focused topic.",
         "system_prompt": "Produce an in-depth analysis with technical details and citations.",
         "auto_input": True,
@@ -2198,7 +2208,7 @@ In `src/thoth/config.py`, find the existing `KNOWN_MODELS` dict (around line 53)
     "gemini_tutorial": {
         "provider": "gemini",
         "kind": "background",
-        "model": "deep-research-pro-preview-12-2025",
+        "model": "deep-research-preview-04-2026",
         "description": "Gemini tutorial generation from prior research.",
         "system_prompt": "Write a step-by-step tutorial. Include examples and prerequisites.",
         "auto_input": True,
@@ -2207,7 +2217,7 @@ In `src/thoth/config.py`, find the existing `KNOWN_MODELS` dict (around line 53)
     "gemini_solution": {
         "provider": "gemini",
         "kind": "background",
-        "model": "deep-research-pro-preview-12-2025",
+        "model": "deep-research-preview-04-2026",
         "description": "Gemini solution proposal for a problem.",
         "system_prompt": "Propose a concrete solution. Include trade-offs and implementation considerations.",
         "auto_input": False,
@@ -2215,7 +2225,7 @@ In `src/thoth/config.py`, find the existing `KNOWN_MODELS` dict (around line 53)
     "gemini_prd": {
         "provider": "gemini",
         "kind": "background",
-        "model": "deep-research-pro-preview-12-2025",
+        "model": "deep-research-preview-04-2026",
         "description": "Gemini PRD generation.",
         "system_prompt": "Produce a Product Requirements Document with goal, scope, success criteria, and out-of-scope items.",
         "auto_input": False,
@@ -2223,7 +2233,7 @@ In `src/thoth/config.py`, find the existing `KNOWN_MODELS` dict (around line 53)
     "gemini_tdd": {
         "provider": "gemini",
         "kind": "background",
-        "model": "deep-research-pro-preview-12-2025",
+        "model": "deep-research-preview-04-2026",
         "description": "Gemini test-driven design proposal.",
         "system_prompt": "Produce a TDD-style design: tests first, then implementation outline.",
         "auto_input": False,
@@ -2231,7 +2241,7 @@ In `src/thoth/config.py`, find the existing `KNOWN_MODELS` dict (around line 53)
     "gemini_deep_research": {
         "provider": "gemini",
         "kind": "background",
-        "model": "deep-research-pro-preview-12-2025",
+        "model": "deep-research-preview-04-2026",
         "description": "Comprehensive Gemini Deep Research (~20+ min, ~$4-6/run).",
         "system_prompt": "Conduct comprehensive multi-step research. Cite all claims with URLs.",
         "auto_input": True,
@@ -2239,7 +2249,7 @@ In `src/thoth/config.py`, find the existing `KNOWN_MODELS` dict (around line 53)
     "gemini_comparison": {
         "provider": "gemini",
         "kind": "background",
-        "model": "deep-research-pro-preview-12-2025",
+        "model": "deep-research-preview-04-2026",
         "description": "Gemini comparison-mode research.",
         "system_prompt": "Compare the topics or options provided. Use tables where appropriate.",
         "auto_input": False,
@@ -2913,7 +2923,7 @@ In `README.md`, after the OpenAI provider description (find by grep), insert:
 
 `thoth` supports Google Gemini Deep Research as an asynchronous (background) provider via the Interactions API.
 
-- **Default model:** `deep-research-pro-preview-12-2025` (the only built-in Deep Research agent currently available)
+- **Default model:** `deep-research-preview-04-2026` (the only built-in Deep Research agent currently available)
 - **API key:** set `GEMINI_API_KEY` env var or pass `--api-key-gemini`
 - **Tier requirement:** Tier 1+ paid tier — Deep Research is **not available on the free tier**
 - **Cost:** approximately **$2-3 per standard task, $4-6 per complex task** (the agent autonomously determines search depth; there is no per-call cost cap)
@@ -2979,7 +2989,7 @@ Expected: 9 lines, one per gemini_* mode.
 uv run thoth providers --models --provider gemini
 ```
 
-Expected: lists `deep-research-pro-preview-12-2025` (no API call required for hardcoded model).
+Expected: lists `deep-research-preview-04-2026` (no API call required for hardcoded model).
 
 - [ ] **Step 4: Verify provider error message for missing key is helpful**
 
