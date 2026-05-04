@@ -100,9 +100,7 @@ def _map_openai_error(
     if isinstance(exc, openai.AuthenticationError):
         msg = str(exc).lower()
         if "incorrect api key" in msg:
-            return _invalid_key_thotherror(
-                _PROVIDER_NAME_OPENAI, "https://platform.openai.com/account/api-keys"
-            )
+            return _invalid_key_thotherror("OpenAI", "https://platform.openai.com/account/api-keys")
         return APIKeyError(_PROVIDER_NAME_OPENAI)
 
     if isinstance(exc, openai.RateLimitError):

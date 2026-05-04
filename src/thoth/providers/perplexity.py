@@ -155,9 +155,7 @@ def _map_perplexity_error(
         body = getattr(exc, "body", None) or {}
         combined = (str(exc) + " " + str(body)).lower()
         if any(phrase in combined for phrase in _INVALID_KEY_PHRASES):
-            return _invalid_key_thotherror(
-                _PROVIDER_NAME_PERPLEXITY, "https://www.perplexity.ai/settings/api"
-            )
+            return _invalid_key_thotherror("Perplexity", "https://www.perplexity.ai/settings/api")
         return APIKeyError(_PROVIDER_NAME_PERPLEXITY)
 
     if isinstance(exc, openai.RateLimitError):
@@ -272,7 +270,7 @@ def _map_perplexity_error_async(
         if status == 401:
             if any(phrase in body_lower for phrase in _INVALID_KEY_PHRASES):
                 return _invalid_key_thotherror(
-                    _PROVIDER_NAME_PERPLEXITY, "https://www.perplexity.ai/settings/api"
+                    "Perplexity", "https://www.perplexity.ai/settings/api"
                 )
             return APIKeyError(_PROVIDER_NAME_PERPLEXITY)
         if status == 402:

@@ -8,11 +8,12 @@ def test_invalid_key_thotherror_shape() -> None:
     from thoth.errors import ThothError
     from thoth.providers._helpers import _invalid_key_thotherror
 
-    err = _invalid_key_thotherror("perplexity", "https://www.perplexity.ai/settings/api")
+    err = _invalid_key_thotherror("Perplexity", "https://www.perplexity.ai/settings/api")
     assert isinstance(err, ThothError)
     assert err.exit_code == 2
-    assert "perplexity" in err.message.lower()
+    assert "Perplexity API key is invalid" in err.message
     assert err.suggestion is not None
+    assert "Your Perplexity API key" in err.suggestion
     assert "https://www.perplexity.ai/settings/api" in err.suggestion
 
 
@@ -21,9 +22,10 @@ def test_invalid_key_thotherror_openai_url() -> None:
     from thoth.errors import ThothError
     from thoth.providers._helpers import _invalid_key_thotherror
 
-    err = _invalid_key_thotherror("openai", "https://platform.openai.com/account/api-keys")
+    err = _invalid_key_thotherror("OpenAI", "https://platform.openai.com/account/api-keys")
     assert isinstance(err, ThothError)
     assert err.exit_code == 2
-    assert "openai" in err.message.lower()
+    assert "OpenAI API key is invalid" in err.message
     assert err.suggestion is not None
+    assert "Your OpenAI API key" in err.suggestion
     assert "https://platform.openai.com/account/api-keys" in err.suggestion

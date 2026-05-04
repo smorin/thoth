@@ -11,7 +11,7 @@ from __future__ import annotations
 from thoth.errors import ThothError
 
 
-def _invalid_key_thotherror(provider: str, settings_url: str) -> ThothError:
+def _invalid_key_thotherror(display_name: str, settings_url: str) -> ThothError:
     """Friendly ThothError for an upstream-rejected API key.
 
     Distinct from APIKeyError (which signals 'no key found'); this one
@@ -21,10 +21,13 @@ def _invalid_key_thotherror(provider: str, settings_url: str) -> ThothError:
 
     Called by every immediate-call provider's error mapper to keep the
     wording byte-identical across provider error-mapping paths.
+
+    `display_name` is the brand-correct, user-facing name (e.g. "OpenAI",
+    "Perplexity") and is used verbatim in both message and suggestion;
+    callers must capitalize correctly rather than passing a lookup-key.
     """
     return ThothError(
-        f"{provider} API key is invalid",
-        f"Your {provider.title()} API key was rejected by the API. "
-        f"Check your key at {settings_url}",
+        f"{display_name} API key is invalid",
+        f"Your {display_name} API key was rejected by the API. Check your key at {settings_url}",
         exit_code=2,
     )
