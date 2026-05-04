@@ -78,7 +78,7 @@ Older entries may use `**Primary spec**`, `**Plan**`, or
 - [?] **P34** — [Offline testing for OpenAIProvider.stream() (VCR or alternative)](projects/P34-offline-testing-openai-stream-.md)
 - [ ] **P33** — [Schema-Driven Config Defaults](projects/P33-schema-driven-config-defaults.md)
 - [ ] **P32** — [Interactive Prompt Refiner](projects/P32-interactive-prompt-refiner.md)
-- [~] **P31** — [Interactive Init Command](projects/P31-interactive-init-command.md)
+- [x] **P31** — [Interactive Init Command](projects/P31-interactive-init-command.md)
 - [ ] **P30** — [Claude Code Skills Support](projects/P30-claude-code-skills-support.md)
 - [ ] **P29** — [Architecture Review & Cleanup — Background Deep Research Providers](projects/P29-arch-review-background-deep-research.md)
 - [ ] **P28** — [Gemini — Background Deep Research](projects/P28-gemini-background-deep-research.md)
