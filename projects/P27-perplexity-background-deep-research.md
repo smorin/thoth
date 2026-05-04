@@ -141,9 +141,10 @@ modifications.
 
 ### Phase-1 deferred (post-PR follow-ups)
 
-- **TS04b** (end-to-end resume integration): submit → simulated crash → `thoth resume <op_id>` reconnects via `request_id` → polls to completion. Requires runner-level test fixtures with mocked httpx.
-- **TS10** (sigint matrix): the polling-loop counterpart of `cancel.py:126`. `_maybe_cancel_upstream_and_raise` at `src/thoth/run.py:689-693` currently prints `"Cancelled upstream: {name}"` for any non-exception cancel result, including Perplexity's `{status: upstream_unsupported}`. The local checkpoint is correctly marked cancelled (the KeyboardInterrupt bubbles up), so behavior is right; the print message is off. ~5-line additive fix; deferred since it touches `run.py` which P27 explicitly does not modify.
-- **TS11** (snapshot status mapping): the existing `tests/test_get_resume_snapshot_data.py` tests are provider-agnostic and apply to Perplexity's transient/permanent classifications already. Explicit Perplexity-specific snapshot tests are redundant.
+- [x] **TS04b** (end-to-end resume integration): provider-contract-level test in `tests/test_provider_perplexity_async.py::test_full_resume_lifecycle_after_simulated_process_restart` — walks submit → simulated crash → reconnect → check_status → get_result without subprocess overhead. (Done in `7ff0626`.)
+- [x] **TS10** (sigint matrix): runner now distinguishes `{status: upstream_unsupported}` from a successful cancel and prints the same warning text `cancel.py:126` uses. Two new tests in `tests/test_sigint_upstream_cancel.py`. (Done in `bf482a2`.)
+- [x] **T12** (request_id round-trip): `tests/test_provider_perplexity_async.py::test_request_id_round_trips_through_json_checkpoint_shape` pins the invariant that JSON serialization preserves Perplexity request_ids verbatim. (Done in `7ff0626`.)
+- **TS11** (snapshot status mapping): the existing `tests/test_get_resume_snapshot_data.py` tests are provider-agnostic and apply to Perplexity's transient/permanent classifications already. Explicit Perplexity-specific snapshot tests are redundant — kept skipped.
 - [ ] [P27-T05] Implement `submit()` — POST `/v1/async/sonar` with idempotency_key, retry on transient. Capture `request_id` → `self.jobs[request_id]`, return as job_id.
 - [ ] [P27-T06] Implement `check_status()` — GET `/v1/async/sonar/{id}` with full status mapping, 404 → expired-TTL message, network errors → transient.
 - [ ] [P27-T07] Implement `get_result()` — fresh fetch, dict-style `search_results` access, `## Sources` dedup, `## Cost` footer from `usage.cost.total_cost`, truncation-warning heuristic.
