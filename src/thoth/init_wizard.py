@@ -110,6 +110,29 @@ def pick_many(
     raise ThothError("invalid selection")
 
 
+PROVIDER_OPTIONS: tuple[ProviderName, ...] = ("openai", "perplexity", "gemini")
+ENV_VAR_BY_PROVIDER: dict[ProviderName, str] = {
+    "openai": "OPENAI_API_KEY",
+    "perplexity": "PERPLEXITY_API_KEY",
+    "gemini": "GEMINI_API_KEY",
+}
+
+
+def prompt_providers(*, prompt_fn: PromptFn) -> list[ProviderName]:
+    """Q1: render provider multi-select, return picked provider names.
+
+    The user can pick by number (`1,3`) or pick option 4 ("skip all").
+    Two consecutive empty inputs collapse to "skip all" — see spec
+    'Empty Q1 selection' edge case.
+    """
+    options = [*PROVIDER_OPTIONS, "skip all"]
+    picks = pick_many(options, prompt_fn=prompt_fn, label="Pick providers")
+    if not picks or "skip all" in picks:
+        return []
+    # pick_many returns list[str]; narrow to ProviderName
+    return [p for p in picks if p in PROVIDER_OPTIONS]  # type: ignore[misc]  # ty: ignore[invalid-return-type]
+
+
 class ScriptedPrompts:
     """Deterministic stub for `prompt_fn` in tests.
 
