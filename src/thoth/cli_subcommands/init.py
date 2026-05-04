@@ -96,4 +96,6 @@ def init(
         extra_kwargs["hidden"] = True
     if force:
         extra_kwargs["force"] = True
+    if non_interactive:
+        extra_kwargs["non_interactive"] = True
     handler.init_command(config_path=config_path, **extra_kwargs)
