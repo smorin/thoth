@@ -28,6 +28,7 @@ from thoth.errors import (
     ThothError,
 )
 from thoth.models import ModelCache
+from thoth.providers._helpers import _invalid_key_thotherror
 from thoth.providers._status import _translate_provider_status
 from thoth.providers.base import ResearchProvider
 from thoth.utils import md_link_title, md_link_url
@@ -99,9 +100,8 @@ def _map_openai_error(
     if isinstance(exc, openai.AuthenticationError):
         msg = str(exc).lower()
         if "incorrect api key" in msg:
-            return ThothError(
-                "Invalid OpenAI API key",
-                "Please check your API key at https://platform.openai.com/account/api-keys",
+            return _invalid_key_thotherror(
+                _PROVIDER_NAME_OPENAI, "https://platform.openai.com/account/api-keys"
             )
         return APIKeyError(_PROVIDER_NAME_OPENAI)
 

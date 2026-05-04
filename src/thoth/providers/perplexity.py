@@ -32,6 +32,7 @@ from thoth.errors import (
     ProviderError,
     ThothError,
 )
+from thoth.providers._helpers import _invalid_key_thotherror
 from thoth.providers._status import _translate_provider_status
 from thoth.providers.base import Citation, ResearchProvider, StreamEvent
 from thoth.utils import md_link_title, md_link_url
@@ -138,26 +139,6 @@ def _rate_limit_error_is_quota(exc: BaseException) -> bool:
         "blocked",
     )
     return any(marker in text for marker in quota_markers)
-
-
-def _invalid_key_thotherror(provider: str, settings_url: str) -> ThothError:
-    """Friendly ThothError for an upstream-rejected API key.
-
-    Distinct from APIKeyError (which signals 'no key found'); this one
-    signals 'a key was supplied but the upstream rejected it'. Different
-    user actions (rotate vs. set), different exit_code semantics.
-
-    Currently called by both `_map_perplexity_error` (sync) and
-    `_map_perplexity_error_async` to keep the wording byte-identical
-    across the two error-mapping paths. If a third caller emerges
-    (e.g., Gemini in P28), promote this helper to `thoth/errors.py`.
-    """
-    return ThothError(
-        f"{provider} API key is invalid",
-        f"Your {provider.title()} API key was rejected by the API. "
-        f"Check your key at {settings_url}",
-        exit_code=2,
-    )
 
 
 def _map_perplexity_error(

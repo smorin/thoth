@@ -3440,7 +3440,7 @@ all_tests = [
             "--api-key-openai",
             "invalid-key",
         ],
-        expected_stdout_patterns=[r"Invalid OpenAI API key"],
+        expected_stdout_patterns=[r"openai API key is invalid"],
         expected_exit_code=1,
         timeout=10,
     ),

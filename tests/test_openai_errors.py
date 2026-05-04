@@ -280,3 +280,28 @@ def test_openai_sources_block_blocks_javascript_scheme_in_url() -> None:
     assert "javascript:" not in rendered, (
         "javascript: scheme not neutralized (md_link_url not applied)"
     )
+
+
+def test_openai_invalid_key_thotherror_has_exit_code_2() -> None:
+    """OpenAI's invalid-key ThothError must set exit_code=2 to match Perplexity.
+
+    The shared `_invalid_key_thotherror` helper sets exit_code=2 so that
+    callers can distinguish 'configured but rejected' (rotate the key) from
+    other ThothError exits. OpenAI previously drifted by leaving the default
+    exit_code=1; this test pins the parity contract.
+    """
+    # 'Incorrect API key' phrase triggers the invalid-key (vs missing-key) branch.
+    exc = _fake_sdk_error(
+        openai.AuthenticationError,
+        message="Incorrect API key provided",
+        status=401,
+        body={"error": {"code": "invalid_api_key", "message": "Incorrect API key provided"}},
+    )
+    mapped = _map_openai_error(exc, model="gpt-4o", verbose=False)
+    assert isinstance(mapped, ThothError)
+    assert not isinstance(mapped, APIKeyError), (
+        "A configured-but-invalid key should not report 'not found'"
+    )
+    assert mapped.exit_code == 2, (
+        f"expected exit_code=2 (Perplexity parity), got {mapped.exit_code}"
+    )
