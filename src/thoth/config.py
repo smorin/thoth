@@ -205,6 +205,38 @@ BUILTIN_MODES = {
             "reasoning_effort": "high",
         },
     },
+    # P24: Gemini built-in immediate (synchronous) modes.
+    "gemini_quick": {
+        "provider": "gemini",
+        "model": "gemini-2.5-flash-lite",
+        "kind": "immediate",
+        "description": "Fast Gemini 2.5 Flash-Lite with web grounding (no thinking).",
+        "gemini": {
+            "tools": ["google_search"],
+            "thinking_budget": 0,
+        },
+    },
+    "gemini_pro": {
+        "provider": "gemini",
+        "model": "gemini-2.5-pro",
+        "kind": "immediate",
+        "description": "Gemini 2.5 Pro with web grounding and dynamic thinking.",
+        "gemini": {
+            "tools": ["google_search"],
+            "thinking_budget": -1,
+        },
+    },
+    "gemini_reasoning": {
+        "provider": "gemini",
+        "model": "gemini-2.5-pro",
+        "kind": "immediate",
+        "description": "Gemini 2.5 Pro with web grounding, dynamic thinking, and surfaced thought summaries.",
+        "gemini": {
+            "tools": ["google_search"],
+            "thinking_budget": -1,
+            "include_thoughts": True,
+        },
+    },
 }
 
 
