@@ -16,7 +16,7 @@
 - **External (Perplexity async):** https://docs.perplexity.ai/api-reference/async-chat-completions
 - **External (Perplexity rate-limit tiers):** https://docs.perplexity.ai/guides/usage-tiers
 
-**Status:** `[~]` In progress.
+**Status:** `[x]` Complete.
 
 **Goal**: Implement a Perplexity background provider for **long-running deep research** via the async API (`POST /v1/async/sonar` → poll `GET /v1/async/sonar/{id}` → retrieve). Mirror OpenAI's background lifecycle (`submit/check_status/get_result/reconnect/cancel`) including kind-mismatch defense, checkpoint persistence, `thoth resume`, and `thoth cancel`. Default to `sonar-deep-research` (the only Perplexity model with the async API).
 
