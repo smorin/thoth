@@ -28,9 +28,22 @@ from thoth.errors import (
     ThothError,
 )
 from thoth.models import ModelCache
+from thoth.providers._status import _translate_provider_status
 from thoth.providers.base import ResearchProvider
 
 _console = Console()
+
+# Provider-status → Thoth-status template. Used by check_status; the in_progress
+# template's progress is overridden at runtime from response.metadata; failed
+# and incomplete templates need an `error` field filled in by the caller.
+_OPENAI_STATUS_TABLE: dict[str, dict[str, Any]] = {
+    "completed": {"status": "completed", "progress": 1.0},
+    "in_progress": {"status": "running", "progress": 0.5},
+    "failed": {"status": "permanent_error"},
+    "incomplete": {"status": "permanent_error"},
+    "cancelled": {"status": "cancelled", "error": "Response was cancelled"},
+    "queued": {"status": "queued", "progress": 0.0},
+}
 
 
 def _rate_limit_error_is_quota(exc: BaseException) -> bool:
@@ -289,40 +302,37 @@ class OpenAIProvider(ResearchProvider):
             # Poll the Responses API for status of background job
             response = await self.client.responses.retrieve(job_id)
 
-            if hasattr(response, "status"):
-                if response.status == "completed":
-                    # Update stored response with completed data
-                    self.jobs[job_id]["response"] = response
-                    return {"status": "completed", "progress": 1.0}
-                elif response.status == "in_progress":
-                    # Try to get progress from metadata
-                    progress = 0.5  # Default progress
-                    if hasattr(response, "metadata") and response.metadata:
-                        progress = response.metadata.get("progress", 0.5)
-                    return {"status": "running", "progress": progress}
-                elif response.status == "failed":
-                    error_msg = getattr(response, "error", "Unknown error")
-                    return {"status": "permanent_error", "error": str(error_msg)}
-                elif response.status == "incomplete":
-                    error_msg = (
-                        getattr(response, "error", None)
-                        or "Response was incomplete (output truncated)"
-                    )
-                    return {"status": "permanent_error", "error": str(error_msg)}
-                elif response.status == "cancelled":
-                    return {"status": "cancelled", "error": "Response was cancelled"}
-                elif response.status == "queued":
-                    return {"status": "queued", "progress": 0.0}
-                else:
-                    return {
-                        "status": "permanent_error",
-                        "error": f"Unexpected API status: {response.status!r}",
-                    }
-            else:
+            if not hasattr(response, "status"):
                 return {
                     "status": "permanent_error",
                     "error": "Response object has no status attribute",
                 }
+
+            status_str = str(response.status) if response.status is not None else ""
+            translated = _translate_provider_status(status_str, _OPENAI_STATUS_TABLE)
+
+            # Per-status post-mutation: dynamic fields the table can't carry.
+            if status_str == "completed":
+                # Cache the completed response so stale-cache fallback below
+                # and get_result() can rely on it.
+                self.jobs[job_id]["response"] = response
+            elif status_str == "in_progress":
+                # Pull live progress from response.metadata if available; the
+                # table default is 0.5.
+                if hasattr(response, "metadata") and response.metadata:
+                    translated["progress"] = response.metadata.get("progress", 0.5)
+            elif status_str == "failed":
+                error_msg = getattr(response, "error", "Unknown error")
+                translated["error"] = str(error_msg)
+            elif status_str == "incomplete":
+                error_msg = (
+                    getattr(response, "error", None) or "Response was incomplete (output truncated)"
+                )
+                translated["error"] = str(error_msg)
+            # "cancelled" and "queued" need no post-mutation; the table covers them.
+            # Unknown statuses are handled by _translate_provider_status's default
+            # unknown branch (permanent_error with the unrecognized literal).
+            return translated
         except (
             openai.APIConnectionError,
             openai.APITimeoutError,
