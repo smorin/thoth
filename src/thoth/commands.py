@@ -193,6 +193,41 @@ def _apply_wizard_answers(doc: tomlkit.TOMLDocument, answers) -> None:
             prov_table["api_key"] = choice.literal_value or ""
 
 
+def _prefill_from_doc(doc: tomlkit.TOMLDocument):
+    """Extract wizard-relevant fields from an existing tomlkit doc."""
+    from thoth.init_wizard import (
+        DEFAULT_MODE_OPTIONS,
+        _Prefill,
+    )
+
+    general = doc.get("general") or {}
+    raw_mode = general.get("default_mode") if hasattr(general, "get") else None
+    mode = raw_mode if raw_mode in DEFAULT_MODE_OPTIONS else None
+
+    # Provider pre-fill is intentionally empty: api_key strings can't be
+    # round-tripped without exposing user secrets in prompts. The wizard
+    # re-asks each picked provider's key from scratch on `--force`.
+    return _Prefill(providers=(), default_mode=mode)
+
+
+def _load_or_build_doc(target: Path, *, force: bool) -> tomlkit.TOMLDocument:
+    """Return the doc to merge wizard answers into.
+
+    Existing file + force → parse it (preserves unknown sections).
+    Anything else → fresh starter doc.
+    """
+    if force and target.exists():
+        try:
+            return tomlkit.parse(target.read_text())
+        except Exception as exc:  # tomlkit raises a variety of errors
+            raise ThothError(
+                f"Cannot parse existing config at {target}: {exc}. "
+                "Pass --non-interactive to overwrite with defaults, "
+                "or fix the file."
+            ) from exc
+    return _build_starter_document()
+
+
 class CommandHandler:
     """Unified command execution for CLI and interactive modes"""
 
