@@ -818,3 +818,29 @@ def test_perplexity_provider_description_drops_not_implemented() -> None:
                 continue
             if "(not implemented)" in line:
                 raise AssertionError(f"stale 'not implemented' copy in {filename}: {line!r}")
+
+
+def test_perplexity_sync_maps_402_status_code_to_api_quota_error() -> None:
+    """A1 (factor-dedup) sync belt: any APIStatusError carrying status_code=402
+    routes to APIQuotaError, regardless of which openai SDK subclass it is.
+
+    Perplexity uses 402 for credit exhaustion. The openai SDK doesn't have a
+    PaymentRequired exception subclass — a 402 may surface as a bare
+    APIStatusError or one of its subclasses (BadRequestError etc., depending
+    on SDK version). The mapper checks `getattr(exc, 'status_code', None) == 402`
+    so any APIStatusError-shaped exception with that status code is upgraded
+    to APIQuotaError before the generic APIError catch-all.
+    """
+    import httpx
+    import openai
+
+    from thoth.errors import APIQuotaError
+    from thoth.providers.perplexity import _map_perplexity_error
+
+    request = httpx.Request("POST", "https://api.perplexity.ai/chat/completions")
+    response = httpx.Response(status_code=402, request=request)
+    exc = openai.BadRequestError(message="402 from upstream", response=response, body=None)
+    result = _map_perplexity_error(exc)
+    assert isinstance(result, APIQuotaError), (
+        f"expected APIQuotaError for status_code=402, got {type(result).__name__}: {result!r}"
+    )

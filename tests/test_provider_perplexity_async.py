@@ -99,6 +99,40 @@ def test_async_map_429_returns_rate_limit_error() -> None:
     assert isinstance(result, APIRateLimitError)
 
 
+def test_async_map_429_with_quota_body_upgrades_to_api_quota_error() -> None:
+    """A1 (factor-dedup): 429 + quota markers in body → APIQuotaError, not rate-limit.
+
+    Sync uses _rate_limit_error_is_quota body inspection to upgrade
+    RateLimitError → APIQuotaError. Async should do the same when 429 carries
+    quota markers in the body — otherwise the two mappers classify the same
+    upstream error differently. Markers come from the same vocabulary
+    (insufficient_quota, billing, credit, exhausted, no credits, etc.).
+    """
+    exc = _make_http_status_error(
+        429,
+        body='{"error": {"code": "insufficient_quota", "message": "Monthly spend limit exceeded"}}',
+    )
+    result = _map_perplexity_error_async(exc)
+    assert isinstance(result, APIQuotaError), (
+        f"expected APIQuotaError on 429-with-quota-body, got {type(result).__name__}"
+    )
+
+
+def test_async_map_403_returns_permission_denied_provider_error() -> None:
+    """A2 (factor-dedup): HTTP 403 → ProviderError with tier/model-access hint.
+
+    Both sync mappers emit 'Permission denied (check tier / model access).' for
+    PermissionDeniedError; async previously fell into the generic HTTP-{status}
+    bucket with no hint. This test pins parity.
+    """
+    exc = _make_http_status_error(403, body='{"error": {"message": "forbidden"}}')
+    result = _map_perplexity_error_async(exc)
+    assert isinstance(result, ProviderError)
+    msg = str(result).lower()
+    assert "permission denied" in msg
+    assert "tier" in msg or "model access" in msg
+
+
 @pytest.mark.parametrize("status", [500, 502, 503, 504])
 def test_async_map_5xx_returns_transient_provider_error(status: int) -> None:
     """T04: 5xx → ProviderError with retry hint."""
@@ -493,6 +527,26 @@ def test_check_status_transient_error_with_stale_completed_cache_returns_complet
     provider, _ = _make_background_provider()
     _seed_background_job(provider, cached_status="COMPLETED")
     _attach_get_response(provider, httpx.ConnectError("network blip"))
+    result = asyncio.run(provider.check_status("req-async-123"))
+    assert result["status"] == "completed"
+    assert result["progress"] == 1.0
+
+
+def test_check_status_http_5xx_with_stale_completed_cache_returns_completed() -> None:
+    """B1 (TS02): HTTPStatusError 5xx + cached COMPLETED → completed (stale-cache fallback).
+
+    Mirrors test_check_status_transient_error_with_stale_completed_cache_returns_completed
+    but for the HTTPStatusError branch — a 5xx blip after a previously-cached
+    COMPLETED state must not regress the runner's polling loop. Per OAI-BG-07
+    parity (OpenAI fires the stale-cache fallback in its transient-SDK-error
+    branch; Perplexity must do the same in its HTTPStatusError 5xx branch).
+    """
+    provider, _ = _make_background_provider()
+    _seed_background_job(provider, cached_status="COMPLETED")
+    request = httpx.Request("GET", "https://api.perplexity.ai/v1/async/sonar/req-async-123")
+    response = httpx.Response(status_code=503, content=b"{}", request=request)
+    err = httpx.HTTPStatusError("503", request=request, response=response)
+    _attach_get_response(provider, err)
     result = asyncio.run(provider.check_status("req-async-123"))
     assert result["status"] == "completed"
     assert result["progress"] == 1.0
