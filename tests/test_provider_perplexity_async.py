@@ -829,3 +829,169 @@ def test_cancel_works_for_unknown_job_id() -> None:
     provider, _ = _make_background_provider()
     result = asyncio.run(provider.cancel("never-seen"))
     assert result == {"status": "upstream_unsupported"}
+
+
+# ---------------------------------------------------------------------------
+# P27-TS04b / T12 — request_id round-trip + end-to-end resume contract
+# ---------------------------------------------------------------------------
+#
+# Combines T12 (Perplexity request_id round-trips through JSON checkpoint)
+# with TS04b (after a simulated process restart, reconnect+check_status+
+# get_result reaches a completed state). Done in-process — no subprocess —
+# to avoid the cost and complexity of mocking httpx across a fork. The
+# runner's polling-loop contract is exercised directly via the same
+# methods _run_polling_loop calls in production.
+
+
+def test_request_id_round_trips_through_json_checkpoint_shape() -> None:
+    """T12: a Perplexity request_id survives JSON serialize/deserialize unchanged.
+
+    The runner persists provider job_ids verbatim in the checkpoint format
+    (`providers.<name>.job_id`). Perplexity's request_id is the upstream
+    job identifier — typed as a free-form string; this test pins the
+    invariant that JSON serialization doesn't mangle it.
+    """
+    import json as _json
+
+    request_id = "req-d7e3a8b2-c1f4-4e92-a0f8-2b9d8c3f7e1a"
+    checkpoint_dict = {
+        "operation_id": "research-20260503-120000-aaaaaaaaaaaaaaaa",
+        "status": "running",
+        "providers": {
+            "perplexity": {
+                "status": "running",
+                "job_id": request_id,
+            },
+        },
+    }
+    serialized = _json.dumps(checkpoint_dict)
+    rehydrated = _json.loads(serialized)
+    assert rehydrated["providers"]["perplexity"]["job_id"] == request_id
+
+
+def test_full_resume_lifecycle_after_simulated_process_restart() -> None:
+    """TS04b: submit -> simulated crash -> reconnect -> check_status -> get_result.
+
+    Mirrors OpenAI's RES-01 pattern but at the provider-contract level (no
+    subprocess). Verifies that after a process restart drops in-memory
+    state, the runner-level resume flow can repopulate `self.jobs` from
+    just the request_id and continue polling to completion.
+
+    What this proves end-to-end:
+      1. submit()      -> mock POST returns request_id; jobs[request_id] populated
+      2. <crash>       -> drop the provider; persist only the request_id
+      3. reconnect()   -> mock GET returns IN_PROGRESS; jobs repopulated
+      4. check_status()-> mock GET returns COMPLETED with full payload
+      5. get_result()  -> renders content + ## Sources + ## Cost
+    """
+    submit_payload = {"id": "req-resume-abc-123", "status": "CREATED"}
+    request_id = submit_payload["id"]
+
+    # --- Phase 1: submit ----------------------------------------------------
+    submit_provider, post_mock = _make_background_provider(
+        response=_async_response(payload=submit_payload),
+        extra_config={"perplexity": {"reasoning_effort": "high"}},
+    )
+    returned_id = asyncio.run(
+        submit_provider.submit(
+            "Brief prompt", mode="perplexity_deep_research", system_prompt="be brief"
+        )
+    )
+    assert returned_id == request_id
+    assert post_mock.await_count == 1
+
+    # Capture the persisted "checkpoint" — only the request_id needs to
+    # survive across the simulated crash. (The runner persists more, but
+    # request_id is the load-bearing field for reconnect.)
+    persisted_request_id = returned_id
+
+    # --- Phase 2: simulated process restart ---------------------------------
+    # Drop the original provider entirely; emulate a fresh `thoth resume`.
+    del submit_provider
+
+    fresh_provider = PerplexityProvider(
+        api_key="pplx-test",
+        config={
+            "model": "sonar-deep-research",
+            "kind": "background",
+            "perplexity": {"reasoning_effort": "high"},
+        },
+    )
+    assert persisted_request_id not in fresh_provider.jobs, (
+        "fresh provider must start with empty jobs"
+    )
+
+    # --- Phase 3: reconnect from request_id ---------------------------------
+    reconnect_response = httpx.Response(
+        status_code=200,
+        json={"id": persisted_request_id, "status": "IN_PROGRESS"},
+        request=httpx.Request(
+            "GET", f"https://api.perplexity.ai/v1/async/sonar/{persisted_request_id}"
+        ),
+    )
+    completed_payload = _completed_payload(
+        content="Resumed answer with research findings.",
+        search_results=[{"url": "https://x.example/1", "title": "Source One"}],
+        total_cost=1.3201,
+    )
+    completed_response = httpx.Response(
+        status_code=200,
+        json=completed_payload,
+        request=httpx.Request(
+            "GET", f"https://api.perplexity.ai/v1/async/sonar/{persisted_request_id}"
+        ),
+    )
+
+    fake_client = AsyncMock()
+    fake_client.get = AsyncMock(side_effect=[reconnect_response, completed_response])
+    fresh_provider._async_http = fake_client  # type: ignore[attr-defined]
+
+    asyncio.run(fresh_provider.reconnect(persisted_request_id))
+    assert persisted_request_id in fresh_provider.jobs
+    assert fresh_provider.jobs[persisted_request_id].get("background") is True
+
+    # --- Phase 4: check_status (simulates the runner's polling loop) -------
+    status = asyncio.run(fresh_provider.check_status(persisted_request_id))
+    assert status["status"] == "completed"
+    assert status["progress"] == 1.0
+
+    # --- Phase 5: get_result -----------------------------------------------
+    text = asyncio.run(fresh_provider.get_result(persisted_request_id))
+    assert "Resumed answer" in text
+    assert "## Sources" in text
+    assert "https://x.example/1" in text
+    assert "## Cost" in text
+    assert "Total: $1.3201" in text
+
+    # Two GETs total: one for reconnect + one for check_status. get_result
+    # used the cached completed payload (no third GET).
+    assert fake_client.get.await_count == 2, (
+        f"expected 2 GETs (reconnect + check_status); got {fake_client.get.await_count}"
+    )
+
+
+def test_resume_after_404_raises_provider_error_with_ttl_message() -> None:
+    """TS04b: resume of an expired (>7-day) job surfaces a clear error.
+
+    If the user attempts `thoth resume <op_id>` more than 7 days after the
+    original submit, the upstream returns 404. The runner must surface a
+    ProviderError naming the TTL — not silently fall through to a
+    "running" status.
+    """
+    fresh_provider = PerplexityProvider(
+        api_key="pplx-test",
+        config={"model": "sonar-deep-research", "kind": "background"},
+    )
+
+    request = httpx.Request("GET", "https://api.perplexity.ai/v1/async/sonar/req-expired")
+    response = httpx.Response(status_code=404, content=b"{}", request=request)
+    err = httpx.HTTPStatusError("404", request=request, response=response)
+
+    fake_client = AsyncMock()
+    fake_client.get = AsyncMock(side_effect=err)
+    fresh_provider._async_http = fake_client  # type: ignore[attr-defined]
+
+    with pytest.raises(ProviderError) as info:
+        asyncio.run(fresh_provider.reconnect("req-expired"))
+    msg = str(info.value).lower()
+    assert "7" in msg and ("expir" in msg or "day" in msg or "ttl" in msg)
