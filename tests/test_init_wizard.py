@@ -103,3 +103,76 @@ def test_prompt_providers_skip_all_picks_skip() -> None:
 def test_prompt_providers_empty_then_empty_is_skip_all() -> None:
     sp = ScriptedPrompts(["", ""])
     assert prompt_providers(prompt_fn=sp) == []
+
+
+from thoth.init_wizard import prompt_key_for_provider  # noqa: E402
+
+
+def test_key_env_detected_user_accepts() -> None:
+    sp = ScriptedPrompts(["y"])  # accept env-var
+    pc = prompt_key_for_provider(
+        provider="openai",
+        env={"OPENAI_API_KEY": "sk-test-12345"},
+        prompt_fn=sp,
+    )
+    assert pc == ProviderChoice("openai", "env_ref", None)
+
+
+def test_key_env_detected_user_rejects_pastes_literal() -> None:
+    sp = ScriptedPrompts(["n", "1", "sk-mine"])
+    pc = prompt_key_for_provider(
+        provider="openai",
+        env={"OPENAI_API_KEY": "sk-other"},
+        prompt_fn=sp,
+    )
+    assert pc == ProviderChoice("openai", "literal", "sk-mine")
+
+
+def test_key_env_missing_paste_literal() -> None:
+    sp = ScriptedPrompts(["1", "sk-paste"])  # paste-now branch
+    pc = prompt_key_for_provider(
+        provider="perplexity",
+        env={},
+        prompt_fn=sp,
+    )
+    assert pc == ProviderChoice("perplexity", "literal", "sk-paste")
+
+
+def test_key_env_missing_user_will_set_env_later() -> None:
+    sp = ScriptedPrompts(["2"])  # env-ref-without-current-value branch
+    pc = prompt_key_for_provider(
+        provider="gemini",
+        env={},
+        prompt_fn=sp,
+    )
+    assert pc == ProviderChoice("gemini", "env_ref", None)
+
+
+def test_key_env_missing_skip() -> None:
+    sp = ScriptedPrompts(["3"])
+    pc = prompt_key_for_provider(
+        provider="openai",
+        env={},
+        prompt_fn=sp,
+    )
+    assert pc == ProviderChoice("openai", "skip", None)
+
+
+def test_key_env_empty_string_treated_as_missing() -> None:
+    sp = ScriptedPrompts(["1", "sk-paste"])
+    pc = prompt_key_for_provider(
+        provider="openai",
+        env={"OPENAI_API_KEY": ""},  # empty string ≠ set
+        prompt_fn=sp,
+    )
+    assert pc == ProviderChoice("openai", "literal", "sk-paste")
+
+
+def test_key_literal_value_trimmed_once() -> None:
+    sp = ScriptedPrompts(["1", "  sk-pad  "])
+    pc = prompt_key_for_provider(
+        provider="openai",
+        env={},
+        prompt_fn=sp,
+    )
+    assert pc == ProviderChoice("openai", "literal", "sk-pad")
