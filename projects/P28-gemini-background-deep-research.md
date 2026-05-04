@@ -3,10 +3,11 @@
 **References**
 - **Trunk:** [PROJECTS.md](../PROJECTS.md)
 - **Predecessor (immediate-vs-background design):** P18 — `docs/superpowers/specs/2026-04-26-p18-immediate-vs-background-design.md`, `docs/superpowers/plans/2026-04-26-p18-immediate-vs-background.md`. Defines the `kind` field, `ModeKindMismatchError`, and the immediate-vs-background runtime split P28 inherits.
-- **Adjacent (analog, also unstarted):** [P26 — OpenAI Background Deep Research](P26-openai-background-deep-research.md). Same scope shape, OpenAI-flavored. P28 mirrors the OpenAI background path that already ships in `src/thoth/providers/openai.py`.
+- **Adjacent (predecessor, completed):** [P26 — OpenAI Background Deep Research](P26-openai-background-deep-research.md). Canonical background-provider surface in `src/thoth/providers/openai.py`. P28 mirrors `submit/check_status/get_result/cancel/reconnect/list_models` and the 12-branch shape of `_map_openai_error`.
+- **Adjacent (predecessor, completed):** [P27 — Perplexity Background Deep Research](P27-perplexity-background-deep-research.md). Second-mover conventions in `src/thoth/providers/perplexity.py`: module-level `_PROVIDER_NAME` constant; shared `_invalid_key_thotherror(provider, settings_url)` helper; sync/async error-mapper split (`_map_perplexity_error` + `_map_perplexity_error_async`); `_validate_kind_for_model()` method; async-internal helper layout (`_submit_async`, `_poll_async_job`, `_get_async_result`). P28 adopts the P27 conventions where applicable — the sync/async error-mapper split collapses to just the async form because the Gemini Interactions API is async-only via `client.aio.interactions.*`.
 - **Adjacent (validated cross-provider survey):** [P22 — OpenAI Immediate (Synchronous) Calls](P22-openai-immediate-sync.md) §T03/T04. Confirmed `ResearchProvider` base contract is sufficient for new providers; no refactor required before P28 begins.
 - **Adjacent (successor cleanup):** [P29 — Architecture Review & Cleanup — Background Deep Research Providers](P29-arch-review-background-deep-research.md). Runs after P26, P27, P28 land; owns cross-provider deduplication.
-- **Code (mirror target — provider methods + error mapper):** `src/thoth/providers/openai.py` (`submit/check_status/get_result/cancel/reconnect`, `_map_openai_error`).
+- **Code (mirror target — provider methods + error mapper):** `src/thoth/providers/openai.py` (`submit/check_status/get_result/cancel/reconnect`, `_map_openai_error`); `src/thoth/providers/perplexity.py` (same surface, second-mover conventions: `_PROVIDER_NAME`, `_invalid_key_thotherror`, async-internal helpers).
 - **Code (runtime, provider-agnostic):** `src/thoth/run.py` (`_run_polling_loop`, `resume_operation`, `_maybe_cancel_upstream_and_raise`).
 - **Code (state machine + persistence):** `src/thoth/checkpoint.py`, `src/thoth/models.py` (`OperationStatus`).
 - **Code (SIGINT):** `src/thoth/signals.py`.
@@ -63,9 +64,26 @@ In scope — mirror the **eleven categories** of OpenAI's background Deep Resear
 | 9 | Free-tier interactive upgrade flow | Free tier explicitly lacks Deep Research per doc §8. Map 403 to a useful `ThothError` message (~5 lines in `_map_gemini_error`) but no full upgrade flow. |
 | 10 | Re-implementing P26's surface | P26 owns OpenAI background. P28 only owns Gemini. |
 
+### Conventions to carry forward from P26 + P27
+
+P26 (OpenAI background) and P27 (Perplexity background) both shipped before P28 begins. P28 inherits the conventions both implementations validated, with P27's second-mover refinements taking precedence where they differ from P26's first-mover defaults.
+
+| Convention | Origin | What P28 does |
+|---|---|---|
+| Module-level `_PROVIDER_NAME = "<name>"` constant | P27 (`perplexity.py:103`) | Add `_PROVIDER_NAME = "gemini"` at module top; use in every `ProviderError(_PROVIDER_NAME, ...)` call instead of string literals. |
+| Shared `_invalid_key_thotherror(provider, settings_url)` helper | P27 (`perplexity.py:143`) | Reuse the existing helper for Gemini's invalid-key path; pass `"gemini"` and `"https://aistudio.google.com/apikey"` as the settings URL (verify URL stability per Open Question #8). |
+| Sync + async error-mapper split (`_map_<p>_error` + `_map_<p>_error_async`) | P27 (`perplexity.py:163`, `:246`) | Collapses to a single async-only `_map_gemini_error` because the Gemini Interactions API surface (`client.aio.interactions.*`) is async-only. Document the reason in a module docstring so future cross-provider refactor (P29) understands why Gemini diverges from P27's split. |
+| `_validate_kind_for_model(mode)` method on the provider class | P27 (`perplexity.py:431`) | Add the same method to `GeminiProvider`; raise `ModeKindMismatchError` when a `kind="immediate"` mode is dispatched against a Gemini model that only supports `background`. |
+| `_rate_limit_error_is_quota(exc)` helper at module top | P26 (`openai.py:49`) + P27 (`perplexity.py:117`) | Replicate for Gemini if the SDK distinguishes 429-quota from 429-rate-limit; otherwise document why a single branch suffices. |
+| Async-internal helper layout (`_submit_async`, `_poll_async_job`, `_get_async_result`) | P27 (`perplexity.py:568`, `:724`, `:852`) | Adopt the same internal-helper naming for Gemini's background path. Public `submit/check_status/get_result` are thin wrappers that delegate to the `_*_async` helpers. |
+| Provider-specific helpers grouped at module bottom (below the class) | P27 (`perplexity.py:873-979`) | Place Gemini's annotation-parsing + Sources-rendering helpers below `GeminiProvider`, matching the Perplexity layout. Avoids spreading provider-specific logic across the class body. |
+| Tenacity `@retry` on `submit()` (3 attempts, exp 4-10s, timeout/conn only) | P26 (`openai.py:182-187`) | Adopted unchanged — both P26 and P27 use the same shape; retry exception filter swaps to `google.genai.errors.APIError` subclasses indicating transient-network states. |
+
+**Open Question (deferred to implementation):** are there P27 conventions that proved problematic in practice and should *not* be carried forward? The P27 follow-up factor-dedup plan (`docs/superpowers/plans/2026-05-03-p27-followup-factor-dedup.md`) lists 5 intentional divergences from the cross-provider walk; review those before committing to the conventions table above.
+
 ### Parity matrix
 
-Capability-by-capability mapping of P28 → OpenAI's existing background Deep Research surface. Used at implementation time to verify nothing is forgotten and at review time to confirm symmetry.
+Capability-by-capability mapping of P28 → the existing background Deep Research surface (P26 OpenAI canonical; P27 Perplexity refinements noted inline where relevant). Used at implementation time to verify nothing is forgotten and at review time to confirm symmetry.
 
 | # | Category | OpenAI today (file:line) | P28 plan |
 |---|---|---|---|
