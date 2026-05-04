@@ -40,6 +40,7 @@ def _missing_keys_for(provider: str) -> list[str]:
     needs = {
         "openai": ["OPENAI_API_KEY"],
         "perplexity": ["PERPLEXITY_API_KEY"],
+        "gemini": ["GEMINI_API_KEY"],
         "mock": [],
     }.get(provider, [])
     return [k for k in needs if not os.environ.get(k)]

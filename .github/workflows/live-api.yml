@@ -1,14 +1,15 @@
 ---
 # P20: weekly real-API workflow regression tests.
 #
-# Runs `pytest -m live_api` against live OpenAI and Perplexity to detect
-# drift in user-visible CLI behaviors (streaming, file output, append,
-# no-metadata, secret masking, mismatch defense, provider-specific
+# Runs `pytest -m live_api` against live OpenAI, Perplexity, and Gemini to
+# detect drift in user-visible CLI behaviors (streaming, file output,
+# append, no-metadata, secret masking, mismatch defense, provider-specific
 # passthrough). Sibling to
 # extended.yml (which checks model-kind contracts nightly).
 #
-# Gated on OPENAI_API_KEY and PERPLEXITY_API_KEY being set as repo secrets. The job is
-# informational — failures notify the team but do NOT block PR merges.
+# Gated on OPENAI_API_KEY, PERPLEXITY_API_KEY, and GEMINI_API_KEY being set
+# as repo secrets. The job is informational — failures notify the team but
+# do NOT block PR merges.
 #
 # Security note: this workflow does not use any github.event.* untrusted
 # inputs in run: commands; provider secrets are passed via env.
@@ -37,5 +38,6 @@ jobs:
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           PERPLEXITY_API_KEY: ${{ secrets.PERPLEXITY_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: uv run pytest -m live_api -v
         continue-on-error: true

@@ -34,6 +34,11 @@ def require_perplexity_key() -> None:
         pytest.skip("PERPLEXITY_API_KEY is required for Perplexity extended tests")
 
 
+def require_gemini_key() -> None:
+    if not os.environ.get("GEMINI_API_KEY"):
+        pytest.skip("GEMINI_API_KEY is required for Gemini extended tests")
+
+
 @pytest.fixture
 def live_cli_env(tmp_path: Path) -> tuple[dict[str, str], Path]:
     """Return an isolated environment for live CLI subprocesses."""
@@ -57,6 +62,25 @@ def live_cli_env(tmp_path: Path) -> tuple[dict[str, str], Path]:
 def live_perplexity_env(tmp_path: Path) -> tuple[dict[str, str], Path]:
     """Return an isolated environment for live Perplexity CLI subprocesses."""
     require_perplexity_key()
+    env = os.environ.copy()
+    env.update(
+        {
+            "HOME": str(tmp_path / "home"),
+            "XDG_CONFIG_HOME": str(tmp_path / "config"),
+            "XDG_STATE_HOME": str(tmp_path / "state"),
+            "XDG_CACHE_HOME": str(tmp_path / "cache"),
+            "PYTHONUNBUFFERED": "1",
+            "COLUMNS": "200",
+        }
+    )
+    env.setdefault("UV_CACHE_DIR", str(REPO_ROOT / ".uv-cache"))
+    return env, tmp_path
+
+
+@pytest.fixture
+def live_gemini_env(tmp_path: Path) -> tuple[dict[str, str], Path]:
+    """Return an isolated environment for live Gemini CLI subprocesses."""
+    require_gemini_key()
     env = os.environ.copy()
     env.update(
         {
