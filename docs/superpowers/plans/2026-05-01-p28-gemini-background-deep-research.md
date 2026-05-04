@@ -2,13 +2,15 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add a `GeminiProvider` to Thoth that mirrors the OpenAI background Deep Research surface (submit → poll → get_result → cancel/reconnect), wired into the existing provider-agnostic runtime.
+**Goal:** Add a `GeminiProvider` to Thoth that mirrors the OpenAI (P26) and Perplexity (P27) background Deep Research surface (submit → poll → get_result → cancel/reconnect), wired into the existing provider-agnostic runtime.
 
-**Architecture:** New `src/thoth/providers/gemini.py` module implementing `ResearchProvider` against the `google-genai>=1.55.0` SDK using the Interactions API (`agent="deep-research-pro-preview-12-2025"`, `background=True`). All polling, checkpointing, SIGINT cancel, and output-sink integration is inherited unchanged from the runtime; P28 only adds the provider class, error mapper, mode entries, CLI flag, and config defaults. Tests follow the OpenAI three-layer pattern: monkeypatched-SDK unit tests + VCR cassette replays + gated `live_api` (weekly) + gated `extended` (nightly).
+**Architecture:** New `src/thoth/providers/gemini.py` module implementing `ResearchProvider` against the `google-genai>=1.55.0` SDK using the Interactions API. As of 2026-05-04 the upstream Gemini docs list **two** Deep Research agent IDs — `deep-research-preview-04-2026` (speed/efficiency) and `deep-research-max-preview-04-2026` (max comprehensiveness) — replacing the single `deep-research-pro-preview-12-2025` referenced when this plan was first written. The exact create() API shape (`agent=` vs `model=` parameter, sync vs async client surface, `background=True` flag), the cancel-method's existence, and the §10 known-bug behaviors are all validated empirically in **Task 2 (Pre-implementation API spike)** before any framework code is written. All polling, checkpointing, SIGINT cancel, and output-sink integration is inherited unchanged from the runtime; P28 only adds the provider class, error mapper, mode entries, CLI flag, and config defaults. Tests follow the OpenAI three-layer pattern: monkeypatched-SDK unit tests + VCR cassette replays + gated `live_api` (weekly) + gated `extended` (nightly).
 
 **Tech Stack:** Python 3.11+, `google-genai>=1.55.0,<2`, `httpx`, `tenacity`, `pytest`, `pytest-vcr`, `rich`, existing Thoth runtime.
 
-**Spec:** `projects/P28-gemini-background-deep-research.md` (committed in `b173538`). Read it first — every task here references concrete decisions and parity rows from that file.
+**Spec:** `projects/P28-gemini-background-deep-research.md` (committed in `b173538`). Read it first — every task here references concrete decisions and parity rows from that file. The "Conventions to carry forward from P26 + P27" section in the spec is the source of truth for cross-provider conventions threaded through these tasks.
+
+> **Updated 2026-05-04:** P26 (OpenAI) and P27 (Perplexity) shipped after this plan was first written; conventions to carry forward are now documented in the project file under "Conventions to carry forward from P26 + P27". A new **Task 2 (Pre-implementation API spike)** was inserted; original Tasks 2-25 renumbered to 3-26. Upstream Gemini Deep Research docs now list two agent IDs (`deep-research-preview-04-2026` and `deep-research-max-preview-04-2026`) replacing the single `deep-research-pro-preview-12-2025`; the spike resolves which tier(s) P28 ships and updates downstream tasks (Task 17 mode set, Task 19 config defaults) accordingly. **Tasks 5-6 (error-mapper failing tests + implementation) MAY require fixture-class adjustment after Task 2 reveals the actual `google.genai.errors.*` exception classes** — do not write Task 5 with placeholder exception classes; finalize them once the spike completes. Pre-existing body cross-ref drift in Task 3's stub comments (the implementation task numbers in the `_map_gemini_error` `NotImplementedError` and the per-method "filled in by Task N" hints) is **not** corrected in this refresh — that is a separate audit.
 
 ---
 
@@ -22,7 +24,7 @@
 | Modify | `src/thoth/cli_subcommands/_options.py` | Add `--api-key-gemini` flag tuple |
 | Create | `tests/test_gem_background.py` | Unit tests with monkeypatched `google.genai.Client` for the 6 provider methods |
 | Create | `tests/test_vcr_gemini.py` | Cassette replay tests (mirrors `tests/test_vcr_openai.py` shape) |
-| Create | `thoth_test_cassettes/gemini/happy-path.yaml` | Recorded happy-path cassette (created in Task 21) |
+| Create | `thoth_test_cassettes/gemini/happy-path.yaml` | Recorded happy-path cassette (created in Task 22) |
 | Create | `tests/extended/test_gemini_real_workflows.py` | Live-API CLI workflow tests (`@pytest.mark.live_api`) |
 | Modify | `pyproject.toml` | Add `google-genai>=1.55.0,<2` dependency |
 | Modify | `.github/workflows/live-api.yml` | Add `GEMINI_API_KEY` to secrets/env block |
@@ -66,7 +68,521 @@ git commit -m "feat(deps): add google-genai>=1.55.0,<2 for P28 Gemini provider"
 
 ---
 
-### Task 2: Stub GeminiProvider module skeleton
+### Task 2: Pre-implementation API spike — validate Gemini Interactions API behavior
+
+**Why this task exists:** the existing P28 spec (`projects/P28-gemini-background-deep-research.md`) bakes in eight assumptions about the Gemini Interactions API surface (async client, `agent=` create-param, `cancel()` method exists, status enum values, annotation shape, the four §10 known-bug behaviors). At the time this refresh was written (2026-05-04), upstream docs additionally bifurcated the single `deep-research-pro-preview-12-2025` agent into two tiers (`deep-research-preview-04-2026`, `deep-research-max-preview-04-2026`) — meaning Tasks 5-6 (error-mapper fixtures), Task 17 (KNOWN_MODELS entries), and Task 19 (`[providers.gemini]` defaults) all depend on facts that are now uncertain. **Validating empirically before writing failing tests is the cheapest way to avoid placeholder-driven test bugs.** The spike's deliverable is **learning** captured in a research note, not provider code.
+
+**Files:**
+- Create: `scripts/spike/p28/spike_gemini_models.py`
+- Create: `scripts/spike/p28/spike_gemini_create.py`
+- Create: `scripts/spike/p28/spike_gemini_get.py`
+- Create: `scripts/spike/p28/spike_gemini_cancel.py`
+- Create: `scripts/spike/p28/spike_gemini_errors.py`
+- Create: `research/gemini-api-spike-2026-05-04.md`
+- Modify: `projects/P28-gemini-background-deep-research.md` (Open Questions section — record resolutions)
+
+**Pre-conditions:** `GEMINI_API_KEY` env var set to a Tier-1+ Google AI Studio key (Deep Research is paid-tier-only per research doc §8). Each spike script is a UV-shebang script with inline `[script.dependencies]` per project convention (see CLAUDE.md and `planning/references.md`).
+
+- [ ] **Step 1: Write `scripts/spike/p28/spike_gemini_models.py` — list available models and confirm agent IDs**
+
+```python
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.11"
+# dependencies = ["google-genai>=1.55.0,<2"]
+# ///
+"""P28 spike: list Gemini models and confirm Deep Research agent IDs.
+
+Resolves Open Question #6 (single vs bifurcated agent set) by reading the
+live API. Compares discovered IDs to what the upstream docs as of
+2026-05-04 list:
+  - deep-research-preview-04-2026 (speed/efficiency)
+  - deep-research-max-preview-04-2026 (max comprehensiveness)
+"""
+
+from __future__ import annotations
+
+import os
+import sys
+
+from google import genai
+
+
+def main() -> int:
+    api_key = os.environ.get("GEMINI_API_KEY")
+    if not api_key:
+        print("GEMINI_API_KEY not set", file=sys.stderr)
+        return 2
+    client = genai.Client(api_key=api_key)
+    print("=== Models surface ===")
+    print(f"client type: {type(client).__name__}")
+    print(f"client.models attrs: {[a for a in dir(client.models) if not a.startswith('_')]}")
+    if hasattr(client, "aio"):
+        print(f"client.aio.models attrs: {[a for a in dir(client.aio.models) if not a.startswith('_')]}")
+    print()
+    print("=== Listing models ===")
+    listed = list(client.models.list())
+    for m in listed:
+        print(f"  - {getattr(m, 'name', '<unknown>')} :: {getattr(m, 'description', '')[:80]}")
+    print()
+    print("=== Looking for known Deep Research agent IDs ===")
+    candidates = [
+        "deep-research-preview-04-2026",
+        "deep-research-max-preview-04-2026",
+        "deep-research-pro-preview-12-2025",  # legacy — should NOT appear
+    ]
+    listed_names = {getattr(m, "name", "") for m in listed}
+    for cand in candidates:
+        present = cand in listed_names or any(cand in n for n in listed_names)
+        print(f"  {'YES' if present else 'NO ':3} {cand}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
+```
+
+Run: `uv run scripts/spike/p28/spike_gemini_models.py | tee research/_spike_models.txt`
+Expected: prints model list; flags whether each candidate agent ID is present.
+
+- [ ] **Step 2: Write `scripts/spike/p28/spike_gemini_create.py` — submit a Deep Research interaction**
+
+```python
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.11"
+# dependencies = ["google-genai>=1.55.0,<2"]
+# ///
+"""P28 spike: submit a Deep Research interaction and capture the create() shape.
+
+Tries each create-call permutation the docs hint at to determine the
+actual signature: sync vs async, `agent=` vs `model=`, `background=True`
+vs default. Records:
+  - which permutation succeeded
+  - response object type + top-level fields
+  - returned interaction `id` format
+  - initial `status` value
+"""
+
+from __future__ import annotations
+
+import asyncio
+import json
+import os
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+
+from google import genai
+
+PROMPT = "What were the three most-cited papers in distributed systems in 2024? One sentence each."
+AGENT_FAST = "deep-research-preview-04-2026"
+AGENT_MAX = "deep-research-max-preview-04-2026"
+
+
+def _dump(label: str, obj: object, target_dir: Path) -> None:
+    target_dir.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "label": label,
+        "type": type(obj).__name__,
+        "module": type(obj).__module__,
+        "attrs": [a for a in dir(obj) if not a.startswith("_")],
+        "repr": repr(obj)[:1000],
+        "captured_at": datetime.now(tz=timezone.utc).isoformat(),
+    }
+    out = target_dir / f"{label}.json"
+    out.write_text(json.dumps(payload, indent=2))
+    print(f"  wrote {out}")
+
+
+def _try_sync_agent(client: genai.Client, target_dir: Path) -> bool:
+    try:
+        resp = client.interactions.create(agent=AGENT_FAST, input=PROMPT, background=True)
+        _dump("sync_agent_create", resp, target_dir)
+        return True
+    except Exception as exc:
+        print(f"  sync agent= path FAILED: {type(exc).__name__}: {exc}")
+        return False
+
+
+def _try_sync_model(client: genai.Client, target_dir: Path) -> bool:
+    try:
+        resp = client.interactions.create(model=AGENT_FAST, input=PROMPT, background=True)
+        _dump("sync_model_create", resp, target_dir)
+        return True
+    except Exception as exc:
+        print(f"  sync model= path FAILED: {type(exc).__name__}: {exc}")
+        return False
+
+
+async def _try_async_agent(client: genai.Client, target_dir: Path) -> bool:
+    try:
+        resp = await client.aio.interactions.create(agent=AGENT_FAST, input=PROMPT, background=True)
+        _dump("async_agent_create", resp, target_dir)
+        return True
+    except Exception as exc:
+        print(f"  async agent= path FAILED: {type(exc).__name__}: {exc}")
+        return False
+
+
+async def _try_async_model(client: genai.Client, target_dir: Path) -> bool:
+    try:
+        resp = await client.aio.interactions.create(model=AGENT_FAST, input=PROMPT, background=True)
+        _dump("async_model_create", resp, target_dir)
+        return True
+    except Exception as exc:
+        print(f"  async model= path FAILED: {type(exc).__name__}: {exc}")
+        return False
+
+
+def main() -> int:
+    api_key = os.environ.get("GEMINI_API_KEY")
+    if not api_key:
+        print("GEMINI_API_KEY not set", file=sys.stderr)
+        return 2
+    client = genai.Client(api_key=api_key)
+    target_dir = Path(__file__).parent.parent.parent.parent / "research" / "_spike_create"
+    print(f"Capturing to {target_dir}")
+    print(f"Trying create() permutations against agent {AGENT_FAST!r}...")
+    sync_agent_ok = _try_sync_agent(client, target_dir)
+    sync_model_ok = _try_sync_model(client, target_dir)
+    loop = asyncio.new_event_loop()
+    try:
+        async_agent_ok = loop.run_until_complete(_try_async_agent(client, target_dir))
+        async_model_ok = loop.run_until_complete(_try_async_model(client, target_dir))
+    finally:
+        loop.close()
+    print("\n=== Permutation summary ===")
+    print(f"  sync   agent= {'OK' if sync_agent_ok else 'FAIL'}")
+    print(f"  sync   model= {'OK' if sync_model_ok else 'FAIL'}")
+    print(f"  async  agent= {'OK' if async_agent_ok else 'FAIL'}")
+    print(f"  async  model= {'OK' if async_model_ok else 'FAIL'}")
+    return 0 if any([sync_agent_ok, sync_model_ok, async_agent_ok, async_model_ok]) else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())
+```
+
+Run: `uv run scripts/spike/p28/spike_gemini_create.py`
+Expected: at least one permutation succeeds; the captured JSON files in `research/_spike_create/` document the response shape. Note the interaction `id` from a successful response — feed it to step 3.
+
+- [ ] **Step 3: Write `scripts/spike/p28/spike_gemini_get.py` — poll an interaction and confirm/refute §10 known bugs**
+
+```python
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.11"
+# dependencies = ["google-genai>=1.55.0,<2"]
+# ///
+"""P28 spike: poll an interaction by ID and capture status enum + 403-on-GET-after-POST behavior.
+
+Confirms or refutes research doc §10 known bugs:
+  - intermittent 403 on GET-after-POST (transient or persistent?)
+  - status stuck in `in_progress` past terminal expectation
+  - empty annotations on completed interactions
+  - lost/reverted results after completion
+
+Pass the interaction id from spike_gemini_create.py as INTERACTION_ID env
+var; script polls it for up to 25 minutes, prints every status transition
+and any HTTP/SDK error with context.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import sys
+import time
+from pathlib import Path
+
+from google import genai
+
+POLL_INTERVAL_SECONDS = 10
+MAX_WAIT_MINUTES = 25  # research doc §10 says 20-min stuck case is documented
+
+
+def main() -> int:
+    api_key = os.environ.get("GEMINI_API_KEY")
+    interaction_id = os.environ.get("INTERACTION_ID")
+    if not api_key:
+        print("GEMINI_API_KEY not set", file=sys.stderr)
+        return 2
+    if not interaction_id:
+        print("INTERACTION_ID not set (run spike_gemini_create.py first)", file=sys.stderr)
+        return 2
+    client = genai.Client(api_key=api_key)
+
+    transitions = []
+    deadline = time.monotonic() + MAX_WAIT_MINUTES * 60
+    last_status: str | None = None
+    print(f"Polling interaction {interaction_id} every {POLL_INTERVAL_SECONDS}s for up to {MAX_WAIT_MINUTES} min")
+    while time.monotonic() < deadline:
+        t0 = time.monotonic()
+        try:
+            interaction = client.interactions.get(interaction_id)
+            status = getattr(interaction, "status", "<no-status-attr>")
+            elapsed = time.monotonic() - t0
+            if status != last_status:
+                print(f"  [{elapsed:.2f}s] status -> {status!r}")
+                transitions.append({"t": time.monotonic(), "status": str(status)})
+                last_status = str(status)
+            if str(status) in {"completed", "failed", "cancelled"}:
+                print("\n=== Final response shape ===")
+                print(f"  type: {type(interaction).__name__}")
+                print(f"  attrs: {[a for a in dir(interaction) if not a.startswith('_')]}")
+                outputs = getattr(interaction, "outputs", None)
+                print(f"  outputs is None? {outputs is None}")
+                if outputs is not None:
+                    print(f"  outputs len: {len(outputs)}")
+                    if outputs:
+                        last_out = outputs[-1]
+                        print(f"  outputs[-1] attrs: {[a for a in dir(last_out) if not a.startswith('_')]}")
+                        annotations = getattr(last_out, "annotations", None)
+                        print(f"  annotations: {annotations!r}"[:500])
+                target = Path(__file__).parent.parent.parent.parent / "research" / "_spike_get_final.json"
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_text(json.dumps({
+                    "interaction_id": interaction_id,
+                    "transitions": transitions,
+                    "final_repr": repr(interaction)[:5000],
+                }, indent=2))
+                print(f"  saved {target}")
+                return 0
+        except Exception as exc:
+            elapsed = time.monotonic() - t0
+            status_code = getattr(exc, "status_code", None) or getattr(exc, "code", None)
+            print(f"  [{elapsed:.2f}s] ERROR {type(exc).__name__} status_code={status_code!r}: {exc}")
+        time.sleep(POLL_INTERVAL_SECONDS)
+    print("Timed out without terminal status. Documenting stuck-in-progress §10 bug.")
+    return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())
+```
+
+Run: `INTERACTION_ID=<id-from-step-2> uv run scripts/spike/p28/spike_gemini_get.py`
+Expected: prints status transitions until terminal state; saves `research/_spike_get_final.json` with full transition log + final response shape. If timed out, that itself is data — confirms §10 stuck-in-progress bug.
+
+- [ ] **Step 4: Write `scripts/spike/p28/spike_gemini_cancel.py` — verify cancel() exists and behaves**
+
+```python
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.11"
+# dependencies = ["google-genai>=1.55.0,<2"]
+# ///
+"""P28 spike: submit a Deep Research interaction, immediately cancel it, observe behavior.
+
+Confirms or refutes:
+  - whether `client.interactions.cancel(id)` exists at all (docs at
+    https://ai.google.dev/gemini-api/docs/interactions did not document it
+    at refresh time)
+  - whether cancel triggers the "instant-cancel-no-output" §10 bug or
+    transitions cleanly through `cancelled` status with partial output
+  - whether the `_cancel_requested` flag pattern (P28 spec delta #4) is
+    actually needed
+"""
+
+from __future__ import annotations
+
+import os
+import sys
+import time
+
+from google import genai
+
+PROMPT = "Survey the entire history of programming languages from 1950 to 2025. Be exhaustive."
+AGENT_FAST = "deep-research-preview-04-2026"
+
+
+def main() -> int:
+    api_key = os.environ.get("GEMINI_API_KEY")
+    if not api_key:
+        print("GEMINI_API_KEY not set", file=sys.stderr)
+        return 2
+    client = genai.Client(api_key=api_key)
+
+    print("Probing client.interactions for cancel attribute...")
+    has_cancel_sync = hasattr(client.interactions, "cancel")
+    has_cancel_async = hasattr(getattr(client, "aio", object()), "interactions") and hasattr(
+        client.aio.interactions, "cancel"
+    )
+    print(f"  client.interactions.cancel exists? {has_cancel_sync}")
+    print(f"  client.aio.interactions.cancel exists? {has_cancel_async}")
+    if not (has_cancel_sync or has_cancel_async):
+        print("CANCEL METHOD MISSING — P28 cancel-cooperative path needs alternative strategy.")
+        return 1
+
+    print(f"\nSubmitting deliberately-overscoped query against agent {AGENT_FAST!r}...")
+    submit_kwargs = {"input": PROMPT, "background": True}
+    # try `agent=` first; if it fails, retry with `model=`
+    try:
+        resp = client.interactions.create(agent=AGENT_FAST, **submit_kwargs)
+    except Exception:
+        resp = client.interactions.create(model=AGENT_FAST, **submit_kwargs)
+    interaction_id = getattr(resp, "id", None)
+    print(f"  submitted; id={interaction_id!r}")
+    if not interaction_id:
+        print("  no id on response; abort", file=sys.stderr)
+        return 1
+
+    # poll once to confirm in_progress
+    time.sleep(2)
+    pre = client.interactions.get(interaction_id)
+    print(f"  pre-cancel status: {getattr(pre, 'status', '?')!r}")
+
+    # cancel
+    print("  calling cancel()...")
+    t0 = time.monotonic()
+    try:
+        cancel_resp = client.interactions.cancel(interaction_id)
+        print(f"    cancel returned in {time.monotonic() - t0:.2f}s; type={type(cancel_resp).__name__}")
+    except Exception as exc:
+        print(f"    cancel raised: {type(exc).__name__}: {exc}")
+        return 1
+
+    # poll for terminal
+    for _ in range(12):
+        time.sleep(5)
+        post = client.interactions.get(interaction_id)
+        status = getattr(post, "status", "?")
+        print(f"  post-cancel status: {status!r}")
+        if str(status) in {"cancelled", "failed", "completed"}:
+            outputs = getattr(post, "outputs", None)
+            print(f"  has any output? {outputs is not None and len(outputs) > 0}")
+            return 0
+    print("  did not reach terminal status within 60s post-cancel")
+    return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())
+```
+
+Run: `uv run scripts/spike/p28/spike_gemini_cancel.py`
+Expected: prints whether `cancel` exists, then submits + cancels + observes; either reaches `cancelled` (good — `_cancel_requested` flag still useful for disambiguation) or fails outright (bad — P28 spec delta #4 needs revision).
+
+- [ ] **Step 5: Write `scripts/spike/p28/spike_gemini_errors.py` — capture error class hierarchy**
+
+```python
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.11"
+# dependencies = ["google-genai>=1.55.0,<2"]
+# ///
+"""P28 spike: enumerate google.genai error classes for the error-mapper.
+
+Imports `google.genai.errors` and walks its public symbols, recording
+the class hierarchy P28's `_map_gemini_error` (Task 6) needs to switch
+on. Also probes a few realistic failure paths (invalid key, unknown
+agent, malformed input) and captures the actual exception classes
+raised.
+"""
+
+from __future__ import annotations
+
+import inspect
+import os
+import sys
+
+from google import genai
+from google.genai import errors
+
+
+def main() -> int:
+    print("=== google.genai.errors module surface ===")
+    public = [
+        (name, obj)
+        for name, obj in inspect.getmembers(errors)
+        if not name.startswith("_") and inspect.isclass(obj)
+    ]
+    for name, cls in public:
+        bases = ", ".join(b.__name__ for b in cls.__mro__[1:] if b is not object)
+        print(f"  {name}  <-  {bases}")
+
+    print("\n=== Probing realistic error paths ===")
+    # 1. Invalid API key
+    print("  [1] invalid api key")
+    try:
+        bad = genai.Client(api_key="invalid-key-spike-probe")
+        list(bad.models.list())
+    except Exception as exc:
+        print(f"      -> {type(exc).__module__}.{type(exc).__name__}: {str(exc)[:200]}")
+
+    # 2. Unknown agent
+    api_key = os.environ.get("GEMINI_API_KEY")
+    if api_key:
+        print("  [2] unknown agent")
+        client = genai.Client(api_key=api_key)
+        try:
+            client.interactions.create(agent="totally-fake-agent-id", input="test", background=True)
+        except Exception as exc:
+            print(f"      -> {type(exc).__module__}.{type(exc).__name__}: {str(exc)[:200]}")
+    else:
+        print("  [2] skipped — GEMINI_API_KEY not set")
+
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
+```
+
+Run: `uv run scripts/spike/p28/spike_gemini_errors.py`
+Expected: prints the class hierarchy of `google.genai.errors`; prints actual exception types for invalid-key + unknown-agent. Feed this into Task 5 (error-mapper failing tests) so fixture exception classes are real, not placeholder.
+
+- [ ] **Step 6: Write findings to `research/gemini-api-spike-2026-05-04.md`**
+
+Required sections (each must contain concrete evidence, not assumption):
+
+1. **Confirmed agent IDs** — list the two-tier set discovered. Mark which one(s) P28 ships in v1. Resolves Open Question #6.
+2. **Create() API shape** — sync vs async, `agent=` vs `model=`, `background=True` flag presence. The successful permutation from `spike_gemini_create.py`.
+3. **Status enum values observed** — every distinct `status` string from the polling transitions in `spike_gemini_get.py`.
+4. **Response shape** — top-level fields on the interaction object, shape of `outputs[-1]`, presence/absence of `annotations`, `usage`, `id` format.
+5. **§10 known-bug status** — for each documented bug, one of: `confirmed`, `not-reproduced`, `not-tested`. Evidence link to the spike script output.
+6. **Cancel surface** — exists / doesn't exist; sync / async; behavior on in-progress interactions; supports the `_cancel_requested` disambiguation pattern or not.
+7. **`google.genai.errors.*` class hierarchy** — exact class names + base classes. Feeds Task 5 fixture exception classes.
+8. **Updated Open Questions** — for each of P28's 8 open questions, mark `resolved` (with answer) or `still-open` (with revised framing).
+
+- [ ] **Step 7: Update `projects/P28-gemini-background-deep-research.md` Open Questions**
+
+Edit the project file's Open Questions section to mark resolutions. Format:
+
+```markdown
+1. ~~VCR-vs-`google-genai` transport compatibility.~~
+   **Resolved 2026-05-04:** [verdict from spike findings]. See
+   `research/gemini-api-spike-2026-05-04.md` §[N].
+```
+
+- [ ] **Step 8: Commit spike scripts + findings**
+
+```bash
+cd /Users/stevemorin/c/thoth-worktrees/p28-gemini-background-deep-research
+git add scripts/spike/p28/ research/gemini-api-spike-2026-05-04.md projects/P28-gemini-background-deep-research.md
+git commit -m "spike(p28): validate Gemini Interactions API before framework code
+
+Run five exploratory scripts against the live API: list models, submit a
+Deep Research interaction, poll for status, cancel, enumerate error
+classes. Findings recorded in research/gemini-api-spike-2026-05-04.md.
+
+Resolves the eight Open Questions in the P28 spec where possible;
+unresolved ones get revised framing for re-investigation.
+
+Confirms or refutes research doc §10 known bugs against the live API as
+of $(date -u +%Y-%m-%d). Captures error-class hierarchy for use as Task 5
+fixture classes (no placeholder exception classes baked into failing
+tests)."
+```
+
+**Block-if-failed:** if Step 4 (cancel) reveals that `cancel()` does not exist on `client.interactions` or `client.aio.interactions`, **stop and revisit P28 spec delta #4** (cancel cooperation). Tasks 14-15 (cancel implementation) cannot proceed without a documented cancel surface; treat as a P28 scope question, not a Task-2-implementation question.
+
+**Block-if-failed:** if Step 1 (models) reveals that *neither* `deep-research-preview-04-2026` nor `deep-research-max-preview-04-2026` is listed by the API, **stop and revisit which model agent IDs P28 actually targets**. Tasks 17 (KNOWN_MODELS), 19 (config defaults), and the full `gemini_*` mode set depend on this. Update planning/references.md and the project-file references block from spike findings before continuing.
+
+---
+
+### Task 3: Stub GeminiProvider module skeleton
 
 Lay down the file with imports and a class that can be imported without errors. No methods yet — just enough that `from thoth.providers.gemini import GeminiProvider` succeeds.
 
@@ -126,22 +642,22 @@ def _map_gemini_error(
 ) -> ThothError:
     """Map a google-genai SDK exception or HTTP error to a Thoth error type.
 
-    To be filled in by Task 4. Stub raises NotImplementedError so any
+    To be filled in by Task 5. Stub raises NotImplementedError so any
     accidental call surfaces clearly.
     """
-    raise NotImplementedError("_map_gemini_error not yet implemented (Task 4)")
+    raise NotImplementedError("_map_gemini_error not yet implemented (Task 5)")
 
 
 class GeminiProvider(ResearchProvider):
     """Gemini Deep Research via the google-genai Interactions API.
 
     Methods to be implemented per the parity matrix in P28's spec:
-      - submit() — Task 7
-      - check_status() — Task 10
-      - get_result() — Task 13
-      - cancel() — Task 16
-      - reconnect() — Task 17
-      - list_models() / list_models_cached() — Task 18
+      - submit() — Task 8
+      - check_status() — Task 11
+      - get_result() — Task 14
+      - cancel() — Task 17
+      - reconnect() — Task 18
+      - list_models() / list_models_cached() — Task 19
     """
 
     def __init__(self, api_key: str, config: dict[str, Any] | None = None):
@@ -197,7 +713,7 @@ git commit -m "feat(gemini): scaffold GeminiProvider module skeleton"
 
 ---
 
-### Task 3: Register GeminiProvider in PROVIDERS dict (test-first)
+### Task 4: Register GeminiProvider in PROVIDERS dict (test-first)
 
 The `PROVIDERS` dict in `src/thoth/providers/__init__.py` is the single source of truth for name → class dispatch. Adding `gemini` here is what makes the provider discoverable to the runtime. Test-first per CLAUDE.md TDD bias.
 
@@ -304,7 +820,7 @@ git commit -m "feat(gemini): register GeminiProvider in PROVIDERS dict"
 
 ---
 
-### Task 4: Error mapper — write failing tests for 8 error classes
+### Task 5: Error mapper — write failing tests for 8 error classes
 
 Per spec parity row 4 + provider-specific deltas. The mapper handles google-genai SDK exception classes plus the doc §10 known bugs. Test cases enumerate each branch.
 
@@ -425,7 +941,7 @@ class TestMapGeminiError:
 uv run pytest tests/test_gem_background.py::TestMapGeminiError -v
 ```
 
-Expected: 8 FAIL with `NotImplementedError: _map_gemini_error not yet implemented (Task 4)`.
+Expected: 8 FAIL with `NotImplementedError: _map_gemini_error not yet implemented (Task 5)`.
 
 - [ ] **Step 3: Commit the failing tests**
 
@@ -436,7 +952,7 @@ git commit -m "test(gemini): add failing tests for _map_gemini_error 8-branch ma
 
 ---
 
-### Task 5: Implement `_map_gemini_error`
+### Task 6: Implement `_map_gemini_error`
 
 **Files:**
 - Modify: `src/thoth/providers/gemini.py:_map_gemini_error`
@@ -571,7 +1087,7 @@ git commit -m "feat(gemini): implement _map_gemini_error 8-branch error mapping"
 
 ---
 
-### Task 6: submit() — failing test for happy path
+### Task 7: submit() — failing test for happy path
 
 Per spec parity row 3 + research doc §3, §6.
 
@@ -733,7 +1249,7 @@ git commit -m "test(gemini): add failing tests for submit() happy path"
 
 ---
 
-### Task 7: submit() — implement to make tests pass
+### Task 8: submit() — implement to make tests pass
 
 **Files:**
 - Modify: `src/thoth/providers/gemini.py:GeminiProvider`
@@ -814,7 +1330,7 @@ git commit -m "feat(gemini): implement submit() against client.aio.interactions.
 
 ---
 
-### Task 8: submit() — error case tests + retry verification
+### Task 9: submit() — error case tests + retry verification
 
 **Files:**
 - Test: `tests/test_gem_background.py:TestGeminiSubmit` (append cases)
@@ -892,7 +1408,7 @@ git commit -m "test(gemini): add submit() error-case tests for 401/403/429"
 
 ---
 
-### Task 9: check_status() — failing tests for status enum
+### Task 10: check_status() — failing tests for status enum
 
 Per spec parity row 5 + provider-specific delta #3 (403-on-GET) + research doc §10.
 
@@ -1015,7 +1531,7 @@ git commit -m "test(gemini): add failing tests for check_status() status mapping
 
 ---
 
-### Task 10: check_status() — implement to make tests pass
+### Task 11: check_status() — implement to make tests pass
 
 **Files:**
 - Modify: `src/thoth/providers/gemini.py:GeminiProvider`
@@ -1137,7 +1653,7 @@ git commit -m "feat(gemini): implement check_status() with 403-quirk + cancel di
 
 ---
 
-### Task 11: get_result() — failing tests for result + citations
+### Task 12: get_result() — failing tests for result + citations
 
 Per spec parity row 9 + delta #5 (empty annotations OK).
 
@@ -1247,7 +1763,7 @@ git commit -m "test(gemini): add failing tests for get_result() + citation extra
 
 ---
 
-### Task 12: get_result() — implement to make tests pass
+### Task 13: get_result() — implement to make tests pass
 
 **Files:**
 - Modify: `src/thoth/providers/gemini.py:GeminiProvider`
@@ -1352,7 +1868,7 @@ git commit -m "feat(gemini): implement get_result() with citation extraction + e
 
 ---
 
-### Task 13: cancel() — failing tests for user vs server cancel
+### Task 14: cancel() — failing tests for user vs server cancel
 
 Per spec parity row 7 + delta #4.
 
@@ -1429,7 +1945,7 @@ git commit -m "test(gemini): add failing tests for cancel() + reconnect-on-unkno
 
 ---
 
-### Task 14: cancel() and reconnect() — implement
+### Task 15: cancel() and reconnect() — implement
 
 **Files:**
 - Modify: `src/thoth/providers/gemini.py:GeminiProvider`
@@ -1499,7 +2015,7 @@ git commit -m "feat(gemini): implement cancel() + reconnect() with disambiguatio
 
 ---
 
-### Task 15: list_models() — failing test + implement
+### Task 16: list_models() — failing test + implement
 
 Per parity row 3 (sub-bullet). Gemini exposes only the one DR agent currently, so this is hard-coded with a cache layer.
 
@@ -1598,7 +2114,7 @@ git commit -m "feat(gemini): implement list_models() + list_models_cached()"
 
 ---
 
-### Task 16: Add 9 gemini_* modes to KNOWN_MODELS
+### Task 17: Add 9 gemini_* modes to KNOWN_MODELS
 
 Per spec parity row 2.
 
@@ -1749,7 +2265,7 @@ git commit -m "feat(gemini): add 9 gemini_* modes to KNOWN_MODELS"
 
 ---
 
-### Task 17: Add `--api-key-gemini` CLI flag
+### Task 18: Add `--api-key-gemini` CLI flag
 
 Per spec parity row 1.
 
@@ -1817,7 +2333,7 @@ git commit -m "feat(gemini): add --api-key-gemini CLI flag"
 
 ---
 
-### Task 18: Add `[providers.gemini]` defaults to ConfigSchema
+### Task 19: Add `[providers.gemini]` defaults to ConfigSchema
 
 **Files:**
 - Test: `tests/test_provider_config.py:<existing>` (extend)
@@ -1897,7 +2413,7 @@ git commit -m "feat(gemini): add [providers.gemini] defaults with 10s/20min poll
 
 ---
 
-### Task 19: Provider-specific polling tunables wired into runtime
+### Task 20: Provider-specific polling tunables wired into runtime
 
 The runtime's `_run_polling_loop` already reads `config["execution"]["poll_interval"]`. P28 wants per-provider override. Verify this already works OR add minimal wiring.
 
@@ -1975,7 +2491,7 @@ git commit -m "test(gemini): assert [providers.gemini] polling tunables resolve"
 
 ---
 
-### Task 20: Run full default test suite — green gate before VCR
+### Task 21: Run full default test suite — green gate before VCR
 
 Before recording cassettes (which requires real API access), confirm all monkeypatched-SDK tests pass on a clean install.
 
@@ -2024,7 +2540,7 @@ git commit -m "style(gemini): apply ruff formatting after provider implementatio
 
 ---
 
-### Task 21: Record happy-path VCR cassette (manual step)
+### Task 22: Record happy-path VCR cassette (manual step)
 
 Per spec test strategy. Requires `GEMINI_API_KEY` in the environment.
 
@@ -2134,7 +2650,7 @@ git commit -m "test(gemini): record happy-path VCR cassette"
 
 ---
 
-### Task 22: Add VCR replay tests
+### Task 23: Add VCR replay tests
 
 **Files:**
 - Create: `tests/test_vcr_gemini.py`
@@ -2226,7 +2742,7 @@ uv run pytest tests/test_vcr_gemini.py -v
 
 Expected: 3 PASS.
 
-If VCR was abandoned in Task 21, the tests should be `pytest.skip()`-ed and produce 3 SKIPPED.
+If VCR was abandoned in Task 22, the tests should be `pytest.skip()`-ed and produce 3 SKIPPED.
 
 - [ ] **Step 3: Commit**
 
@@ -2237,7 +2753,7 @@ git commit -m "test(gemini): add VCR cassette replay tests"
 
 ---
 
-### Task 23: Live-API gated tests + workflow YAML edits
+### Task 24: Live-API gated tests + workflow YAML edits
 
 Per spec test strategy, third layer.
 
@@ -2373,7 +2889,7 @@ secrets fail the job non-blocking until configured."
 
 ---
 
-### Task 24: README cost callout + manual smoke test
+### Task 25: README cost callout + manual smoke test
 
 Per spec out-of-scope item #8 and provider-specific delta #10 — surface costs in user-facing docs.
 
@@ -2432,7 +2948,7 @@ git commit -m "docs(gemini): add README cost callout + mode listing"
 
 ---
 
-### Task 25: Final integration verification
+### Task 26: Final integration verification
 
 Full-gate run. The committed-state should be clean and ready to PR.
 
@@ -2501,7 +3017,7 @@ P28 implementation is complete. Mark `[P28-T02]`, `[P28-T03]`, `[P28-T04]` as `[
 - [ ] Ctrl-C during a running Gemini operation cooperatively cancels and writes a resume hint.
 - [ ] `thoth providers --models --provider gemini` lists the available Deep Research agent.
 - [ ] All 9 `gemini_*` modes appear in `thoth modes` and pass the existing `tests/extended/test_model_kind_runtime.py` model-kind drift check.
-- [ ] VCR cassette replay tests pass with no real API calls (or are explicitly skipped if VCR-vs-SDK incompatible — see Task 21 / Open Question #1).
+- [ ] VCR cassette replay tests pass with no real API calls (or are explicitly skipped if VCR-vs-SDK incompatible — see Task 22 / Open Question #1).
 - [ ] Default test suite (`uv run pytest`) green; gated `live_api` and `extended` workflows green when run manually with secrets configured.
 - [ ] `_map_gemini_error` covers all 8 error classes documented in research doc §10 + standard HTTP error codes.
 - [ ] Output filenames follow the existing `<timestamp>_<mode>_gemini_<slug>.md` pattern.
