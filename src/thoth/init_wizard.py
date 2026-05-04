@@ -133,6 +133,40 @@ def prompt_providers(*, prompt_fn: PromptFn) -> list[ProviderName]:
     return [p for p in picks if p in PROVIDER_OPTIONS]  # type: ignore[misc]  # ty: ignore[invalid-return-type]
 
 
+def _last4(value: str) -> str:
+    return value[-4:] if len(value) >= 4 else "***"
+
+
+def prompt_key_for_provider(
+    *,
+    provider: ProviderName,
+    env: dict[str, str],
+    prompt_fn: PromptFn,
+) -> ProviderChoice:
+    """Q2: detect-then-decide for one provider's API key."""
+    var = ENV_VAR_BY_PROVIDER[provider]
+    detected = env.get(var, "")
+    if detected:
+        reply = (
+            prompt_fn(f"${var} detected (...{_last4(detected)}) — use it? [Y/n] ").strip().lower()
+        )
+        if reply in ("", "y", "yes"):
+            return ProviderChoice(provider, "env_ref", None)
+        # fall through to the missing-env branch
+    options = [
+        f"Paste {var} now (stored in this file)",
+        f"I'll set ${var} myself (write '${{{var}}}' reference)",
+        "Skip this provider",
+    ]
+    pick = pick_one(options, prompt_fn=prompt_fn, default_index=0, label=f"{provider} key")
+    if pick == options[0]:
+        raw = prompt_fn(f"Paste {var}: ")
+        return ProviderChoice(provider, "literal", raw.strip())
+    if pick == options[1]:
+        return ProviderChoice(provider, "env_ref", None)
+    return ProviderChoice(provider, "skip", None)
+
+
 class ScriptedPrompts:
     """Deterministic stub for `prompt_fn` in tests.
 
