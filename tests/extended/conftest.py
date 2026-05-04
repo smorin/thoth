@@ -95,7 +95,7 @@ def payload(result: subprocess.CompletedProcess[str]) -> dict[str, Any]:
 
 
 def assert_no_secret_leaked(result: subprocess.CompletedProcess[str], env: dict[str, str]) -> None:
-    for env_var in ("OPENAI_API_KEY", "PERPLEXITY_API_KEY"):
+    for env_var in ("OPENAI_API_KEY", "PERPLEXITY_API_KEY", "GEMINI_API_KEY"):
         secret = env.get(env_var)
         if secret:
             assert secret not in result.stdout

@@ -31,6 +31,7 @@ _ASK_HONOR = DEFAULT_HONOR | {
     "verbose",
     "api_key_openai",
     "api_key_perplexity",
+    "api_key_gemini",
     "api_key_mock",
     "combined",
     "quiet",
@@ -63,6 +64,7 @@ def ask(
     verbose: bool,
     api_key_openai: str | None,
     api_key_perplexity: str | None,
+    api_key_gemini: str | None,
     api_key_mock: str | None,
     config_path: str | None,
     profile: str | None,
@@ -152,6 +154,7 @@ def ask(
     cli_api_keys = {
         "openai": api_key_openai or root_api_keys["openai"],
         "perplexity": api_key_perplexity or root_api_keys["perplexity"],
+        "gemini": api_key_gemini or root_api_keys["gemini"],
         "mock": api_key_mock or root_api_keys["mock"],
     }
 

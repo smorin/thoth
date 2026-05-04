@@ -333,3 +333,113 @@ def test_openai_default_when_neither_present() -> None:
     provider = OpenAIProvider(api_key="dummy", config={"kind": "immediate"})
     assert provider._resolve_provider_config_value("temperature", 0.7) == 0.7
     assert provider._resolve_provider_config_value("max_tool_calls", None) is None
+
+
+# ---------------------------------------------------------------------------
+# P24 Task 5.1 — Gemini provider registry + CLI plumbing surface tests.
+# Mirrors P23 Perplexity precedent.
+# ---------------------------------------------------------------------------
+
+
+def test_create_provider_returns_gemini_when_provider_is_gemini() -> None:
+    """P24-T07: create_provider('gemini', ...) returns a GeminiProvider instance."""
+    from types import SimpleNamespace
+    from unittest.mock import patch
+
+    from thoth.config import ConfigManager
+    from thoth.providers import create_provider
+    from thoth.providers.gemini import GeminiProvider
+
+    mock_client = SimpleNamespace()
+    mock_client.aio = SimpleNamespace()
+    mock_client.aio.models = SimpleNamespace()
+
+    config = cast(
+        ConfigManager,
+        SimpleNamespace(data={"providers": {"gemini": {"api_key": "AIza-test"}}}),
+    )
+
+    with patch("google.genai.Client", return_value=mock_client):
+        provider = create_provider("gemini", config)
+
+    assert isinstance(provider, GeminiProvider)
+
+
+def test_provider_env_vars_includes_gemini() -> None:
+    """P24-T07: PROVIDER_ENV_VARS['gemini'] = 'GEMINI_API_KEY'."""
+    from thoth.providers import PROVIDER_ENV_VARS
+
+    assert PROVIDER_ENV_VARS.get("gemini") == "GEMINI_API_KEY"
+
+
+def test_providers_dict_includes_gemini() -> None:
+    """P24-T07: the PROVIDERS dict registers GeminiProvider under 'gemini' key."""
+    from thoth.providers import PROVIDERS
+    from thoth.providers.gemini import GeminiProvider
+
+    assert PROVIDERS.get("gemini") is GeminiProvider
+
+
+def test_provider_cli_flags_includes_gemini() -> None:
+    """P24-T07: PROVIDER_CLI_FLAGS['gemini'] = '--api-key-gemini'."""
+    from thoth.providers import PROVIDER_CLI_FLAGS
+
+    assert PROVIDER_CLI_FLAGS.get("gemini") == "--api-key-gemini"
+
+
+def test_create_provider_passes_gemini_model_from_mode_config() -> None:
+    """P24-T07: mode-config model passes through to GeminiProvider."""
+    from types import SimpleNamespace
+    from unittest.mock import patch
+
+    from thoth.config import ConfigManager
+    from thoth.providers import create_provider
+
+    mock_client = SimpleNamespace()
+    mock_client.aio = SimpleNamespace()
+    mock_client.aio.models = SimpleNamespace()
+
+    config = cast(
+        ConfigManager,
+        SimpleNamespace(data={"providers": {"gemini": {"api_key": "AIza-test"}}}),
+    )
+    mode_config: dict[str, Any] = {"model": "gemini-2.5-pro", "kind": "immediate"}
+
+    with patch("google.genai.Client", return_value=mock_client):
+        provider = create_provider("gemini", config, mode_config=mode_config)
+    assert provider.config.get("model") == "gemini-2.5-pro"
+
+
+def test_create_provider_passes_gemini_namespace_from_mode_config() -> None:
+    """P24-T07: mode_config['gemini'] reaches GeminiProvider.config."""
+    from types import SimpleNamespace
+    from unittest.mock import patch
+
+    from thoth.config import ConfigManager
+    from thoth.providers import create_provider
+
+    mock_client = SimpleNamespace()
+    mock_client.aio = SimpleNamespace()
+    mock_client.aio.models = SimpleNamespace()
+
+    config = cast(
+        ConfigManager,
+        SimpleNamespace(data={"providers": {"gemini": {"api_key": "AIza-test"}}}),
+    )
+    mode_config: dict[str, Any] = {
+        "provider": "gemini",
+        "model": "gemini-2.5-flash-lite",
+        "kind": "immediate",
+        "gemini": {
+            "tools": ["google_search"],
+            "thinking_budget": 0,
+        },
+    }
+
+    with patch("google.genai.Client", return_value=mock_client):
+        provider = create_provider("gemini", config, mode_config=mode_config)
+
+    assert provider.config["gemini"] == {
+        "tools": ["google_search"],
+        "thinking_budget": 0,
+    }

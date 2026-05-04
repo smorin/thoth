@@ -30,7 +30,7 @@ def _stub_config(providers: dict[str, dict]) -> SimpleNamespace:
 
 
 def test_providers_dict_has_expected_keys() -> None:
-    assert set(PROVIDERS) == {"openai", "perplexity", "mock"}
+    assert set(PROVIDERS) == {"openai", "perplexity", "gemini", "mock"}
 
 
 def test_providers_dict_maps_to_classes() -> None:

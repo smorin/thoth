@@ -336,13 +336,19 @@ def render_auth_help() -> str:
         "1. Environment variables (recommended):\n"
         "     export OPENAI_API_KEY=sk-...\n"
         "     export PERPLEXITY_API_KEY=pplx-...\n"
+        "     export GEMINI_API_KEY=AIza...\n"
         "\n"
         "2. Config file (persistent, per-machine): ~/.config/thoth/thoth.config.toml\n"
         "     [providers.openai]\n"
         '     api_key = "sk-..."\n'
+        "     [providers.perplexity]\n"
+        '     api_key = "pplx-..."\n'
+        "     [providers.gemini]\n"
+        '     api_key = "AIza..."\n'
         "\n"
         "3. CLI flags (last resort — exposes keys in shell history; not recommended):\n"
         '     thoth --api-key-openai sk-... deep_research "..."\n'
+        '     thoth --api-key-gemini AIza... ask --mode gemini_quick "..."\n'
     )
 
 

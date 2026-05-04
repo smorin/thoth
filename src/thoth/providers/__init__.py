@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING, Any
 from thoth.config import mode_kind
 from thoth.errors import APIKeyError, ThothError
 from thoth.providers.base import ResearchProvider
+from thoth.providers.gemini import GeminiProvider
 from thoth.providers.mock import MockProvider
 from thoth.providers.openai import OpenAIProvider, _map_openai_error
 from thoth.providers.perplexity import PerplexityProvider
@@ -26,18 +27,21 @@ if TYPE_CHECKING:
 PROVIDERS: dict[str, type[ResearchProvider]] = {
     "openai": OpenAIProvider,
     "perplexity": PerplexityProvider,
+    "gemini": GeminiProvider,
     "mock": MockProvider,
 }
 
 PROVIDER_ENV_VARS: dict[str, str] = {
     "openai": "OPENAI_API_KEY",
     "perplexity": "PERPLEXITY_API_KEY",
+    "gemini": "GEMINI_API_KEY",
     "mock": "MOCK_API_KEY",
 }
 
 PROVIDER_CLI_FLAGS: dict[str, str] = {
     "openai": "--api-key-openai",
     "perplexity": "--api-key-perplexity",
+    "gemini": "--api-key-gemini",
     "mock": "--api-key-mock",
 }
 
@@ -75,7 +79,7 @@ def _apply_mode_provider_config(
     mode_config: dict[str, Any] | None,
 ) -> None:
     """Thread mode-level request settings into provider constructor config."""
-    if not mode_config or provider_name not in ("openai", "perplexity"):
+    if not mode_config or provider_name not in ("openai", "perplexity", "gemini"):
         return
 
     provider_names = set(PROVIDERS)
@@ -132,7 +136,7 @@ def available_providers(
     calling ``create_provider``.
 
     Order matches ``PROVIDERS`` dict iteration so callers get a stable
-    order (openai, perplexity, mock).
+    order (openai, perplexity, gemini, mock).
     """
     cli_api_keys = cli_api_keys or {}
     available: list[str] = []
@@ -182,13 +186,17 @@ def create_provider(
     api_key = resolve_api_key(provider_name, cli_api_key, provider_config)
 
     # Apply timeout override if provided
-    if timeout_override is not None and provider_name in ("openai", "perplexity"):
+    if timeout_override is not None and provider_name in ("openai", "perplexity", "gemini"):
         provider_config["timeout"] = timeout_override
 
     # Apply model from mode configuration if specified.
-    # P23: extended from openai-only to perplexity. Generic passthrough; the
-    # provider/API surfaces validation, not this factory.
-    if mode_config and "model" in mode_config and provider_name in ("openai", "perplexity"):
+    # P23: extended from openai-only to perplexity. P24: extended to gemini.
+    # Generic passthrough; the provider/API surfaces validation, not this factory.
+    if (
+        mode_config
+        and "model" in mode_config
+        and provider_name in ("openai", "perplexity", "gemini")
+    ):
         provider_config["model"] = mode_config["model"]
 
     _apply_mode_provider_config(provider_name, provider_config, mode_config)
@@ -212,6 +220,7 @@ __all__ = [
     "PROVIDERS",
     "PROVIDER_CLI_FLAGS",
     "PROVIDER_ENV_VARS",
+    "GeminiProvider",
     "MockProvider",
     "OpenAIProvider",
     "PerplexityProvider",

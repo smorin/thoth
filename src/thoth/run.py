@@ -163,10 +163,16 @@ async def find_latest_outputs(
 def get_estimated_duration(mode: str, provider: str | None) -> float:
     """Get estimated duration in seconds based on mode and provider"""
     estimates = {
-        "thinking": {"openai": 10, "perplexity": 8, "mock": 5},
-        "clarification": {"openai": 15, "perplexity": 12, "mock": 5},
-        "exploration": {"openai": 20, "perplexity": 15, "mock": 10},
-        "deep_research": {"openai": 22, "perplexity": 20, "combined": 23, "mock": 2},
+        "thinking": {"openai": 10, "perplexity": 8, "gemini": 8, "mock": 5},
+        "clarification": {"openai": 15, "perplexity": 12, "gemini": 12, "mock": 5},
+        "exploration": {"openai": 20, "perplexity": 15, "gemini": 15, "mock": 10},
+        "deep_research": {
+            "openai": 22,
+            "perplexity": 20,
+            "gemini": 20,
+            "combined": 23,
+            "mock": 2,
+        },
     }
 
     mode_estimates = estimates.get(mode, {"default": 60})

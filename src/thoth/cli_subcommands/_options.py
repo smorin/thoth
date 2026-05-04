@@ -32,7 +32,7 @@ _RESEARCH_OPTIONS: list[tuple[tuple, dict]] = [
     (
         ("--provider", "-P"),
         {
-            "type": click.Choice(["openai", "perplexity", "mock"]),
+            "type": click.Choice(["openai", "perplexity", "gemini", "mock"]),
             "help": "Single provider",
         },
     ),
@@ -63,6 +63,10 @@ _RESEARCH_OPTIONS: list[tuple[tuple, dict]] = [
     (
         ("--api-key-perplexity",),
         {"help": "API key for Perplexity provider (not recommended; prefer env vars)"},
+    ),
+    (
+        ("--api-key-gemini",),
+        {"help": "API key for Gemini provider (not recommended; prefer env vars)"},
     ),
     (
         ("--api-key-mock",),

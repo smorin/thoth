@@ -11,7 +11,8 @@
 #   "tenacity>=8.0",
 #   "python-dateutil>=2.8",
 #   "prompt-toolkit>=3.0",
-#   "tomlkit>=0.13"
+#   "tomlkit>=0.13",
+#   "google-genai>=1.74.0"
 # ]
 # ///
 """Development entry-point wrapper for thoth.
