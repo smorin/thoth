@@ -189,8 +189,19 @@ def _map_perplexity_error(
             raw_error=raw,
         )
 
+    # A1 belt-and-suspenders: any APIStatusError with status_code == 402
+    # routes to APIQuotaError. The openai SDK doesn't ship a PaymentRequired
+    # exception subclass, so a 402 from Perplexity (their credit-exhaustion
+    # code per docs §8) may surface here as a bare APIStatusError or as
+    # BadRequestError depending on SDK version. Checked BEFORE BadRequestError
+    # so a 402 surfacing as BadRequestError still routes to APIQuotaError.
+    if getattr(exc, "status_code", None) == 402:
+        return APIQuotaError(_PROVIDER_NAME)
+
     if isinstance(exc, openai.BadRequestError):
-        hint = f" (model: {model})" if model else ""
+        # A4: use {model!r} for parity with _map_perplexity_error_async — repr
+        # quoting is more correct for free-form upstream model strings.
+        hint = f" (model: {model!r})" if model else ""
         return ProviderError(
             _PROVIDER_NAME,
             f"Bad request{hint}. Check model name and request shape.",
@@ -279,6 +290,15 @@ def _map_perplexity_error_async(
             return APIKeyError(_PROVIDER_NAME)
         if status == 402:
             return APIQuotaError(_PROVIDER_NAME)
+        if status == 403:
+            # A2: parity with _map_perplexity_error's PermissionDeniedError
+            # handler — emit the same hint so users see the tier/model-access
+            # diagnostic on both sync and async paths.
+            return ProviderError(
+                _PROVIDER_NAME,
+                "Permission denied (check tier / model access).",
+                raw_error=raw,
+            )
         if status == 422:
             hint = f" (model: {model!r})" if model else ""
             return ProviderError(
@@ -287,6 +307,24 @@ def _map_perplexity_error_async(
                 raw_error=raw,
             )
         if status == 429:
+            # A1: upgrade to APIQuotaError when the body carries quota
+            # markers (parity with _rate_limit_error_is_quota in the sync
+            # path). Without this, Perplexity returning 429 + insufficient_quota
+            # would be classified as a rate limit while the sync mapper would
+            # call it a quota error — same upstream, different taxonomy.
+            quota_markers = (
+                "insufficient_quota",
+                "quota",
+                "billing",
+                "credit",
+                "credits",
+                "monthly spend",
+                "exhausted",
+                "no credits",
+                "blocked",
+            )
+            if any(marker in body_lower for marker in quota_markers):
+                return APIQuotaError(_PROVIDER_NAME)
             return APIRateLimitError(_PROVIDER_NAME)
         if 500 <= status < 600:
             return ProviderError(
