@@ -85,7 +85,7 @@ Older entries may use `**Primary spec**`, `**Plan**`, or
 - [x] **P27** — [Perplexity — Background Deep Research](projects/P27-perplexity-background-deep-research.md)
 - [x] **P26** — [OpenAI — Background Deep Research](projects/P26-openai-background-deep-research.md)
 - [ ] **P25** — [Architecture Review & Cleanup — Immediate Providers](projects/P25-arch-review-immediate-providers.md)
-- [ ] **P24** — [Gemini — Immediate (Synchronous) Calls](projects/P24-gemini-immediate-sync.md)
+- [x] **P24** — [Gemini — Immediate (Synchronous) Calls](projects/P24-gemini-immediate-sync.md)
 - [x] **P23** — [Perplexity — Immediate (Synchronous) Calls](projects/P23-perplexity-immediate-sync.md)
 - [x] **P22** — [OpenAI — Immediate (Synchronous) Calls](projects/P22-openai-immediate-sync.md)
 - [x] **P21c** — [Config Filename Standardization](projects/P21c-config-filename-standardization.md)
