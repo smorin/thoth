@@ -232,8 +232,8 @@ These tasks are outside P24's narrow "implement Gemini" goal but were surfaced b
 
 **`[providers.X]` root-namespace passthrough investigation:**
 
-- [ ] [P24-TS16] Define the desired behavior via tests that currently fail. Cover: a key set under `[providers.openai]` (e.g. `temperature = 0.3`) flows to the OpenAI provider as a default when no mode-level override exists; a mode-level value under `[modes.X.openai]` overrides the root-level default; the same precedence applies symmetrically for `[providers.perplexity]` and `[providers.gemini]`; `api_key` continues to work (existing scaffold). Use mock provider instances + config fixtures.
-- [ ] [P24-T17] Investigation report (markdown in `planning/`) deciding whether the feature ships in P24 or punts to a successor. If decision is SHIP: implement passthrough in `create_provider()` so `config[provider_name]` is layered under any mode-level provider config. Make P24-TS16 pass. If decision is PUNT: add a follow-up project via `project-add`, mark TS16/T17 as `[-]` (decided not to do here), document the deferral rationale in the planning doc.
+- [-] [P24-TS16] Decided not to do here — PUNTed to a focused follow-up project. Aspirational tests landed as `@pytest.mark.skip` in `tests/test_provider_config.py` (`test_root_providers_namespace_*` + `test_mode_level_openai_temperature_overrides_root_providers_default`) so they can be un-skipped in the successor project. See `planning/p24-providers-root-namespace-investigation.v1.md`.
+- [-] [P24-T17] Decided not to do here — investigation report at `planning/p24-providers-root-namespace-investigation.v1.md` documents the half-baked current behavior (root-level values like `[providers.openai].temperature` already flow through via the flat-key fallback but trigger a misleading `[modes.X.openai]` migration `DeprecationWarning`), explains why a clean SHIP requires schema design + cross-provider resolver changes (not just ~30 lines in `create_provider`), and recommends a successor project to ship the layering + warning fix together.
 
 ### Open questions
 
