@@ -235,6 +235,126 @@ These tasks are outside P24's narrow "implement Gemini" goal but were surfaced b
 - [-] [P24-TS16] Decided not to do here — PUNTed to a focused follow-up project. Aspirational tests landed as `@pytest.mark.skip` in `tests/test_provider_config.py` (`test_root_providers_namespace_*` + `test_mode_level_openai_temperature_overrides_root_providers_default`) so they can be un-skipped in the successor project. See `planning/p24-providers-root-namespace-investigation.v1.md`.
 - [-] [P24-T17] Decided not to do here — investigation report at `planning/p24-providers-root-namespace-investigation.v1.md` documents the half-baked current behavior (root-level values like `[providers.openai].temperature` already flow through via the flat-key fallback but trigger a misleading `[modes.X.openai]` migration `DeprecationWarning`), explains why a clean SHIP requires schema design + cross-provider resolver changes (not just ~30 lines in `create_provider`), and recommends a successor project to ship the layering + warning fix together.
 
+#### Post-ship follow-ups (deferred / reviewer-flagged)
+
+These tasks emerged during P24 review (factor-dedup pass + spec/code-quality reviewers across all 19 implementation tasks). They were either explicitly punted (item 1: root-namespace, captured as `[-]` TS16/T17 above) or flagged by reviewers as out-of-P24-scope. None are correctness defects in P24's shipping contract — they are tracked here so the rationale and concrete file:line context stay close to the work that surfaced them, rather than disappearing into a successor project's scoping doc. Each task is independent; pick up in any order or bundle into a focused successor.
+
+The original P24 contract (Tasks 1.1–7.1) shipped via PR #54 and met its goal: ship Gemini synchronous chat + close all 8 Bucket-3 findings from the factor-dedup consolidation pass. P24's trunk glyph reflects that follow-up work remains tracked here.
+
+##### 2. OpenAI streaming handlers wired-but-dormant (request shape doesn't trigger them)
+
+**What it is.** Task 6.1 (T13) shipped two new event-type handlers in `OpenAIProvider.stream()` (`src/thoth/providers/openai.py:545-572`) for cross-provider 4-kind parity: `response.reasoning_summary_text.delta` → `StreamEvent("reasoning", ...)` and `response.output_text.annotation.added` → `StreamEvent("citation", Citation(...))`. The handlers are correct and unit-tested but **never fire on real API calls** because `stream()`'s request shape (`openai.py:533-541`) opts out of the upstream features that produce these events.
+
+**What's missing in the request.** The streaming `request_params` includes only `model`, `input`, and conditional `temperature`. Notably absent vs the non-stream `_submit_with_retry` (`openai.py:269`):
+- `reasoning={"summary": "auto"}` — without this, the API doesn't generate reasoning summaries; `response.reasoning_summary_text.delta` events never fire.
+- `tools=[{type: "web_search_preview"}]` (or similar) — without grounding tools, `response.output_text.annotation.added` events with `url_citation` annotations never fire.
+
+**What to achieve.** Decide whether immediate-path streaming should opt into reasoning summaries and/or web-search grounding. Pros: parity with Perplexity/Gemini, surfaces reasoning live. Cons: cost (`web_search_preview` is billed per call), latency (the API waits for grounding), doubled output tokens (reasoning summaries are billed as output).
+
+- [ ] [P24-TS17] Add a failing test asserting that, given `[modes.openai_reasoning].openai.reasoning_summary = "auto"`, the streaming request to `client.responses.stream(...)` includes `reasoning={"summary": "auto"}` in its kwargs. Assert symmetric for a `web_search` opt-in flag if added.
+- [ ] [P24-T18] Implement the namespace passthrough: extend `_resolve_provider_config_value` consumers in `OpenAIProvider.stream()` to read `reasoning_summary` (e.g. `"auto"`) and a `web_search` flag from `[modes.X.openai]`, translating them into `request_params["reasoning"] = {"summary": ...}` and `request_params["tools"] = [...]` respectively. Define a built-in `openai_reasoning` mode (analog to `gemini_reasoning`) that sets `reasoning_summary = "auto"` by default. Add a `tests/extended/test_openai_real_workflows.py::test_openai_reasoning_emits_reasoning_section` live-api case asserting reasoning events appear when `--mode openai_reasoning` is used. Make P24-TS17 pass. See `planning/p24-openai-stream-audit.v1.md` and the inline caveat at `openai.py:501-510`.
+
+##### 3. Perplexity flat-key reads not migrated to `[modes.X.perplexity]` namespace
+
+**What it is.** OpenAI received the namespace migration in Task 3.1 (`src/thoth/providers/openai.py:195` `_resolve_provider_config_value` reads `self.config["openai"][key]` first, falls back to flat with `DeprecationWarning`). Perplexity has *partial* namespacing: bag-of-options keys (`web_search_options`, `stream_mode`, `search_recency_filter`) already use `[modes.X.perplexity]`, but **SDK-direct kwargs still read flat** at `src/thoth/providers/perplexity.py:493-497`:
+
+```python
+for key in _DIRECT_SDK_KEYS_PERPLEXITY:
+    if key in self.config:
+        params[key] = self.config[key]
+```
+
+`_DIRECT_SDK_KEYS_PERPLEXITY` (`perplexity.py:371-377`) lists: `max_tokens`, `temperature`, `top_p`, `stop`, `response_format`. Today, `[modes.X.perplexity].temperature = 0.5` does NOT reach the request — users must set it flat at the mode level (the old style).
+
+**What to achieve.** Cross-provider symmetry. After this task, `[modes.X.perplexity].temperature` flows through the same way `[modes.X.openai].temperature` does, with a deprecation warning bridging one release for any user mode TOMLs still on flat keys.
+
+- [ ] [P24-TS18] Add failing tests covering: `[modes.X.perplexity].temperature` reaches the request kwargs; flat `temperature` still works but emits `DeprecationWarning`; namespace value wins over flat with no warning when both present; framework-level keys (`kind`, `model`, `timeout`) stay flat without warning. Mirror `tests/test_provider_config.py:281-335`'s OpenAI shape exactly.
+- [ ] [P24-T19] Add `_resolve_provider_config_value(key, default)` to `PerplexityProvider`, mirroring `openai.py:195-230`. Define `_FRAMEWORK_FLAT_KEYS_PERPLEXITY = {"perplexity", "kind", "model", "timeout"}`. Refactor the `_DIRECT_SDK_KEYS_PERPLEXITY` loop at `perplexity.py:493-497` to use the resolver. Update existing test fixtures using flat Perplexity `temperature` to use the namespace. Make P24-TS18 pass.
+
+##### 4. Async sibling `_map_perplexity_error_async` missing NotFoundError + regex-extraction backports
+
+**What it is.** `perplexity.py` has two error mappers documented as preserving "byte-identical wording" (`perplexity.py:151`):
+- `_map_perplexity_error` (`perplexity.py:146-243`) — sync immediate path (uses OpenAI SDK)
+- `_map_perplexity_error_async` (`perplexity.py:245+`) — background async path (uses raw httpx for `/v1/async/sonar`)
+
+Tasks 2.3 and 2.4 added two branches to the **sync** mapper:
+- `perplexity.py:175-181`: `openai.NotFoundError` → `ProviderError("perplexity", "Model X not found... thoth providers --models...")` with the CLI hint.
+- `perplexity.py:188-198`: `openai.BadRequestError` with `_extract_unsupported_param(msg)` → `ProviderError("perplexity", "Perplexity does not support parameter 'X' for this model.")`.
+
+The async mapper has neither. A user passing an invalid model on `--mode perplexity_deep_research` (background) gets the generic "HTTP 422 from Perplexity async API: <body excerpt>" message instead of the actionable model-name + CLI hint they'd get on the immediate path.
+
+**What to achieve.** Restore the docstring's "byte-identical wording" claim. Both paths produce equally helpful errors when the same kind of failure occurs.
+
+- [ ] [P24-TS19] Add failing tests against `_map_perplexity_error_async` that mirror the sync mapper's NotFoundError + unsupported-parameter assertions: a 404 response surfaces the model name + `thoth providers --models` hint; a 422 response with `"unsupported parameter 'X'"` in the body extracts X via `_extract_unsupported_param`.
+- [ ] [P24-T20] Backport both branches to `_map_perplexity_error_async` (`perplexity.py:295-340`). For 404, produce `ProviderError("perplexity", "Model X not found...")` with the same CLI hint as the sync mapper. For the existing 422 path (already at `perplexity.py:309`), additionally try `_extract_unsupported_param(body_text)` and surface the offending parameter name when matched. Keep the docstring's "byte-identical wording" promise by mirroring the message strings exactly. Make P24-TS19 pass.
+
+##### 5. Cross-provider duplication of `_render_sources` + `_debug_print_empty_response` (factor-dedup target)
+
+**What it is.** Three providers now ship near-identical helpers for the same two purposes:
+
+| Helper | OpenAI | Perplexity | Gemini |
+|---|---|---|---|
+| Empty-content debug ladder (`model_dump_json` → `__dict__` → `repr`) | `openai.py:592-611` (inline in `get_result`) | `perplexity.py:951-971` `_debug_print_empty_response()` | `gemini.py:532-550` `_debug_print_empty_response()` |
+| Sources block rendering (deduped `## Sources` via `md_link_*`) | `openai.py:614-622` (inline in `get_result`) | `perplexity.py:973-1010` `_render_answer_with_sources()` | `gemini.py:511-530` `_render_sources()` |
+
+Each helper is ~17-25 lines. The shape is the same (walk response → extract title+URL → dedupe by URL → render `- [{md_link_title(t)}]({md_link_url(u)})`) with subtle divergences in title-extraction logic, URL field name (`url` vs `uri`), and debug-ladder truncation (per-call `[:1000]` vs per-field `[:100]` vs none).
+
+**What to achieve.** DRY. After Tasks 2.2 (`_invalid_key_thotherror`) and 2.4 (`_extract_unsupported_param`), `src/thoth/providers/_helpers.py` is the established home for cross-provider helpers. The third + duplicate of the same pattern is now load-bearing evidence for `factor-dedup` consolidation.
+
+- [ ] [P24-TS20] Run `factor-dedup` over the three sites; document the divergences in a planning note. Pin the unified contract via tests in `tests/test_provider_helpers.py`: `render_sources_block(citations: Iterable[Citation]) -> str` produces correct deduped markdown; `debug_print_empty_response(response, provider_label) -> None` emits the truncated ladder to stderr.
+- [ ] [P24-T21] Extract `render_sources_block` and `debug_print_empty_response` to `src/thoth/providers/_helpers.py`. Each provider's `get_result()` calls `render_sources_block(self._extract_citations(response))` and `debug_print_empty_response(response, "OpenAI" / "Perplexity" / "Gemini")`. Provider-specific code keeps only the *extraction* logic (which genuinely differs because chunk vocabularies differ: OpenAI annotation, Perplexity search_result, Gemini grounding_chunk.web). Make P24-TS20 pass. Estimated: ~50 lines added + ~50 lines removed across 3 providers + 6-8 tests refactored.
+
+##### 6. OpenAI `_PROVIDER_NAME_OPENAI` unused at non-error sites (cosmetic cleanup)
+
+**What it is.** Task 1.2 introduced `_PROVIDER_NAME_OPENAI = "openai"` at `src/thoth/providers/openai.py:49` and replaced 12 inline `"openai"` literals inside `_map_openai_error()` with the constant. But 4 inline literals remain *outside* the error mapper (verified by `grep -nE '"openai"' src/thoth/providers/openai.py | grep -v _PROVIDER_NAME_OPENAI`):
+
+- `openai.py:189` — `self.model_cache = ModelCache("openai")`
+- `openai.py:746,753,760` — `"owned_by": "openai"` entries in `list_models()`
+- `openai.py:784` — `raise ProviderError("openai", f"Failed to fetch models: ...")` in `get_models()`
+
+(The set literal at `openai.py:66` `{"openai", "kind", "model", "timeout", "background"}` is a hardcoded framework-keys allowlist, not a provider tag — leave alone.)
+
+**What to achieve.** Single source of truth. Future-proof against any structural introspection of "what providers are registered" — having the literal repeated is a small future-trap.
+
+- [ ] [P24-T22] Replace the 4 inline `"openai"` literals listed above with `_PROVIDER_NAME_OPENAI`. No new tests required — existing tests at `tests/test_openai_errors.py::test_openai_constants_use_suffix_naming` already pin the constant's value, so any reference-site swap that breaks string-equality is caught. Pure mechanical change, no behavior delta. Effort: ~5 minutes. (No TS pair — refactor is one-liner per site, covered by existing literal-equality tests.)
+
+##### 7. OpenAI URL-citation type-string filter is presence-based, not type-based (robustness)
+
+**What it is.** Task 6.1's stream-event handler for `response.output_text.annotation.added` (`src/thoth/providers/openai.py:551-572`) filters annotations to URL-citations by checking *whether the annotation has a `url` attribute*, not by checking its `type` discriminator:
+
+```python
+url = getattr(ann, "url", None) or (ann.get("url") if isinstance(ann, dict) else None)
+if not url:
+    continue
+```
+
+The OpenAI SDK ships at least 4 annotation variants (per the audit at `planning/p24-openai-stream-audit.v1.md`): `url_citation` (has `url`, `title`), `file_citation` (has `file_id`, `quote`), `file_path` (has `file_id`), `container_file_citation` (has `container_id`). Today the presence-based filter correctly drops the latter three because they don't have a `url` attribute. **But** if a future SDK ships, say, a `FileDownloadCitation` with both `file_id` AND a download `url`, it would be misclassified and emitted as a `StreamEvent("citation", Citation(...))` with a download URL — broken markdown link in user output.
+
+`get_result()`'s existing filter at `openai.py:602-610` uses the same presence-based pattern, so streaming + non-stream are consistently lax (not asymmetric).
+
+**What to achieve.** Robustness against SDK schema drift. Tighten both filters together so they degrade safely if a new annotation variant adds a `url` field.
+
+- [ ] [P24-TS21] Add failing tests against both `OpenAIProvider.stream()` and `OpenAIProvider.get_result()` that simulate a hypothetical annotation variant with `type="file_download_citation"` AND a `url` field; assert the stream/get_result paths skip it (no `StreamEvent("citation", ...)` emitted; no `## Sources` line rendered).
+- [ ] [P24-T23] Tighten both filters to use the explicit `type` discriminator: `ann_type = getattr(ann, "type", None) or (ann.get("type") if isinstance(ann, dict) else None); if ann_type != "url_citation": continue`. Apply at `openai.py:551-572` (streaming) AND `openai.py:602-610` (get_result) symmetrically. Make P24-TS21 pass.
+
+##### 8. `_RESEARCH_OPTIONS` count test is a strict pin (documentation note)
+
+**What it is.** `tests/test_p16_pr2_options_decorator.py:11-19` asserts the *exact count* of options in the shared `_RESEARCH_OPTIONS` decorator stack at `src/thoth/cli_subcommands/_options.py`. P24 Task 5.1 bumped it 26 → 27 because `--api-key-gemini` was added.
+
+```python
+assert len(_RESEARCH_OPTIONS) == 27, (
+    f"expected 27 research-options entries (21 from PR2 + 2 from P18 Phase E + "
+    f"1 from P21 + 1 from P18-T27 + 1 from P23 --model + 1 from P24 --api-key-gemini), "
+    f"got {len(_RESEARCH_OPTIONS)}"
+)
+```
+
+The pin pattern is intentional and useful — strict pins catch silent option drift (e.g., someone deleting `--cancel-on-interrupt` but forgetting to update docs) better than fuzzy "approximate count" tests. But it's a tripwire that needs to be acknowledged when adding options.
+
+**What to achieve.** Make the convention discoverable. Future contributors adding a new shared root option need to: (1) add the option to `_RESEARCH_OPTIONS` in `_options.py`; (2) bump the count in the test; (3) append a one-line note to the test's comment explaining the new option's source project.
+
+- [ ] [P24-T24] Add a one-paragraph `CONTRIBUTING.md`-style note (or a docstring on the test itself) explaining the strict-pin convention for `_RESEARCH_OPTIONS`. Cross-reference from `src/thoth/cli_subcommands/_options.py`'s module docstring so contributors find it before they trip over the test failure. No code change required; documentation only. (No TS pair — documentation work, no behavior to test.)
+
 ### Open questions
 
 - **Citation URL rendering.** Verbatim Vertex redirect URLs (current default) vs server-side HEAD resolution to canonical URLs. v1 picks verbatim. Confirm or override before T03.

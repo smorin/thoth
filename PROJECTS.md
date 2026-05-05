@@ -85,7 +85,7 @@ Older entries may use `**Primary spec**`, `**Plan**`, or
 - [x] **P27** — [Perplexity — Background Deep Research](projects/P27-perplexity-background-deep-research.md)
 - [x] **P26** — [OpenAI — Background Deep Research](projects/P26-openai-background-deep-research.md)
 - [ ] **P25** — [Architecture Review & Cleanup — Immediate Providers](projects/P25-arch-review-immediate-providers.md)
-- [x] **P24** — [Gemini — Immediate (Synchronous) Calls](projects/P24-gemini-immediate-sync.md)
+- [~] **P24** — [Gemini — Immediate (Synchronous) Calls](projects/P24-gemini-immediate-sync.md) — main contract shipped via PR #54 (Gemini provider + cross-provider consistency); 7 reviewer-flagged follow-up tasks tracked in the project file's *Post-ship follow-ups* section (TS17-TS21 + T18-T24).
 - [x] **P23** — [Perplexity — Immediate (Synchronous) Calls](projects/P23-perplexity-immediate-sync.md)
 - [x] **P22** — [OpenAI — Immediate (Synchronous) Calls](projects/P22-openai-immediate-sync.md)
 - [x] **P21c** — [Config Filename Standardization](projects/P21c-config-filename-standardization.md)
