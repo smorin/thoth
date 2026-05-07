@@ -45,10 +45,10 @@ IDs are stable and never reused.
 | DEC-001 | decision | Define L4 flat common params or deprecate flat passthrough | Decide whether flat mode keys are a fixed common set or arbitrary provider passthrough. | accepted | matrix section Configuration Layers L4/L6 |
 | DEC-002 | decision | Normalize max token split forms | Decide whether users configure one internal token budget or expose every provider spelling. | accepted | matrix row `max_output_tokens` |
 | DEC-003 | decision | L9 clarification integration boundary | Decide whether clarification folds into the provider stack or remains separate while reusing normalization. | accepted | matrix section Configuration Layers L9 |
-| DEC-004 | decision | Unknown-key and extension policy | Decide which unknown provider namespace keys pass through, fail validation, or are ignored. | proposed | matrix section Resolution Rules |
-| DEC-005 | decision | Provider override mismatch policy | Decide how `--provider` interacts with a mode's provider-specific model and namespace. | proposed | matrix section Resolution Rules |
-| DEC-006 | decision | Array merge and unset semantics | Decide array replacement vs append and absence vs explicit-disable semantics. | proposed | matrix section Resolution Rules |
-| DEC-007 | decision | No global all-provider root defaults | Decide whether to keep excluding a generic inherited provider defaults layer. | proposed | matrix section Overview |
+| DEC-004 | decision | Unknown-key and extension policy | Decide which unknown provider namespace keys pass through, fail validation, or are ignored. | accepted | matrix section Resolution Rules |
+| DEC-005 | decision | Provider override mismatch policy | Decide how `--provider` interacts with a mode's provider-specific model and namespace. | accepted | matrix section Resolution Rules |
+| DEC-006 | decision | Array merge and unset semantics | Decide array replacement vs append and absence vs explicit-disable semantics. | accepted | matrix section Resolution Rules |
+| DEC-007 | decision | Add global all-provider root defaults | Decide whether to keep excluding or adding a generic inherited provider defaults layer. | accepted | matrix section Overview |
 | DEC-008 | decision | Matrix cell target type | Decide whether the matrix should mix request payload keys with client/runtime controls. | accepted | matrix section Parameter Matrix |
 | DEC-009 | decision | Canonical provider endpoint scope | Decide which endpoint surface each provider column represents when a provider has multiple APIs. | accepted | matrix section Parameter Matrix |
 | DEC-010 | decision | SDK key casing vs REST key casing | Decide whether provider cells use Python SDK key names, REST JSON names, or both. | accepted | matrix section Parameter Matrix |
@@ -579,10 +579,10 @@ Decision entries are design choices whose resolution can spawn specific `GAP-` o
 | DEC-001 | Define L4 flat common params or deprecate flat passthrough | Decide whether flat mode keys are a fixed common set or arbitrary provider passthrough. | accepted | Fixed common set plus provider namespaces for everything else. | matrix section Configuration Layers L4/L6 |
 | DEC-002 | Normalize max token split forms | Decide whether users configure one internal token budget or expose every provider spelling. | accepted | Use internal `max_output_tokens`; adapters map native spellings. | matrix row `max_output_tokens` |
 | DEC-003 | L9 clarification integration boundary | Decide whether clarification folds into the provider stack or remains separate while reusing normalization. | accepted | Keep L9 separate as UX config, but invoke shared provider normalization for model calls. | matrix section Configuration Layers L9 |
-| DEC-004 | Unknown-key and extension policy | Decide which unknown provider namespace keys pass through, fail validation, or are ignored. | proposed | Validate known common keys; allow explicit provider extension bags. | matrix section Resolution Rules |
-| DEC-005 | Provider override mismatch policy | Decide how `--provider` interacts with a mode's provider-specific model and namespace. | proposed | Validate compatibility and require explicit `--model` or provider-native mode when switching provider families. | matrix section Resolution Rules |
-| DEC-006 | Array merge and unset semantics | Decide array replacement vs append and absence vs explicit-disable semantics. | proposed | Arrays replace; absence inherits; explicit disable only through named booleans or internal `None`. | matrix section Resolution Rules |
-| DEC-007 | No global all-provider root defaults | Decide whether to keep excluding a generic inherited provider defaults layer. | proposed | Do not add `[providers.defaults]`; use L4/L6 common mode params instead. | matrix section Overview |
+| DEC-004 | Unknown-key and extension policy | Decide which unknown provider namespace keys pass through, fail validation, or are ignored. | accepted | Validate known common keys; allow explicit provider extension bags. | matrix section Resolution Rules |
+| DEC-005 | Provider override mismatch policy | Decide how `--provider` interacts with a mode's provider-specific model and namespace. | accepted | Treat `--provider` as a permissive expert override that changes provider selection only. | matrix section Resolution Rules |
+| DEC-006 | Array merge and unset semantics | Decide array replacement vs append and absence vs explicit-disable semantics. | accepted | Arrays replace; absence inherits; explicit disable only through named booleans, valid empty arrays, or internal `None`. | matrix section Resolution Rules |
+| DEC-007 | Add global all-provider root defaults | Decide whether to keep excluding or adding a generic inherited provider defaults layer. | accepted | Add `[providers.defaults]` as a root all-provider inherited layer below `[providers.NAME]`. | matrix section Overview |
 | DEC-008 | Matrix cell target type | Decide whether the matrix should mix request payload keys with client/runtime controls. | accepted | Split request payload keys from framework/client controls. | matrix section Parameter Matrix |
 | DEC-009 | Canonical provider endpoint scope | Decide which endpoint surface each provider column represents when a provider has multiple APIs. | accepted | Name the canonical provider surfaces before the table. | matrix section Parameter Matrix |
 | DEC-010 | SDK key casing vs REST key casing | Decide whether provider cells use Python SDK key names, REST JSON names, or both. | accepted | Use Thoth's SDK request shape, with REST casing noted where different. | matrix section Parameter Matrix |
@@ -641,7 +641,7 @@ Decision entries are design choices whose resolution can spawn specific `GAP-` o
 
 - **Description:** Decide which unknown provider namespace keys pass through, fail validation, or are ignored.
 - **Kind:** decision
-- **Status:** proposed
+- **Status:** accepted
 - **Layers affected:** L2, L3, L5, L7
 - **Providers affected:** OpenAI, Perplexity, Gemini
 - **Source:** `src/thoth/providers/openai.py:246-281`; `src/thoth/providers/perplexity.py:484-508`; `src/thoth/providers/gemini.py:58-76`; `tests/test_provider_config.py:615-638`
@@ -649,6 +649,7 @@ Decision entries are design choices whose resolution can spawn specific `GAP-` o
 - **References:** matrix section Resolution Rules; matrix section Parameter Matrix; GAP-006; INC-003
 - **Related:** GAP-001, INC-003
 - **Recommendation:** Validate common parameters through the shared matrix. For provider-native extension fields, define explicit extension bags such as `[modes.X.perplexity.extra_body]` or a documented provider allowlist. Do not silently ignore unknown keys unless a provider marks a nested namespace as forward-compatible.
+- **Resolution choices:** Option A accepted: validate known/common keys and allow explicit provider extension bags. Rejected: Option B, strict allowlist everywhere; Option C, keep provider-specific unknown-key behavior as permanent policy.
 
 <a id="dec-005"></a>
 
@@ -656,14 +657,15 @@ Decision entries are design choices whose resolution can spawn specific `GAP-` o
 
 - **Description:** Decide how `--provider` interacts with a mode's provider-specific model and namespace.
 - **Kind:** decision
-- **Status:** proposed
+- **Status:** accepted
 - **Layers affected:** L5, L7, L8
 - **Providers affected:** all
 - **Source:** `src/thoth/run.py:188-220`; `src/thoth/run.py:319-344`; `src/thoth/providers/__init__.py:192-202`
 - **Detail:** Runtime provider override is useful, but retaining a mode's model and provider namespace can create invalid cross-provider payloads.
 - **References:** matrix section Resolution Rules; INC-006
 - **Related:** INC-006
-- **Recommendation:** Treat `--provider` as selecting a provider only when the selected mode is provider-neutral. If the mode pins a provider-specific model or namespace, require `--model` with a compatible provider model or error with a clear mode/provider mismatch message.
+- **Recommendation:** Treat `--provider` as a permissive expert override that changes provider selection only. It does not make the selected mode's model or provider namespace provider-neutral; users must also pass `--model` or choose a compatible mode when needed. Documentation and verbose diagnostics should call out mismatch risk.
+- **Resolution choices:** Option C accepted: keep `--provider` as a permissive expert override and document/diagnose mismatch risk. Rejected: Option A, validate and error on incompatible provider/mode/model combinations; Option B, require `--model` whenever `--provider` overrides a provider-pinned mode.
 
 <a id="dec-006"></a>
 
@@ -671,7 +673,7 @@ Decision entries are design choices whose resolution can spawn specific `GAP-` o
 
 - **Description:** Decide array replacement vs append and absence vs explicit-disable semantics.
 - **Kind:** decision
-- **Status:** proposed
+- **Status:** accepted
 - **Layers affected:** L1-L8
 - **Providers affected:** all
 - **Source:** `src/thoth/config.py:544-565`; `src/thoth/config.py:659-688`
@@ -679,21 +681,23 @@ Decision entries are design choices whose resolution can spawn specific `GAP-` o
 - **References:** matrix section Resolution Rules
 - **Related:** INC-004
 - **Recommendation:** Arrays replace by default. Absence means inherit. Explicit disable uses named booleans like `web_search = false`, empty arrays where an empty array is semantically valid, or internal `None` for APIs that distinguish null from unset.
+- **Resolution choices:** Option A accepted: arrays replace; absence inherits; explicit disable uses named booleans, empty arrays where valid, or internal `None` where provider APIs distinguish null. Rejected: Option B, arrays append/merge by default; Option C, treat empty arrays as unset/inherit.
 
 <a id="dec-007"></a>
 
-### DEC-007 - No Global All-Provider Root Defaults
+### DEC-007 - Add Global All-Provider Root Defaults
 
-- **Description:** Decide whether to keep excluding a generic inherited provider defaults layer.
+- **Description:** Decide whether to keep excluding or adding a generic inherited provider defaults layer.
 - **Kind:** decision
-- **Status:** proposed
-- **Layers affected:** potential new layer between L1 and L2
+- **Status:** accepted
+- **Layers affected:** new root all-provider layer between built-in defaults and root per-provider config
 - **Providers affected:** all
 - **Source:** `src/thoth/config.py:341-344`; `planning/p24-providers-root-namespace-investigation.v1.md:62-69`
-- **Detail:** The current stack has root per-provider tables, but no `[providers.defaults]` table inherited by all providers. Adding one would create another cross-provider precedence layer and overlap with L4/L6 common mode params.
+- **Detail:** The current stack has root per-provider tables, but no `[providers.defaults]` table inherited by all providers. The accepted contract adds that layer for recognized fields that truly apply to every provider. It has lower precedence than `[providers.NAME]` and higher precedence than provider implementation defaults / built-in defaults. It should use the same recognized-field registry as root provider config, while excluding provider-specific auth secrets such as `api_key` unless explicitly supported.
 - **References:** matrix section Overview; matrix section Configuration Layers
-- **Related:** DEC-001
-- **Recommendation:** Do not add a global all-provider root default layer. Keep cross-provider request defaults mode-scoped through L4/L6 so model/provider selection remains explicit.
+- **Related:** DEC-001, GAP-001, GAP-003
+- **Recommendation:** Add `[providers.defaults]` as a root all-provider inherited layer for recognized shared client controls and common request defaults. Root `[providers.NAME]` overrides it, mode layers override both, and provider namespaces/extension bags remain the place for provider-native fields.
+- **Resolution choices:** Option B accepted: add `[providers.defaults]` as a root all-provider inherited layer. Rejected: Option A, do not add the layer; Option C, add it only for auth/client controls.
 
 <a id="dec-008"></a>
 
