@@ -16,15 +16,17 @@ IDs are stable and never reused.
 |---|---|---|---|---|---|
 | GAP-001 | gap | Root provider request defaults are not normalized | L2/L3 request defaults are copied but not normalized into a provider-consistent request structure. | accepted | matrix section Configuration Layers L2-L3; matrix section Resolution Rules |
 | GAP-002 | gap | Fixed L4 common parameter set is missing | Mode-level flat keys are arbitrary passthrough rather than a documented common parameter set. | accepted | matrix section Configuration Layers L4/L6; DEC-001 |
-| GAP-003 | gap | Shared normalized provider parameter object is missing | `create_provider()` mutates provider config but leaves each adapter to interpret shapes independently. | open | matrix section Resolution Rules; code `src/thoth/providers/__init__.py` |
-| GAP-004 | gap | Gemini missing from config defaults provider table | The defaults provider table declares OpenAI and Perplexity API keys but omits Gemini. | open | matrix section Configuration Layers L2; code `src/thoth/config.py` |
-| GAP-005 | gap | Gemini timeout override is not applied to the SDK client | Runtime timeout is copied into Gemini config but Gemini client construction does not consume it. | open | matrix row `timeout`; code `src/thoth/providers/gemini.py` |
+| GAP-003 | gap | Shared normalized provider parameter object is missing | `create_provider()` mutates provider config but leaves each adapter to interpret shapes independently. | accepted | matrix section Resolution Rules; code `src/thoth/providers/__init__.py` |
+| GAP-004 | gap | Gemini missing from config defaults provider table | The typed defaults provider table now includes Gemini; this stale gap is resolved. | resolved | matrix section Configuration Layers L2; code `src/thoth/config_schema.py` |
+| GAP-005 | gap | Gemini timeout override is not applied to the SDK client | Runtime timeout is copied into Gemini config but Gemini client construction does not consume it. | accepted | matrix row `timeout`; code `src/thoth/providers/gemini.py` |
 | GAP-006 | gap | Full parameter matrix is not wired through adapters | Several desired matrix parameters have no adapter translation path. | open | matrix section Parameter Matrix |
 | GAP-007 | gap | L9 clarification bypasses shared provider normalization | Interactive clarification reads OpenAI config directly and constructs `AsyncOpenAI` directly. | open | matrix section Configuration Layers L9; DEC-003 |
 | GAP-008 | gap | `max_output_tokens` is not normalized across providers | The desired internal token-budget field is not translated to OpenAI, Perplexity, and Gemini consistently. | open | matrix row `max_output_tokens`; DEC-002 |
 | GAP-009 | gap | `stop_sequences` is not normalized across providers | The desired internal stop-sequence field is not translated to supported provider-native fields consistently. | open | matrix row `stop_sequences`; DEC-001 |
 | GAP-010 | gap | Gemini `frequency_penalty` is not wired | Gemini supports `frequencyPenalty`, but the Gemini adapter allowlist omits `frequency_penalty`. | open | matrix row `frequency_penalty`; code `src/thoth/providers/gemini.py` |
 | GAP-011 | gap | Gemini `presence_penalty` is not wired | Gemini supports `presencePenalty`, but the Gemini adapter allowlist omits `presence_penalty`. | open | matrix row `presence_penalty`; code `src/thoth/providers/gemini.py` |
+| GAP-012 | gap | Gemini `seed` is not wired | Gemini supports `seed`, but the Gemini adapter allowlist omits `seed`. | open | matrix row `seed`; code `src/thoth/providers/gemini.py` |
+| GAP-013 | gap | Gemini `n` / `candidate_count` is not wired | Gemini supports `candidateCount`, but the adapter does not map internal `n` or provider-native `candidate_count`. | open | matrix row `n`; code `src/thoth/providers/gemini.py` |
 | INC-001 | inconsistency | L4 flat mode params are copied but consumed unevenly | Common flat params such as `temperature` are copied, but OpenAI, Perplexity sync/async, and Gemini consume them through different paths. | accepted | matrix section Configuration Layers L4/L6; DEC-001 |
 | INC-002 | inconsistency | Root provider defaults behave differently by provider | OpenAI can half-read root flat values, while Perplexity/Gemini generally require provider namespaces for request params. | accepted | matrix section Configuration Layers L2/L3; GAP-001 |
 | INC-003 | inconsistency | Provider namespace unknown-key policy diverges | Perplexity forwards unknown namespace keys, Gemini allowlists, and OpenAI reads only explicit keys. | accepted | matrix section Resolution Rules; DEC-004 |
@@ -54,15 +56,17 @@ A gap means the desired-state contract requires behavior that the current implem
 |---|---|---|---|---|
 | GAP-001 | Root provider request defaults are not normalized | L2/L3 request defaults are copied but not normalized into a provider-consistent request structure. | accepted | matrix section Configuration Layers L2-L3 |
 | GAP-002 | Fixed L4 common parameter set is missing | Mode-level flat keys are arbitrary passthrough rather than a documented common parameter set. | accepted | matrix section Configuration Layers L4/L6 |
-| GAP-003 | Shared normalized provider parameter object is missing | `create_provider()` mutates provider config but leaves each adapter to interpret shapes independently. | open | matrix section Resolution Rules |
-| GAP-004 | Gemini missing from config defaults provider table | The defaults provider table declares OpenAI and Perplexity API keys but omits Gemini. | open | matrix section Configuration Layers L2 |
-| GAP-005 | Gemini timeout override is not applied to the SDK client | Runtime timeout is copied into Gemini config but Gemini client construction does not consume it. | open | matrix row `timeout` |
+| GAP-003 | Shared normalized provider parameter object is missing | `create_provider()` mutates provider config but leaves each adapter to interpret shapes independently. | accepted | matrix section Resolution Rules |
+| GAP-004 | Gemini missing from config defaults provider table | The typed defaults provider table now includes Gemini; this stale gap is resolved. | resolved | matrix section Configuration Layers L2 |
+| GAP-005 | Gemini timeout override is not applied to the SDK client | Runtime timeout is copied into Gemini config but Gemini client construction does not consume it. | accepted | matrix row `timeout` |
 | GAP-006 | Full parameter matrix is not wired through adapters | Several desired matrix parameters have no adapter translation path. | open | matrix section Parameter Matrix |
 | GAP-007 | L9 clarification bypasses shared provider normalization | Interactive clarification reads OpenAI config directly and constructs `AsyncOpenAI` directly. | open | matrix section Configuration Layers L9 |
 | GAP-008 | `max_output_tokens` is not normalized across providers | The desired internal token-budget field is not translated to OpenAI, Perplexity, and Gemini consistently. | open | matrix row `max_output_tokens` |
 | GAP-009 | `stop_sequences` is not normalized across providers | The desired internal stop-sequence field is not translated to supported provider-native fields consistently. | open | matrix row `stop_sequences` |
 | GAP-010 | Gemini `frequency_penalty` is not wired | Gemini supports `frequencyPenalty`, but the Gemini adapter allowlist omits `frequency_penalty`. | open | matrix row `frequency_penalty` |
 | GAP-011 | Gemini `presence_penalty` is not wired | Gemini supports `presencePenalty`, but the Gemini adapter allowlist omits `presence_penalty`. | open | matrix row `presence_penalty` |
+| GAP-012 | Gemini `seed` is not wired | Gemini supports `seed`, but the Gemini adapter allowlist omits `seed`. | open | matrix row `seed` |
+| GAP-013 | Gemini `n` / `candidate_count` is not wired | Gemini supports `candidateCount`, but the adapter does not map internal `n` or provider-native `candidate_count`. | open | matrix row `n` |
 
 <a id="gap-001"></a>
 
@@ -104,11 +108,14 @@ A gap means the desired-state contract requires behavior that the current implem
 
 - **Description:** `create_provider()` mutates provider config but leaves each adapter to interpret shapes independently.
 - **Kind:** gap
-- **Status:** open
+- **Status:** accepted
 - **Layers affected:** L0-L8
 - **Providers affected:** OpenAI, Perplexity, Gemini
 - **Source:** `src/thoth/providers/__init__.py:154-215`; `src/thoth/providers/openai.py:246-281`; `src/thoth/providers/perplexity.py:484-523`; `src/thoth/providers/gemini.py:276-320`
+- **Context:** This is the central implementation gap behind accepted `GAP-001`, `GAP-002`, and `INC-003`: the desired layer model needs one shared normalization result rather than three adapter-specific interpretations of a mutable dict.
 - **Detail:** The factory is the shared routing point, but it does not produce a typed or tagged normalized structure. OpenAI has a resolver with a flat fallback, Perplexity reads `config["perplexity"]`, and Gemini reads an allowlisted `config["gemini"]`. A common normalizer would make layer precedence and source semantics testable once.
+- **Recommendation:** Build one shared normalized provider parameter object with explicit sections for auth/client controls, common request fields, provider-native request fields, extension bags, and source/layer metadata. Provider adapters should translate that object into SDK payloads instead of rediscovering layer semantics.
+- **Resolution choices:** Option A accepted: keep `GAP-003` as the accepted backlog for building one shared normalized provider parameter object. Rejected: Option B, split into adapter-specific cleanup tasks; Option C, keep plain dict mutation and add helper functions around the existing shape.
 - **References:** matrix section Resolution Rules; matrix section Worked Examples; `src/thoth/providers/__init__.py`
 - **Related:** GAP-001, INC-001, INC-003
 
@@ -116,13 +123,15 @@ A gap means the desired-state contract requires behavior that the current implem
 
 ### GAP-004 - Gemini Missing From Config Defaults Provider Table
 
-- **Description:** The defaults provider table declares OpenAI and Perplexity API keys but omits Gemini.
+- **Description:** The typed defaults provider table now includes Gemini; this stale gap is resolved.
 - **Kind:** gap
-- **Status:** open
+- **Status:** resolved
 - **Layers affected:** L2
 - **Providers affected:** Gemini
-- **Source:** `src/thoth/config.py:341-344`; `src/thoth/providers/__init__.py:35-38`
-- **Detail:** The provider registry and environment variable table include Gemini, but `ConfigSchema.get_defaults()["providers"]` does not include `[providers.gemini]`. Desired state has every supported provider represented in root provider config defaults.
+- **Source:** `src/thoth/config_schema.py:256-269`; `src/thoth/config_schema.py:513-514`; `src/thoth/config.py:313-324`
+- **Context:** This gap was valid against an older defaults implementation, but the current worktree derives defaults from the typed schema.
+- **Detail:** `ProvidersConfig` now declares `gemini: GeminiConfig = StarterField(default_factory=lambda: GeminiConfig(api_key="${GEMINI_API_KEY}"))`, and `ConfigSchema.get_defaults()` delegates to `default_config_dict()`. Desired state still requires every supported provider to appear in root provider defaults; current code now satisfies that requirement for Gemini.
+- **Resolution choices:** Option A accepted: mark `GAP-004` resolved as stale/currently implemented, with source references updated to the typed schema. Rejected: Option B, keep it open pending a new regression test; Option C, replace it with a narrower docs-only gap.
 - **References:** matrix section Configuration Layers L2; matrix section Worked Examples A-B; `src/thoth/config.py`
 - **Related:** INC-008
 
@@ -132,11 +141,14 @@ A gap means the desired-state contract requires behavior that the current implem
 
 - **Description:** Runtime timeout is copied into Gemini config but Gemini client construction does not consume it.
 - **Kind:** gap
-- **Status:** open
-- **Layers affected:** L3, L8
+- **Status:** accepted
+- **Layers affected:** L2, L3, L8
 - **Providers affected:** Gemini
 - **Source:** `src/thoth/providers/__init__.py:188-190`; `src/thoth/providers/gemini.py:213-221`
+- **Context:** Accepted `INC-005` makes `timeout` a provider client/runtime control for every supported provider, including root provider config and runtime overrides. The remaining question is not whether Gemini should support it, but which Google Gen AI SDK hook should carry it.
 - **Detail:** `create_provider()` stores `timeout` for Gemini when a runtime override is supplied, but `GeminiProvider.__init__()` constructs `genai.Client(api_key=api_key)` without threading timeout into the client or request options. Desired state says timeout is a client/runtime control for every supported provider.
+- **Recommendation:** Split remediation into two tasks: first validate the current Google Gen AI SDK timeout hook and semantics, then implement Gemini timeout wiring with constructor/request tests once the hook is confirmed.
+- **Resolution choices:** Option B accepted: split into SDK research plus implementation tasks because the Google SDK timeout hook needs validation. Rejected: Option A, treat it as a single direct wiring task without validation; Option C, mark Gemini timeout unsupported and narrow the matrix/runtime contract.
 - **References:** matrix row `timeout`; matrix section Resolution Rules
 - **Related:** INC-005
 
@@ -231,6 +243,38 @@ A gap means the desired-state contract requires behavior that the current implem
 - **Recommendation:** Add `presence_penalty` to the Gemini direct SDK key allowlist, with tests that prove it reaches `GenerateContentConfig`. Keep matrix notes that model support may vary and rely on provider errors for unsupported model/config combinations.
 - **References:** matrix row `presence_penalty`; Gemini GenerateContent reference; `src/thoth/providers/gemini.py`
 - **Related:** GAP-006, DEC-004
+
+<a id="gap-012"></a>
+
+### GAP-012 - Gemini `seed` Is Not Wired
+
+- **Description:** Gemini supports `seed`, but the Gemini adapter allowlist omits `seed`.
+- **Kind:** gap
+- **Status:** open
+- **Layers affected:** L5, L7
+- **Providers affected:** Gemini
+- **Source:** `src/thoth/providers/gemini.py:58-76`; `src/thoth/providers/gemini.py:313-320`
+- **Context:** The desired matrix exposes Gemini `config.seed` because the Google GenerateContent surface documents `seed`.
+- **Detail:** `_DIRECT_SDK_KEYS_GEMINI` does not include `seed`, so `[modes.X.gemini].seed` is silently ignored by `_build_generate_content_config()`. OpenAI Responses and Perplexity Sonar do not expose this key on the canonical surfaces, so this is Gemini-specific adapter work.
+- **Recommendation:** Add `seed` to the Gemini direct SDK key allowlist, with tests that prove it reaches `GenerateContentConfig`. Keep matrix notes that determinism is best-effort and provider/model behavior may vary.
+- **References:** matrix row `seed`; Gemini GenerateContent reference; `src/thoth/providers/gemini.py`
+- **Related:** GAP-006, DEC-004
+
+<a id="gap-013"></a>
+
+### GAP-013 - Gemini `n` / `candidate_count` Is Not Wired
+
+- **Description:** Gemini supports `candidateCount`, but the adapter does not map internal `n` or provider-native `candidate_count`.
+- **Kind:** gap
+- **Status:** open
+- **Layers affected:** L4, L5, L6, L7
+- **Providers affected:** Gemini
+- **Source:** `src/thoth/providers/gemini.py:58-76`; `src/thoth/providers/gemini.py:313-320`
+- **Context:** The desired matrix exposes internal `n` as Gemini `config.candidate_count` because the Google GenerateContent surface documents `candidateCount`.
+- **Detail:** `_DIRECT_SDK_KEYS_GEMINI` does not include `candidate_count`, and no shared normalizer maps internal `n` to Gemini's SDK field. As a result, common `[modes.X] n = 2`, profile-scoped common `n`, and provider-native `[modes.X.gemini] candidate_count = 2` are not routed to `GenerateContentConfig`.
+- **Recommendation:** Normalize internal `n` to Gemini SDK `candidate_count` and also accept provider-native `candidate_count` inside Gemini namespaces, with tests that prove both paths reach `GenerateContentConfig`.
+- **References:** matrix row `n`; Gemini GenerateContent reference; matrix section Configuration Layers L4-L7; `src/thoth/providers/gemini.py`
+- **Related:** GAP-003, GAP-006, DEC-001, DEC-004
 
 ## Inconsistencies (`INC-`)
 
