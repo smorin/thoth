@@ -11,7 +11,6 @@ and the thinking-budget knob.
 
 from __future__ import annotations
 
-import sys
 import time
 import uuid
 from collections.abc import AsyncIterator
@@ -20,7 +19,6 @@ from urllib.parse import urlparse
 
 import httpx
 from google.genai import errors as genai_errors  # type: ignore[import-not-found]
-from rich.console import Console
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from thoth.config import is_background_model
@@ -35,9 +33,10 @@ from thoth.errors import (
 from thoth.providers._helpers import (
     _extract_unsupported_param,
     _invalid_key_thotherror,
+    debug_print_empty_response,
+    render_sources_block,
 )
 from thoth.providers.base import Citation, ResearchProvider, StreamEvent
-from thoth.utils import md_link_title, md_link_url
 
 _PROVIDER_NAME_GEMINI = "gemini"
 
@@ -471,14 +470,14 @@ class GeminiProvider(ResearchProvider):
         candidates = getattr(response, "candidates", None) or []
         if not candidates:
             if verbose:
-                self._debug_print_empty_response(response)
+                debug_print_empty_response(response, provider_label="Gemini")
             return ""
 
         candidate = candidates[0]
         content = getattr(candidate, "content", None)
         if content is None:
             if verbose:
-                self._debug_print_empty_response(response)
+                debug_print_empty_response(response, provider_label="Gemini")
             return ""
 
         text_parts: list[str] = []
@@ -494,7 +493,7 @@ class GeminiProvider(ResearchProvider):
 
         answer = "".join(text_parts).strip()
         if not answer and verbose:
-            self._debug_print_empty_response(response)
+            debug_print_empty_response(response, provider_label="Gemini")
 
         sources = self._render_sources(getattr(candidate, "grounding_metadata", None))
         reasoning = "\n".join(thought_parts).strip()
@@ -513,37 +512,14 @@ class GeminiProvider(ResearchProvider):
         if grounding_metadata is None:
             return ""
         chunks = getattr(grounding_metadata, "grounding_chunks", None) or []
-        seen: set[str] = set()
-        lines: list[str] = []
+        citations: list[Citation] = []
         for gc in chunks:
             web = getattr(gc, "web", None)
             if web is None:
                 continue
             url = getattr(web, "uri", None)
-            if not url or url in seen:
+            if not url:
                 continue
-            seen.add(url)
             title = getattr(web, "title", "") or urlparse(url).netloc
-            lines.append(f"- [{md_link_title(title)}]({md_link_url(url)})")
-        if not lines:
-            return ""
-        return "## Sources\n\n" + "\n".join(lines)
-
-    def _debug_print_empty_response(self, response: Any) -> None:
-        """Emit a debug ladder to stderr when verbose=True and content is empty.
-
-        Mirrors openai.py's pattern (model_dump_json -> __dict__ -> repr).
-        """
-        err_console = Console(file=sys.stderr)
-        try:
-            if hasattr(response, "model_dump_json"):
-                debug_info = response.model_dump_json(indent=2)[:1000]
-            elif hasattr(response, "__dict__"):
-                debug_info = repr(response.__dict__)[:1000]
-            else:
-                debug_info = repr(response)[:1000]
-        except Exception:
-            debug_info = f"<{type(response).__name__}>"
-        err_console.print(
-            f"[dim]Debug: no content found in response. Structure: {debug_info}[/dim]"
-        )
+            citations.append(Citation(title=str(title), url=str(url)))
+        return render_sources_block(citations)

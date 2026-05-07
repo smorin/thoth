@@ -8,7 +8,6 @@ under the `perplexity` mode-config namespace and are forwarded via
 
 from __future__ import annotations
 
-import sys
 from collections.abc import AsyncIterator
 from datetime import datetime
 from typing import Any
@@ -17,7 +16,6 @@ from uuid import uuid4
 import httpx
 import openai
 from openai import AsyncOpenAI
-from rich.console import Console
 from tenacity import (
     retry,
     retry_if_exception_type,
@@ -34,10 +32,14 @@ from thoth.errors import (
     ProviderError,
     ThothError,
 )
-from thoth.providers._helpers import _extract_unsupported_param, _invalid_key_thotherror
+from thoth.providers._helpers import (
+    _extract_unsupported_param,
+    _invalid_key_thotherror,
+    debug_print_empty_response,
+    render_sources_block,
+)
 from thoth.providers._status import _translate_provider_status
 from thoth.providers.base import Citation, ResearchProvider, StreamEvent
-from thoth.utils import md_link_title, md_link_url
 
 _THINK_OPEN = "<think>"
 _THINK_CLOSE = "</think>"
@@ -302,7 +304,22 @@ def _map_perplexity_error_async(
                 "Permission denied (check tier / model access).",
                 raw_error=raw,
             )
+        if status == 404:
+            return ProviderError(
+                _PROVIDER_NAME_PERPLEXITY,
+                f"Model '{model}' not found. Please check available models with "
+                f"'thoth providers models --provider perplexity'",
+                raw_error=raw,
+            )
         if status == 422:
+            param = _extract_unsupported_param(body_text)
+            if param:
+                return ProviderError(
+                    _PROVIDER_NAME_PERPLEXITY,
+                    f"Perplexity does not support parameter '{param}' for this model. "
+                    "Remove it from the mode config or its provider namespace.",
+                    raw_error=raw,
+                )
             hint = f" (model: {model!r})" if model else ""
             return ProviderError(
                 _PROVIDER_NAME_PERPLEXITY,
@@ -467,11 +484,17 @@ class PerplexityProvider(ResearchProvider):
     def _build_extra_body(self) -> dict[str, Any]:
         """Forward `config['perplexity'].*` keys through to extra_body.
 
+        Direct OpenAI-SDK kwargs also live under `config['perplexity']`, but
+        are consumed by `_build_request_params()` and intentionally excluded
+        from extra_body.
+
         Defaults applied when not configured:
         - web_search_options.search_context_size = "medium"
         - stream_mode = "concise"
         """
         perplexity_cfg: dict[str, Any] = dict(self.config.get("perplexity") or {})
+        for key in _DIRECT_SDK_KEYS_PERPLEXITY:
+            perplexity_cfg.pop(key, None)
 
         web_search_options = dict(perplexity_cfg.pop("web_search_options", {}) or {})
         web_search_options.setdefault("search_context_size", "medium")
@@ -491,9 +514,12 @@ class PerplexityProvider(ResearchProvider):
             "messages": self._build_messages(prompt, system_prompt),
             "extra_body": self._build_extra_body(),
         }
+        perplexity_cfg = self.config.get("perplexity") or {}
+        if not isinstance(perplexity_cfg, dict):
+            perplexity_cfg = {}
         for key in _DIRECT_SDK_KEYS_PERPLEXITY:
-            if key in self.config:
-                params[key] = self.config[key]
+            if key in perplexity_cfg:
+                params[key] = perplexity_cfg[key]
         return params
 
     async def submit(
@@ -887,7 +913,7 @@ def _format_async_response(response: dict[str, Any]) -> str:
 
     sources = _format_async_sources_block(response.get("search_results") or [])
     if sources:
-        parts.append(sources)
+        parts.append(f"\n\n{sources}")
 
     cost = _format_async_cost_block(response.get("usage") or {})
     if cost:
@@ -915,22 +941,16 @@ def _is_likely_truncated(content: str, finish_reason: str) -> bool:
 
 def _format_async_sources_block(search_results: list[Any]) -> str:
     """Markdown `## Sources` list, URL-deduped. Empty input -> empty string."""
-    if not search_results:
-        return ""
-    seen_urls: set[str] = set()
-    sources: list[str] = []
+    citations: list[Citation] = []
     for entry in search_results:
         if not isinstance(entry, dict):
             continue
         url = entry.get("url") or ""
-        if not url or url in seen_urls:
+        if not url:
             continue
-        seen_urls.add(url)
         title = entry.get("title") or url
-        sources.append(f"- [{md_link_title(str(title))}]({md_link_url(str(url))})")
-    if not sources:
-        return ""
-    return "\n\n## Sources\n\n" + "\n".join(sources)
+        citations.append(Citation(title=str(title), url=str(url)))
+    return render_sources_block(citations)
 
 
 def _format_async_cost_block(usage: dict[str, Any]) -> str:
@@ -948,28 +968,6 @@ def _format_async_cost_block(usage: dict[str, Any]) -> str:
     return f"\n\n## Cost\n\nTotal: ${amount:.4f}"
 
 
-def _debug_print_empty_response(response: Any) -> None:
-    """Emit an empty-content debug ladder to stderr.
-
-    Mirrors openai.py's pattern: try ``model_dump_json`` first, fall back to a
-    truncated ``__dict__`` view, and finally ``repr``. Wrapped so any failure
-    in the introspection itself still produces a single readable line.
-    """
-    err_console = Console(file=sys.stderr)
-    try:
-        if hasattr(response, "model_dump_json"):
-            debug_info = response.model_dump_json()
-        elif hasattr(response, "__dict__"):
-            debug_info = str(
-                {k: str(v)[:100] for k, v in response.__dict__.items() if not k.startswith("_")}
-            )
-        else:
-            debug_info = repr(response)
-    except Exception:
-        debug_info = f"<{type(response).__name__}>"
-    err_console.print(f"[dim]Debug: no content found in response. Structure: {debug_info}[/dim]")
-
-
 def _render_answer_with_sources(response: Any, verbose: bool = False) -> str:
     """Extract content + append a deduped `## Sources` block from search_results.
 
@@ -984,22 +982,21 @@ def _render_answer_with_sources(response: Any, verbose: bool = False) -> str:
         content = getattr(message, "content", "") or ""
 
     if verbose and not content and response is not None:
-        _debug_print_empty_response(response)
+        debug_print_empty_response(response, provider_label="Perplexity")
 
     search_results = getattr(response, "search_results", None) or []
-    seen_urls: set[str] = set()
-    sources: list[str] = []
+    citations: list[Citation] = []
     for entry in search_results:
         url = _entry_get(entry, "url") or ""
-        if not url or url in seen_urls:
+        if not url:
             continue
-        seen_urls.add(url)
         title = _entry_get(entry, "title") or url
-        sources.append(f"- [{md_link_title(title)}]({md_link_url(url)})")
+        citations.append(Citation(title=str(title), url=str(url)))
 
+    sources = render_sources_block(citations)
     if not sources:
         return content
-    return f"{content}\n\n## Sources\n\n" + "\n".join(sources)
+    return f"{content}\n\n{sources}" if content else sources
 
 
 def _entry_get(entry: Any, key: str) -> Any:

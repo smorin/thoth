@@ -88,6 +88,27 @@ def test_async_map_422_returns_provider_error_with_model_hint() -> None:
     assert "/v1/async/sonar" in str(result) or "async" in str(result).lower()
 
 
+def test_async_map_404_returns_model_not_found_error_with_models_hint() -> None:
+    """HTTP 404 on async maps like the sync NotFoundError branch."""
+    exc = _make_http_status_error(404, body='{"error": {"message": "model not found"}}')
+    result = _map_perplexity_error_async(exc, model="sonar-deep-research")
+    assert isinstance(result, ProviderError)
+    assert "sonar-deep-research" in str(result)
+    assert "thoth providers models --provider perplexity" in str(result)
+
+
+def test_async_map_422_unsupported_parameter_uses_specific_hint() -> None:
+    """HTTP 422 unsupported-parameter bodies use the shared regex extractor."""
+    exc = _make_http_status_error(
+        422,
+        body='{"error": {"message": "Unsupported parameter: \'temperature\' for this model"}}',
+    )
+    result = _map_perplexity_error_async(exc, model="sonar-deep-research")
+    assert isinstance(result, ProviderError)
+    assert "does not support parameter 'temperature'" in str(result)
+    assert "provider namespace" in str(result)
+
+
 def test_async_map_429_returns_rate_limit_error() -> None:
     """T04: HTTP 429 → APIRateLimitError (rate limit, NOT quota).
 

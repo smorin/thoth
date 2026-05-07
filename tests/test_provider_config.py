@@ -10,6 +10,7 @@ import types
 import warnings
 from pathlib import Path
 from typing import Any, cast
+from unittest.mock import patch
 
 import pytest
 
@@ -333,6 +334,97 @@ def test_openai_default_when_neither_present() -> None:
     provider = OpenAIProvider(api_key="dummy", config={"kind": "immediate"})
     assert provider._resolve_provider_config_value("temperature", 0.7) == 0.7
     assert provider._resolve_provider_config_value("max_tool_calls", None) is None
+
+
+class _OpenAIEmptyStreamCM:
+    """Async context manager that yields no upstream events."""
+
+    async def __aenter__(self) -> _OpenAIEmptyStreamCM:
+        return self
+
+    async def __aexit__(self, exc_type: Any, exc: Any, tb: Any) -> None:
+        return None
+
+    def __aiter__(self) -> _OpenAIEmptyStreamCM:
+        return self
+
+    async def __anext__(self) -> Any:
+        raise StopAsyncIteration
+
+
+def _capture_openai_stream_request(provider: OpenAIProvider) -> dict[str, Any]:
+    captured: dict[str, Any] = {}
+
+    def fake_stream(**kwargs: Any) -> _OpenAIEmptyStreamCM:
+        captured.update(kwargs)
+        return _OpenAIEmptyStreamCM()
+
+    async def drive() -> list[Any]:
+        return [event async for event in provider.stream("hi", mode="openai_reasoning")]
+
+    with patch.object(provider.client.responses, "stream", new=fake_stream):
+        asyncio.run(drive())
+    return captured
+
+
+def test_openai_reasoning_builtin_mode_enables_reasoning_and_web_search() -> None:
+    """Built-in OpenAI reasoning mode opts into reasoning summaries + web search."""
+    from thoth.config import BUILTIN_MODES
+
+    mode = BUILTIN_MODES["openai_reasoning"]
+    assert mode["provider"] == "openai"
+    assert mode["model"] == "o3"
+    assert mode["kind"] == "immediate"
+    assert mode["openai"] == {"reasoning_summary": "auto", "web_search": True}
+
+
+def test_openai_stream_namespaced_reasoning_summary_reaches_request() -> None:
+    """[modes.X.openai].reasoning_summary enables Responses stream reasoning."""
+    provider = OpenAIProvider(
+        api_key="dummy",
+        config={
+            "model": "o3",
+            "kind": "immediate",
+            "openai": {"reasoning_summary": "auto"},
+        },
+    )
+
+    captured = _capture_openai_stream_request(provider)
+
+    assert captured["reasoning"] == {"summary": "auto"}
+
+
+def test_openai_stream_web_search_true_reaches_request_tools() -> None:
+    """[modes.X.openai].web_search=true opts immediate streaming into web search."""
+    provider = OpenAIProvider(
+        api_key="dummy",
+        config={
+            "model": "o3",
+            "kind": "immediate",
+            "openai": {"web_search": True},
+        },
+    )
+
+    captured = _capture_openai_stream_request(provider)
+
+    assert captured["tools"] == [{"type": "web_search_preview"}]
+
+
+def test_openai_stream_web_search_false_omits_request_tools() -> None:
+    """[modes.X.openai].web_search=false leaves immediate streaming ungrounded."""
+    provider = OpenAIProvider(
+        api_key="dummy",
+        config={
+            "model": "o3",
+            "kind": "immediate",
+            "openai": {"reasoning_summary": "auto", "web_search": False},
+        },
+    )
+
+    captured = _capture_openai_stream_request(provider)
+
+    assert captured["reasoning"] == {"summary": "auto"}
+    assert "tools" not in captured
 
 
 # ---------------------------------------------------------------------------

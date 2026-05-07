@@ -7,6 +7,7 @@ Follows the `asyncio.run(coro)` sync-wrap pattern from tests/test_vcr_openai.py
 from __future__ import annotations
 
 import asyncio
+import logging
 from typing import Any
 from unittest.mock import AsyncMock, patch
 
@@ -463,3 +464,53 @@ def test_openai_stream_url_annotation_via_dict_shape() -> None:
     assert citation.url == "https://example.com/b"
     # Title falls back to URL when missing.
     assert citation.title == "https://example.com/b"
+
+
+def test_openai_stream_skips_typed_non_url_annotation_even_with_url(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Known non-url annotation types are skipped even if they carry a URL field."""
+    caplog.set_level(logging.WARNING, logger="thoth.providers.openai")
+    fake_events = [
+        _FakeStreamEvent(
+            type="response.output_text.annotation.added",
+            annotation={
+                "type": "file_citation",
+                "url": "https://should-not-render.example",
+                "title": "File citation",
+            },
+            annotation_index=0,
+        ),
+    ]
+    provider = OpenAIProvider(api_key="k", config={"model": "gpt-4o-mini"})
+    events = _consume_stream_with_events(provider, fake_events)
+
+    assert [e for e in events if e.kind == "citation"] == []
+    assert "file_citation" in caplog.text
+    assert "https://should-not-render.example" in caplog.text
+
+
+def test_openai_stream_accepts_missing_type_url_annotation_with_warning(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Legacy annotations with url/title but no type still render and warn."""
+    caplog.set_level(logging.WARNING, logger="thoth.providers.openai")
+    fake_events = [
+        _FakeStreamEvent(
+            type="response.output_text.annotation.added",
+            annotation={
+                "url": "https://legacy.example",
+                "title": "Legacy URL",
+            },
+            annotation_index=0,
+        ),
+    ]
+    provider = OpenAIProvider(api_key="k", config={"model": "gpt-4o-mini"})
+    events = _consume_stream_with_events(provider, fake_events)
+
+    citation_events = [e for e in events if e.kind == "citation"]
+    assert len(citation_events) == 1
+    assert citation_events[0].citation is not None
+    assert citation_events[0].citation.url == "https://legacy.example"
+    assert "missing" in caplog.text.lower()
+    assert "https://legacy.example" in caplog.text

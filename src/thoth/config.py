@@ -142,6 +142,17 @@ BUILTIN_MODES = {
         "system_prompt": "You are a helpful assistant for quick analysis.",
         "description": "Quick thinking and analysis mode for simple questions.",
     },
+    "openai_reasoning": {
+        "provider": "openai",
+        "model": "o3",
+        "kind": "immediate",
+        "system_prompt": "You are a helpful assistant for quick, grounded analysis.",
+        "description": "OpenAI o3 immediate mode with reasoning summaries and web search grounding.",
+        "openai": {
+            "reasoning_summary": "auto",
+            "web_search": True,
+        },
+    },
     "deep_research": {
         "provider": "openai",
         "model": "o3-deep-research",

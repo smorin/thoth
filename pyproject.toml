@@ -69,8 +69,8 @@ testpaths = ["tests"]
 # Real-API tests are gated out of the default suite via `addopts`:
 #   - `extended`: model-kind drift watch (P18 Phase I); nightly via
 #     .github/workflows/extended.yml. Run with `just test-extended`.
-#   - `extended_slow`: opt-in OpenAI completion lifecycle checks; run manually
-#     with THOTH_EXTENDED_SLOW=1.
+#   - `extended_slow`: opt-in provider completion lifecycle checks; run
+#     manually with THOTH_EXTENDED_SLOW=1.
 #   - `live_api`: workflow regression suite (P20); weekly via
 #     .github/workflows/live-api.yml. Run with `just test-live-api`.
 markers = [

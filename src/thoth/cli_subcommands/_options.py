@@ -7,6 +7,11 @@ subcommand. This module is the single source of truth.
 Order of decorators matters for `--help` rendering: `_RESEARCH_OPTIONS` is
 applied in reverse so the resulting `--help` order matches list order.
 
+Strict pin convention: every intentional addition/removal in `_RESEARCH_OPTIONS`
+must update `tests/test_p16_pr2_options_decorator.py` with the new expected
+count and the source project/task note. This keeps the shared root/ask option
+surface auditable instead of drifting silently.
+
 Note: `--resume` and `--version` (kept inline on `cli` for now; `--resume`
 removed in Task 5) now render AFTER the research-options stack rather than
 at their historical positions 5/12 in PR1.5. Parity is preserved via the
@@ -22,6 +27,8 @@ import click
 
 # Each entry is a (args, kwargs) pair for click.option(*args, **kwargs).
 # Applied in REVERSE so the resulting --help order matches list order.
+# When changing this list, update the strict count/source-project assertion in
+# tests/test_p16_pr2_options_decorator.py in the same patch.
 _RESEARCH_OPTIONS: list[tuple[tuple, dict]] = [
     (("--mode", "-m", "mode_opt"), {"help": "Research mode"}),
     (("--prompt", "-q", "prompt_opt"), {"help": "Research prompt"}),

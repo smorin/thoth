@@ -15,7 +15,8 @@ def test_research_options_decorator_adds_all_research_flags():
     assert len(_RESEARCH_OPTIONS) == 27, (
         f"expected 27 research-options entries (21 from PR2 + 2 from P18 Phase E + "
         f"1 from P21 + 1 from P18-T27 + 1 from P23 --model + 1 from P24 --api-key-gemini), "
-        f"got {len(_RESEARCH_OPTIONS)}"
+        f"got {len(_RESEARCH_OPTIONS)}. If this is intentional, update the expected "
+        "count and append the source project/task note in this assertion."
     )
 
     @click.command()

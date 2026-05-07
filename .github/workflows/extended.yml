@@ -3,9 +3,9 @@
 #
 # Runs `pytest -m extended` which exercises every entry in KNOWN_MODELS
 # against live provider APIs to detect drift between thoth's declared
-# `kind` and what the upstream API actually does. Gated on OPENAI_API_KEY
-# being set as a repo secret. The job is informational — failures notify
-# the team but do NOT block PR merges.
+# `kind` and what the upstream API actually does. Gated on provider API-key
+# repo secrets. The job is informational — failures notify the team but do
+# NOT block PR merges.
 
 name: Extended Contract Tests (nightly)
 

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 
 def test_invalid_key_thotherror_shape() -> None:
     """The shared helper produces a ThothError with exit_code=2 and a settings hint."""
@@ -63,3 +65,56 @@ def test_extract_unsupported_param_handles_colon_form() -> None:
         _extract_unsupported_param("Unsupported parameter: 'temperature' for o3-deep-research")
         == "temperature"
     )
+
+
+def test_render_sources_block_empty_input_returns_empty_string() -> None:
+    """Shared sources renderer returns cleanly empty output for no citations."""
+    from thoth.providers._helpers import render_sources_block
+
+    assert render_sources_block([]) == ""
+
+
+def test_render_sources_block_dedupes_by_url_first_title_wins() -> None:
+    """Duplicate source URLs render once; the first title is preserved."""
+    from thoth.providers._helpers import render_sources_block
+    from thoth.providers.base import Citation
+
+    rendered = render_sources_block(
+        [
+            Citation(title="First title", url="https://example.com/a"),
+            Citation(title="Second title", url="https://example.com/a"),
+            Citation(title="Other title", url="https://example.com/b"),
+        ]
+    )
+
+    assert rendered.startswith("## Sources")
+    assert rendered.count("https://example.com/a") == 1
+    assert "First title" in rendered
+    assert "Second title" not in rendered
+    assert "Other title" in rendered
+
+
+def test_render_sources_block_sanitizes_title_and_url() -> None:
+    """Shared sources renderer applies the markdown link safety helpers."""
+    from thoth.providers._helpers import render_sources_block
+    from thoth.providers.base import Citation
+
+    rendered = render_sources_block(
+        [Citation(title="<script>alert(1)</script>", url="javascript:alert(1)")]
+    )
+
+    assert "<script>" not in rendered
+    assert "javascript:" not in rendered
+
+
+def test_debug_print_empty_response_labels_provider_and_truncates(capsys) -> None:
+    """Shared debug helper labels the provider and caps large response dumps."""
+    from thoth.providers._helpers import debug_print_empty_response
+
+    response = SimpleNamespace(payload="x" * 5000)
+    debug_print_empty_response(response, provider_label="Gemini")
+
+    captured = capsys.readouterr()
+    assert "Gemini" in captured.err
+    assert "no content" in captured.err.lower()
+    assert len(captured.err) < 1400

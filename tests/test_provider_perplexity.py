@@ -192,8 +192,34 @@ def test_perplexity_request_default_stream_mode_is_concise() -> None:
     assert extra_body.get("stream_mode") == "concise"
 
 
-def test_perplexity_request_passes_direct_sdk_kwargs() -> None:
-    """TS02: max_tokens / temperature / top_p / stop / response_format pass directly."""
+def test_perplexity_request_passes_namespaced_direct_sdk_kwargs() -> None:
+    """TS02: [modes.X.perplexity] direct SDK keys pass directly."""
+    captured: dict[str, Any] = {}
+    config = {
+        "model": "sonar",
+        "kind": "immediate",
+        "perplexity": {
+            "max_tokens": 512,
+            "temperature": 0.4,
+            "top_p": 0.9,
+            "stop": ["END"],
+            "response_format": {"type": "text"},
+        },
+    }
+    provider = PerplexityProvider(api_key="pplx-test", config=config)
+    provider.client = _stub_client(captured)
+    asyncio.run(provider.submit("hi", mode="perplexity_quick"))
+    assert captured["max_tokens"] == 512
+    assert captured["temperature"] == 0.4
+    assert captured["top_p"] == 0.9
+    assert captured["stop"] == ["END"]
+    assert captured["response_format"] == {"type": "text"}
+    for key in ("max_tokens", "temperature", "top_p", "stop", "response_format"):
+        assert key not in captured["extra_body"]
+
+
+def test_perplexity_request_ignores_flat_direct_sdk_kwargs() -> None:
+    """Flat direct SDK keys are no longer supported; use [modes.X.perplexity]."""
     captured: dict[str, Any] = {}
     config = {
         "model": "sonar",
@@ -207,11 +233,24 @@ def test_perplexity_request_passes_direct_sdk_kwargs() -> None:
     provider = PerplexityProvider(api_key="pplx-test", config=config)
     provider.client = _stub_client(captured)
     asyncio.run(provider.submit("hi", mode="perplexity_quick"))
-    assert captured["max_tokens"] == 512
-    assert captured["temperature"] == 0.4
-    assert captured["top_p"] == 0.9
-    assert captured["stop"] == ["END"]
-    assert captured["response_format"] == {"type": "text"}
+    for key in ("max_tokens", "temperature", "top_p", "stop", "response_format"):
+        assert key not in captured
+
+
+def test_perplexity_namespaced_direct_sdk_kwargs_override_flat() -> None:
+    """When both shapes exist, only the namespaced value is used."""
+    captured: dict[str, Any] = {}
+    config = {
+        "model": "sonar",
+        "kind": "immediate",
+        "temperature": 0.1,
+        "perplexity": {"temperature": 0.7},
+    }
+    provider = PerplexityProvider(api_key="pplx-test", config=config)
+    provider.client = _stub_client(captured)
+    asyncio.run(provider.submit("hi", mode="perplexity_quick"))
+    assert captured["temperature"] == 0.7
+    assert "temperature" not in captured["extra_body"]
 
 
 # ---------------------------------------------------------------------------

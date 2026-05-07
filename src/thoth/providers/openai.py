@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import warnings
 from datetime import datetime
 from typing import Any
@@ -10,7 +11,6 @@ from uuid import uuid4
 import httpx
 import openai
 from openai import AsyncOpenAI
-from rich.console import Console
 from tenacity import (
     retry,
     retry_if_exception_type,
@@ -28,12 +28,16 @@ from thoth.errors import (
     ThothError,
 )
 from thoth.models import ModelCache
-from thoth.providers._helpers import _extract_unsupported_param, _invalid_key_thotherror
+from thoth.providers._helpers import (
+    _extract_unsupported_param,
+    _invalid_key_thotherror,
+    debug_print_empty_response,
+    render_sources_block,
+)
 from thoth.providers._status import _translate_provider_status
 from thoth.providers.base import Citation, ResearchProvider
-from thoth.utils import md_link_title, md_link_url
 
-_console = Console()
+_LOG = logging.getLogger(__name__)
 
 # Provider-status → Thoth-status template. Used by check_status; the in_progress
 # template's progress is overridden at runtime from response.metadata; failed
@@ -65,6 +69,53 @@ _DIRECT_SDK_KEYS_OPENAI: tuple[str, ...] = (
 _FRAMEWORK_FLAT_KEYS_OPENAI: frozenset[str] = frozenset(
     {"openai", "kind", "model", "timeout", "background"}
 )
+
+
+def _annotation_get(annotation: Any, key: str) -> Any:
+    """Read an annotation field from either dict or SDK object shape."""
+    if isinstance(annotation, dict):
+        return annotation.get(key)
+    return getattr(annotation, key, None)
+
+
+def _annotation_debug_value(annotation: Any) -> Any:
+    """Return a compact value suitable for warning logs."""
+    if isinstance(annotation, dict):
+        return annotation
+    attrs = getattr(annotation, "__dict__", None)
+    if isinstance(attrs, dict):
+        return {k: v for k, v in attrs.items() if not k.startswith("_")}
+    return repr(annotation)
+
+
+def _url_citation_from_annotation(annotation: Any) -> Citation | None:
+    """Normalize a Responses API annotation into a URL citation or skip it.
+
+    Missing type is treated as a legacy URL-citation shape for backward
+    compatibility. Known non-URL types with URL-shaped fields are skipped and
+    warned so provider drift is visible without rendering misleading sources.
+    """
+    url = _annotation_get(annotation, "url")
+    if not url:
+        return None
+
+    annotation_type = _annotation_get(annotation, "type")
+    debug_value = _annotation_debug_value(annotation)
+    if annotation_type is None:
+        _LOG.warning(
+            "OpenAI annotation with URL is missing type; treating as url_citation: %r",
+            debug_value,
+        )
+    elif str(annotation_type) != "url_citation":
+        _LOG.warning(
+            "OpenAI annotation with URL has unsupported type %r; skipping: %r",
+            annotation_type,
+            debug_value,
+        )
+        return None
+
+    title = _annotation_get(annotation, "title") or url
+    return Citation(title=str(title), url=str(url))
 
 
 def _rate_limit_error_is_quota(exc: BaseException) -> bool:
@@ -186,7 +237,7 @@ class OpenAIProvider(ResearchProvider):
         # Model will be passed from mode configuration, default to o3
         self.model = self.config.get("model", "o3")
         self.jobs: dict[str, dict[str, Any]] = {}  # Store job information for async tracking
-        self.model_cache = ModelCache("openai")  # Initialize cache for OpenAI
+        self.model_cache = ModelCache(_PROVIDER_NAME_OPENAI)  # Initialize cache for OpenAI
 
         # Add timeout configuration
         timeout = self.config.get("timeout", 30.0)
@@ -498,16 +549,11 @@ class OpenAIProvider(ResearchProvider):
             mirror `get_result()`'s URL-only filter at lines ~602-610)
           * (terminal stream exit)                    -> kind="done"
 
-        Caveat — request shape limits what the API actually emits:
-          The current request omits `reasoning={"summary": "auto"}` and
-          tools (`web_search_preview` etc.), so the upstream API will not
-          fire reasoning-summary or annotation-added events for the typical
-          immediate-path request. The handlers below are wired through for
-          cross-provider parity (matches Perplexity / Gemini four-kind
-          contract) and to future-proof against config changes that enable
-          reasoning-on-immediate or search-on-immediate. Whether to enable
-          those request fields here is a product decision tracked as a
-          follow-up to P24, not an audit finding.
+        Request shape:
+          [modes.X.openai].reasoning_summary enables reasoning summaries.
+          [modes.X.openai].web_search=true enables the web_search_preview tool.
+          Web search is opt-in for user modes and enabled by the builtin
+          openai_reasoning mode.
         """
         from thoth.providers.base import StreamEvent
 
@@ -532,6 +578,11 @@ class OpenAIProvider(ResearchProvider):
             "model": self.model,
             "input": input_messages,
         }
+        reasoning_summary = self._resolve_provider_config_value("reasoning_summary")
+        if reasoning_summary is not None:
+            request_params["reasoning"] = {"summary": reasoning_summary}
+        if self._resolve_provider_config_value("web_search", False):
+            request_params["tools"] = [{"type": "web_search_preview"}]
         # o-series response models reject `temperature`; only set it on chat-style models
         if not self.model.startswith("o"):
             request_params["temperature"] = self._resolve_provider_config_value("temperature", 0.7)
@@ -550,25 +601,15 @@ class OpenAIProvider(ResearchProvider):
                             yield StreamEvent(kind="reasoning", text=delta)
                     elif event_type == "response.output_text.annotation.added":
                         ann = getattr(event, "annotation", None)
-                        # Annotation may be a pydantic model or a dict; mirror
-                        # get_result()'s defensive attr-or-key access. Skip
-                        # non-URL annotations (file_citation, file_path, etc.).
                         if ann is None:
                             continue
-                        url = getattr(ann, "url", None) or (
-                            ann.get("url") if isinstance(ann, dict) else None
-                        )
-                        if not url:
+                        citation = _url_citation_from_annotation(ann)
+                        if citation is None:
                             continue
-                        title = (
-                            getattr(ann, "title", None)
-                            or (ann.get("title") if isinstance(ann, dict) else None)
-                            or url
-                        )
                         yield StreamEvent(
                             kind="citation",
-                            text=str(title),
-                            citation=Citation(title=str(title), url=str(url)),
+                            text=citation.title,
+                            citation=citation,
                         )
                     # Other event types (response.created, response.completed,
                     # response.output_item.*, etc.) are intentionally skipped.
@@ -601,7 +642,7 @@ class OpenAIProvider(ResearchProvider):
 
         # Extract content based on response structure
         content = ""
-        citations: list[dict[str, str]] = []
+        citations: list[Citation] = []
 
         # Handle different response formats
         if hasattr(response, "output"):
@@ -642,14 +683,9 @@ class OpenAIProvider(ResearchProvider):
                             ):
                                 texts.append(getattr(content_item, "text", ""))
                                 for ann in getattr(content_item, "annotations", None) or []:
-                                    url = getattr(ann, "url", None) or (
-                                        ann.get("url") if isinstance(ann, dict) else None
-                                    )
-                                    title = getattr(ann, "title", None) or (
-                                        ann.get("title") if isinstance(ann, dict) else url
-                                    )
-                                    if url:
-                                        citations.append({"url": url, "title": title or url})
+                                    citation = _url_citation_from_annotation(ann)
+                                    if citation is not None:
+                                        citations.append(citation)
                     else:
                         texts.append(str(target_message.content))
                 content = "\n".join(texts) if texts else ""
@@ -678,24 +714,7 @@ class OpenAIProvider(ResearchProvider):
         # When no content can be extracted, log debug info to console (verbose only)
         if not content and response:
             if verbose:
-                try:
-                    if hasattr(response, "model_dump_json"):
-                        debug_info = response.model_dump_json()
-                    elif hasattr(response, "__dict__"):
-                        debug_info = str(
-                            {
-                                k: str(v)[:100]
-                                for k, v in response.__dict__.items()
-                                if not k.startswith("_")
-                            }
-                        )
-                    else:
-                        debug_info = repr(response)
-                except Exception:
-                    debug_info = f"<{type(response).__name__}>"
-                _console.print(
-                    f"[dim]Debug: no content found in response. Structure: {debug_info}[/dim]"
-                )
+                debug_print_empty_response(response, provider_label="OpenAI")
             return "No content in response"
 
         # Extract reasoning from the new format if available
@@ -723,14 +742,9 @@ class OpenAIProvider(ResearchProvider):
                 content = f"## Reasoning Summary\n{reasoning_summary}\n\n{content}"
 
         # Append deduplicated sources section when citations are present
-        if citations:
-            seen: set[str] = set()
-            source_lines: list[str] = []
-            for c in citations:
-                if c["url"] not in seen:
-                    seen.add(c["url"])
-                    source_lines.append(f"- [{md_link_title(c['title'])}]({md_link_url(c['url'])})")
-            content += "\n\n## Sources\n\n" + "\n".join(source_lines)
+        sources = render_sources_block(citations)
+        if sources:
+            content += f"\n\n{sources}"
 
         return content if content else "No content in response"
 
@@ -743,21 +757,21 @@ class OpenAIProvider(ResearchProvider):
                 "type": "response",
                 "description": "Standard response model for general tasks",
                 "created": 1719500000,  # Approximate timestamp
-                "owned_by": "openai",
+                "owned_by": _PROVIDER_NAME_OPENAI,
             },
             {
                 "id": "o3-deep-research",
                 "type": "deep_research",
                 "description": "Full deep research model with web search and code execution",
                 "created": 1719500001,
-                "owned_by": "openai",
+                "owned_by": _PROVIDER_NAME_OPENAI,
             },
             {
                 "id": "o4-mini-deep-research",
                 "type": "deep_research",
                 "description": "Fast lightweight research model for quick answers",
                 "created": 1719500002,
-                "owned_by": "openai",
+                "owned_by": _PROVIDER_NAME_OPENAI,
             },
         ]
 
@@ -781,7 +795,7 @@ class OpenAIProvider(ResearchProvider):
             all_models = response_models + api_models
             return sorted(all_models, key=lambda x: x.get("created", 0), reverse=True)
         except Exception as e:
-            raise ProviderError("openai", f"Failed to fetch models: {str(e)}")
+            raise ProviderError(_PROVIDER_NAME_OPENAI, f"Failed to fetch models: {str(e)}")
 
     async def list_models_cached(
         self, force_refresh: bool = False, no_cache: bool = False

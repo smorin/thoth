@@ -91,6 +91,7 @@ For related command help, run `thoth config --help`.
    ```bash
    export OPENAI_API_KEY="your-openai-key"
    export PERPLEXITY_API_KEY="your-perplexity-key"
+   export GEMINI_API_KEY="your-gemini-key"
    ```
 
 3. **Check provider configuration:**
@@ -115,6 +116,7 @@ thoth deep_research "your research prompt"
 thoth clarification "ambiguous topic needing clarity"
 thoth exploration "broad topic to explore"
 thoth thinking "quick analysis task"
+thoth openai_reasoning "grounded OpenAI reasoning task"
 
 # Use specific provider
 thoth "explain quantum computing" --provider openai
@@ -165,7 +167,9 @@ thoth "prompt" --quiet
 
 ### Streaming output for immediate modes (P18, v3.1.0+)
 
-Immediate-kind modes (`default`, `thinking`, `clarification`) stream tokens
+Immediate-kind modes (`default`, `thinking`, `clarification`, `openai_reasoning`,
+`perplexity_quick`, `perplexity_pro`, `perplexity_reasoning`, `gemini_quick`,
+`gemini_pro`, `gemini_reasoning`) stream tokens
 to stdout as they arrive — no progress bar, no operation-ID echo, no
 resume hint, and no default result file. Use `--out` to redirect or tee:
 
@@ -182,6 +186,22 @@ thoth ask "what is X" --mode thinking --out -,answer.md
 
 # Append instead of truncating
 thoth ask "what is X" --mode thinking --out answer.md --append
+```
+
+`openai_reasoning` is the built-in OpenAI immediate mode for grounded answers:
+it sends `[modes.openai_reasoning.openai].reasoning_summary = "auto"` and
+`web_search = true`. Custom OpenAI immediate modes can opt in or out with the
+same namespace:
+
+```toml
+[modes.my_openai_reasoning]
+provider = "openai"
+model = "o3"
+kind = "immediate"
+
+[modes.my_openai_reasoning.openai]
+reasoning_summary = "auto"
+web_search = false  # set true to enable web_search_preview
 ```
 
 Background-kind modes (e.g. `deep_research`, `quick_research`,
@@ -399,7 +419,7 @@ parallel = true
 thoth --profile all_deep "compare vector databases"
 ```
 
-> **Future-ready: gemini.** A `gemini` provider is planned (see `research/gemini-deep-research-api.v1.md`). Once it ships, you'll be able to add it to the `providers` list above. The profile schema is already future-ready; the runtime support lands in a later project — analogous to the interactive default-mode example below.
+> **Gemini support.** The `gemini` provider supports immediate grounded modes such as `gemini_quick`, `gemini_pro`, and `gemini_reasoning`. Gemini does not currently provide a Thoth background/deep-research mode.
 
 #### Use one deep-research provider
 
@@ -687,7 +707,7 @@ Use `thoth_test` for the actual regression suite. It mixes provider-agnostic CLI
 | `./thoth_test -r --provider mock` | Provider-agnostic tests plus mock-provider coverage | Fastest broad regression run with no real API keys |
 | `./thoth_test -r --provider openai` | Provider-agnostic tests plus OpenAI-specific cases | Validating OpenAI integration with a real key |
 | `./thoth_test -r --all-providers` | Every provider test the suite knows about | Full provider matrix validation |
-| `just test-extended` | Real-API OpenAI contract tests (`pytest -m extended`) | Nightly job; manual when investigating provider-API changes |
+| `just test-extended` | Real-API provider contract tests (`pytest -m extended`) | Nightly job; manual when investigating provider-API changes |
 | `just test-live-api` | Real-API CLI workflow regression suite (`pytest -m live_api`) | Weekly job (Sat 7pm PDT); manual when verifying user-visible streaming/file/secret behavior |
 
 `thoth_test -r` behaves like this:
@@ -726,50 +746,55 @@ just test-skip-interactive
 ./thoth_test -r --provider mock --save-output
 ```
 
-### Real OpenAI Extended Tests
+### Real Provider Extended Tests
 
-The `extended` pytest marker is for live OpenAI calls that mock tests cannot
+The `extended` pytest marker is for live provider calls that mock tests cannot
 prove. The default pytest selection excludes these tests, so they only run when
 you ask for them explicitly.
 
-Fast extended tests should stay minimal because they spend real API budget. The
-current required live scenarios are:
+Fast extended tests should stay intentional because they spend real API budget.
+The current required live scenarios are:
 
 | Scenario ID | What it proves | Cost behavior |
 |------|---------|---------|
+| `test_model_kind_matches_runtime_behavior[...]` | Every `KNOWN_MODELS` OpenAI, Perplexity, and Gemini model kind matches upstream runtime behavior | Immediate models complete; background models use best-effort cleanup |
+| `test_ext_*_mode_*_passthrough` | OpenAI, Perplexity, and Gemini provider request settings reach the real provider-specific request shape | Non-live request-construction guard under the extended marker |
 | `EXT-OAI-IMM-STREAM-TEE` | Immediate OpenAI streaming writes the same live text to stdout and an `--out` file | Completes immediately |
 | `EXT-OAI-BG-JSON-AUTO-ASYNC` | Background `ask --json` auto-submits asynchronously without explicit `--async` | Cancels in cleanup |
 | `EXT-OAI-BG-JSON-EXPLICIT-ASYNC` | Background `ask --async --json` returns the expected submit envelope | Cancels in cleanup |
 | `EXT-OAI-BG-CANCEL-CMD` | `thoth cancel <op-id> --json` cancels a live OpenAI background job through the user-facing CLI | Cancels in test |
 | `EXT-OAI-BG-ASYNC-BLOCKING-RESUME-COMPLETE` | Full lifecycle: async submit, blocking `resume`, completed checkpoint, and output file metadata | Runs to completion; opt-in with `THOTH_EXTENDED_SLOW=1` |
 
-To run the fast live OpenAI extended set manually:
+To run the fast live provider extended set manually:
 
 ```bash
-# If openai.env contains shell-style assignments:
+# Export the provider keys you want this run to cover. If openai.env contains
+# shell-style assignments:
 set -a
 source openai.env
 set +a
 
-# If openai.env is just the raw key instead:
+# If openai.env is just the raw OpenAI key instead:
 export OPENAI_API_KEY="$(cat openai.env)"
+
+# Also export PERPLEXITY_API_KEY and GEMINI_API_KEY for those provider slices.
 
 uv run pytest -m "extended and not extended_slow" tests/extended -v
 ```
 
-To run only the slow full lifecycle test:
+To run only the slow full lifecycle tests:
 
 ```bash
 THOTH_EXTENDED_SLOW=1 uv run pytest \
   -m "extended and extended_slow" \
-  tests/extended/test_openai_real_workflows.py::test_ext_oai_bg_async_blocking_resume_complete_lifecycle \
+  tests/extended \
   -v
 ```
 
-The slow test intentionally lets one background job finish so it can validate
+The slow tests intentionally let background jobs finish so they can validate
 blocking resume, final checkpoint state, result extraction, and output-file
-metadata. Keep it out of routine local validation unless you are explicitly
-checking that lifecycle.
+metadata. Keep them out of routine local validation unless you are explicitly
+checking those lifecycles.
 
 Verification workflow used in this repo:
 
@@ -789,14 +814,15 @@ just test-typecheck
 
 - `OPENAI_API_KEY`: OpenAI API key
 - `PERPLEXITY_API_KEY`: Perplexity API key
+- `GEMINI_API_KEY`: Gemini API key
 - `MOCK_API_KEY`: Mock provider API key (for testing)
 - `THOTH_DEBUG`: Enable debug output (set to 1)
 
 ### API Key Precedence
 
 API keys are resolved in the following order (highest to lowest priority):
-1. Command-line arguments (`--api-key-openai`, `--api-key-perplexity`, `--api-key-mock`)
-2. Environment variables (`OPENAI_API_KEY`, `PERPLEXITY_API_KEY`, `MOCK_API_KEY`)
+1. Command-line arguments (`--api-key-openai`, `--api-key-perplexity`, `--api-key-gemini`, `--api-key-mock`)
+2. Environment variables (`OPENAI_API_KEY`, `PERPLEXITY_API_KEY`, `GEMINI_API_KEY`, `MOCK_API_KEY`)
 3. Configuration file (`~/.config/thoth/thoth.config.toml`)
 
 ## Exit Codes
