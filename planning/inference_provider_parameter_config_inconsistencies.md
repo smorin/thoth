@@ -21,15 +21,16 @@ IDs are stable and never reused.
 | GAP-005 | gap | Gemini timeout override is not applied to the SDK client | Runtime timeout is copied into Gemini config but Gemini client construction does not consume it. | open | matrix row `timeout`; code `src/thoth/providers/gemini.py` |
 | GAP-006 | gap | Full parameter matrix is not wired through adapters | Several desired matrix parameters have no adapter translation path. | open | matrix section Parameter Matrix |
 | GAP-007 | gap | L9 clarification bypasses shared provider normalization | Interactive clarification reads OpenAI config directly and constructs `AsyncOpenAI` directly. | open | matrix section Configuration Layers L9; DEC-003 |
-| INC-001 | inconsistency | L4 flat mode params are copied but consumed unevenly | OpenAI reads flat mode params with a warning, while Perplexity and Gemini ignore flat direct SDK keys. | open | matrix section Configuration Layers L4/L6; DEC-001 |
-| INC-002 | inconsistency | Root provider defaults behave differently by provider | OpenAI can half-read root flat values, while Perplexity/Gemini generally require provider namespaces for request params. | open | matrix section Configuration Layers L2/L3; GAP-001 |
-| INC-003 | inconsistency | Provider namespace unknown-key policy diverges | Perplexity forwards unknown namespace keys, Gemini allowlists, and OpenAI reads only explicit keys. | open | matrix section Resolution Rules; DEC-004 |
-| INC-004 | inconsistency | Built-in mode overrides are shallow | User mode overlays replace nested built-in provider namespaces instead of deep-merging them. | open | matrix section Resolution Rules |
+| INC-001 | inconsistency | L4 flat mode params are copied but consumed unevenly | Common flat params such as `temperature` are copied, but OpenAI, Perplexity sync/async, and Gemini consume them through different paths. | accepted | matrix section Configuration Layers L4/L6; DEC-001 |
+| INC-002 | inconsistency | Root provider defaults behave differently by provider | OpenAI can half-read root flat values, while Perplexity/Gemini generally require provider namespaces for request params. | accepted | matrix section Configuration Layers L2/L3; GAP-001 |
+| INC-003 | inconsistency | Provider namespace unknown-key policy diverges | Perplexity forwards unknown namespace keys, Gemini allowlists, and OpenAI reads only explicit keys. | accepted | matrix section Resolution Rules; DEC-004 |
+| INC-004 | inconsistency | Built-in mode overrides are shallow | User mode overlays replace nested built-in provider namespaces instead of deep-merging them. | accepted | matrix section Resolution Rules |
 | INC-005 | inconsistency | Runtime timeout has provider-specific effects | OpenAI and Perplexity use timeout in client construction; Gemini currently does not. | open | matrix row `timeout`; GAP-005 |
 | INC-006 | inconsistency | Runtime provider override can mismatch mode model and namespace | `--provider` can select a provider while retaining the selected mode's model and unrelated provider namespace. | open | matrix section Resolution Rules; DEC-005 |
 | INC-007 | inconsistency | L9 is OpenAI-only while main providers are multi-provider | Clarification has its own OpenAI Chat Completions path instead of the shared OpenAI/Perplexity/Gemini stack. | open | matrix section Configuration Layers L9; DEC-003 |
 | INC-008 | inconsistency | Documentation and tests disagree on root provider defaults | Auth help documents provider tables as API-key-only while skipped tests describe desired request defaults. | open | matrix section Configuration Layers L2-L3; GAP-001 |
 | INC-009 | inconsistency | Perplexity `search_context_size` needs upstream validation | Local built-ins and adapter defaults use `web_search_options.search_context_size`, but the current Sonar API reference does not clearly list it as a request-body field. | open | matrix row `search_context_size`; DEC-004 |
+| INC-010 | inconsistency | OpenAI `system_prompt` uses developer-role input instead of `instructions` | Desired state names OpenAI `instructions`, while current code sends an equivalent developer-role input message. | open | matrix row `system_prompt`; code `src/thoth/providers/openai.py` |
 | DEC-001 | decision | Define L4 flat common params or deprecate flat passthrough | Decide whether flat mode keys are a fixed common set or arbitrary provider passthrough. | proposed | matrix section Configuration Layers L4/L6 |
 | DEC-002 | decision | Normalize max token split forms | Decide whether users configure one internal token budget or expose every provider spelling. | proposed | matrix row `max_output_tokens` |
 | DEC-003 | decision | L9 clarification integration boundary | Decide whether clarification folds into the provider stack or remains separate while reusing normalization. | proposed | matrix section Configuration Layers L9 |
@@ -159,31 +160,32 @@ An inconsistency means a behavior exists, but the semantics differ across layers
 
 | ID | Title | Description | Status | Recommendation | Choices | References |
 |---|---|---|---|---|---|---|
-| INC-001 | L4 flat mode params are copied but consumed unevenly | OpenAI reads flat mode params with a warning, while Perplexity and Gemini ignore flat direct SDK keys. | open | Define L4 as a small common set and route it through the normalizer. | A fixed common set; B namespace-only; C compatibility passthrough | matrix L4/L6; DEC-001 |
-| INC-002 | Root provider defaults behave differently by provider | OpenAI can half-read root flat values, while Perplexity/Gemini generally require provider namespaces for request params. | open | Treat L2/L3 as provider defaults normalized into provider namespaces. | A namespaced defaults; B auth/client-only; C flat passthrough | GAP-001; DEC-004 |
-| INC-003 | Provider namespace unknown-key policy diverges | Perplexity forwards unknown namespace keys, Gemini allowlists, and OpenAI reads only explicit keys. | open | Validate known keys and require explicit extension bags for arbitrary passthrough. | A extension bags; B strict allowlists; C provider-specific policy | DEC-004 |
-| INC-004 | Built-in mode overrides are shallow | User mode overlays replace nested built-in provider namespaces instead of deep-merging them. | open | Deep-merge mode dictionaries consistently with global config layers. | A deep merge; B replacement with docs; C copy built-ins before edits | DEC-006 |
+| INC-001 | L4 flat mode params are copied but consumed unevenly | Common flat params such as `temperature` are copied, but OpenAI, Perplexity sync/async, and Gemini consume them through different paths. | accepted | Define L4 as a small common set and route it through the normalizer. | A fixed common set accepted | matrix L4/L6; DEC-001 |
+| INC-002 | Root provider defaults behave differently by provider | OpenAI can half-read root flat values, while Perplexity/Gemini generally require provider namespaces for request params. | accepted | Treat `[providers.NAME]` as the root provider namespace with recognized auth/client fields and recognized request-default fields. | A mixed recognized fields accepted | GAP-001; DEC-004 |
+| INC-003 | Provider namespace unknown-key policy diverges | Perplexity forwards unknown namespace keys, Gemini allowlists, and OpenAI reads only explicit keys. | accepted | Validate known keys and require explicit extension bags for arbitrary passthrough. | A extension bags accepted | DEC-004 |
+| INC-004 | Built-in mode overrides are shallow | User mode overlays replace nested built-in provider namespaces instead of deep-merging them. | accepted | Deep-merge mode dictionaries consistently with global config layers. | A deep merge accepted | DEC-006 |
 | INC-005 | Runtime timeout has provider-specific effects | OpenAI and Perplexity use timeout in client construction; Gemini currently does not. | open | Make `timeout` a required provider client/runtime control. | A wire all providers; B document unsupported; C split per-provider timeout | GAP-005 |
 | INC-006 | Runtime provider override can mismatch mode model and namespace | `--provider` can select a provider while retaining the selected mode's model and unrelated provider namespace. | open | Validate provider/model/namespace compatibility before construction. | A validate and error; B require `--model`; C allow expert override | DEC-005 |
 | INC-007 | L9 is OpenAI-only while main providers are multi-provider | Clarification has its own OpenAI Chat Completions path instead of the shared OpenAI/Perplexity/Gemini stack. | open | Keep L9 UX config separate but reuse provider normalization for model calls. | A reuse normalizer; B separate OpenAI path; C fold into modes | GAP-007; DEC-003 |
 | INC-008 | Documentation and tests disagree on root provider defaults | Auth help documents provider tables as API-key-only while skipped tests describe desired request defaults. | open | Make docs, skipped tests, and matrix state the same chosen contract. | A docs say deferred; B implement and document; C remove aspirational tests | GAP-001 |
 | INC-009 | Perplexity `search_context_size` needs upstream validation | Local built-ins and adapter defaults use `web_search_options.search_context_size`, but the current Sonar API reference does not clearly list it as a request-body field. | open | Verify against current docs/live behavior before keeping it in the desired matrix. | A verify and keep; B remove; C unstable extension | DEC-004 |
+| INC-010 | OpenAI `system_prompt` uses developer-role input instead of `instructions` | Desired state names OpenAI `instructions`, while current code sends an equivalent developer-role input message. | open | Use top-level `instructions` for OpenAI `system_prompt` during adapter normalization. | A switch to `instructions`; B document developer-role input as canonical; C allow both with one canonical preference | matrix row `system_prompt` |
 
 <a id="inc-001"></a>
 
 ### INC-001 - L4 Flat Mode Params Are Copied But Consumed Unevenly
 
-- **Description:** OpenAI reads flat mode params with a warning, while Perplexity and Gemini ignore flat direct SDK keys.
+- **Description:** Common flat params such as `temperature` are copied, but OpenAI, Perplexity sync/async, and Gemini consume them through different paths.
 - **Kind:** inconsistency
-- **Status:** open
+- **Status:** accepted
 - **Layers affected:** L4, L6
 - **Providers affected:** OpenAI, Perplexity, Gemini
 - **Source:** `src/thoth/providers/__init__.py:85-95`; `src/thoth/providers/openai.py:246-281`; `tests/test_provider_perplexity.py:221-253`; `src/thoth/providers/gemini.py:292-320`
 - **Context:** L4/L6 are the only provider-neutral places in the proposed stack where a user can say "for this mode, use this common inference parameter" without repeating provider namespaces. The current implementation also uses this flat location as a broad passthrough bucket.
-- **Detail:** The factory copies flat mode keys into provider config after skipping metadata and provider names. OpenAI still reads those copied flat keys through `_resolve_provider_config_value()`, but warns that the user should migrate to `[modes.X.openai]`. Perplexity tests assert flat direct SDK kwargs are ignored and only `[modes.X.perplexity]` direct SDK kwargs are consumed. Gemini only reads `config["gemini"]`. The practical result is that `[modes.brief] temperature = 0.2` can affect OpenAI, be ignored by Perplexity, and be ignored by Gemini even though the config shape looks provider-neutral.
+- **Detail:** The factory copies flat mode keys into provider config after skipping metadata and provider names. OpenAI reads namespace values first, then copied flat keys through `_resolve_provider_config_value()` with a `DeprecationWarning`. Perplexity sync reads namespace values first, then root/flat provider config for direct SDK keys, while Perplexity async forwards only the `perplexity` namespace into `request.*`. Gemini only reads `config["gemini"]`. The practical result is that `[modes.brief] temperature = 0.2` can affect OpenAI, affect Perplexity sync through a different fallback path, be ignored by Perplexity async, and be ignored by Gemini even though the config shape looks provider-neutral.
 - **Recommendation:** Define L4/L6 as a small fixed common parameter set and route those keys through a shared normalizer before adapter translation. Keep provider-specific fields in L5/L7 namespaces. Add deprecation handling for any historical flat keys that are not in the common set.
-- **Resolution choices:** Option A (recommended): fixed common set for L4/L6, provider namespaces for everything else. Option B: remove flat common params entirely and require provider namespaces for all request controls. Option C: keep broad flat passthrough temporarily but require warnings and compatibility tests for each provider.
-- **References:** matrix section Configuration Layers L4/L6; matrix row `temperature`; DEC-001
+- **Resolution choices:** Option A accepted: fixed common set for L4/L6, provider namespaces for everything else. Rejected for now: Option B, remove flat common params entirely; Option C, keep broad flat passthrough temporarily.
+- **References:** matrix section Configuration Layers L4/L6; matrix rows `temperature`, `top_p`; DEC-001
 - **Related:** GAP-002, GAP-003
 
 <a id="inc-002"></a>
@@ -192,14 +194,14 @@ An inconsistency means a behavior exists, but the semantics differ across layers
 
 - **Description:** OpenAI can half-read root flat values, while Perplexity/Gemini generally require provider namespaces for request params.
 - **Kind:** inconsistency
-- **Status:** open
+- **Status:** accepted
 - **Layers affected:** L2, L3
 - **Providers affected:** OpenAI, Perplexity, Gemini
 - **Source:** `planning/p24-providers-root-namespace-investigation.v1.md:43-57`; `src/thoth/providers/openai.py:246-281`; `src/thoth/providers/perplexity.py:495-523`; `src/thoth/providers/gemini.py:292-320`
 - **Context:** L2/L3 are meant to hold provider-scoped defaults that apply before mode overrides. This is the layer users naturally reach for when they want "all OpenAI calls use this default unless a mode overrides it."
 - **Detail:** Root provider tables are copied into `provider.config`, so `[providers.openai].temperature = 0.3` is physically present on the OpenAI provider. OpenAI can resolve that flat key, but it cannot distinguish a root provider default from deprecated mode-flat passthrough, so it emits misleading migration guidance. Perplexity and Gemini request construction generally reads `config["perplexity"]` and `config["gemini"]`, so root flat defaults are not equivalent across providers.
-- **Recommendation:** Treat L2/L3 as provider defaults that are normalized into the same provider namespace shape used by L5/L7, with lower precedence than mode values. Keep auth/client controls such as `api_key` and `timeout` framework-owned, not request passthrough.
-- **Resolution choices:** Option A (recommended): `[providers.NAME]` request defaults normalize into the provider namespace and are overridden by modes. Option B: `[providers.NAME]` remains auth/client-only, and request defaults must live in modes. Option C: preserve flat root passthrough, but tag source layers so root defaults do not trigger mode-flat deprecation warnings.
+- **Recommendation:** Treat `[providers.NAME]` as the root provider namespace, not as a separate `.defaults` table. It may contain recognized auth/client fields such as `api_key` and `timeout` plus recognized request-default fields such as `temperature`, provider token-budget keys, or provider-native request fields. The desired-state docs should classify every recognized root key by category, provider key path, precedence, and whether it participates in request normalization.
+- **Resolution choices:** Option A accepted: root `[providers.NAME]` supports mixed recognized fields, and the normalizer separates auth/client controls from request defaults by a known-field registry before provider adapters build SDK payloads. Rejected: Option B, make `[providers.NAME]` auth/client-only; Option C, add a `[providers.NAME.defaults]` table that modes do not mirror.
 - **References:** matrix section Configuration Layers L2-L3; GAP-001; DEC-004
 - **Related:** GAP-001, INC-008
 
@@ -209,14 +211,14 @@ An inconsistency means a behavior exists, but the semantics differ across layers
 
 - **Description:** Perplexity forwards unknown namespace keys, Gemini allowlists, and OpenAI reads only explicit keys.
 - **Kind:** inconsistency
-- **Status:** open
+- **Status:** accepted
 - **Layers affected:** L5, L7
 - **Providers affected:** OpenAI, Perplexity, Gemini
 - **Source:** `src/thoth/providers/openai.py:246-281`; `src/thoth/providers/perplexity.py:484-508`; `src/thoth/providers/gemini.py:58-76`; `src/thoth/providers/gemini.py:313-320`
 - **Context:** L5/L7 are provider-native escape hatches. They need to support fast vendor evolution without allowing silent typos to become invisible no-ops.
 - **Detail:** Perplexity treats remaining namespace keys as `extra_body`, which is useful for provider extension fields. Gemini only passes keys in `_DIRECT_SDK_KEYS_GEMINI`, and `_build_tools()` silently skips unknown tool names. OpenAI has explicit read sites rather than a general namespace-to-SDK mapper. The same typo or newly released vendor key therefore has three outcomes: forwarded, ignored, or unavailable unless code is updated.
 - **Recommendation:** Split provider namespace handling into known-key validation plus explicit extension bags. Common and known provider keys should be validated. Arbitrary pass-through should be confined to documented shapes such as `[modes.X.perplexity.extra_body]` or `[modes.X.openai.extra]`.
-- **Resolution choices:** Option A (recommended): validate known keys and allow explicit extension bags for arbitrary provider-native fields. Option B: strict allowlist everywhere and require code changes for every new provider key. Option C: provider-specific policies, documented per adapter, with tests showing each behavior.
+- **Resolution choices:** Option A accepted: validate known keys and allow explicit extension bags for arbitrary provider-native fields. Rejected: Option B, strict allowlist everywhere; Option C, keep provider-specific policies as permanent behavior.
 - **References:** matrix section Resolution Rules; matrix section Parameter Matrix; DEC-004
 - **Related:** GAP-003, GAP-006
 
@@ -226,14 +228,14 @@ An inconsistency means a behavior exists, but the semantics differ across layers
 
 - **Description:** User mode overlays replace nested built-in provider namespaces instead of deep-merging them.
 - **Kind:** inconsistency
-- **Status:** open
+- **Status:** accepted
 - **Layers affected:** L1, L4, L5, L6, L7
 - **Providers affected:** Perplexity, Gemini, OpenAI built-ins with provider namespaces
 - **Source:** `src/thoth/config.py:659-688`; `src/thoth/config.py:174-228`
 - **Context:** Built-in modes define provider namespaces for provider-specific defaults, such as Gemini tools/thinking budget and Perplexity search settings. Users should be able to override one nested value without accidentally deleting the rest of the built-in provider defaults.
 - **Detail:** Global config layers deep-merge dictionaries, but `get_mode_config()` uses `mode_config.update(user_mode)` when overlaying user mode config onto a built-in mode. If a user adds `[modes.gemini_quick.gemini] temperature = 0.2`, that nested table can replace the built-in Gemini namespace instead of merging with `tools = ["google_search"]` and `thinking_budget = 0`. This makes mode overrides less predictable than normal config layer overrides.
 - **Recommendation:** Deep-merge built-in mode dictionaries and user/profile mode overrides using the same semantics as the main config layer merge. Arrays should still follow the separately documented array replacement policy.
-- **Resolution choices:** Option A (recommended): deep-merge mode dictionaries consistently with global config layers. Option B: preserve full-table replacement but document it prominently and require examples. Option C: require users to copy built-in modes before editing, so overrides are explicit full replacements.
+- **Resolution choices:** Option A accepted: deep-merge mode dictionaries consistently with global config layers. Rejected: Option B, preserve full-table replacement with documentation; Option C, require users to copy built-in modes before editing.
 - **References:** matrix section Resolution Rules; matrix section Worked Examples
 - **Related:** DEC-006
 
@@ -321,6 +323,23 @@ An inconsistency means a behavior exists, but the semantics differ across layers
 - **Resolution choices:** Option A (recommended): verify current upstream behavior, then keep the row if supported. Option B: remove `search_context_size` from built-ins and the matrix if unsupported. Option C: move it into a documented unstable Perplexity extension bag until confirmed.
 - **References:** matrix row `search_context_size`; Perplexity Sonar chat completion reference; `src/thoth/config.py`; `src/thoth/providers/perplexity.py`
 - **Related:** GAP-006, DEC-004
+
+<a id="inc-010"></a>
+
+### INC-010 - OpenAI `system_prompt` Uses Developer-Role Input Instead Of `instructions`
+
+- **Description:** Desired state names OpenAI `instructions`, while current code sends an equivalent developer-role input message.
+- **Kind:** inconsistency
+- **Status:** open
+- **Layers affected:** L1, L4, L6
+- **Providers affected:** OpenAI
+- **Source:** `src/thoth/providers/openai.py:334-342`; `src/thoth/providers/openai.py:567-579`
+- **Context:** OpenAI Responses accepts both top-level `instructions` and input messages with `developer`/`system` roles for system-level guidance. The matrix should document one canonical adapter output path rather than listing multiple encodings ambiguously.
+- **Detail:** Current OpenAI submit and stream paths prepend `system_prompt` to `input` as a developer-role message. The desired matrix now names `instructions` as the canonical OpenAI key because it is the dedicated Responses API field for system/developer instructions and avoids overloading `input` with two internal concepts (`prompt` and `system_prompt`). This is not a behavior bug today, but it is a normalization mismatch to resolve when provider adapters are centralized.
+- **Recommendation:** During adapter normalization, map internal `system_prompt` to OpenAI `instructions` and reserve `input` for user/content messages. Keep a compatibility test proving the semantic output is unchanged.
+- **Resolution choices:** Option A (recommended): switch OpenAI adapter output to `instructions`. Option B: define developer-role input as OpenAI's canonical encoding in the matrix. Option C: allow both but document `instructions` as preferred and only emit one path per request.
+- **References:** matrix row `system_prompt`; OpenAI Responses create reference; `src/thoth/providers/openai.py`
+- **Related:** GAP-003, DEC-009, DEC-010
 
 ## Decisions (`DEC-`)
 

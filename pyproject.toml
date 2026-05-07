@@ -39,6 +39,7 @@ dependencies = [
     "tomlkit>=0.13",
     "thothspinner>=1.2.6",
     "google-genai>=1.74.0",
+    "pydantic>=2.12.5,<3",
 ]
 
 [project.scripts]

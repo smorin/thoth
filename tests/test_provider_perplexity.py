@@ -218,8 +218,15 @@ def test_perplexity_request_passes_namespaced_direct_sdk_kwargs() -> None:
         assert key not in captured["extra_body"]
 
 
-def test_perplexity_request_ignores_flat_direct_sdk_kwargs() -> None:
-    """Flat direct SDK keys are no longer supported; use [modes.X.perplexity]."""
+def test_perplexity_request_falls_back_to_flat_direct_sdk_kwargs() -> None:
+    """Flat direct SDK keys at the provider config root reach the request as fallback.
+
+    Layered resolution: [modes.X.perplexity] namespace wins when set (see
+    test_perplexity_namespaced_direct_sdk_kwargs_override_flat); when only
+    the flat shape exists (e.g. from `[providers.perplexity]` root config)
+    it still flows through. Reconciles P24 follow-up #3 namespace preference
+    with P33's `[providers.perplexity]` root-level passthrough contract.
+    """
     captured: dict[str, Any] = {}
     config = {
         "model": "sonar",
@@ -233,8 +240,11 @@ def test_perplexity_request_ignores_flat_direct_sdk_kwargs() -> None:
     provider = PerplexityProvider(api_key="pplx-test", config=config)
     provider.client = _stub_client(captured)
     asyncio.run(provider.submit("hi", mode="perplexity_quick"))
-    for key in ("max_tokens", "temperature", "top_p", "stop", "response_format"):
-        assert key not in captured
+    assert captured.get("max_tokens") == 512
+    assert captured.get("temperature") == 0.4
+    assert captured.get("top_p") == 0.9
+    assert captured.get("stop") == ["END"]
+    assert captured.get("response_format") == {"type": "text"}
 
 
 def test_perplexity_namespaced_direct_sdk_kwargs_override_flat() -> None:

@@ -11,12 +11,14 @@ from thoth.cli_subcommands._options import _RESEARCH_OPTIONS, _research_options
 def test_research_options_decorator_adds_all_research_flags():
     # Catches accidental additions/removals in _RESEARCH_OPTIONS.
     # P18 Phase E added --out (repeatable) and --append; P21 added --profile;
-    # P18-T27 added --cancel-on-interrupt/--no-cancel-on-interrupt.
-    assert len(_RESEARCH_OPTIONS) == 27, (
-        f"expected 27 research-options entries (21 from PR2 + 2 from P18 Phase E + "
-        f"1 from P21 + 1 from P18-T27 + 1 from P23 --model + 1 from P24 --api-key-gemini), "
-        f"got {len(_RESEARCH_OPTIONS)}. If this is intentional, update the expected "
-        "count and append the source project/task note in this assertion."
+    # P18-T27 added --cancel-on-interrupt/--no-cancel-on-interrupt;
+    # P23 added --model; P33-T03 added --no-validate; P24 added --api-key-gemini.
+    assert len(_RESEARCH_OPTIONS) == 28, (
+        f"expected 28 research-options entries (21 from PR2 + 2 from P18 Phase E + "
+        f"1 from P21 + 1 from P18-T27 + 1 from P23 --model + 1 from P33-T03 "
+        f"--no-validate + 1 from P24 --api-key-gemini), got {len(_RESEARCH_OPTIONS)}. "
+        "If this is intentional, update the expected count and append the source "
+        "project/task note in this assertion."
     )
 
     @click.command()
@@ -34,5 +36,6 @@ def test_research_options_decorator_adds_all_research_flags():
         "--pick-model",
         "--out",  # P18 Phase E
         "--cancel-on-interrupt",  # P18-T27
+        "--no-validate",  # P33-T03
     ):
         assert opt in out, f"expected {opt} in --help output, got: {out}"

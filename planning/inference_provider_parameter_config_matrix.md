@@ -357,7 +357,7 @@ Canonical provider surfaces for this matrix:
 |---|---|---|---|---|
 | `model` | `model` | `model`; `request.model` | `model` | Gemini `model` is a Python SDK kwarg and REST path parameter (`models/{model}`), not `GenerateContentConfig`. Perplexity `request.model` is the async wrapper path. Runtime `--model` overrides before adapter translation. |
 | `prompt` | `input` | `messages` | `contents` | Thoth builds this from user prompt plus file/context inputs. |
-| `system_prompt` | `instructions`; `input[].role` | `messages[].role` | `config.system_instruction` | Gemini REST spelling is `systemInstruction` / `system_instruction` depending client surface. |
+| `system_prompt` | `instructions` | `messages[].role`; `request.messages[].role` | `config.system_instruction` | OpenAI `instructions` is the desired canonical encoding; current code emits an equivalent developer-role input message. Perplexity `request.*` paths are async wrapper paths. Gemini REST spelling is `systemInstruction` / `system_instruction` depending client surface. |
 | `temperature` | `temperature` | `temperature`; `request.temperature` | `config.temperature` | Perplexity `request.*` paths are async wrapper paths. Adapter omits for OpenAI models that reject it. |
 | `top_p` | `top_p` | `top_p`; `request.top_p` | `config.top_p` | Perplexity `request.*` paths are async wrapper paths. Common L4 candidate. |
 | `top_k` | - | - | `config.top_k` | Gemini-only. |

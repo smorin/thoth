@@ -517,9 +517,14 @@ class PerplexityProvider(ResearchProvider):
         perplexity_cfg = self.config.get("perplexity") or {}
         if not isinstance(perplexity_cfg, dict):
             perplexity_cfg = {}
+        # Resolution order (P24 follow-up #3 + P33 root-providers-level passthrough):
+        #   1. self.config["perplexity"][key]  -- mode-level [modes.X.perplexity] namespace
+        #   2. self.config[key]                -- root [providers.perplexity] level (flat)
         for key in _DIRECT_SDK_KEYS_PERPLEXITY:
             if key in perplexity_cfg:
                 params[key] = perplexity_cfg[key]
+            elif key in self.config:
+                params[key] = self.config[key]
         return params
 
     async def submit(
