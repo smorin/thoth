@@ -475,6 +475,17 @@ Canonical structured output request. OpenAI maps to Responses text format / stru
 
 Reasoning intensity for providers that expose an effort enum. OpenAI maps to `reasoning.effort`; Perplexity maps to `reasoning_effort`; Gemini 3 maps to `thinking_level`.
 
+| Internal value | OpenAI `reasoning.effort` | Perplexity `reasoning_effort` | Gemini `thinking_level` |
+|---|---|---|---|
+| `none` | `none` | - | - |
+| `minimal` | `minimal` | `minimal` | `MINIMAL` |
+| `low` | `low` | `low` | `LOW` |
+| `medium` | `medium` | `medium` | `MEDIUM` |
+| `high` | `high` | `high` | `HIGH` |
+| `xhigh` | `xhigh` | - | - |
+
+Unsupported cells should be rejected by validation for that provider/model rather than silently downgraded. Gemini no-thinking behavior for Gemini 2.5 remains `thinking_budget = 0`, not `reasoning_effort = none`.
+
 ### `thinking_budget`
 
 Gemini 2.5 thinking token budget. `0` disables thinking on models that allow it, and `-1` requests dynamic thinking.

@@ -22,13 +22,15 @@ IDs are stable and never reused.
 | GAP-006 | gap | Full parameter matrix is not wired through adapters | Several desired matrix parameters have no adapter translation path. | accepted | matrix section Parameter Matrix |
 | GAP-007 | gap | L9 clarification bypasses shared provider normalization | Interactive clarification reads OpenAI config directly and constructs `AsyncOpenAI` directly. | accepted | matrix section Configuration Layers L9; DEC-003 |
 | GAP-008 | gap | `max_output_tokens` is not normalized across providers | The desired internal token-budget field is not translated to OpenAI, Perplexity, and Gemini consistently. | accepted | matrix row `max_output_tokens`; DEC-002 |
-| GAP-009 | gap | `stop_sequences` is not normalized across providers | The desired internal stop-sequence field is not translated to supported provider-native fields consistently. | open | matrix row `stop_sequences`; DEC-001 |
-| GAP-010 | gap | Gemini `frequency_penalty` is not wired | Gemini supports `frequencyPenalty`, but the Gemini adapter allowlist omits `frequency_penalty`. | open | matrix row `frequency_penalty`; code `src/thoth/providers/gemini.py` |
-| GAP-011 | gap | Gemini `presence_penalty` is not wired | Gemini supports `presencePenalty`, but the Gemini adapter allowlist omits `presence_penalty`. | open | matrix row `presence_penalty`; code `src/thoth/providers/gemini.py` |
-| GAP-012 | gap | Gemini `seed` is not wired | Gemini supports `seed`, but the Gemini adapter allowlist omits `seed`. | open | matrix row `seed`; code `src/thoth/providers/gemini.py` |
-| GAP-013 | gap | Gemini `n` / `candidate_count` is not wired | Gemini supports `candidateCount`, but the adapter does not map internal `n` or provider-native `candidate_count`. | open | matrix row `n`; code `src/thoth/providers/gemini.py` |
-| GAP-014 | gap | OpenAI `response_format` is not wired | OpenAI Responses supports `text.format`, but the OpenAI adapter does not translate internal `response_format`. | open | matrix row `response_format`; code `src/thoth/providers/openai.py` |
-| GAP-015 | gap | Gemini `response_format` is not normalized | Gemini supports split structured-output fields, but internal `response_format` is not translated to them. | open | matrix row `response_format`; code `src/thoth/providers/gemini.py` |
+| GAP-009 | gap | `stop_sequences` is not normalized across providers | The desired internal stop-sequence field is not translated to supported provider-native fields consistently. | accepted | matrix row `stop_sequences`; DEC-001 |
+| GAP-010 | gap | Gemini `frequency_penalty` is not wired | Gemini supports `frequencyPenalty`, but the Gemini adapter allowlist omits `frequency_penalty`. | accepted | matrix row `frequency_penalty`; code `src/thoth/providers/gemini.py` |
+| GAP-011 | gap | Gemini `presence_penalty` is not wired | Gemini supports `presencePenalty`, but the Gemini adapter allowlist omits `presence_penalty`. | accepted | matrix row `presence_penalty`; code `src/thoth/providers/gemini.py` |
+| GAP-012 | gap | Gemini `seed` is not wired | Gemini supports `seed`, but the Gemini adapter allowlist omits `seed`. | accepted | matrix row `seed`; code `src/thoth/providers/gemini.py` |
+| GAP-013 | gap | Gemini `n` / `candidate_count` is not wired | Gemini supports `candidateCount`, but the adapter does not map internal `n` or provider-native `candidate_count`. | accepted | matrix row `n`; code `src/thoth/providers/gemini.py` |
+| GAP-014 | gap | OpenAI `response_format` is not wired | OpenAI Responses supports `text.format`, but the OpenAI adapter does not translate internal `response_format`. | accepted | matrix row `response_format`; code `src/thoth/providers/openai.py` |
+| GAP-015 | gap | Gemini `response_format` is not normalized | Gemini supports split structured-output fields, but internal `response_format` is not translated to them. | accepted | matrix row `response_format`; code `src/thoth/providers/gemini.py` |
+| GAP-016 | gap | OpenAI `reasoning_effort` is not wired | OpenAI Responses supports `reasoning.effort`, but the OpenAI adapter does not translate internal `reasoning_effort`. | accepted | matrix row `reasoning_effort`; code `src/thoth/providers/openai.py` |
+| GAP-017 | gap | Gemini `reasoning_effort` / `thinking_level` is not wired | Gemini supports `thinkingConfig.thinkingLevel`, but the adapter does not map internal `reasoning_effort` or provider-native `thinking_level`. | accepted | matrix row `reasoning_effort`; code `src/thoth/providers/gemini.py` |
 | INC-001 | inconsistency | L4 flat mode params are copied but consumed unevenly | Common flat params such as `temperature` are copied, but OpenAI, Perplexity sync/async, and Gemini consume them through different paths. | accepted | matrix section Configuration Layers L4/L6; DEC-001 |
 | INC-002 | inconsistency | Root provider defaults behave differently by provider | OpenAI can half-read root flat values, while Perplexity/Gemini generally require provider namespaces for request params. | accepted | matrix section Configuration Layers L2/L3; GAP-001 |
 | INC-003 | inconsistency | Provider namespace unknown-key policy diverges | Perplexity forwards unknown namespace keys, Gemini allowlists, and OpenAI reads only explicit keys. | accepted | matrix section Resolution Rules; DEC-004 |
@@ -65,13 +67,15 @@ A gap means the desired-state contract requires behavior that the current implem
 | GAP-006 | Full parameter matrix is not wired through adapters | Several desired matrix parameters have no adapter translation path. | accepted | matrix section Parameter Matrix |
 | GAP-007 | L9 clarification bypasses shared provider normalization | Interactive clarification reads OpenAI config directly and constructs `AsyncOpenAI` directly. | accepted | matrix section Configuration Layers L9 |
 | GAP-008 | `max_output_tokens` is not normalized across providers | The desired internal token-budget field is not translated to OpenAI, Perplexity, and Gemini consistently. | accepted | matrix row `max_output_tokens` |
-| GAP-009 | `stop_sequences` is not normalized across providers | The desired internal stop-sequence field is not translated to supported provider-native fields consistently. | open | matrix row `stop_sequences` |
-| GAP-010 | Gemini `frequency_penalty` is not wired | Gemini supports `frequencyPenalty`, but the Gemini adapter allowlist omits `frequency_penalty`. | open | matrix row `frequency_penalty` |
-| GAP-011 | Gemini `presence_penalty` is not wired | Gemini supports `presencePenalty`, but the Gemini adapter allowlist omits `presence_penalty`. | open | matrix row `presence_penalty` |
-| GAP-012 | Gemini `seed` is not wired | Gemini supports `seed`, but the Gemini adapter allowlist omits `seed`. | open | matrix row `seed` |
-| GAP-013 | Gemini `n` / `candidate_count` is not wired | Gemini supports `candidateCount`, but the adapter does not map internal `n` or provider-native `candidate_count`. | open | matrix row `n` |
-| GAP-014 | OpenAI `response_format` is not wired | OpenAI Responses supports `text.format`, but the OpenAI adapter does not translate internal `response_format`. | open | matrix row `response_format` |
-| GAP-015 | Gemini `response_format` is not normalized | Gemini supports split structured-output fields, but internal `response_format` is not translated to them. | open | matrix row `response_format` |
+| GAP-009 | `stop_sequences` is not normalized across providers | The desired internal stop-sequence field is not translated to supported provider-native fields consistently. | accepted | matrix row `stop_sequences` |
+| GAP-010 | Gemini `frequency_penalty` is not wired | Gemini supports `frequencyPenalty`, but the Gemini adapter allowlist omits `frequency_penalty`. | accepted | matrix row `frequency_penalty` |
+| GAP-011 | Gemini `presence_penalty` is not wired | Gemini supports `presencePenalty`, but the Gemini adapter allowlist omits `presence_penalty`. | accepted | matrix row `presence_penalty` |
+| GAP-012 | Gemini `seed` is not wired | Gemini supports `seed`, but the Gemini adapter allowlist omits `seed`. | accepted | matrix row `seed` |
+| GAP-013 | Gemini `n` / `candidate_count` is not wired | Gemini supports `candidateCount`, but the adapter does not map internal `n` or provider-native `candidate_count`. | accepted | matrix row `n` |
+| GAP-014 | OpenAI `response_format` is not wired | OpenAI Responses supports `text.format`, but the OpenAI adapter does not translate internal `response_format`. | accepted | matrix row `response_format` |
+| GAP-015 | Gemini `response_format` is not normalized | Gemini supports split structured-output fields, but internal `response_format` is not translated to them. | accepted | matrix row `response_format` |
+| GAP-016 | OpenAI `reasoning_effort` is not wired | OpenAI Responses supports `reasoning.effort`, but the OpenAI adapter does not translate internal `reasoning_effort`. | accepted | matrix row `reasoning_effort` |
+| GAP-017 | Gemini `reasoning_effort` / `thinking_level` is not wired | Gemini supports `thinkingConfig.thinkingLevel`, but the adapter does not map internal `reasoning_effort` or provider-native `thinking_level`. | accepted | matrix row `reasoning_effort` |
 
 <a id="gap-001"></a>
 
@@ -172,7 +176,7 @@ A gap means the desired-state contract requires behavior that the current implem
 - **Recommendation:** Keep this as the umbrella tracking item, but split actionable implementation into parameter-family gaps. Each child gap should define provider support, unsupported-provider behavior, normalized key mapping, and tests.
 - **Resolution choices:** Option B accepted: split `GAP-006` into parameter-family gaps and keep this entry as an umbrella. Rejected: Option A, keep one broad implementation task for every matrix row; Option C, narrow the matrix to only fields already wired today.
 - **References:** matrix section Parameter Matrix; matrix section Per-Parameter Detail
-- **Related:** GAP-008, GAP-009, GAP-010, DEC-002, DEC-004
+- **Related:** GAP-008, GAP-009, GAP-010, GAP-011, GAP-012, GAP-013, GAP-014, GAP-015, GAP-016, GAP-017, DEC-002, DEC-004
 
 <a id="gap-007"></a>
 
@@ -214,13 +218,14 @@ A gap means the desired-state contract requires behavior that the current implem
 
 - **Description:** The desired internal stop-sequence field is not translated to supported provider-native fields consistently.
 - **Kind:** gap
-- **Status:** open
+- **Status:** accepted
 - **Layers affected:** L4, L5, L6, L7
 - **Providers affected:** Perplexity, Gemini
 - **Source:** `src/thoth/providers/openai.py:55-64`; `src/thoth/providers/perplexity.py:388-394`; `src/thoth/providers/perplexity.py:520-528`; `src/thoth/providers/perplexity.py:591-596`; `src/thoth/providers/gemini.py:58-76`
 - **Context:** OpenAI Responses does not expose `stop`/`stop_sequences` on the canonical surface, but Perplexity and Gemini both support stop sequences using different native names.
 - **Detail:** Perplexity wires native `stop` for sync and async namespace paths, but the internal desired name `stop_sequences` is not normalized to `stop`. Gemini wires `gemini.stop_sequences` through `GenerateContentConfig`, but common L4/L6 `stop_sequences` is not routed into the Gemini namespace until shared normalization exists. OpenAI should continue to report unsupported for the Responses surface.
 - **Recommendation:** Keep `stop_sequences` in the fixed L4/L6 common set only for providers that support it. Adapter normalization should emit Perplexity `stop` / `request.stop`, Gemini `config.stop_sequences`, and omit or reject the field for OpenAI Responses with a clear compatibility rule.
+- **Resolution choices:** Option A accepted: keep `GAP-009` as the parameter-family backlog for `stop_sequences` normalization, including explicit unsupported behavior for OpenAI Responses. Rejected: Option B, remove `stop_sequences` from the fixed common L4/L6 set; Option C, keep only provider-native stop fields.
 - **References:** matrix row `stop_sequences`; DEC-001; matrix section Configuration Layers L4/L6; `src/thoth/providers/__init__.py`
 - **Related:** GAP-003, GAP-006, INC-001
 
@@ -230,13 +235,14 @@ A gap means the desired-state contract requires behavior that the current implem
 
 - **Description:** Gemini supports `frequencyPenalty`, but the Gemini adapter allowlist omits `frequency_penalty`.
 - **Kind:** gap
-- **Status:** open
+- **Status:** accepted
 - **Layers affected:** L5, L7
 - **Providers affected:** Gemini
 - **Source:** `src/thoth/providers/gemini.py:58-76`; `src/thoth/providers/gemini.py:313-320`
 - **Context:** The desired matrix exposes Gemini `config.frequency_penalty` because the Google GenerateContent surface documents `frequencyPenalty`.
 - **Detail:** `_DIRECT_SDK_KEYS_GEMINI` does not include `frequency_penalty`, so `[modes.X.gemini].frequency_penalty` is silently ignored by `_build_generate_content_config()`. OpenAI Responses and Perplexity Sonar do not expose this key on the canonical surfaces, so this is Gemini-specific adapter work rather than a cross-provider normalization issue.
 - **Recommendation:** Add `frequency_penalty` to the Gemini direct SDK key allowlist, with tests that prove it reaches `GenerateContentConfig`. Keep matrix notes that model support may vary and rely on provider errors for unsupported model/config combinations.
+- **Resolution choices:** Option A accepted: keep `GAP-010` as the Gemini-specific backlog to wire `frequency_penalty`. Rejected: Option B, merge it with `GAP-011`; Option C, remove `frequency_penalty` from the desired matrix until live model support is proven.
 - **References:** matrix row `frequency_penalty`; Gemini GenerateContent reference; `src/thoth/providers/gemini.py`
 - **Related:** GAP-006, DEC-004
 
@@ -246,13 +252,14 @@ A gap means the desired-state contract requires behavior that the current implem
 
 - **Description:** Gemini supports `presencePenalty`, but the Gemini adapter allowlist omits `presence_penalty`.
 - **Kind:** gap
-- **Status:** open
+- **Status:** accepted
 - **Layers affected:** L5, L7
 - **Providers affected:** Gemini
 - **Source:** `src/thoth/providers/gemini.py:58-76`; `src/thoth/providers/gemini.py:313-320`
 - **Context:** The desired matrix exposes Gemini `config.presence_penalty` because the Google GenerateContent surface documents `presencePenalty`.
 - **Detail:** `_DIRECT_SDK_KEYS_GEMINI` does not include `presence_penalty`, so `[modes.X.gemini].presence_penalty` is silently ignored by `_build_generate_content_config()`. OpenAI Responses and Perplexity Sonar do not expose this key on the canonical surfaces, so this is Gemini-specific adapter work rather than a cross-provider normalization issue.
 - **Recommendation:** Add `presence_penalty` to the Gemini direct SDK key allowlist, with tests that prove it reaches `GenerateContentConfig`. Keep matrix notes that model support may vary and rely on provider errors for unsupported model/config combinations.
+- **Resolution choices:** Accepted: keep `GAP-011` as the Gemini-specific backlog to wire `presence_penalty`, mirroring the accepted `GAP-010` penalty-field direction.
 - **References:** matrix row `presence_penalty`; Gemini GenerateContent reference; `src/thoth/providers/gemini.py`
 - **Related:** GAP-006, DEC-004
 
@@ -262,13 +269,14 @@ A gap means the desired-state contract requires behavior that the current implem
 
 - **Description:** Gemini supports `seed`, but the Gemini adapter allowlist omits `seed`.
 - **Kind:** gap
-- **Status:** open
+- **Status:** accepted
 - **Layers affected:** L5, L7
 - **Providers affected:** Gemini
 - **Source:** `src/thoth/providers/gemini.py:58-76`; `src/thoth/providers/gemini.py:313-320`
 - **Context:** The desired matrix exposes Gemini `config.seed` because the Google GenerateContent surface documents `seed`.
 - **Detail:** `_DIRECT_SDK_KEYS_GEMINI` does not include `seed`, so `[modes.X.gemini].seed` is silently ignored by `_build_generate_content_config()`. OpenAI Responses and Perplexity Sonar do not expose this key on the canonical surfaces, so this is Gemini-specific adapter work.
 - **Recommendation:** Add `seed` to the Gemini direct SDK key allowlist, with tests that prove it reaches `GenerateContentConfig`. Keep matrix notes that determinism is best-effort and provider/model behavior may vary.
+- **Resolution choices:** Accepted: keep `GAP-012` as the Gemini-specific backlog to wire `seed` through `GenerateContentConfig`, with best-effort determinism documented.
 - **References:** matrix row `seed`; Gemini GenerateContent reference; `src/thoth/providers/gemini.py`
 - **Related:** GAP-006, DEC-004
 
@@ -278,13 +286,14 @@ A gap means the desired-state contract requires behavior that the current implem
 
 - **Description:** Gemini supports `candidateCount`, but the adapter does not map internal `n` or provider-native `candidate_count`.
 - **Kind:** gap
-- **Status:** open
+- **Status:** accepted
 - **Layers affected:** L4, L5, L6, L7
 - **Providers affected:** Gemini
 - **Source:** `src/thoth/providers/gemini.py:58-76`; `src/thoth/providers/gemini.py:313-320`
 - **Context:** The desired matrix exposes internal `n` as Gemini `config.candidate_count` because the Google GenerateContent surface documents `candidateCount`.
 - **Detail:** `_DIRECT_SDK_KEYS_GEMINI` does not include `candidate_count`, and no shared normalizer maps internal `n` to Gemini's SDK field. As a result, common `[modes.X] n = 2`, profile-scoped common `n`, and provider-native `[modes.X.gemini] candidate_count = 2` are not routed to `GenerateContentConfig`.
 - **Recommendation:** Normalize internal `n` to Gemini SDK `candidate_count` and also accept provider-native `candidate_count` inside Gemini namespaces, with tests that prove both paths reach `GenerateContentConfig`.
+- **Resolution choices:** Accepted: keep `GAP-013` as the backlog to normalize internal `n` to Gemini `candidate_count` and accept provider-native `candidate_count` in Gemini namespaces.
 - **References:** matrix row `n`; Gemini GenerateContent reference; matrix section Configuration Layers L4-L7; `src/thoth/providers/gemini.py`
 - **Related:** GAP-003, GAP-006, DEC-001, DEC-004
 
@@ -294,13 +303,14 @@ A gap means the desired-state contract requires behavior that the current implem
 
 - **Description:** OpenAI Responses supports `text.format`, but the OpenAI adapter does not translate internal `response_format`.
 - **Kind:** gap
-- **Status:** open
+- **Status:** accepted
 - **Layers affected:** L4, L5, L6, L7
 - **Providers affected:** OpenAI
 - **Source:** `src/thoth/providers/openai.py:55-64`; `src/thoth/providers/openai.py:359-375`; `src/thoth/providers/openai.py:579-589`
 - **Context:** The desired matrix exposes internal `response_format` as OpenAI Responses `text.format`, including JSON mode and JSON-schema structured outputs.
 - **Detail:** `_DIRECT_SDK_KEYS_OPENAI` does not include `response_format`, and the request builders never set `text.format`. As a result, common or namespaced `response_format` values do not reach `responses.create()` or `responses.stream()`.
 - **Recommendation:** Normalize internal `response_format` to OpenAI `text.format`, with tests for at least text/default, JSON object, and JSON schema shapes.
+- **Resolution choices:** Accepted: keep `GAP-014` as the OpenAI-specific backlog to normalize internal `response_format` to Responses `text.format`.
 - **References:** matrix row `response_format`; OpenAI Structured Outputs guide; `src/thoth/providers/openai.py`
 - **Related:** GAP-003, GAP-006, DEC-004
 
@@ -310,14 +320,49 @@ A gap means the desired-state contract requires behavior that the current implem
 
 - **Description:** Gemini supports split structured-output fields, but internal `response_format` is not translated to them.
 - **Kind:** gap
-- **Status:** open
+- **Status:** accepted
 - **Layers affected:** L4, L6
 - **Providers affected:** Gemini
 - **Source:** `src/thoth/providers/gemini.py:58-76`; `src/thoth/providers/gemini.py:313-320`
 - **Context:** The desired matrix exposes internal `response_format` as Gemini `response_mime_type`, `response_schema`, and `response_json_schema`.
 - **Detail:** Gemini provider-native fields are allowlisted and pass through when placed directly under `[modes.X.gemini]`, but no shared normalizer maps an internal `response_format` object from common mode/profile layers into Gemini's split SDK fields.
 - **Recommendation:** Define the canonical internal `response_format` shapes and translate them to Gemini split fields while continuing to accept provider-native Gemini fields in Gemini namespaces.
+- **Resolution choices:** Accepted: keep `GAP-015` as the Gemini-specific backlog to translate internal `response_format` into Gemini split structured-output fields while retaining provider-native namespace inputs.
 - **References:** matrix row `response_format`; Gemini GenerateContent reference; matrix section Parameter Matrix; `src/thoth/providers/gemini.py`
+- **Related:** GAP-003, GAP-006, DEC-001, DEC-004
+
+<a id="gap-016"></a>
+
+### GAP-016 - OpenAI `reasoning_effort` Is Not Wired
+
+- **Description:** OpenAI Responses supports `reasoning.effort`, but the OpenAI adapter does not translate internal `reasoning_effort`.
+- **Kind:** gap
+- **Status:** accepted
+- **Layers affected:** L4, L5, L6, L7
+- **Providers affected:** OpenAI
+- **Source:** `src/thoth/providers/openai.py:55-64`; `src/thoth/providers/openai.py:359-375`; `src/thoth/providers/openai.py:579-589`
+- **Context:** The desired matrix exposes internal `reasoning_effort` as OpenAI Responses `reasoning.effort`.
+- **Detail:** `_DIRECT_SDK_KEYS_OPENAI` includes the raw `reasoning` object, but the adapter does not normalize internal `reasoning_effort` into `reasoning.effort`. Current submit hard-codes `reasoning.summary = "auto"`, and current stream only reads `reasoning_summary`.
+- **Recommendation:** Normalize internal `reasoning_effort` to OpenAI `reasoning.effort` and merge it with any separately configured `reasoning_summary` / `reasoning.summary` values instead of overwriting one with the other. Value mapping is identity for OpenAI-supported internal values: `none -> none`, `minimal -> minimal`, `low -> low`, `medium -> medium`, `high -> high`, `xhigh -> xhigh`; model-specific support remains validated by provider/model compatibility rules.
+- **Resolution choices:** Accepted: keep `GAP-016` as the OpenAI-specific backlog to normalize internal `reasoning_effort` to Responses `reasoning.effort` and merge it with reasoning summary config.
+- **References:** matrix row `reasoning_effort`; matrix per-parameter detail `reasoning_effort`; OpenAI Responses create reference; `src/thoth/providers/openai.py`
+- **Related:** GAP-003, GAP-006, DEC-001, DEC-004
+
+<a id="gap-017"></a>
+
+### GAP-017 - Gemini `reasoning_effort` / `thinking_level` Is Not Wired
+
+- **Description:** Gemini supports `thinkingConfig.thinkingLevel`, but the adapter does not map internal `reasoning_effort` or provider-native `thinking_level`.
+- **Kind:** gap
+- **Status:** accepted
+- **Layers affected:** L4, L5, L6, L7
+- **Providers affected:** Gemini
+- **Source:** `src/thoth/providers/gemini.py:58-76`; `src/thoth/providers/gemini.py:301-320`
+- **Context:** The desired matrix exposes internal `reasoning_effort` as Gemini `config.thinking_config.thinking_level` for Gemini 3 models.
+- **Detail:** `_build_generate_content_config()` only builds `thinking_config` from `thinking_budget` and `include_thoughts`; it does not accept provider-native `thinking_level`, and no shared normalizer maps internal `reasoning_effort` into Gemini's enum field.
+- **Recommendation:** Normalize supported internal reasoning effort values to Gemini `thinking_level` while keeping Gemini 2.5 token-budget control in the separate `thinking_budget` row. Accepted value mapping: `minimal -> MINIMAL`, `low -> LOW`, `medium -> MEDIUM`, `high -> HIGH`; `none` and `xhigh` have no Gemini `thinkingLevel` equivalent and should fail validation for Gemini unless a separate provider-specific policy is explicitly chosen.
+- **Resolution choices:** Accepted: keep `GAP-017` as the Gemini-specific backlog to normalize supported internal `reasoning_effort` values to Gemini `thinking_level` while keeping `thinking_budget` separate.
+- **References:** matrix row `reasoning_effort`; matrix per-parameter detail `reasoning_effort`; Gemini GenerateContent reference; `src/thoth/providers/gemini.py`
 - **Related:** GAP-003, GAP-006, DEC-001, DEC-004
 
 ## Inconsistencies (`INC-`)
