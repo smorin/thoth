@@ -41,10 +41,10 @@ IDs are stable and never reused.
 | INC-008 | inconsistency | Documentation and tests disagree on root provider defaults | Auth help documents provider tables as API-key-only while skipped tests describe desired request defaults. | accepted | matrix section Configuration Layers L2-L3; GAP-001 |
 | INC-009 | inconsistency | Perplexity `search_context_size` needs upstream validation | Local built-ins and adapter defaults use `web_search_options.search_context_size`, and current Perplexity Sonar docs validate it as a request option. | accepted | matrix row `search_context_size`; DEC-004 |
 | INC-010 | inconsistency | OpenAI `system_prompt` uses developer-role input instead of `instructions` | Desired state names OpenAI `instructions`, while current code sends an equivalent developer-role input message. | accepted | matrix row `system_prompt`; code `src/thoth/providers/openai.py` |
-| INC-011 | inconsistency | Perplexity `response_format` differs between sync and async layers | Perplexity sync consumes namespaced and flat `response_format`, while async consumes only namespaced `response_format`. | open | matrix row `response_format`; INC-001 |
-| DEC-001 | decision | Define L4 flat common params or deprecate flat passthrough | Decide whether flat mode keys are a fixed common set or arbitrary provider passthrough. | proposed | matrix section Configuration Layers L4/L6 |
-| DEC-002 | decision | Normalize max token split forms | Decide whether users configure one internal token budget or expose every provider spelling. | proposed | matrix row `max_output_tokens` |
-| DEC-003 | decision | L9 clarification integration boundary | Decide whether clarification folds into the provider stack or remains separate while reusing normalization. | proposed | matrix section Configuration Layers L9 |
+| INC-011 | inconsistency | Perplexity `response_format` differs between sync and async layers | Perplexity sync consumes namespaced and flat `response_format`, while async consumes only namespaced `response_format`. | accepted | matrix row `response_format`; INC-001 |
+| DEC-001 | decision | Define L4 flat common params or deprecate flat passthrough | Decide whether flat mode keys are a fixed common set or arbitrary provider passthrough. | accepted | matrix section Configuration Layers L4/L6 |
+| DEC-002 | decision | Normalize max token split forms | Decide whether users configure one internal token budget or expose every provider spelling. | accepted | matrix row `max_output_tokens` |
+| DEC-003 | decision | L9 clarification integration boundary | Decide whether clarification folds into the provider stack or remains separate while reusing normalization. | accepted | matrix section Configuration Layers L9 |
 | DEC-004 | decision | Unknown-key and extension policy | Decide which unknown provider namespace keys pass through, fail validation, or are ignored. | proposed | matrix section Resolution Rules |
 | DEC-005 | decision | Provider override mismatch policy | Decide how `--provider` interacts with a mode's provider-specific model and namespace. | proposed | matrix section Resolution Rules |
 | DEC-006 | decision | Array merge and unset semantics | Decide array replacement vs append and absence vs explicit-disable semantics. | proposed | matrix section Resolution Rules |
@@ -381,7 +381,7 @@ An inconsistency means a behavior exists, but the semantics differ across layers
 | INC-008 | Documentation and tests disagree on root provider defaults | Auth help documents provider tables as API-key-only while skipped tests describe desired request defaults. | accepted | Align docs, skipped tests, and matrix to `INC-002`; keep runtime work tracked by `GAP-001`. | A align to INC-002 accepted | GAP-001; INC-002 |
 | INC-009 | Perplexity `search_context_size` needs upstream validation | Local built-ins and adapter defaults use `web_search_options.search_context_size`, and current Perplexity Sonar docs validate it as a request option. | accepted | Keep `search_context_size` as a first-class Perplexity row with current-doc citations. | A validate and keep accepted | DEC-004 |
 | INC-010 | OpenAI `system_prompt` uses developer-role input instead of `instructions` | Desired state names OpenAI `instructions`, while current code sends an equivalent developer-role input message. | accepted | Use top-level `instructions` for OpenAI `system_prompt` during adapter normalization. | A switch to `instructions` accepted | matrix row `system_prompt` |
-| INC-011 | Perplexity `response_format` differs between sync and async layers | Perplexity sync consumes namespaced and flat `response_format`, while async consumes only namespaced `response_format`. | open | Route common/root `response_format` through shared normalization before sync/async request construction. | pending | matrix row `response_format`; INC-001 |
+| INC-011 | Perplexity `response_format` differs between sync and async layers | Perplexity sync consumes namespaced and flat `response_format`, while async consumes only namespaced `response_format`. | accepted | Route common/root `response_format` through shared normalization before sync/async request construction. | A shared normalization accepted | matrix row `response_format`; INC-001 |
 
 <a id="inc-001"></a>
 
@@ -559,14 +559,14 @@ An inconsistency means a behavior exists, but the semantics differ across layers
 
 - **Description:** Perplexity sync consumes namespaced and flat `response_format`, while async consumes only namespaced `response_format`.
 - **Kind:** inconsistency
-- **Status:** open
+- **Status:** accepted
 - **Layers affected:** L2, L3, L4, L5, L6, L7
 - **Providers affected:** Perplexity
 - **Source:** `src/thoth/providers/perplexity.py:388-394`; `src/thoth/providers/perplexity.py:520-528`; `src/thoth/providers/perplexity.py:591-596`
 - **Context:** Perplexity Sonar supports `response_format` for structured output on the synchronous chat-completion endpoint, and Thoth's async wrapper constructs a nested `request` object from provider config.
 - **Detail:** The synchronous request builder checks the Perplexity namespace first and then falls back to flat provider config, so `[providers.perplexity] response_format = ...` or copied L4 flat values can reach the sync SDK call. The async builder copies only `self.config["perplexity"]` into `request.*`, so equivalent root/flat/common values are ignored in async mode unless already normalized into the namespace.
 - **Recommendation:** Route common/root `response_format` through shared normalization before sync and async request construction, so both paths emit the same provider-native `response_format` / `request.response_format` payload.
-- **Resolution choices:** pending
+- **Resolution choices:** Option A accepted: route common/root `response_format` through shared normalization before sync and async request construction so both paths emit the same provider-native `response_format` / `request.response_format` payload. Rejected: Option B, support only `[modes.X.perplexity].response_format`; Option C, document sync and async as intentionally different.
 - **References:** matrix row `response_format`; Perplexity Sonar chat completion reference `https://docs.perplexity.ai/api-reference/sonar-post`; `src/thoth/providers/perplexity.py`
 - **Related:** INC-001, GAP-003, GAP-006
 
@@ -576,9 +576,9 @@ Decision entries are design choices whose resolution can spawn specific `GAP-` o
 
 | ID | Title | Description | Status | Recommendation | References |
 |---|---|---|---|---|---|
-| DEC-001 | Define L4 flat common params or deprecate flat passthrough | Decide whether flat mode keys are a fixed common set or arbitrary provider passthrough. | proposed | Fixed common set plus provider namespaces for everything else. | matrix section Configuration Layers L4/L6 |
-| DEC-002 | Normalize max token split forms | Decide whether users configure one internal token budget or expose every provider spelling. | proposed | Use internal `max_output_tokens`; adapters map native spellings. | matrix row `max_output_tokens` |
-| DEC-003 | L9 clarification integration boundary | Decide whether clarification folds into the provider stack or remains separate while reusing normalization. | proposed | Keep L9 separate as UX config, but invoke shared provider normalization for model calls. | matrix section Configuration Layers L9 |
+| DEC-001 | Define L4 flat common params or deprecate flat passthrough | Decide whether flat mode keys are a fixed common set or arbitrary provider passthrough. | accepted | Fixed common set plus provider namespaces for everything else. | matrix section Configuration Layers L4/L6 |
+| DEC-002 | Normalize max token split forms | Decide whether users configure one internal token budget or expose every provider spelling. | accepted | Use internal `max_output_tokens`; adapters map native spellings. | matrix row `max_output_tokens` |
+| DEC-003 | L9 clarification integration boundary | Decide whether clarification folds into the provider stack or remains separate while reusing normalization. | accepted | Keep L9 separate as UX config, but invoke shared provider normalization for model calls. | matrix section Configuration Layers L9 |
 | DEC-004 | Unknown-key and extension policy | Decide which unknown provider namespace keys pass through, fail validation, or are ignored. | proposed | Validate known common keys; allow explicit provider extension bags. | matrix section Resolution Rules |
 | DEC-005 | Provider override mismatch policy | Decide how `--provider` interacts with a mode's provider-specific model and namespace. | proposed | Validate compatibility and require explicit `--model` or provider-native mode when switching provider families. | matrix section Resolution Rules |
 | DEC-006 | Array merge and unset semantics | Decide array replacement vs append and absence vs explicit-disable semantics. | proposed | Arrays replace; absence inherits; explicit disable only through named booleans or internal `None`. | matrix section Resolution Rules |
@@ -593,7 +593,7 @@ Decision entries are design choices whose resolution can spawn specific `GAP-` o
 
 - **Description:** Decide whether flat mode keys are a fixed common set or arbitrary provider passthrough.
 - **Kind:** decision
-- **Status:** proposed
+- **Status:** accepted
 - **Layers affected:** L4, L6
 - **Providers affected:** all
 - **Source:** `src/thoth/providers/__init__.py:48-95`; `tests/test_provider_perplexity.py:221-253`; `src/thoth/providers/gemini.py:292-320`
@@ -601,6 +601,7 @@ Decision entries are design choices whose resolution can spawn specific `GAP-` o
 - **References:** matrix section Configuration Layers L4/L6; matrix section Parameter Matrix
 - **Related:** GAP-002, INC-001
 - **Recommendation:** Define a fixed common set (`temperature`, `top_p`, `max_output_tokens`, `stop_sequences`, plus any later explicitly accepted common params). Deprecate arbitrary flat passthrough and require provider namespaces for provider-specific fields.
+- **Resolution choices:** Option A accepted: define a fixed L4/L6 common set and deprecate arbitrary flat passthrough. Rejected: Option B, remove L4/L6 flat common params entirely; Option C, keep arbitrary flat passthrough as supported behavior.
 
 <a id="dec-002"></a>
 
@@ -608,7 +609,7 @@ Decision entries are design choices whose resolution can spawn specific `GAP-` o
 
 - **Description:** Decide whether users configure one internal token budget or expose every provider spelling.
 - **Kind:** decision
-- **Status:** proposed
+- **Status:** accepted
 - **Layers affected:** L2-L8
 - **Providers affected:** OpenAI, Perplexity, Gemini
 - **Source:** `src/thoth/providers/perplexity.py:388-394`; `src/thoth/providers/gemini.py:58-76`; `src/thoth/providers/openai.py:55-64`
@@ -616,6 +617,7 @@ Decision entries are design choices whose resolution can spawn specific `GAP-` o
 - **References:** matrix row `max_output_tokens`; matrix section Per-Parameter Detail
 - **Related:** GAP-006, GAP-008
 - **Recommendation:** Use internal `max_output_tokens` everywhere outside provider namespaces. Adapters translate to the native field, and provider-specific aliases are accepted only as migration aliases or under namespaces.
+- **Resolution choices:** Option A accepted: use internal `max_output_tokens` outside provider namespaces and map native spellings in adapters. Rejected: Option B, expose every provider spelling; Option C, support all aliases everywhere including flat L4/L6.
 
 <a id="dec-003"></a>
 
@@ -623,7 +625,7 @@ Decision entries are design choices whose resolution can spawn specific `GAP-` o
 
 - **Description:** Decide whether clarification folds into the provider stack or remains separate while reusing normalization.
 - **Kind:** decision
-- **Status:** proposed
+- **Status:** accepted
 - **Layers affected:** L9
 - **Providers affected:** OpenAI today; all if generalized
 - **Source:** `src/thoth/config.py:345-365`; `src/thoth/interactive.py:857-909`
@@ -631,6 +633,7 @@ Decision entries are design choices whose resolution can spawn specific `GAP-` o
 - **References:** matrix section Configuration Layers L9; GAP-007; INC-007
 - **Related:** GAP-007, INC-007
 - **Recommendation:** Keep L9 as a separate UX subsystem for fields like `input_height`, `max_input_height`, retry policy, and prompt text. For the LLM call inside L9, reuse the shared provider normalizer and adapter dispatch.
+- **Resolution choices:** Option A accepted: keep L9 separate as clarification UX config, but use shared provider normalization for its model call. Rejected: Option B, keep L9 entirely separate and OpenAI-only; Option C, fold clarification into normal modes.
 
 <a id="dec-004"></a>
 
