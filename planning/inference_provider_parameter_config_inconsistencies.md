@@ -19,14 +19,16 @@ IDs are stable and never reused.
 | GAP-003 | gap | Shared normalized provider parameter object is missing | `create_provider()` mutates provider config but leaves each adapter to interpret shapes independently. | accepted | matrix section Resolution Rules; code `src/thoth/providers/__init__.py` |
 | GAP-004 | gap | Gemini missing from config defaults provider table | The typed defaults provider table now includes Gemini; this stale gap is resolved. | resolved | matrix section Configuration Layers L2; code `src/thoth/config_schema.py` |
 | GAP-005 | gap | Gemini timeout override is not applied to the SDK client | Runtime timeout is copied into Gemini config but Gemini client construction does not consume it. | accepted | matrix row `timeout`; code `src/thoth/providers/gemini.py` |
-| GAP-006 | gap | Full parameter matrix is not wired through adapters | Several desired matrix parameters have no adapter translation path. | open | matrix section Parameter Matrix |
-| GAP-007 | gap | L9 clarification bypasses shared provider normalization | Interactive clarification reads OpenAI config directly and constructs `AsyncOpenAI` directly. | open | matrix section Configuration Layers L9; DEC-003 |
-| GAP-008 | gap | `max_output_tokens` is not normalized across providers | The desired internal token-budget field is not translated to OpenAI, Perplexity, and Gemini consistently. | open | matrix row `max_output_tokens`; DEC-002 |
+| GAP-006 | gap | Full parameter matrix is not wired through adapters | Several desired matrix parameters have no adapter translation path. | accepted | matrix section Parameter Matrix |
+| GAP-007 | gap | L9 clarification bypasses shared provider normalization | Interactive clarification reads OpenAI config directly and constructs `AsyncOpenAI` directly. | accepted | matrix section Configuration Layers L9; DEC-003 |
+| GAP-008 | gap | `max_output_tokens` is not normalized across providers | The desired internal token-budget field is not translated to OpenAI, Perplexity, and Gemini consistently. | accepted | matrix row `max_output_tokens`; DEC-002 |
 | GAP-009 | gap | `stop_sequences` is not normalized across providers | The desired internal stop-sequence field is not translated to supported provider-native fields consistently. | open | matrix row `stop_sequences`; DEC-001 |
 | GAP-010 | gap | Gemini `frequency_penalty` is not wired | Gemini supports `frequencyPenalty`, but the Gemini adapter allowlist omits `frequency_penalty`. | open | matrix row `frequency_penalty`; code `src/thoth/providers/gemini.py` |
 | GAP-011 | gap | Gemini `presence_penalty` is not wired | Gemini supports `presencePenalty`, but the Gemini adapter allowlist omits `presence_penalty`. | open | matrix row `presence_penalty`; code `src/thoth/providers/gemini.py` |
 | GAP-012 | gap | Gemini `seed` is not wired | Gemini supports `seed`, but the Gemini adapter allowlist omits `seed`. | open | matrix row `seed`; code `src/thoth/providers/gemini.py` |
 | GAP-013 | gap | Gemini `n` / `candidate_count` is not wired | Gemini supports `candidateCount`, but the adapter does not map internal `n` or provider-native `candidate_count`. | open | matrix row `n`; code `src/thoth/providers/gemini.py` |
+| GAP-014 | gap | OpenAI `response_format` is not wired | OpenAI Responses supports `text.format`, but the OpenAI adapter does not translate internal `response_format`. | open | matrix row `response_format`; code `src/thoth/providers/openai.py` |
+| GAP-015 | gap | Gemini `response_format` is not normalized | Gemini supports split structured-output fields, but internal `response_format` is not translated to them. | open | matrix row `response_format`; code `src/thoth/providers/gemini.py` |
 | INC-001 | inconsistency | L4 flat mode params are copied but consumed unevenly | Common flat params such as `temperature` are copied, but OpenAI, Perplexity sync/async, and Gemini consume them through different paths. | accepted | matrix section Configuration Layers L4/L6; DEC-001 |
 | INC-002 | inconsistency | Root provider defaults behave differently by provider | OpenAI can half-read root flat values, while Perplexity/Gemini generally require provider namespaces for request params. | accepted | matrix section Configuration Layers L2/L3; GAP-001 |
 | INC-003 | inconsistency | Provider namespace unknown-key policy diverges | Perplexity forwards unknown namespace keys, Gemini allowlists, and OpenAI reads only explicit keys. | accepted | matrix section Resolution Rules; DEC-004 |
@@ -37,6 +39,7 @@ IDs are stable and never reused.
 | INC-008 | inconsistency | Documentation and tests disagree on root provider defaults | Auth help documents provider tables as API-key-only while skipped tests describe desired request defaults. | accepted | matrix section Configuration Layers L2-L3; GAP-001 |
 | INC-009 | inconsistency | Perplexity `search_context_size` needs upstream validation | Local built-ins and adapter defaults use `web_search_options.search_context_size`, and current Perplexity Sonar docs validate it as a request option. | accepted | matrix row `search_context_size`; DEC-004 |
 | INC-010 | inconsistency | OpenAI `system_prompt` uses developer-role input instead of `instructions` | Desired state names OpenAI `instructions`, while current code sends an equivalent developer-role input message. | accepted | matrix row `system_prompt`; code `src/thoth/providers/openai.py` |
+| INC-011 | inconsistency | Perplexity `response_format` differs between sync and async layers | Perplexity sync consumes namespaced and flat `response_format`, while async consumes only namespaced `response_format`. | open | matrix row `response_format`; INC-001 |
 | DEC-001 | decision | Define L4 flat common params or deprecate flat passthrough | Decide whether flat mode keys are a fixed common set or arbitrary provider passthrough. | proposed | matrix section Configuration Layers L4/L6 |
 | DEC-002 | decision | Normalize max token split forms | Decide whether users configure one internal token budget or expose every provider spelling. | proposed | matrix row `max_output_tokens` |
 | DEC-003 | decision | L9 clarification integration boundary | Decide whether clarification folds into the provider stack or remains separate while reusing normalization. | proposed | matrix section Configuration Layers L9 |
@@ -59,14 +62,16 @@ A gap means the desired-state contract requires behavior that the current implem
 | GAP-003 | Shared normalized provider parameter object is missing | `create_provider()` mutates provider config but leaves each adapter to interpret shapes independently. | accepted | matrix section Resolution Rules |
 | GAP-004 | Gemini missing from config defaults provider table | The typed defaults provider table now includes Gemini; this stale gap is resolved. | resolved | matrix section Configuration Layers L2 |
 | GAP-005 | Gemini timeout override is not applied to the SDK client | Runtime timeout is copied into Gemini config but Gemini client construction does not consume it. | accepted | matrix row `timeout` |
-| GAP-006 | Full parameter matrix is not wired through adapters | Several desired matrix parameters have no adapter translation path. | open | matrix section Parameter Matrix |
-| GAP-007 | L9 clarification bypasses shared provider normalization | Interactive clarification reads OpenAI config directly and constructs `AsyncOpenAI` directly. | open | matrix section Configuration Layers L9 |
-| GAP-008 | `max_output_tokens` is not normalized across providers | The desired internal token-budget field is not translated to OpenAI, Perplexity, and Gemini consistently. | open | matrix row `max_output_tokens` |
+| GAP-006 | Full parameter matrix is not wired through adapters | Several desired matrix parameters have no adapter translation path. | accepted | matrix section Parameter Matrix |
+| GAP-007 | L9 clarification bypasses shared provider normalization | Interactive clarification reads OpenAI config directly and constructs `AsyncOpenAI` directly. | accepted | matrix section Configuration Layers L9 |
+| GAP-008 | `max_output_tokens` is not normalized across providers | The desired internal token-budget field is not translated to OpenAI, Perplexity, and Gemini consistently. | accepted | matrix row `max_output_tokens` |
 | GAP-009 | `stop_sequences` is not normalized across providers | The desired internal stop-sequence field is not translated to supported provider-native fields consistently. | open | matrix row `stop_sequences` |
 | GAP-010 | Gemini `frequency_penalty` is not wired | Gemini supports `frequencyPenalty`, but the Gemini adapter allowlist omits `frequency_penalty`. | open | matrix row `frequency_penalty` |
 | GAP-011 | Gemini `presence_penalty` is not wired | Gemini supports `presencePenalty`, but the Gemini adapter allowlist omits `presence_penalty`. | open | matrix row `presence_penalty` |
 | GAP-012 | Gemini `seed` is not wired | Gemini supports `seed`, but the Gemini adapter allowlist omits `seed`. | open | matrix row `seed` |
 | GAP-013 | Gemini `n` / `candidate_count` is not wired | Gemini supports `candidateCount`, but the adapter does not map internal `n` or provider-native `candidate_count`. | open | matrix row `n` |
+| GAP-014 | OpenAI `response_format` is not wired | OpenAI Responses supports `text.format`, but the OpenAI adapter does not translate internal `response_format`. | open | matrix row `response_format` |
+| GAP-015 | Gemini `response_format` is not normalized | Gemini supports split structured-output fields, but internal `response_format` is not translated to them. | open | matrix row `response_format` |
 
 <a id="gap-001"></a>
 
@@ -158,13 +163,16 @@ A gap means the desired-state contract requires behavior that the current implem
 
 - **Description:** Several desired matrix parameters have no adapter translation path.
 - **Kind:** gap
-- **Status:** open
+- **Status:** accepted
 - **Layers affected:** L2-L8
 - **Providers affected:** OpenAI, Perplexity, Gemini
 - **Source:** `src/thoth/providers/openai.py:55-64`; `src/thoth/providers/perplexity.py:388-394`; `src/thoth/providers/gemini.py:58-76`
+- **Context:** This is an umbrella gap for matrix-to-adapter parity. It is intentionally broader than a single implementation task because each parameter family has different provider support, validation rules, and test shape.
 - **Detail:** Current allowlists and explicit read sites cover a small subset: OpenAI handles fields such as `temperature` and `max_tool_calls` but does not yet wire Responses-supported `top_p`; Perplexity handles `max_tokens`, `temperature`, `top_p`, `stop`, and `response_format` plus extra-body pass-through; Gemini handles a larger generation config allowlist. Desired rows such as `frequency_penalty`, `presence_penalty`, `seed`, `n`, `logprobs`, `top_logprobs`, `user`, `service_tier`, and unified `max_output_tokens` need explicit adapter decisions.
+- **Recommendation:** Keep this as the umbrella tracking item, but split actionable implementation into parameter-family gaps. Each child gap should define provider support, unsupported-provider behavior, normalized key mapping, and tests.
+- **Resolution choices:** Option B accepted: split `GAP-006` into parameter-family gaps and keep this entry as an umbrella. Rejected: Option A, keep one broad implementation task for every matrix row; Option C, narrow the matrix to only fields already wired today.
 - **References:** matrix section Parameter Matrix; matrix section Per-Parameter Detail
-- **Related:** GAP-008, DEC-002, DEC-004
+- **Related:** GAP-008, GAP-009, GAP-010, DEC-002, DEC-004
 
 <a id="gap-007"></a>
 
@@ -172,11 +180,14 @@ A gap means the desired-state contract requires behavior that the current implem
 
 - **Description:** Interactive clarification reads OpenAI config directly and constructs `AsyncOpenAI` directly.
 - **Kind:** gap
-- **Status:** open
+- **Status:** accepted
 - **Layers affected:** L9
 - **Providers affected:** OpenAI now; all if L9 becomes provider-selectable
 - **Source:** `src/thoth/config.py:345-365`; `src/thoth/interactive.py:857-909`
+- **Context:** This is the implementation follow-through for accepted `INC-007`: L9 stays a separate clarification UX layer, but its model call should use shared provider normalization.
 - **Detail:** The clarification subsystem has its own config subtree and direct OpenAI Chat Completions call. It does not use `create_provider()`, provider namespace normalization, provider API key resolution, or the multi-provider adapter surface.
+- **Recommendation:** Keep this as the accepted backlog item for routing L9 clarification model calls through shared provider normalization while leaving UI-only clarification controls outside provider normalization.
+- **Resolution choices:** Option A accepted: keep `GAP-007` as the implementation backlog for routing L9 clarification model calls through shared provider normalization. Rejected: Option B, split interactive and CLI clarification into separate gaps now; Option C, keep clarification OpenAI-only and narrow the desired-state contract.
 - **References:** matrix section Configuration Layers L9; matrix section Resolution Rules; DEC-003
 - **Related:** INC-007, DEC-003
 
@@ -186,13 +197,14 @@ A gap means the desired-state contract requires behavior that the current implem
 
 - **Description:** The desired internal token-budget field is not translated to OpenAI, Perplexity, and Gemini consistently.
 - **Kind:** gap
-- **Status:** open
+- **Status:** accepted
 - **Layers affected:** L2, L3, L4, L5, L6, L7
 - **Providers affected:** OpenAI, Perplexity, Gemini
 - **Source:** `src/thoth/providers/openai.py:55-64`; `src/thoth/providers/perplexity.py:388-394`; `src/thoth/providers/perplexity.py:520-528`; `src/thoth/providers/perplexity.py:591-596`; `src/thoth/providers/gemini.py:58-76`
 - **Context:** `max_output_tokens` is the desired internal name for output-token budget, but provider APIs use split forms. OpenAI Responses and Gemini use `max_output_tokens`; Perplexity uses `max_tokens`.
 - **Detail:** OpenAI currently does not wire `max_output_tokens` into Responses request params. Perplexity wires native `max_tokens` for sync and async namespace paths, but there is no normalization from internal `max_output_tokens` to `max_tokens`. Gemini wires `gemini.max_output_tokens` through `GenerateContentConfig`, but common L4/L6 `max_output_tokens` is not routed into the Gemini namespace until shared normalization exists.
 - **Recommendation:** Resolve DEC-002 by using `max_output_tokens` everywhere outside provider namespaces. Adapter normalization should emit OpenAI `max_output_tokens`, Perplexity `max_tokens` / `request.max_tokens`, and Gemini `config.max_output_tokens`. Provider-native aliases may remain in provider namespaces as compatibility inputs.
+- **Resolution choices:** Option A accepted: keep `GAP-008` as the parameter-family backlog for normalizing `max_output_tokens` across providers. Rejected: Option B, fold this back into umbrella `GAP-006`; Option C, expose only provider-native names and remove `max_output_tokens` as a common internal field.
 - **References:** matrix row `max_output_tokens`; DEC-002; matrix section Configuration Layers L4/L6; `src/thoth/providers/__init__.py`
 - **Related:** GAP-003, GAP-006, DEC-002, INC-001
 
@@ -276,6 +288,38 @@ A gap means the desired-state contract requires behavior that the current implem
 - **References:** matrix row `n`; Gemini GenerateContent reference; matrix section Configuration Layers L4-L7; `src/thoth/providers/gemini.py`
 - **Related:** GAP-003, GAP-006, DEC-001, DEC-004
 
+<a id="gap-014"></a>
+
+### GAP-014 - OpenAI `response_format` Is Not Wired
+
+- **Description:** OpenAI Responses supports `text.format`, but the OpenAI adapter does not translate internal `response_format`.
+- **Kind:** gap
+- **Status:** open
+- **Layers affected:** L4, L5, L6, L7
+- **Providers affected:** OpenAI
+- **Source:** `src/thoth/providers/openai.py:55-64`; `src/thoth/providers/openai.py:359-375`; `src/thoth/providers/openai.py:579-589`
+- **Context:** The desired matrix exposes internal `response_format` as OpenAI Responses `text.format`, including JSON mode and JSON-schema structured outputs.
+- **Detail:** `_DIRECT_SDK_KEYS_OPENAI` does not include `response_format`, and the request builders never set `text.format`. As a result, common or namespaced `response_format` values do not reach `responses.create()` or `responses.stream()`.
+- **Recommendation:** Normalize internal `response_format` to OpenAI `text.format`, with tests for at least text/default, JSON object, and JSON schema shapes.
+- **References:** matrix row `response_format`; OpenAI Structured Outputs guide; `src/thoth/providers/openai.py`
+- **Related:** GAP-003, GAP-006, DEC-004
+
+<a id="gap-015"></a>
+
+### GAP-015 - Gemini `response_format` Is Not Normalized
+
+- **Description:** Gemini supports split structured-output fields, but internal `response_format` is not translated to them.
+- **Kind:** gap
+- **Status:** open
+- **Layers affected:** L4, L6
+- **Providers affected:** Gemini
+- **Source:** `src/thoth/providers/gemini.py:58-76`; `src/thoth/providers/gemini.py:313-320`
+- **Context:** The desired matrix exposes internal `response_format` as Gemini `response_mime_type`, `response_schema`, and `response_json_schema`.
+- **Detail:** Gemini provider-native fields are allowlisted and pass through when placed directly under `[modes.X.gemini]`, but no shared normalizer maps an internal `response_format` object from common mode/profile layers into Gemini's split SDK fields.
+- **Recommendation:** Define the canonical internal `response_format` shapes and translate them to Gemini split fields while continuing to accept provider-native Gemini fields in Gemini namespaces.
+- **References:** matrix row `response_format`; Gemini GenerateContent reference; matrix section Parameter Matrix; `src/thoth/providers/gemini.py`
+- **Related:** GAP-003, GAP-006, DEC-001, DEC-004
+
 ## Inconsistencies (`INC-`)
 
 An inconsistency means a behavior exists, but the semantics differ across layers or providers. Triage by deciding the canonical behavior and then making every provider/layer obey that one contract. Each `INC-*` entry includes context, detailed impact, a recommended direction, and concrete resolution choices so it can be converted directly into a plan.
@@ -292,6 +336,7 @@ An inconsistency means a behavior exists, but the semantics differ across layers
 | INC-008 | Documentation and tests disagree on root provider defaults | Auth help documents provider tables as API-key-only while skipped tests describe desired request defaults. | accepted | Align docs, skipped tests, and matrix to `INC-002`; keep runtime work tracked by `GAP-001`. | A align to INC-002 accepted | GAP-001; INC-002 |
 | INC-009 | Perplexity `search_context_size` needs upstream validation | Local built-ins and adapter defaults use `web_search_options.search_context_size`, and current Perplexity Sonar docs validate it as a request option. | accepted | Keep `search_context_size` as a first-class Perplexity row with current-doc citations. | A validate and keep accepted | DEC-004 |
 | INC-010 | OpenAI `system_prompt` uses developer-role input instead of `instructions` | Desired state names OpenAI `instructions`, while current code sends an equivalent developer-role input message. | accepted | Use top-level `instructions` for OpenAI `system_prompt` during adapter normalization. | A switch to `instructions` accepted | matrix row `system_prompt` |
+| INC-011 | Perplexity `response_format` differs between sync and async layers | Perplexity sync consumes namespaced and flat `response_format`, while async consumes only namespaced `response_format`. | open | Route common/root `response_format` through shared normalization before sync/async request construction. | pending | matrix row `response_format`; INC-001 |
 
 <a id="inc-001"></a>
 
@@ -462,6 +507,23 @@ An inconsistency means a behavior exists, but the semantics differ across layers
 - **Resolution choices:** Option A accepted: switch OpenAI adapter output to top-level `instructions`. Rejected: Option B, define developer-role input as OpenAI's canonical encoding; Option C, allow both encodings in docs while emitting one path per request.
 - **References:** matrix row `system_prompt`; OpenAI Responses create reference `https://platform.openai.com/docs/api-reference/responses`; `src/thoth/providers/openai.py`
 - **Related:** GAP-003, DEC-009, DEC-010
+
+<a id="inc-011"></a>
+
+### INC-011 - Perplexity `response_format` Differs Between Sync And Async Layers
+
+- **Description:** Perplexity sync consumes namespaced and flat `response_format`, while async consumes only namespaced `response_format`.
+- **Kind:** inconsistency
+- **Status:** open
+- **Layers affected:** L2, L3, L4, L5, L6, L7
+- **Providers affected:** Perplexity
+- **Source:** `src/thoth/providers/perplexity.py:388-394`; `src/thoth/providers/perplexity.py:520-528`; `src/thoth/providers/perplexity.py:591-596`
+- **Context:** Perplexity Sonar supports `response_format` for structured output on the synchronous chat-completion endpoint, and Thoth's async wrapper constructs a nested `request` object from provider config.
+- **Detail:** The synchronous request builder checks the Perplexity namespace first and then falls back to flat provider config, so `[providers.perplexity] response_format = ...` or copied L4 flat values can reach the sync SDK call. The async builder copies only `self.config["perplexity"]` into `request.*`, so equivalent root/flat/common values are ignored in async mode unless already normalized into the namespace.
+- **Recommendation:** Route common/root `response_format` through shared normalization before sync and async request construction, so both paths emit the same provider-native `response_format` / `request.response_format` payload.
+- **Resolution choices:** pending
+- **References:** matrix row `response_format`; Perplexity Sonar chat completion reference `https://docs.perplexity.ai/api-reference/sonar-post`; `src/thoth/providers/perplexity.py`
+- **Related:** INC-001, GAP-003, GAP-006
 
 ## Decisions (`DEC-`)
 
