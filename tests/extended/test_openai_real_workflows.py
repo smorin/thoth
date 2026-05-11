@@ -120,6 +120,31 @@ def test_ext_oai_imm_stream_tee_writes_stdout_and_file(
     assert target.read_text(encoding="utf-8") == result.stdout
 
 
+def test_ext_oai_imm_openai_reasoning_completes_with_reasoning(
+    live_cli_env: tuple[dict[str, str], Path],
+) -> None:
+    """EXT-OAI-IMM-REASONING: openai_reasoning streams to completion with reasoning."""
+    env, _state_root = live_cli_env
+    result, elapsed = run_thoth(
+        [
+            "ask",
+            "Use web search if useful. Answer in one short sentence: why are command-line tools useful?",
+            "--mode",
+            "openai_reasoning",
+            "--provider",
+            "openai",
+        ],
+        env,
+        timeout=180,
+    )
+
+    assert result.returncode == 0, result.stderr + result.stdout
+    assert elapsed < 180
+    assert_no_secret_leaked(result, env)
+    assert result.stdout.strip()
+    assert "## Reasoning" in result.stdout
+
+
 def test_ext_oai_bg_json_auto_async_submits_and_can_cancel(
     live_cli_env: tuple[dict[str, str], Path],
 ) -> None:

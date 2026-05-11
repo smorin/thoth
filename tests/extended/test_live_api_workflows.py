@@ -1,24 +1,25 @@
 """P20: Live-API workflow regression suite.
 
-Slim scope (TS03-TS08): real-API CLI behaviors that mocks cannot
-catch — streaming, file output, append, no-metadata, secret
-masking, and mismatch defense. Sibling to the `extended` marker
-suite (`test_model_kind_runtime.py`, `test_openai_real_workflows.py`)
-but distinct in cadence and purpose: this suite watches user-visible
-CLI workflow drift, not model-kind contracts.
+Slim scope (TS03-TS08): real-API CLI behaviors that mocks cannot catch across
+OpenAI, Perplexity, and Gemini immediate modes — streaming, file output,
+append, no-metadata, secret masking, and mismatch defense. Sibling to the
+`extended` marker suite (`test_model_kind_runtime.py`,
+`test_openai_real_workflows.py`) but distinct in cadence and purpose: this
+suite watches user-visible CLI workflow drift, not model-kind contracts.
 
 Gated by `@pytest.mark.live_api`; default `pytest` skips this
 module via `addopts = "-m 'not extended and not live_api'"`. Run
 explicitly with `just test-live-api` or weekly via
 `.github/workflows/live-api.yml` (Saturday 7pm PDT).
 
-Cost target: <$0.20 per full run (short prompts, single-shot
-immediate streams, one no-HTTP test).
+Cost target: short prompts and immediate-mode calls for each provider, plus one
+no-HTTP mismatch-defense test.
 """
 
 from __future__ import annotations
 
 import asyncio
+from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
@@ -33,19 +34,62 @@ from tests.extended.conftest import (
 pytestmark = pytest.mark.live_api
 
 
+@dataclass(frozen=True)
+class ImmediateProviderCase:
+    provider: str
+    mode: str
+    env_var: str
+    api_key_flag: str
+    fixture_name: str
+
+
+IMMEDIATE_PROVIDER_CASES = [
+    ImmediateProviderCase(
+        provider="openai",
+        mode="thinking",
+        env_var="OPENAI_API_KEY",
+        api_key_flag="--api-key-openai",
+        fixture_name="live_cli_env",
+    ),
+    ImmediateProviderCase(
+        provider="perplexity",
+        mode="perplexity_quick",
+        env_var="PERPLEXITY_API_KEY",
+        api_key_flag="--api-key-perplexity",
+        fixture_name="live_perplexity_env",
+    ),
+    ImmediateProviderCase(
+        provider="gemini",
+        mode="gemini_quick",
+        env_var="GEMINI_API_KEY",
+        api_key_flag="--api-key-gemini",
+        fixture_name="live_gemini_env",
+    ),
+]
+
+
+@pytest.fixture(params=IMMEDIATE_PROVIDER_CASES, ids=lambda c: c.provider)
+def live_immediate_case(
+    request: pytest.FixtureRequest,
+) -> tuple[ImmediateProviderCase, dict[str, str], Path]:
+    case = request.param
+    env, state_root = request.getfixturevalue(case.fixture_name)
+    return case, env, state_root
+
+
 def test_immediate_streaming_smoke(
-    live_cli_env: tuple[dict[str, str], Path],
+    live_immediate_case: tuple[ImmediateProviderCase, dict[str, str], Path],
 ) -> None:
     """P20-TS03: immediate `thoth ask` streams to stdout, no result file, no bg hints."""
-    env, tmp_path = live_cli_env
+    case, env, tmp_path = live_immediate_case
     result, elapsed = run_thoth(
         [
             "ask",
             "Reply with the word ok.",
             "--mode",
-            "thinking",
+            case.mode,
             "--provider",
-            "openai",
+            case.provider,
         ],
         env,
         timeout=120,
@@ -65,20 +109,20 @@ def test_immediate_streaming_smoke(
 
 
 def test_immediate_out_file_writes_and_silences_stdout(
-    live_cli_env: tuple[dict[str, str], Path],
+    live_immediate_case: tuple[ImmediateProviderCase, dict[str, str], Path],
     tmp_path,
 ) -> None:
     """P20-TS04: `--out FILE` writes non-empty file; stdout suppressed."""
-    env, _state_root = live_cli_env
+    case, env, _state_root = live_immediate_case
     target = tmp_path / "answer.md"
     result, _elapsed = run_thoth(
         [
             "ask",
             "Reply with the word ok.",
             "--mode",
-            "thinking",
+            case.mode,
             "--provider",
-            "openai",
+            case.provider,
             "--out",
             str(target),
         ],
@@ -95,19 +139,19 @@ def test_immediate_out_file_writes_and_silences_stdout(
 
 
 def test_append_grows_file_and_preserves_prefix(
-    live_cli_env: tuple[dict[str, str], Path],
+    live_immediate_case: tuple[ImmediateProviderCase, dict[str, str], Path],
     tmp_path,
 ) -> None:
     """P20-TS05: `--append` grows the file; first run's prefix is preserved."""
-    env, _state_root = live_cli_env
+    case, env, _state_root = live_immediate_case
     target = tmp_path / "appended.md"
     cmd = [
         "ask",
         "Reply with one short word.",
         "--mode",
-        "thinking",
+        case.mode,
         "--provider",
-        "openai",
+        case.provider,
         "--out",
         str(target),
         "--append",
@@ -131,7 +175,7 @@ def test_append_grows_file_and_preserves_prefix(
 
 
 def test_no_metadata_immediate_smoke(
-    live_cli_env: tuple[dict[str, str], Path],
+    live_immediate_case: tuple[ImmediateProviderCase, dict[str, str], Path],
     tmp_path,
 ) -> None:
     """P20-TS06: `--no-metadata` is innocuous on the immediate `--out` path.
@@ -141,16 +185,16 @@ def test_no_metadata_immediate_smoke(
     this flag. This test asserts the flag doesn't break the path and locks
     in metadata-free output as a regression guard.
     """
-    env, _state_root = live_cli_env
+    case, env, _state_root = live_immediate_case
     target = tmp_path / "no-metadata.md"
     result, _ = run_thoth(
         [
             "ask",
             "Reply with one short word.",
             "--mode",
-            "thinking",
+            case.mode,
             "--provider",
-            "openai",
+            case.provider,
             "--out",
             str(target),
             "--no-metadata",
@@ -165,23 +209,23 @@ def test_no_metadata_immediate_smoke(
 
 
 def test_cli_api_key_does_not_leak(
-    live_cli_env: tuple[dict[str, str], Path],
+    live_immediate_case: tuple[ImmediateProviderCase, dict[str, str], Path],
 ) -> None:
-    """P20-TS07: `--api-key-openai` works without env var and key not echoed."""
-    env, _state_root = live_cli_env
-    secret = env["OPENAI_API_KEY"]
+    """P20-TS07: provider CLI API-key flags work without env var and do not echo."""
+    case, env, _state_root = live_immediate_case
+    secret = env[case.env_var]
     env_no_key = env.copy()
-    env_no_key.pop("OPENAI_API_KEY", None)
+    env_no_key.pop(case.env_var, None)
 
     result, _ = run_thoth(
         [
             "ask",
             "Reply with the word ok.",
             "--mode",
-            "thinking",
+            case.mode,
             "--provider",
-            "openai",
-            "--api-key-openai",
+            case.provider,
+            case.api_key_flag,
             secret,
         ],
         env_no_key,

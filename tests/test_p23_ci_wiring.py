@@ -51,17 +51,16 @@ def test_perplexity_models_in_known_models_registry() -> None:
     assert "sonar-deep-research" in perp_ids
 
 
-def test_perplexity_deep_research_runtime_check_deferred_to_weekly_live_api() -> None:
-    """P27: expensive non-cancellable DR is not exercised by nightly extended."""
+def test_perplexity_deep_research_runtime_check_runs_in_extended() -> None:
+    """P27/P24: sonar-deep-research participates in the extended runtime check."""
     from tests.extended import test_model_kind_runtime as runtime
     from thoth.models import ModelSpec
 
     skip_reason = getattr(runtime, "_runtime_check_skip_reason", None)
     assert callable(skip_reason), (
-        "test_model_kind_runtime needs an explicit skip helper so expensive "
-        "Perplexity deep-research is covered by live_api, not nightly extended"
+        "test_model_kind_runtime should expose the skip policy so provider coverage stays explicit"
     )
-    assert skip_reason(ModelSpec("sonar-deep-research", "perplexity", "background"))
+    assert skip_reason(ModelSpec("sonar-deep-research", "perplexity", "background")) is None
     assert skip_reason(ModelSpec("sonar", "perplexity", "immediate")) is None
 
 

@@ -90,3 +90,48 @@ def test_ext_pplx_mode_provider_namespace_reaches_extra_body() -> None:
     assert captured["model"] == "sonar"
     assert captured["extra_body"]["stream_mode"] == "full"
     assert captured["extra_body"]["web_search_options"]["search_context_size"] == "low"
+
+
+def test_ext_gem_mode_provider_namespace_reaches_generate_content_config() -> None:
+    """P24: Gemini nested mode namespace reaches GenerateContentConfig."""
+    from thoth.config import ConfigManager
+    from thoth.providers import create_provider
+
+    config = cast(
+        ConfigManager,
+        types.SimpleNamespace(data={"providers": {"gemini": {"api_key": "AIza-test"}}}),
+    )
+    mode_config: dict[str, Any] = {
+        "provider": "gemini",
+        "model": "gemini-2.5-flash-lite",
+        "kind": "immediate",
+        "gemini": {
+            "temperature": 0.2,
+            "tools": ["google_search"],
+            "thinking_budget": 0,
+        },
+    }
+    provider = create_provider("gemini", config, mode_config=mode_config)
+    provider_any = cast(Any, provider)
+    captured: dict[str, Any] = {}
+
+    async def fake_generate_content(**kwargs: Any) -> Any:
+        captured.update(kwargs)
+        return types.SimpleNamespace(id="resp-gemini-passthrough", candidates=[])
+
+    provider_any.client = cast(
+        Any,
+        types.SimpleNamespace(
+            aio=types.SimpleNamespace(
+                models=types.SimpleNamespace(generate_content=fake_generate_content)
+            )
+        ),
+    )
+
+    asyncio.run(provider_any.submit("hi", mode="gemini_passthrough"))
+
+    assert captured["model"] == "gemini-2.5-flash-lite"
+    generate_config = captured["config"]
+    assert generate_config.temperature == 0.2
+    assert len(generate_config.tools) == 1
+    assert generate_config.thinking_config.thinking_budget == 0

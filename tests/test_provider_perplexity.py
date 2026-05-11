@@ -192,8 +192,41 @@ def test_perplexity_request_default_stream_mode_is_concise() -> None:
     assert extra_body.get("stream_mode") == "concise"
 
 
-def test_perplexity_request_passes_direct_sdk_kwargs() -> None:
-    """TS02: max_tokens / temperature / top_p / stop / response_format pass directly."""
+def test_perplexity_request_passes_namespaced_direct_sdk_kwargs() -> None:
+    """TS02: [modes.X.perplexity] direct SDK keys pass directly."""
+    captured: dict[str, Any] = {}
+    config = {
+        "model": "sonar",
+        "kind": "immediate",
+        "perplexity": {
+            "max_tokens": 512,
+            "temperature": 0.4,
+            "top_p": 0.9,
+            "stop": ["END"],
+            "response_format": {"type": "text"},
+        },
+    }
+    provider = PerplexityProvider(api_key="pplx-test", config=config)
+    provider.client = _stub_client(captured)
+    asyncio.run(provider.submit("hi", mode="perplexity_quick"))
+    assert captured["max_tokens"] == 512
+    assert captured["temperature"] == 0.4
+    assert captured["top_p"] == 0.9
+    assert captured["stop"] == ["END"]
+    assert captured["response_format"] == {"type": "text"}
+    for key in ("max_tokens", "temperature", "top_p", "stop", "response_format"):
+        assert key not in captured["extra_body"]
+
+
+def test_perplexity_request_falls_back_to_flat_direct_sdk_kwargs() -> None:
+    """Flat direct SDK keys at the provider config root reach the request as fallback.
+
+    Layered resolution: [modes.X.perplexity] namespace wins when set (see
+    test_perplexity_namespaced_direct_sdk_kwargs_override_flat); when only
+    the flat shape exists (e.g. from `[providers.perplexity]` root config)
+    it still flows through. Reconciles P24 follow-up #3 namespace preference
+    with P33's `[providers.perplexity]` root-level passthrough contract.
+    """
     captured: dict[str, Any] = {}
     config = {
         "model": "sonar",
@@ -207,11 +240,27 @@ def test_perplexity_request_passes_direct_sdk_kwargs() -> None:
     provider = PerplexityProvider(api_key="pplx-test", config=config)
     provider.client = _stub_client(captured)
     asyncio.run(provider.submit("hi", mode="perplexity_quick"))
-    assert captured["max_tokens"] == 512
-    assert captured["temperature"] == 0.4
-    assert captured["top_p"] == 0.9
-    assert captured["stop"] == ["END"]
-    assert captured["response_format"] == {"type": "text"}
+    assert captured.get("max_tokens") == 512
+    assert captured.get("temperature") == 0.4
+    assert captured.get("top_p") == 0.9
+    assert captured.get("stop") == ["END"]
+    assert captured.get("response_format") == {"type": "text"}
+
+
+def test_perplexity_namespaced_direct_sdk_kwargs_override_flat() -> None:
+    """When both shapes exist, only the namespaced value is used."""
+    captured: dict[str, Any] = {}
+    config = {
+        "model": "sonar",
+        "kind": "immediate",
+        "temperature": 0.1,
+        "perplexity": {"temperature": 0.7},
+    }
+    provider = PerplexityProvider(api_key="pplx-test", config=config)
+    provider.client = _stub_client(captured)
+    asyncio.run(provider.submit("hi", mode="perplexity_quick"))
+    assert captured["temperature"] == 0.7
+    assert "temperature" not in captured["extra_body"]
 
 
 # ---------------------------------------------------------------------------
@@ -841,4 +890,159 @@ def test_perplexity_sync_maps_402_status_code_to_api_quota_error() -> None:
     result = _map_perplexity_error(exc)
     assert isinstance(result, APIQuotaError), (
         f"expected APIQuotaError for status_code=402, got {type(result).__name__}: {result!r}"
+    )
+
+
+def test_perplexity_constants_use_suffix_naming() -> None:
+    """Perplexity module-level constants follow the cross-provider suffix convention."""
+    from thoth.providers import perplexity as pp
+
+    assert hasattr(pp, "_DIRECT_SDK_KEYS_PERPLEXITY"), (
+        "_DIRECT_SDK_KEYS_PERPLEXITY must exist (renamed from bare _DIRECT_SDK_KEYS)"
+    )
+    assert hasattr(pp, "_PROVIDER_NAME_PERPLEXITY"), (
+        "_PROVIDER_NAME_PERPLEXITY must exist (renamed from bare _PROVIDER_NAME)"
+    )
+    assert pp._PROVIDER_NAME_PERPLEXITY == "perplexity"
+    assert "max_tokens" in pp._DIRECT_SDK_KEYS_PERPLEXITY
+    assert "temperature" in pp._DIRECT_SDK_KEYS_PERPLEXITY
+
+
+def test_perplexity_bare_constant_names_removed() -> None:
+    """Bare unsuffixed names must NOT exist after the rename."""
+    from thoth.providers import perplexity as pp
+
+    assert not hasattr(pp, "_DIRECT_SDK_KEYS"), "bare _DIRECT_SDK_KEYS leaked through rename"
+    assert not hasattr(pp, "_PROVIDER_NAME"), "bare _PROVIDER_NAME leaked through rename"
+
+
+def test_perplexity_not_found_error_maps_with_model_hint() -> None:
+    """openai.NotFoundError must map to ProviderError with the 'models' CLI hint.
+
+    Mirrors OpenAI's existing mapping at openai.py:_map_openai_error so
+    Perplexity model-id typos produce a clear, actionable error instead of
+    falling through to the generic APIError catch-all.
+    """
+    from thoth.errors import ProviderError
+    from thoth.providers.perplexity import _map_perplexity_error
+
+    exc = _make_openai_exc(
+        "NotFoundError",
+        status=404,
+        body={
+            "error": {
+                "code": "model_not_found",
+                "message": "Model 'sonar-imaginary' not found",
+            }
+        },
+    )
+    mapped = _map_perplexity_error(exc, model="sonar-imaginary", verbose=False)
+    assert isinstance(mapped, ProviderError)
+    assert mapped.provider == "perplexity"
+    # User-facing message should mention the bad model name and route users
+    # at the models CLI subcommand.
+    msg_lower = mapped.message.lower()
+    assert "sonar-imaginary" in mapped.message
+    assert "not found" in msg_lower
+    assert "models" in msg_lower, "ProviderError message must point users at the models CLI command"
+    assert "perplexity" in msg_lower
+
+
+def _bad_request_with_message(message: str, body: Any = None) -> BaseException:
+    """Build a real openai.BadRequestError carrying a custom user-facing message.
+
+    `_make_openai_exc` hardcodes the message for parametrized testing; for
+    Task 2.4 we need to control the exact wording so the regex extraction
+    has something to find.
+    """
+    import httpx
+    import openai
+
+    request = httpx.Request("POST", "https://api.perplexity.ai/chat/completions")
+    response = httpx.Response(status_code=400, request=request)
+    return openai.BadRequestError(message=message, response=response, body=body)
+
+
+def test_perplexity_unsupported_parameter_regex_extraction() -> None:
+    """BadRequestError with 'Unsupported parameter X' surfaces the parameter name."""
+    from thoth.errors import ProviderError
+    from thoth.providers.perplexity import _map_perplexity_error
+
+    exc = _bad_request_with_message(
+        "Unsupported parameter 'frequency_penalty' for sonar-pro.",
+        body={
+            "error": {
+                "code": "invalid_request_error",
+                "message": "Unsupported parameter 'frequency_penalty' for sonar-pro.",
+            }
+        },
+    )
+    mapped = _map_perplexity_error(exc, model="sonar-pro", verbose=False)
+    assert isinstance(mapped, ProviderError)
+    assert mapped.provider == "perplexity"
+    # Extracted parameter name must surface in the user-facing message.
+    assert "frequency_penalty" in mapped.message
+
+
+def test_perplexity_bad_request_without_unsupported_parameter_falls_through() -> None:
+    """BadRequestError without an 'unsupported parameter' marker keeps generic message."""
+    from thoth.errors import ProviderError
+    from thoth.providers.perplexity import _map_perplexity_error
+
+    exc = _bad_request_with_message(
+        "Some other 400 error",
+        body={"error": {"code": "invalid_request_error", "message": "Some other 400 error"}},
+    )
+    mapped = _map_perplexity_error(exc, model="sonar", verbose=False)
+    assert isinstance(mapped, ProviderError)
+    assert mapped.provider == "perplexity"
+    # Generic 400 message should still be present (don't break existing handling).
+    assert "bad request" in mapped.message.lower()
+
+
+def test_perplexity_empty_content_debug_print(capsys) -> None:
+    """When response content is empty and verbose=True, emit debug ladder to stderr."""
+    import asyncio
+    from types import SimpleNamespace
+
+    from thoth.providers.perplexity import PerplexityProvider
+
+    provider = PerplexityProvider(api_key="dummy", config={})
+    fake_response = SimpleNamespace(
+        choices=[SimpleNamespace(message=SimpleNamespace(content=""))],
+        search_results=[],
+    )
+    # Simulate model_dump_json so the first step of the ladder hits
+    fake_response.model_dump_json = lambda **kwargs: '{"choices": [{"message": {"content": ""}}]}'
+    provider.jobs["test"] = {"response": fake_response}
+
+    asyncio.run(provider.get_result("test", verbose=True))
+    captured = capsys.readouterr()
+    # Debug print should fire when content is empty + verbose
+    combined = (captured.err + captured.out).lower()
+    assert "empty" in combined or "debug" in combined or "no content" in combined, (
+        "expected an empty-content debug message on stderr/stdout when verbose=True"
+    )
+
+
+def test_perplexity_empty_content_no_debug_when_verbose_false(capsys) -> None:
+    """verbose=False: empty content does not emit debug output."""
+    import asyncio
+    from types import SimpleNamespace
+
+    from thoth.providers.perplexity import PerplexityProvider
+
+    provider = PerplexityProvider(api_key="dummy", config={})
+    fake_response = SimpleNamespace(
+        choices=[SimpleNamespace(message=SimpleNamespace(content=""))],
+        search_results=[],
+    )
+    provider.jobs["test"] = {"response": fake_response}
+
+    asyncio.run(provider.get_result("test", verbose=False))
+    captured = capsys.readouterr()
+    combined = (captured.err + captured.out).lower()
+    # No debug ladder output when verbose is off
+    assert "empty" not in combined and "debug" not in combined, (
+        "verbose=False must not produce debug output"
     )

@@ -101,6 +101,7 @@ def test_providers_models_honors_inherited_api_key_and_timeout(monkeypatch):
     assert captured["cli_api_keys"] == {
         "openai": "sk-root",
         "perplexity": None,
+        "gemini": None,
         "mock": None,
     }
     assert captured["timeout_override"] == 12.5
@@ -366,3 +367,73 @@ def test_bare_prompt_trailing_pick_model_and_model_are_mutually_exclusive(monkey
     assert "--pick-model" in result.output
     assert pick_called is False
     assert captured == {}
+
+
+# ---------------------------------------------------------------------------
+# P24 Task 5.1 — --api-key-gemini surface tests.
+# Mirrors --api-key-perplexity precedent.
+# ---------------------------------------------------------------------------
+
+
+def test_root_option_labels_includes_api_key_gemini() -> None:
+    """P24-T07: ROOT_OPTION_LABELS maps api_key_gemini to --api-key-gemini."""
+    from thoth.cli_subcommands._option_policy import ROOT_OPTION_LABELS
+
+    assert ROOT_OPTION_LABELS.get("api_key_gemini") == "--api-key-gemini"
+
+
+def test_inherited_api_keys_includes_gemini() -> None:
+    """P24-T07: inherited_api_keys() returns a 'gemini' entry."""
+    from unittest.mock import MagicMock
+
+    from thoth.cli_subcommands._option_policy import inherited_api_keys
+
+    fake_ctx = MagicMock()
+    fake_ctx.obj = {
+        "api_key_openai": None,
+        "api_key_perplexity": None,
+        "api_key_gemini": "AIza-root",
+        "api_key_mock": None,
+    }
+
+    keys = inherited_api_keys(fake_ctx)
+    assert "gemini" in keys
+    assert keys["gemini"] == "AIza-root"
+
+
+def test_ask_threads_inherited_api_key_gemini_into_run_research(monkeypatch):
+    """P24-T07: --api-key-gemini at root is threaded into run_research's cli_api_keys."""
+    captured = _stub_run_research(monkeypatch)
+
+    result = CliRunner().invoke(
+        cli,
+        [
+            "--api-key-gemini",
+            "AIza-root",
+            "--prompt",
+            "test prompt",
+            "ask",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert captured["cli_api_keys"]["gemini"] == "AIza-root"
+
+
+def test_ask_subcommand_local_api_key_gemini(monkeypatch):
+    """P24-T07: --api-key-gemini after `ask` is honored too (subcommand-local)."""
+    captured = _stub_run_research(monkeypatch)
+
+    result = CliRunner().invoke(
+        cli,
+        [
+            "--prompt",
+            "test prompt",
+            "ask",
+            "--api-key-gemini",
+            "AIza-local",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert captured["cli_api_keys"]["gemini"] == "AIza-local"

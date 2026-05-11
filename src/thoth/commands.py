@@ -605,7 +605,7 @@ async def providers_command(
     config = get_config(profile=profile)
     cli_api_keys = cli_api_keys or {}
 
-    all_providers = ["openai", "perplexity", "mock"]
+    all_providers = ["openai", "perplexity", "gemini", "mock"]
     selected_providers = all_providers
     if filter_provider:
         if filter_provider not in all_providers:
@@ -617,6 +617,7 @@ async def providers_command(
     provider_descriptions = {
         "openai": "OpenAI GPT models",
         "perplexity": "Perplexity Sonar (web-grounded synchronous search)",
+        "gemini": "Gemini 2.5 (web-grounded synchronous search with optional thinking)",
         "mock": "Mock provider for tests",
     }
 
@@ -678,6 +679,7 @@ async def providers_command(
         env_vars = {
             "openai": "OPENAI_API_KEY",
             "perplexity": "PERPLEXITY_API_KEY",
+            "gemini": "GEMINI_API_KEY",
             "mock": "MOCK_API_KEY",
         }
 
@@ -757,6 +759,12 @@ async def providers_command(
                     table.add_row(model["id"], created_date, model["owned_by"])
             elif provider_name == "perplexity":
                 table = Table(title="Perplexity Models", box=box.ROUNDED)
+                table.add_column("Model ID", style="cyan", width=model_id_width)
+
+                for model in models:
+                    table.add_row(model["id"])
+            elif provider_name == "gemini":
+                table = Table(title="Gemini Models", box=box.ROUNDED)
                 table.add_column("Model ID", style="cyan", width=model_id_width)
 
                 for model in models:

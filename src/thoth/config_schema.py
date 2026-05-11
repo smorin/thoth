@@ -263,7 +263,9 @@ class ProvidersConfig(BaseModel):
     perplexity: PerplexityConfig = StarterField(
         default_factory=lambda: PerplexityConfig(api_key="${PERPLEXITY_API_KEY}"),
     )
-    # Gemini intentionally NOT in starter doc — P28 not landed yet.
+    gemini: GeminiConfig = StarterField(
+        default_factory=lambda: GeminiConfig(api_key="${GEMINI_API_KEY}"),
+    )
     mock: MockConfig | None = Field(None)  # not StarterField — test/dev only
 
 

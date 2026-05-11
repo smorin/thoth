@@ -133,6 +133,7 @@ def _version_conflicts(ctx: click.Context, opts: dict) -> list[str]:
         "verbose": "--verbose",
         "api_key_openai": "--api-key-openai",
         "api_key_perplexity": "--api-key-perplexity",
+        "api_key_gemini": "--api-key-gemini",
         "api_key_mock": "--api-key-mock",
         "config_path": "--config",
         "profile": "--profile",
@@ -249,6 +250,7 @@ def _extract_fallback_options(args: list[str], opts: dict) -> tuple[list[str], d
         "--input-file": "input_file",
         "--api-key-openai": "api_key_openai",
         "--api-key-perplexity": "api_key_perplexity",
+        "--api-key-gemini": "api_key_gemini",
         "--api-key-mock": "api_key_mock",
         "--config": "config_path",
         "-c": "config_path",
@@ -260,9 +262,9 @@ def _extract_fallback_options(args: list[str], opts: dict) -> tuple[list[str], d
     }
 
     def _validate_provider(value: str) -> None:
-        if value not in {"openai", "perplexity", "mock"}:
+        if value not in {"openai", "perplexity", "gemini", "mock"}:
             raise click.BadParameter(
-                f"'{value}' is not one of 'openai', 'perplexity', 'mock'",
+                f"'{value}' is not one of 'openai', 'perplexity', 'gemini', 'mock'",
                 param_hint="'--provider' / '-P'",
             )
 
@@ -382,6 +384,7 @@ def _enter_interactive_from_options(
     cli_api_keys = {
         "openai": opts.get("api_key_openai"),
         "perplexity": opts.get("api_key_perplexity"),
+        "gemini": opts.get("api_key_gemini"),
         "mock": opts.get("api_key_mock"),
     }
     initial_settings = InteractiveInitialSettings(
@@ -457,6 +460,7 @@ def _dispatch_click_fallback(
     cli_api_keys = {
         "openai": opts.get("api_key_openai"),
         "perplexity": opts.get("api_key_perplexity"),
+        "gemini": opts.get("api_key_gemini"),
         "mock": opts.get("api_key_mock"),
     }
     research_runner(
@@ -596,6 +600,7 @@ def cli(
     version,
     api_key_openai,
     api_key_perplexity,
+    api_key_gemini,
     api_key_mock,
     config_path,
     profile,
@@ -636,6 +641,7 @@ def cli(
     ctx.obj["version"] = version
     ctx.obj["api_key_openai"] = api_key_openai
     ctx.obj["api_key_perplexity"] = api_key_perplexity
+    ctx.obj["api_key_gemini"] = api_key_gemini
     ctx.obj["api_key_mock"] = api_key_mock
     ctx.obj["config_path"] = config_path
     ctx.obj["profile"] = profile

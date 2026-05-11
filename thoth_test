@@ -2822,10 +2822,10 @@ all_tests = [
     ),
     TestCase(
         test_id="REAL-02",
-        description="Perplexity rejects invalid API key with mapped APIKeyError",
+        description="Perplexity rejects invalid API key with friendly ThothError",
         command=[THOTH_EXECUTABLE, "test perplexity", "--provider", "perplexity"],
         expected_stdout_patterns=[
-            r"perplexity API key",
+            r"Perplexity API key is invalid",
         ],
         expected_exit_code=1,
         env={"PERPLEXITY_API_KEY": "pplx-test-bogus-key"},
@@ -2852,7 +2852,12 @@ all_tests = [
         env={
             "THOTH_POLL_INTERVAL": "30"
         },  # Keep mock in "running" so signal lands inside polling loop
-        signal_after=1.5,  # After handler is installed and globals are set
+        signal_after=4.0,  # After handler is installed and globals are set.
+        # Was 1.5; bumped because P33 (pydantic) + P24 (google-genai) added
+        # transitive imports that push thoth's cold-start past 1.5s on
+        # ubuntu CI runners (SIGINT arrives mid-import → exit 130 instead
+        # of the signal handler's clean exit 1). 4.0 leaves headroom for
+        # the slowest CI runners while keeping the test fast on warm caches.
         cleanup_files=["*_mock_*.md", "~/.thoth/checkpoints/*.json"],
     ),
     # Transient / permanent error classification + resumable recovery
@@ -3015,7 +3020,7 @@ all_tests = [
     ),
     TestCase(
         test_id="P07-M2-02",
-        description="Direct Perplexity invocation rejects bogus key with mapped APIKeyError",
+        description="Direct Perplexity invocation rejects bogus key with friendly ThothError",
         command=[
             THOTH_EXECUTABLE,
             "test perplexity regression",
@@ -3025,7 +3030,7 @@ all_tests = [
             "pplx-test-bogus-key",
         ],
         expected_stdout_patterns=[
-            r"perplexity API key",
+            r"Perplexity API key is invalid",
         ],
         not_expected_stdout_patterns=[
             r"Unexpected error during submission",
@@ -3440,7 +3445,7 @@ all_tests = [
             "--api-key-openai",
             "invalid-key",
         ],
-        expected_stdout_patterns=[r"Invalid OpenAI API key"],
+        expected_stdout_patterns=[r"OpenAI API key is invalid"],
         expected_exit_code=1,
         timeout=10,
     ),

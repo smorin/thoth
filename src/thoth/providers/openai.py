@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-import re
+import logging
+import warnings
 from datetime import datetime
 from typing import Any
 from uuid import uuid4
@@ -10,7 +11,6 @@ from uuid import uuid4
 import httpx
 import openai
 from openai import AsyncOpenAI
-from rich.console import Console
 from tenacity import (
     retry,
     retry_if_exception_type,
@@ -28,10 +28,16 @@ from thoth.errors import (
     ThothError,
 )
 from thoth.models import ModelCache
+from thoth.providers._helpers import (
+    _extract_unsupported_param,
+    _invalid_key_thotherror,
+    debug_print_empty_response,
+    render_sources_block,
+)
 from thoth.providers._status import _translate_provider_status
-from thoth.providers.base import ResearchProvider
+from thoth.providers.base import Citation, ResearchProvider
 
-_console = Console()
+_LOG = logging.getLogger(__name__)
 
 # Provider-status → Thoth-status template. Used by check_status; the in_progress
 # template's progress is overridden at runtime from response.metadata; failed
@@ -44,6 +50,72 @@ _OPENAI_STATUS_TABLE: dict[str, dict[str, Any]] = {
     "cancelled": {"status": "cancelled", "error": "Response was cancelled"},
     "queued": {"status": "queued", "progress": 0.0},
 }
+
+
+_PROVIDER_NAME_OPENAI = "openai"
+_DIRECT_SDK_KEYS_OPENAI: tuple[str, ...] = (
+    "model",
+    "input",
+    "reasoning",
+    "tools",
+    "background",
+    "temperature",
+    "max_tool_calls",
+)
+
+# Framework-level config keys that stay flat on `provider.config` and are NOT
+# eligible for the [modes.X.openai] namespace migration. Reading any of these
+# from the flat top level must NOT emit a DeprecationWarning.
+_FRAMEWORK_FLAT_KEYS_OPENAI: frozenset[str] = frozenset(
+    {"openai", "kind", "model", "timeout", "background"}
+)
+
+
+def _annotation_get(annotation: Any, key: str) -> Any:
+    """Read an annotation field from either dict or SDK object shape."""
+    if isinstance(annotation, dict):
+        return annotation.get(key)
+    return getattr(annotation, key, None)
+
+
+def _annotation_debug_value(annotation: Any) -> Any:
+    """Return a compact value suitable for warning logs."""
+    if isinstance(annotation, dict):
+        return annotation
+    attrs = getattr(annotation, "__dict__", None)
+    if isinstance(attrs, dict):
+        return {k: v for k, v in attrs.items() if not k.startswith("_")}
+    return repr(annotation)
+
+
+def _url_citation_from_annotation(annotation: Any) -> Citation | None:
+    """Normalize a Responses API annotation into a URL citation or skip it.
+
+    Missing type is treated as a legacy URL-citation shape for backward
+    compatibility. Known non-URL types with URL-shaped fields are skipped and
+    warned so provider drift is visible without rendering misleading sources.
+    """
+    url = _annotation_get(annotation, "url")
+    if not url:
+        return None
+
+    annotation_type = _annotation_get(annotation, "type")
+    debug_value = _annotation_debug_value(annotation)
+    if annotation_type is None:
+        _LOG.warning(
+            "OpenAI annotation with URL is missing type; treating as url_citation: %r",
+            debug_value,
+        )
+    elif str(annotation_type) != "url_citation":
+        _LOG.warning(
+            "OpenAI annotation with URL has unsupported type %r; skipping: %r",
+            annotation_type,
+            debug_value,
+        )
+        return None
+
+    title = _annotation_get(annotation, "title") or url
+    return Citation(title=str(title), url=str(url))
 
 
 def _rate_limit_error_is_quota(exc: BaseException) -> bool:
@@ -86,20 +158,17 @@ def _map_openai_error(
     if isinstance(exc, openai.AuthenticationError):
         msg = str(exc).lower()
         if "incorrect api key" in msg:
-            return ThothError(
-                "Invalid OpenAI API key",
-                "Please check your API key at https://platform.openai.com/account/api-keys",
-            )
-        return APIKeyError("openai")
+            return _invalid_key_thotherror("OpenAI", "https://platform.openai.com/account/api-keys")
+        return APIKeyError(_PROVIDER_NAME_OPENAI)
 
     if isinstance(exc, openai.RateLimitError):
         if _rate_limit_error_is_quota(exc):
-            return APIQuotaError("openai")
-        return APIRateLimitError("openai")
+            return APIQuotaError(_PROVIDER_NAME_OPENAI)
+        return APIRateLimitError(_PROVIDER_NAME_OPENAI)
 
     if isinstance(exc, openai.NotFoundError):
         return ProviderError(
-            "openai",
+            _PROVIDER_NAME_OPENAI,
             f"Model '{model}' not found. Please check available models with "
             f"'thoth providers models --provider openai'",
             raw_error=raw,
@@ -110,52 +179,53 @@ def _map_openai_error(
         msg_lower = msg.lower()
         if "unsupported parameter" in msg_lower and "temperature" in msg_lower:
             return ProviderError(
-                "openai",
+                _PROVIDER_NAME_OPENAI,
                 f"Model '{model}' does not support temperature parameter. "
                 "This is likely a response model (o3, o3-deep-research, etc.)",
                 raw_error=raw,
             )
         if "unsupported parameter" in msg_lower:
-            param_match = re.search(r"'(\w+)'", msg)
-            param_name = param_match.group(1) if param_match else "unknown"
+            param_name = _extract_unsupported_param(msg) or "unknown"
             return ProviderError(
-                "openai",
+                _PROVIDER_NAME_OPENAI,
                 f"Model '{model}' does not support parameter '{param_name}'",
                 raw_error=raw,
             )
-        return ProviderError("openai", f"Invalid request: {msg}", raw_error=raw)
+        return ProviderError(_PROVIDER_NAME_OPENAI, f"Invalid request: {msg}", raw_error=raw)
 
     if isinstance(exc, openai.PermissionDeniedError):
-        return ProviderError("openai", "Permission denied by OpenAI API.", raw_error=raw)
+        return ProviderError(
+            _PROVIDER_NAME_OPENAI, "Permission denied by OpenAI API.", raw_error=raw
+        )
 
     if isinstance(exc, openai.InternalServerError):
         return ProviderError(
-            "openai",
+            _PROVIDER_NAME_OPENAI,
             "OpenAI server error. Try again in a moment.",
             raw_error=raw,
         )
 
     if isinstance(exc, openai.APITimeoutError):
         return ProviderError(
-            "openai",
+            _PROVIDER_NAME_OPENAI,
             "Request timed out. Try increasing timeout in config.",
             raw_error=raw,
         )
 
     if isinstance(exc, openai.APIConnectionError):
         return ProviderError(
-            "openai",
+            _PROVIDER_NAME_OPENAI,
             "Failed to connect to OpenAI API. Check your internet connection.",
             raw_error=raw,
         )
 
     if isinstance(exc, openai.APIError):
-        return ProviderError("openai", str(exc), raw_error=raw)
+        return ProviderError(_PROVIDER_NAME_OPENAI, str(exc), raw_error=raw)
 
     # A6 (P27 factor-dedup): intentional defense-in-depth. APIError is the
     # SDK base class so this fallthrough is unreachable in practice; kept to
     # guard against non-SDK exceptions sneaking through future refactors.
-    return ProviderError("openai", str(exc), raw_error=raw)
+    return ProviderError(_PROVIDER_NAME_OPENAI, str(exc), raw_error=raw)
 
 
 class OpenAIProvider(ResearchProvider):
@@ -167,11 +237,48 @@ class OpenAIProvider(ResearchProvider):
         # Model will be passed from mode configuration, default to o3
         self.model = self.config.get("model", "o3")
         self.jobs: dict[str, dict[str, Any]] = {}  # Store job information for async tracking
-        self.model_cache = ModelCache("openai")  # Initialize cache for OpenAI
+        self.model_cache = ModelCache(_PROVIDER_NAME_OPENAI)  # Initialize cache for OpenAI
 
         # Add timeout configuration
         timeout = self.config.get("timeout", 30.0)
         self.client = AsyncOpenAI(api_key=api_key, timeout=httpx.Timeout(timeout, connect=5.0))
+
+    def _resolve_provider_config_value(
+        self,
+        key: str,
+        default: Any = None,
+    ) -> Any:
+        """Read a provider-specific config key.
+
+        Resolution chain:
+          1. ``self.config["openai"][key]``  -- the ``[modes.X.openai]``
+             namespace (preferred).
+          2. ``self.config[key]``            -- flat top-level (deprecated;
+             emits ``DeprecationWarning``).
+          3. ``default``.
+
+        Mirrors Perplexity's ``[modes.X.perplexity]`` namespace pattern. Flat
+        keys are supported for backwards-compat with mode TOMLs that pre-date
+        P24, but emit a ``DeprecationWarning`` telling users to migrate.
+        Framework-level keys (``kind``, ``model``, ``timeout``, ``background``,
+        ``openai``) are never warned on — they are framework-owned, not
+        user-owned, and are read directly from ``self.config`` elsewhere.
+        """
+        nested = self.config.get(_PROVIDER_NAME_OPENAI) or {}
+        if not isinstance(nested, dict):
+            nested = {}
+        if key in nested:
+            return nested[key]
+        if key in self.config and key not in _FRAMEWORK_FLAT_KEYS_OPENAI:
+            warnings.warn(
+                f"OpenAI provider read flat config key {key!r}; migrate to "
+                f"[modes.X.openai].{key} namespace. Flat-key support will be "
+                f"removed in a future release.",
+                DeprecationWarning,
+                stacklevel=3,
+            )
+            return self.config[key]
+        return default
 
     def _validate_kind_for_model(self, mode: str) -> None:
         """Refuse to submit when declared `kind` contradicts the model's required kind.
@@ -238,7 +345,7 @@ class OpenAIProvider(ResearchProvider):
         tools: list[dict[str, Any]] = []
         if is_background_model(self.model):
             tools = [{"type": "web_search_preview"}]
-            if self.config.get("code_interpreter", True):
+            if self._resolve_provider_config_value("code_interpreter", True):
                 tools.append({"type": "code_interpreter", "container": {"type": "auto"}})
 
         # Determine if background mode should be used
@@ -246,7 +353,7 @@ class OpenAIProvider(ResearchProvider):
         use_background = is_background_model(self.model) or self.config.get("background", False)
 
         # Get configuration parameters
-        temperature = self.config.get("temperature", 0.7)
+        temperature = self._resolve_provider_config_value("temperature", 0.7)
 
         # Build request parameters
         request_params: dict[str, Any] = {
@@ -263,7 +370,7 @@ class OpenAIProvider(ResearchProvider):
             request_params["temperature"] = temperature
 
         # Apply max_tool_calls if configured — primary lever for cost and latency control
-        max_tool_calls = self.config.get("max_tool_calls")
+        max_tool_calls = self._resolve_provider_config_value("max_tool_calls")
         if max_tool_calls is not None:
             request_params["max_tool_calls"] = max_tool_calls
 
@@ -426,16 +533,27 @@ class OpenAIProvider(ResearchProvider):
         system_prompt: str | None = None,
         verbose: bool = False,
     ):
-        """Yield text deltas from the OpenAI Responses streaming API.
+        """Yield text/reasoning/citation/done events from the OpenAI Responses streaming API.
 
         P18 Phase E: only legal for non-background (immediate-kind) models.
         Background models require server-side async submission and don't
         stream tokens. The `_validate_kind_for_model` runtime check upstream
         catches the mismatch; this method is defense-in-depth.
 
-        Translates OpenAI's `response.output_text.delta` events into our
-        `StreamEvent(kind="text", text=delta)` and emits a terminal
-        `StreamEvent(kind="done", text="")` when the stream completes.
+        Event mapping (P24 Task 6.1 — see planning/p24-openai-stream-audit.v1.md):
+          * `response.output_text.delta`              -> kind="text"
+          * `response.reasoning_summary_text.delta`   -> kind="reasoning"
+          * `response.output_text.annotation.added`   -> kind="citation"
+            (only when the annotation carries a URL; file_citation /
+            container_file_citation / file_path variants are skipped to
+            mirror `get_result()`'s URL-only filter at lines ~602-610)
+          * (terminal stream exit)                    -> kind="done"
+
+        Request shape:
+          [modes.X.openai].reasoning_summary enables reasoning summaries.
+          [modes.X.openai].web_search=true enables the web_search_preview tool.
+          Web search is opt-in for user modes and enabled by the builtin
+          openai_reasoning mode.
         """
         from thoth.providers.base import StreamEvent
 
@@ -460,9 +578,14 @@ class OpenAIProvider(ResearchProvider):
             "model": self.model,
             "input": input_messages,
         }
+        reasoning_summary = self._resolve_provider_config_value("reasoning_summary")
+        if reasoning_summary is not None:
+            request_params["reasoning"] = {"summary": reasoning_summary}
+        if self._resolve_provider_config_value("web_search", False):
+            request_params["tools"] = [{"type": "web_search_preview"}]
         # o-series response models reject `temperature`; only set it on chat-style models
         if not self.model.startswith("o"):
-            request_params["temperature"] = self.config.get("temperature", 0.7)
+            request_params["temperature"] = self._resolve_provider_config_value("temperature", 0.7)
 
         try:
             async with self.client.responses.stream(**request_params) as stream:
@@ -472,8 +595,24 @@ class OpenAIProvider(ResearchProvider):
                         delta = getattr(event, "delta", "") or ""
                         if delta:
                             yield StreamEvent(kind="text", text=delta)
-                    # Other event types (response.created, response.completed, etc.)
-                    # are skipped — we only surface text deltas to consumers for now.
+                    elif event_type == "response.reasoning_summary_text.delta":
+                        delta = getattr(event, "delta", "") or ""
+                        if delta:
+                            yield StreamEvent(kind="reasoning", text=delta)
+                    elif event_type == "response.output_text.annotation.added":
+                        ann = getattr(event, "annotation", None)
+                        if ann is None:
+                            continue
+                        citation = _url_citation_from_annotation(ann)
+                        if citation is None:
+                            continue
+                        yield StreamEvent(
+                            kind="citation",
+                            text=citation.title,
+                            citation=citation,
+                        )
+                    # Other event types (response.created, response.completed,
+                    # response.output_item.*, etc.) are intentionally skipped.
             yield StreamEvent(kind="done", text="")
         except (openai.APIError, Exception) as e:
             raise _map_openai_error(e, model=self.model, verbose=verbose) from e
@@ -503,7 +642,7 @@ class OpenAIProvider(ResearchProvider):
 
         # Extract content based on response structure
         content = ""
-        citations: list[dict[str, str]] = []
+        citations: list[Citation] = []
 
         # Handle different response formats
         if hasattr(response, "output"):
@@ -544,14 +683,9 @@ class OpenAIProvider(ResearchProvider):
                             ):
                                 texts.append(getattr(content_item, "text", ""))
                                 for ann in getattr(content_item, "annotations", None) or []:
-                                    url = getattr(ann, "url", None) or (
-                                        ann.get("url") if isinstance(ann, dict) else None
-                                    )
-                                    title = getattr(ann, "title", None) or (
-                                        ann.get("title") if isinstance(ann, dict) else url
-                                    )
-                                    if url:
-                                        citations.append({"url": url, "title": title or url})
+                                    citation = _url_citation_from_annotation(ann)
+                                    if citation is not None:
+                                        citations.append(citation)
                     else:
                         texts.append(str(target_message.content))
                 content = "\n".join(texts) if texts else ""
@@ -580,24 +714,7 @@ class OpenAIProvider(ResearchProvider):
         # When no content can be extracted, log debug info to console (verbose only)
         if not content and response:
             if verbose:
-                try:
-                    if hasattr(response, "model_dump_json"):
-                        debug_info = response.model_dump_json()
-                    elif hasattr(response, "__dict__"):
-                        debug_info = str(
-                            {
-                                k: str(v)[:100]
-                                for k, v in response.__dict__.items()
-                                if not k.startswith("_")
-                            }
-                        )
-                    else:
-                        debug_info = repr(response)
-                except Exception:
-                    debug_info = f"<{type(response).__name__}>"
-                _console.print(
-                    f"[dim]Debug: no content found in response. Structure: {debug_info}[/dim]"
-                )
+                debug_print_empty_response(response, provider_label="OpenAI")
             return "No content in response"
 
         # Extract reasoning from the new format if available
@@ -625,14 +742,9 @@ class OpenAIProvider(ResearchProvider):
                 content = f"## Reasoning Summary\n{reasoning_summary}\n\n{content}"
 
         # Append deduplicated sources section when citations are present
-        if citations:
-            seen: set[str] = set()
-            source_lines: list[str] = []
-            for c in citations:
-                if c["url"] not in seen:
-                    seen.add(c["url"])
-                    source_lines.append(f"- [{c['title']}]({c['url']})")
-            content += "\n\n## Sources\n\n" + "\n".join(source_lines)
+        sources = render_sources_block(citations)
+        if sources:
+            content += f"\n\n{sources}"
 
         return content if content else "No content in response"
 
@@ -645,21 +757,21 @@ class OpenAIProvider(ResearchProvider):
                 "type": "response",
                 "description": "Standard response model for general tasks",
                 "created": 1719500000,  # Approximate timestamp
-                "owned_by": "openai",
+                "owned_by": _PROVIDER_NAME_OPENAI,
             },
             {
                 "id": "o3-deep-research",
                 "type": "deep_research",
                 "description": "Full deep research model with web search and code execution",
                 "created": 1719500001,
-                "owned_by": "openai",
+                "owned_by": _PROVIDER_NAME_OPENAI,
             },
             {
                 "id": "o4-mini-deep-research",
                 "type": "deep_research",
                 "description": "Fast lightweight research model for quick answers",
                 "created": 1719500002,
-                "owned_by": "openai",
+                "owned_by": _PROVIDER_NAME_OPENAI,
             },
         ]
 
@@ -683,7 +795,7 @@ class OpenAIProvider(ResearchProvider):
             all_models = response_models + api_models
             return sorted(all_models, key=lambda x: x.get("created", 0), reverse=True)
         except Exception as e:
-            raise ProviderError("openai", f"Failed to fetch models: {str(e)}")
+            raise ProviderError(_PROVIDER_NAME_OPENAI, f"Failed to fetch models: {str(e)}")
 
     async def list_models_cached(
         self, force_refresh: bool = False, no_cache: bool = False
