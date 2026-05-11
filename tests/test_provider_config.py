@@ -247,7 +247,7 @@ def test_create_provider_passes_perplexity_namespace_from_mode_config() -> None:
 
 
 def test_create_provider_passes_openai_request_settings_from_mode_config() -> None:
-    """P23-RS01: OpenAI mode request settings reach OpenAIProvider.config."""
+    """OpenAI common and provider-namespaced mode settings reach config."""
     from types import SimpleNamespace
 
     from thoth.config import ConfigManager
@@ -262,15 +262,71 @@ def test_create_provider_passes_openai_request_settings_from_mode_config() -> No
         "model": "gpt-4.1-mini",
         "kind": "immediate",
         "temperature": 0.2,
-        "max_tool_calls": 12,
+        "openai": {"max_tool_calls": 12},
         "system_prompt": "not provider config",
     }
 
     provider = create_provider("openai", config, mode_config=mode_config)
 
     assert provider.config["temperature"] == 0.2
-    assert provider.config["max_tool_calls"] == 12
+    assert provider.config["openai"]["temperature"] == 0.2
+    assert provider.config["openai"]["max_tool_calls"] == 12
+    assert "max_tool_calls" not in provider.config
     assert "system_prompt" not in provider.config
+
+
+def test_create_provider_preserves_legacy_flat_openai_max_tool_calls() -> None:
+    """Historical flat mode max_tool_calls still reaches OpenAI without warning."""
+    from types import SimpleNamespace
+
+    from thoth.config import ConfigManager
+    from thoth.providers import create_provider
+
+    config = cast(
+        ConfigManager,
+        SimpleNamespace(data={"providers": {"openai": {"api_key": "sk-test"}}}),
+    )
+    mode_config: dict[str, Any] = {
+        "provider": "openai",
+        "model": "gpt-4.1-mini",
+        "kind": "immediate",
+        "max_tool_calls": 12,
+    }
+
+    provider = create_provider("openai", config, mode_config=mode_config)
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        resolved = cast(OpenAIProvider, provider)._resolve_provider_config_value("max_tool_calls")
+
+    assert resolved == 12
+    assert provider.config["openai"]["max_tool_calls"] == 12
+    assert "max_tool_calls" not in provider.config
+    assert not [w for w in caught if issubclass(w.category, DeprecationWarning)]
+
+
+def test_create_provider_preserves_perplexity_extra_body_extension_bag() -> None:
+    from types import SimpleNamespace
+
+    from thoth.config import ConfigManager
+    from thoth.providers import create_provider
+
+    config = cast(
+        ConfigManager,
+        SimpleNamespace(data={"providers": {"perplexity": {"api_key": "pplx-test"}}}),
+    )
+    mode_config: dict[str, Any] = {
+        "provider": "perplexity",
+        "model": "sonar",
+        "kind": "immediate",
+        "perplexity": {"extra_body": {"future_sdk_option": True}},
+    }
+
+    provider = create_provider("perplexity", config, mode_config=mode_config)
+    request_params = cast(Any, provider)._build_request_params("prompt", None)
+
+    assert provider.config["perplexity"]["extra_body"]["future_sdk_option"] is True
+    assert request_params["extra_body"]["future_sdk_option"] is True
 
 
 # ---------------------------------------------------------------------------
@@ -538,25 +594,78 @@ def test_create_provider_passes_gemini_namespace_from_mode_config() -> None:
 
 
 # ---------------------------------------------------------------------------
-# P24 Task 6.2 — [providers.X] root-namespace passthrough investigation.
-# Status: PUNT (deferred to a follow-up project). See
-# planning/p24-providers-root-namespace-investigation.v1.md for rationale.
+# Provider parameter normalizer through-path coverage.
 #
-# These tests define the *desired* behavior: a key set under [providers.X]
-# (e.g. [providers.openai].temperature = 0.3) should flow to the provider as
-# a global default, with mode-level [modes.X.<provider>] overrides taking
-# precedence. They are skipped because the feature is not shipping in P24
-# (the current half-baked path emits a misleading DeprecationWarning), and
-# the schema design needs its own focused project.
+# Values under [providers.defaults] and [providers.X] should flow to provider
+# constructors as global defaults. Mode-level provider namespaces retain
+# higher precedence, and OpenAI must not treat normalized root/provider
+# defaults as deprecated flat mode passthrough.
 # ---------------------------------------------------------------------------
 
 
-_P24_T17_PUNT_REASON = (
-    "P24-T17 deferred — see planning/p24-providers-root-namespace-investigation.v1.md"
-)
+def test_providers_defaults_temperature_flows_to_openai_without_deprecation() -> None:
+    from types import SimpleNamespace
+
+    from thoth.config import ConfigManager
+    from thoth.providers import create_provider
+
+    config = cast(
+        ConfigManager,
+        SimpleNamespace(
+            data={
+                "providers": {
+                    "defaults": {"temperature": 0.3},
+                    "openai": {"api_key": "sk-test"},
+                }
+            }
+        ),
+    )
+
+    provider = create_provider("openai", config)
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        resolved = cast(OpenAIProvider, provider)._resolve_provider_config_value("temperature", 0.7)
+
+    assert resolved == 0.3
+    assert cast(OpenAIProvider, provider).config["openai"]["temperature"] == 0.3
+    dep_warnings = [w for w in caught if issubclass(w.category, DeprecationWarning)]
+    assert not dep_warnings
 
 
-@pytest.mark.skip(reason=_P24_T17_PUNT_REASON)
+def test_providers_defaults_temperature_flows_to_perplexity_and_gemini() -> None:
+    from types import SimpleNamespace
+    from unittest.mock import patch
+
+    from thoth.config import ConfigManager
+    from thoth.providers import create_provider
+
+    config = cast(
+        ConfigManager,
+        SimpleNamespace(
+            data={
+                "providers": {
+                    "defaults": {"temperature": 0.31},
+                    "perplexity": {"api_key": "pplx-test"},
+                    "gemini": {"api_key": "AIza-test"},
+                }
+            }
+        ),
+    )
+
+    perplexity_provider = create_provider("perplexity", config)
+    assert perplexity_provider.config["temperature"] == 0.31
+    assert perplexity_provider.config["perplexity"]["temperature"] == 0.31
+
+    mock_client = SimpleNamespace()
+    mock_client.aio = SimpleNamespace()
+    mock_client.aio.models = SimpleNamespace()
+    with patch("google.genai.Client", return_value=mock_client):
+        gemini_provider = create_provider("gemini", config)
+    assert gemini_provider.config["temperature"] == 0.31
+    assert gemini_provider.config["gemini"]["temperature"] == 0.31
+
+
 def test_root_providers_namespace_temperature_flows_to_openai_provider() -> None:
     """[providers.openai].temperature flows to OpenAIProvider as a default.
 
@@ -588,7 +697,6 @@ def test_root_providers_namespace_temperature_flows_to_openai_provider() -> None
     )
 
 
-@pytest.mark.skip(reason=_P24_T17_PUNT_REASON)
 def test_mode_level_openai_temperature_overrides_root_providers_default() -> None:
     """[modes.X.openai].temperature wins over [providers.openai].temperature."""
     from types import SimpleNamespace
@@ -612,16 +720,8 @@ def test_mode_level_openai_temperature_overrides_root_providers_default() -> Non
     assert resolved == 0.9
 
 
-@pytest.mark.skip(reason=_P24_T17_PUNT_REASON)
-def test_root_providers_namespace_unknown_keys_passed_through_or_filtered() -> None:
-    """Unrecognized keys at [providers.X] level: behavior must be defined.
-
-    Open schema question (PUNTed): unknown keys could either (a) pass through
-    as flat defaults, (b) be ignored, or (c) raise a config validation error.
-    The follow-up project must pick one. This test pins the chosen contract
-    once a decision is made; for now it asserts the intent that an unknown
-    key does NOT silently break provider construction.
-    """
+def test_root_providers_namespace_unknown_keys_are_rejected() -> None:
+    """Unrecognized keys at [providers.X] raise instead of silently passing through."""
     from types import SimpleNamespace
 
     from thoth.config import ConfigManager
@@ -633,12 +733,13 @@ def test_root_providers_namespace_unknown_keys_passed_through_or_filtered() -> N
             data={"providers": {"openai": {"api_key": "sk-test", "definitely_not_a_real_key": "x"}}}
         ),
     )
-    # Construction must not raise.
-    provider = create_provider("openai", config)
-    assert provider is not None
+    with pytest.raises(
+        ValueError,
+        match=r"Unsupported provider parameter: providers\.openai\.definitely_not_a_real_key",
+    ):
+        create_provider("openai", config)
 
 
-@pytest.mark.skip(reason=_P24_T17_PUNT_REASON)
 def test_root_providers_namespace_works_for_perplexity_and_gemini() -> None:
     """[providers.perplexity] / [providers.gemini] flow through symmetrically."""
     from types import SimpleNamespace

@@ -17,6 +17,7 @@ from thoth.providers.base import ResearchProvider
 from thoth.providers.gemini import GeminiProvider
 from thoth.providers.mock import MockProvider
 from thoth.providers.openai import OpenAIProvider, _map_openai_error
+from thoth.providers.parameter_config import build_provider_runtime_config
 from thoth.providers.perplexity import PerplexityProvider
 from thoth.utils import _is_placeholder
 
@@ -151,6 +152,12 @@ def available_providers(
     return available
 
 
+def _active_profile_name(config: ConfigManager) -> str | None:
+    selection = getattr(config, "profile_selection", None)
+    name = getattr(selection, "name", None)
+    return str(name) if name else None
+
+
 def create_provider(
     provider_name: str,
     config: ConfigManager,
@@ -171,7 +178,9 @@ def create_provider(
             f"Valid providers are: {', '.join(sorted(PROVIDERS))}",
         )
 
-    provider_config = config.data["providers"].get(provider_name, {}).copy()
+    providers_config = config.data.get("providers", {})
+    providers_config = providers_config if isinstance(providers_config, dict) else {}
+    provider_config = providers_config.get(provider_name, {}).copy()
 
     if provider_name == "mock":
         mock_api_key = resolve_api_key("mock", cli_api_key, provider_config)
@@ -183,29 +192,16 @@ def create_provider(
             )
         return MockProvider(name=provider_name, delay=0.1, api_key=mock_api_key)
 
+    runtime_config = build_provider_runtime_config(
+        provider_name=provider_name,
+        config=config,
+        active_profile=_active_profile_name(config),
+        mode_name=None,
+        mode_config=mode_config,
+        timeout_override=timeout_override,
+    )
+    provider_config = runtime_config.to_legacy_config()
     api_key = resolve_api_key(provider_name, cli_api_key, provider_config)
-
-    # Apply timeout override if provided
-    if timeout_override is not None and provider_name in ("openai", "perplexity", "gemini"):
-        provider_config["timeout"] = timeout_override
-
-    # Apply model from mode configuration if specified.
-    # P23: extended from openai-only to perplexity. P24: extended to gemini.
-    # Generic passthrough; the provider/API surfaces validation, not this factory.
-    if (
-        mode_config
-        and "model" in mode_config
-        and provider_name in ("openai", "perplexity", "gemini")
-    ):
-        provider_config["model"] = mode_config["model"]
-
-    _apply_mode_provider_config(provider_name, provider_config, mode_config)
-
-    # Thread the mode's declared `kind` into provider_config so the OpenAI
-    # provider's runtime validator (`_validate_kind_for_model`) can detect
-    # mismatches before any HTTP call. P18.
-    if mode_config and "kind" in mode_config:
-        provider_config["kind"] = mode_config["kind"]
 
     # Apply background mode for deep research models. P18: resolution path
     # uses `mode_kind` (declared `kind` first; substring fallback for legacy).

@@ -9,10 +9,10 @@ This document is the desired-state contract for Thoth's inference provider param
 Mental model:
 
 ```text
-provider defaults -> root provider defaults -> mode generic common params -> mode provider namespace -> CLI/run overrides
+provider implementation defaults -> built-in mode defaults -> root all-provider defaults -> root per-provider defaults -> profile all-provider defaults -> profile per-provider defaults -> mode generic common params -> mode provider namespace -> profile mode generic -> profile mode provider namespace -> CLI/run overrides
 ```
 
-Profiles are not a separate provider mechanism. The active profile is a normal config layer that may override any supported shape before provider parameters are normalized. There is also no generic inherited `[providers]` or `[providers.defaults]` layer in this contract; cross-provider request defaults belong in the mode generic common-param layers.
+Profiles are not a separate provider mechanism. The active profile is a normal config layer that may override any supported shape before provider parameters are normalized. Shared cross-provider defaults live under `[providers.defaults]`; provider-specific defaults live under `[providers.NAME]`. The bare `[providers]` table is only a TOML parent/container and is not itself a config layer.
 
 ## Configuration Layers
 
@@ -22,14 +22,109 @@ Precedence runs from lowest to highest inside this provider-parameter stack.
 |---|---|---|
 | L0 | Provider implementation defaults | `OpenAIProvider` uses `model = "o3"`; `PerplexityProvider` uses `model = "sonar"`; `GeminiProvider` uses `model = "gemini-2.5-flash-lite"`. |
 | L1 | Built-in mode defaults | `BUILTIN_MODES["gemini_quick"]["gemini"] = {tools = ["google_search"], thinking_budget = 0}`. |
-| L2 | Root per-provider config | `[providers.openai] api_key = "${OPENAI_API_KEY}"; temperature = 0.2`. |
-| L3 | Profile-scoped root per-provider config | `[profiles.work.providers.gemini] api_key = "${GEMINI_WORK_API_KEY}"; timeout = 45`. |
-| L4 | Mode generic common params | `[modes.fast] temperature = 0.2; max_output_tokens = 800`. |
-| L5 | Mode provider namespace | `[modes.fast.gemini] thinking_budget = 0; tools = ["google_search"]`. |
-| L6 | Profile-scoped mode generic | `[profiles.work.modes.fast] top_p = 0.8`. |
-| L7 | Profile-scoped mode provider namespace | `[profiles.work.modes.fast.perplexity] search_domain_filter = ["docs.perplexity.ai"]`. |
-| L8 | Runtime overrides | `--provider perplexity --model sonar-pro --timeout 60 --api-key-perplexity "$PERPLEXITY_API_KEY"`. |
-| L9 | Separate clarification config | `[clarification.interactive] model = "gpt-4o-mini"; temperature = 0.3; max_output_tokens = 800`. |
+| L2 | Root all-provider defaults | `[providers.defaults] timeout = 45; temperature = 0.2; max_output_tokens = 800`. |
+| L3 | Root per-provider config | `[providers.openai] api_key = "${OPENAI_API_KEY}"; model = "gpt-5.4-mini"`. |
+| L4 | Profile-scoped all-provider defaults | `[profiles.work.providers.defaults] timeout = 60; temperature = 0.1`. |
+| L5 | Profile-scoped root per-provider config | `[profiles.work.providers.gemini] api_key = "${GEMINI_WORK_API_KEY}"; timeout = 75`. |
+| L6 | Mode generic common params | `[modes.fast] temperature = 0.2; max_output_tokens = 800`. |
+| L7 | Mode provider namespace | `[modes.fast.gemini] thinking_budget = 0; tools = ["google_search"]`. |
+| L8 | Profile-scoped mode generic | `[profiles.work.modes.fast] top_p = 0.8`. |
+| L9 | Profile-scoped mode provider namespace | `[profiles.work.modes.fast.perplexity] search_domain_filter = ["docs.perplexity.ai"]`. |
+| L10 | Runtime overrides | `--provider perplexity --model sonar-pro --timeout 60 --api-key-perplexity "$PERPLEXITY_API_KEY"`. |
+| L11 | Separate clarification config | `[clarification.interactive] model = "gpt-4o-mini"; temperature = 0.3; max_output_tokens = 800`. |
+
+## Recognized Field Registry
+
+The normalizer should classify recognized fields before provider adapters build SDK payloads. All-provider defaults are deliberately narrow: they may contain shared client controls and common request defaults whose semantics are defined for every supported provider in this contract. Per-provider defaults may also contain auth controls and recognized provider-native request fields. Provider-native extension bags are allowed only in L7/L9 provider namespaces.
+
+### All-Provider Defaults
+
+Allowed in `[providers.defaults]` and `[profiles.NAME.providers.defaults]` (L2/L4).
+
+| Internal key | Category | Providers | Provider key path | Normalized section | Notes |
+|---|---|---|---|---|---|
+| `timeout` | client | OpenAI, Perplexity, Gemini | client timeout | `client.timeout` | Shared client/runtime control. |
+| `model` | common request | OpenAI, Perplexity, Gemini | `model` | `common_request.model` | Lower precedence than mode and runtime model selection. |
+| `kind` | routing | OpenAI, Perplexity, Gemini | Thoth routing; OpenAI `background` | `routing.kind` | Selects immediate/background semantics, not arbitrary provider passthrough. |
+| `temperature` | common request | OpenAI, Perplexity, Gemini | provider-specific request key | `common_request.temperature` | Adapter omits for unsupported OpenAI reasoning models. |
+| `top_p` | common request | OpenAI, Perplexity, Gemini | provider-specific request key | `common_request.top_p` | Supported where provider accepts it. |
+| `max_output_tokens` | common request | OpenAI, Perplexity, Gemini | OpenAI/Gemini `max_output_tokens`, Perplexity `max_tokens` | `common_request.max_output_tokens` | Canonical internal token-budget key. |
+| `response_format` | common request | OpenAI, Perplexity, Gemini | provider-specific structured-output fields | `common_request.response_format` | Normalizes to provider-specific schema/format shapes. |
+| `system_prompt` | common request | OpenAI, Perplexity, Gemini | OpenAI `instructions`, Perplexity system message, Gemini `system_instruction` | `common_request.system_prompt` | Framework message-building input. |
+
+### Per-Provider Defaults
+
+Allowed in `[providers.NAME]` and `[profiles.NAME.providers.PROVIDER]` (L3/L5).
+
+| Internal key | Category | Providers | Provider key path | Normalized section | Notes |
+|---|---|---|---|---|---|
+| `api_key` | auth | OpenAI, Perplexity, Gemini | client auth key/header | `auth.api_key` | Auth secret; forbidden in all-provider defaults. |
+| `timeout` | client | OpenAI, Perplexity, Gemini | client timeout | `client.timeout` | Overrides all-provider timeout for the selected provider. |
+| `base_url` | client | OpenAI, Perplexity | client base URL | `client.base_url` | Provider endpoint override. |
+| `organization` | client | OpenAI | client organization | `client.organization` | OpenAI organization/project-scoping control. |
+| `model` | common request | OpenAI, Perplexity, Gemini | `model` | `common_request.model` | Provider default model before mode/runtime overrides. |
+| `kind` | routing | OpenAI, Perplexity, Gemini | Thoth routing; OpenAI `background` | `routing.kind` | Provider default execution kind before mode/runtime overrides. |
+| `temperature` | common request | OpenAI, Perplexity, Gemini | provider-specific request key | `common_request.temperature` | Shared inference default. |
+| `top_p` | common request | OpenAI, Perplexity, Gemini | provider-specific request key | `common_request.top_p` | Shared nucleus-sampling default. |
+| `max_output_tokens` | common request | OpenAI, Perplexity, Gemini | OpenAI/Gemini `max_output_tokens`, Perplexity `max_tokens` | `common_request.max_output_tokens` | Canonical token-budget default. |
+| `stop_sequences` | common request | Perplexity, Gemini | Perplexity `stop`, Gemini `stop_sequences` | `common_request.stop_sequences` | Provider support differs. |
+| `response_format` | common request | OpenAI, Perplexity, Gemini | provider-specific structured-output fields | `common_request.response_format` | Accepted only when the provider surface supports the requested shape. |
+| `system_prompt` | common request | OpenAI, Perplexity, Gemini | OpenAI `instructions`, Perplexity system message, Gemini `system_instruction` | `common_request.system_prompt` | Provider default system/developer instruction. |
+| `frequency_penalty` | provider-native request | Gemini | `config.frequency_penalty` | `provider_request.frequency_penalty` | Gemini support may vary by model. |
+| `presence_penalty` | provider-native request | Gemini | `config.presence_penalty` | `provider_request.presence_penalty` | Gemini support may vary by model. |
+| `seed` | provider-native request | Gemini | `config.seed` | `provider_request.seed` | Best-effort determinism. |
+| `n` | provider-native request | Gemini | `config.candidate_count` | `provider_request.n` | Candidate count. |
+| `reasoning_effort` | provider-native request | OpenAI, Perplexity, Gemini | OpenAI `reasoning.effort`, Perplexity `reasoning_effort`, Gemini `thinking_config.thinking_level` | `provider_request.reasoning_effort` | Provider semantics differ. |
+| `thinking_budget` | provider-native request | Gemini | `config.thinking_config.thinking_budget` | `provider_request.thinking_budget` | Gemini 2.5 thinking-budget control. |
+| `include_thoughts` | provider-native request | Gemini | `config.thinking_config.include_thoughts` | `provider_request.include_thoughts` | Gemini thought-summary control. |
+| `tools` | provider-native request | OpenAI, Gemini | OpenAI `tools`, Gemini `config.tools` | `provider_request.tools` | Perplexity search controls are separate native keys. |
+| `search_domain_filter` | provider-native request | Perplexity | `search_domain_filter` | `provider_request.search_domain_filter` | Perplexity-only search filter. |
+| `web_search_options` | provider-native request | Perplexity | `web_search_options` | `provider_request.web_search_options` | Perplexity nested search options. |
+| `search_context_size` | provider-native request | Perplexity | `web_search_options.search_context_size` | `provider_request.search_context_size` | Normalized into `web_search_options`. |
+| `stream_mode` | provider-native request | Perplexity | `stream_mode` | `provider_request.stream_mode` | Perplexity reasoning/event verbosity control. |
+
+### Mode Common Params
+
+Allowed as fixed generic keys in `[modes.NAME]` and `[profiles.PROFILE.modes.NAME]` (L6/L8).
+
+| Internal key | Category | Providers | Provider key path | Normalized section | Notes |
+|---|---|---|---|---|---|
+| `model` | common request | OpenAI, Perplexity, Gemini | `model` | `common_request.model` | Common mode model. |
+| `kind` | routing | OpenAI, Perplexity, Gemini | Thoth routing; OpenAI `background` | `routing.kind` | Common mode execution kind. |
+| `temperature` | common request | OpenAI, Perplexity, Gemini | provider-specific request key | `common_request.temperature` | Fixed common set, not arbitrary passthrough. |
+| `top_p` | common request | OpenAI, Perplexity, Gemini | provider-specific request key | `common_request.top_p` | Fixed common set, not arbitrary passthrough. |
+| `max_output_tokens` | common request | OpenAI, Perplexity, Gemini | OpenAI/Gemini `max_output_tokens`, Perplexity `max_tokens` | `common_request.max_output_tokens` | Canonical internal key. |
+| `stop_sequences` | common request | Perplexity, Gemini | Perplexity `stop`, Gemini `stop_sequences` | `common_request.stop_sequences` | OpenAI Responses unsupported in the canonical surface. |
+| `response_format` | common request | OpenAI, Perplexity, Gemini | provider-specific structured-output fields | `common_request.response_format` | Provider adapters translate after normalization. |
+| `system_prompt` | common request | OpenAI, Perplexity, Gemini | OpenAI `instructions`, Perplexity system message, Gemini `system_instruction` | `common_request.system_prompt` | Framework message-building input. |
+
+### Provider Namespaces
+
+Allowed in `[modes.NAME.PROVIDER]` and `[profiles.PROFILE.modes.NAME.PROVIDER]` (L7/L9). Provider namespaces may include recognized provider-native fields and provider-native extension bags for pass-through.
+
+| Internal key | Category | Providers | Provider key path | Normalized section | Notes |
+|---|---|---|---|---|---|
+| `model` | provider request | OpenAI, Perplexity, Gemini | `model` | `provider_request.model` | Overrides mode common model for this provider namespace. |
+| `kind` | routing | OpenAI, Perplexity, Gemini | Thoth routing; OpenAI `background` | `routing.kind` | Provider-specific mode kind. |
+| `temperature` | common request | OpenAI, Perplexity, Gemini | provider-specific request key | `common_request.temperature` | Provider namespace wins over mode common. |
+| `top_p` | common request | OpenAI, Perplexity, Gemini | provider-specific request key | `common_request.top_p` | Provider namespace wins over mode common. |
+| `max_output_tokens` | common request | OpenAI, Perplexity, Gemini | OpenAI/Gemini `max_output_tokens`, Perplexity `max_tokens` | `common_request.max_output_tokens` | Provider namespace wins over mode common. |
+| `stop_sequences` | common request | Perplexity, Gemini | Perplexity `stop`, Gemini `stop_sequences` | `common_request.stop_sequences` | Provider support differs. |
+| `response_format` | common request | OpenAI, Perplexity, Gemini | provider-specific structured-output fields | `common_request.response_format` | Provider namespace wins over mode common. |
+| `system_prompt` | common request | OpenAI, Perplexity, Gemini | OpenAI `instructions`, Perplexity system message, Gemini `system_instruction` | `common_request.system_prompt` | Provider-specific system/developer instruction. |
+| `frequency_penalty` | provider-native request | Gemini | `config.frequency_penalty` | `provider_request.frequency_penalty` | Gemini support may vary by model. |
+| `presence_penalty` | provider-native request | Gemini | `config.presence_penalty` | `provider_request.presence_penalty` | Gemini support may vary by model. |
+| `seed` | provider-native request | Gemini | `config.seed` | `provider_request.seed` | Best-effort determinism. |
+| `n` | provider-native request | Gemini | `config.candidate_count` | `provider_request.n` | Candidate count. |
+| `reasoning_effort` | provider-native request | OpenAI, Perplexity, Gemini | OpenAI `reasoning.effort`, Perplexity `reasoning_effort`, Gemini `thinking_config.thinking_level` | `provider_request.reasoning_effort` | Provider semantics differ. |
+| `thinking_budget` | provider-native request | Gemini | `config.thinking_config.thinking_budget` | `provider_request.thinking_budget` | Gemini 2.5 thinking-budget control. |
+| `include_thoughts` | provider-native request | Gemini | `config.thinking_config.include_thoughts` | `provider_request.include_thoughts` | Gemini thought-summary control. |
+| `tools` | provider-native request | OpenAI, Gemini | OpenAI `tools`, Gemini `config.tools` | `provider_request.tools` | Perplexity search controls are separate native keys. |
+| `search_domain_filter` | provider-native request | Perplexity | `search_domain_filter` | `provider_request.search_domain_filter` | Perplexity-only search filter. |
+| `web_search_options` | provider-native request | Perplexity | `web_search_options` | `provider_request.web_search_options` | Perplexity nested search options. |
+| `search_context_size` | provider-native request | Perplexity | `web_search_options.search_context_size` | `provider_request.search_context_size` | Normalized into `web_search_options`. |
+| `stream_mode` | provider-native request | Perplexity | `stream_mode` | `provider_request.stream_mode` | Perplexity reasoning/event verbosity control. |
+| `extra_body` | provider extension bag | Perplexity | `extra_body` merged into request extras | `provider_extension.extra_body` | Provider-native pass-through bag; not allowed in all-provider defaults. |
 
 ## Resolution Rules
 
@@ -49,16 +144,18 @@ Provider construction follows one shared path:
 
 1. Start with provider implementation defaults (L0).
 2. Add built-in mode defaults when the selected mode is built in (L1).
-3. Add root provider config for the chosen provider (L2).
-4. Add profile-scoped root provider config if a profile is active (L3).
-5. Add mode generic common parameters from the selected mode (L4).
-6. Add the selected provider namespace from the selected mode (L5).
-7. Add profile-scoped mode generic parameters (L6).
-8. Add profile-scoped provider namespace parameters (L7).
-9. Add runtime overrides from CLI/run state (L8).
-10. Keep clarification config separate unless a clarification flow explicitly invokes the same normalizer (L9).
+3. Add root all-provider defaults from `[providers.defaults]` when present (L2).
+4. Add root provider config for the chosen provider (L3).
+5. Add profile-scoped all-provider defaults from `[profiles.NAME.providers.defaults]` if a profile is active (L4).
+6. Add profile-scoped root provider config if a profile is active (L5).
+7. Add mode generic common parameters from the selected mode (L6).
+8. Add the selected provider namespace from the selected mode (L7).
+9. Add profile-scoped mode generic parameters (L8).
+10. Add profile-scoped provider namespace parameters (L9).
+11. Add runtime overrides from CLI/run state (L10).
+12. Keep clarification config separate unless a clarification flow explicitly invokes the same normalizer (L11).
 
-`create_provider()` should normalize once into a shared provider-runtime structure, then each provider adapter should translate that structure into the native SDK shape. Framework-owned values such as `api_key`, `timeout`, `provider`, `providers`, `kind`, `model`, `system_prompt`, `prompt_prefix`, and `stream` are not blindly forwarded as arbitrary SDK kwargs.
+`create_provider()` should normalize once into a shared provider-runtime structure, then each provider adapter should translate that structure into the native SDK shape. `[providers.defaults]` and `[profiles.NAME.providers.defaults]` may contain only recognized shared client controls and common request defaults; they may not contain provider-specific auth secrets such as `api_key` or arbitrary provider-native extension bags. Framework-owned values such as `api_key`, `timeout`, `provider`, `providers`, `kind`, `model`, `system_prompt`, `prompt_prefix`, and `stream` are not blindly forwarded as arbitrary SDK kwargs.
 
 Scalar values replace lower-precedence values. Object values deep-merge when they are parameter objects, including provider namespaces and nested SDK objects such as `web_search_options` or `thinking_config`. Arrays replace by default; they do not append unless a parameter explicitly defines append semantics. Absence means inherit. TOML has no native `null`, so users unset/remove config keys to inherit. Internal `None` means "explicitly disable" only for parameters whose provider semantics support that distinction.
 
@@ -68,12 +165,16 @@ Provider-specific exceptions are allowed only when named in the parameter matrix
 
 ### Example A - Minimal Provider Defaults
 
-Layers involved: L0 and L2. No mode parameter layer participates. This is a provider-normalization example, not a runnable `thoth ask` example; runnable CLI execution also performs mode resolution and provider selection.
+Layers involved: L0, L2, and L3. No mode parameter layer participates. This is a provider-normalization example, not a runnable `thoth ask` example; runnable CLI execution also performs mode resolution and provider selection.
 
 User config, `~/.config/thoth/thoth.config.toml`:
 
 ```toml
 version = "2.0"
+
+[providers.defaults]
+timeout = 45
+temperature = 0.2
 
 [providers.gemini]
 api_key = "${GEMINI_API_KEY}"
@@ -108,11 +209,12 @@ Trace:
 |---|---|
 | L0 | `GeminiProvider` default model is `gemini-2.5-flash-lite`. |
 | L1 | No built-in mode parameter block participates. |
-| L2 | `[providers.gemini]` supplies the API key only. |
-| L3 | No active profile. |
-| L4-L7 | No mode/provider parameter overrides. |
-| L8 | No runtime parameter overrides. |
-| L9 | Not a clarification request. |
+| L2 | `[providers.defaults]` sets shared `timeout = 45` and `temperature = 0.2`. |
+| L3 | `[providers.gemini]` supplies the Gemini API key. |
+| L4-L5 | No active profile provider defaults. |
+| L6-L9 | No mode/provider parameter overrides. |
+| L10 | No runtime parameter overrides. |
+| L11 | Not a clarification request. |
 
 Final normalized provider request:
 
@@ -123,6 +225,9 @@ Final normalized provider request:
   "auth": {
     "api_key": "${GEMINI_API_KEY}"
   },
+  "client": {
+    "timeout": 45
+  },
   "kwargs": {
     "model": "gemini-2.5-flash-lite",
     "contents": [
@@ -132,14 +237,17 @@ Final normalized provider request:
           {"text": "Explain database indexes in two paragraphs."}
         ]
       }
-    ]
+    ],
+    "config": {
+      "temperature": 0.2
+    }
   }
 }
 ```
 
 ### Example B - Mode Provider Namespace
 
-Layers involved: L0, L2, L4, and L5. The common `temperature` can be translated for any provider that supports it; Gemini-specific thinking and tools live under the Gemini namespace.
+Layers involved: L0, L3, L6, and L7. The common `temperature` can be translated for any provider that supports it; Gemini-specific thinking and tools live under the Gemini namespace.
 
 User config, `~/.config/thoth/thoth.config.toml`:
 
@@ -184,13 +292,14 @@ Trace:
 |---|---|
 | L0 | Gemini default model is `gemini-2.5-flash-lite`. |
 | L1 | No built-in mode with this name; no built-in provider namespace. |
-| L2 | `[providers.gemini]` supplies the API key. |
-| L3 | No active profile. |
-| L4 | `[modes.fast_gemini] temperature = 0.2` sets the common temperature. |
-| L5 | `[modes.fast_gemini.gemini]` sets Google Search and disables 2.5 Flash thinking with budget `0`. |
-| L6-L7 | No profile mode overrides. |
-| L8 | `--mode` selects the mode; it does not override request parameters. |
-| L9 | Not a clarification request. |
+| L2 | No root all-provider defaults. |
+| L3 | `[providers.gemini]` supplies the API key. |
+| L4-L5 | No active profile provider defaults. |
+| L6 | `[modes.fast_gemini] temperature = 0.2` sets the common temperature. |
+| L7 | `[modes.fast_gemini.gemini]` sets Google Search and disables 2.5 Flash thinking with budget `0`. |
+| L8-L9 | No profile mode overrides. |
+| L10 | `--mode` selects the mode; it does not override request parameters. |
+| L11 | Not a clarification request. |
 
 Final normalized provider request:
 
@@ -224,19 +333,24 @@ Final normalized provider request:
 
 ### Example C - Profile, Mode, Provider Namespace, And CLI
 
-Layers involved: L0, L2, L3, L4, L5, L6, L7, and L8. The active profile overrides the root Perplexity API key, adjusts common mode params, adds provider-specific search controls, and the CLI overrides the model.
+Layers involved: L0, L2, L3, L4, L5, L6, L7, L8, L9, and L10. The active profile overrides shared provider defaults, overrides the root Perplexity API key, adjusts common mode params, adds provider-specific search controls, and the CLI overrides the model.
 
 User config, `~/.config/thoth/thoth.config.toml`:
 
 ```toml
 version = "2.0"
 
+[providers.defaults]
+timeout = 30
+
 [providers.perplexity]
 api_key = "${PERPLEXITY_API_KEY}"
 
+[profiles.work.providers.defaults]
+timeout = 45
+
 [profiles.work.providers.perplexity]
 api_key = "${PERPLEXITY_WORK_API_KEY}"
-timeout = 45
 
 [profiles.work.modes.focused_research]
 top_p = 0.8
@@ -270,9 +384,11 @@ search_context_size = "low"
 Profile config is the profile block in the user file above:
 
 ```toml
+[profiles.work.providers.defaults]
+timeout = 45
+
 [profiles.work.providers.perplexity]
 api_key = "${PERPLEXITY_WORK_API_KEY}"
-timeout = 45
 
 [profiles.work.modes.focused_research]
 top_p = 0.8
@@ -297,14 +413,16 @@ Trace:
 |---|---|
 | L0 | Perplexity default model is `sonar`. |
 | L1 | No built-in mode with this name. |
-| L2 | Root `[providers.perplexity]` supplies the base API key. |
-| L3 | Profile root provider block replaces the API key with `${PERPLEXITY_WORK_API_KEY}` and sets `timeout = 45`. |
-| L4 | Project mode generic block sets `temperature = 0.4`. |
-| L5 | Project Perplexity namespace sets `stream_mode = "concise"` and `web_search_options.search_context_size = "low"`. |
-| L6 | Profile mode generic block sets `top_p = 0.8` and `max_output_tokens = 1200`. |
-| L7 | Profile Perplexity namespace sets `search_domain_filter` and overrides `web_search_options.search_context_size` to `"high"`. |
-| L8 | `--provider perplexity` selects Perplexity; `--model sonar-pro` overrides the mode model. |
-| L9 | Not a clarification request. |
+| L2 | Root `[providers.defaults]` sets shared `timeout = 30`. |
+| L3 | Root `[providers.perplexity]` supplies the base API key. |
+| L4 | Profile `[profiles.work.providers.defaults]` overrides timeout to `45`. |
+| L5 | Profile root provider block replaces the API key with `${PERPLEXITY_WORK_API_KEY}`. |
+| L6 | Project mode generic block sets `temperature = 0.4`. |
+| L7 | Project Perplexity namespace sets `stream_mode = "concise"` and `web_search_options.search_context_size = "low"`. |
+| L8 | Profile mode generic block sets `top_p = 0.8` and `max_output_tokens = 1200`. |
+| L9 | Profile Perplexity namespace sets `search_domain_filter` and overrides `web_search_options.search_context_size` to `"high"`. |
+| L10 | `--provider perplexity` selects Perplexity; `--model sonar-pro` overrides the mode model. |
+| L11 | Not a clarification request. |
 
 Final normalized provider request:
 
@@ -359,7 +477,7 @@ Canonical provider surfaces for this matrix:
 | `prompt` | `input` | `messages` | `contents` | Thoth builds this from user prompt plus file/context inputs. |
 | `system_prompt` | `instructions` | `messages[].role`; `request.messages[].role` | `config.system_instruction` | OpenAI `instructions` is the desired canonical encoding; current code emits an equivalent developer-role input message. Perplexity `request.*` paths are async wrapper paths. Gemini REST spelling is `systemInstruction` / `system_instruction` depending client surface. |
 | `temperature` | `temperature` | `temperature`; `request.temperature` | `config.temperature` | Perplexity `request.*` paths are async wrapper paths. Adapter omits for OpenAI models that reject it. |
-| `top_p` | `top_p` | `top_p`; `request.top_p` | `config.top_p` | Perplexity `request.*` paths are async wrapper paths. Common L4 candidate. |
+| `top_p` | `top_p` | `top_p`; `request.top_p` | `config.top_p` | Perplexity `request.*` paths are async wrapper paths. Common all-provider/default candidate. |
 | `top_k` | - | - | `config.top_k` | Gemini-only. |
 | `max_output_tokens` | `max_output_tokens` | `max_tokens`; `request.max_tokens` | `config.max_output_tokens` | Perplexity `request.*` paths are async wrapper paths. Canonical internal name; provider aliases normalize here. |
 | `stop_sequences` | - | `stop`; `request.stop` | `config.stop_sequences` | Perplexity `request.*` paths are async wrapper paths. OpenAI Responses does not expose a `stop` request key in the canonical surface. |

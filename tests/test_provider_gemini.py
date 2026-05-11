@@ -36,6 +36,24 @@ def test_gemini_provider_default_model_is_flash_lite() -> None:
     assert provider.model == "gemini-2.5-flash-lite"
 
 
+def test_gemini_client_receives_timeout_as_http_options() -> None:
+    from unittest.mock import patch
+
+    from google.genai import types
+
+    from thoth.providers.gemini import GeminiProvider
+
+    with patch("google.genai.Client") as client_cls:
+        GeminiProvider(api_key="dummy", config={"timeout": 12.5})
+
+    client_cls.assert_called_once()
+    kwargs = client_cls.call_args.kwargs
+    assert kwargs["api_key"] == "dummy"
+    http_options = kwargs["http_options"]
+    assert isinstance(http_options, types.HttpOptions)
+    assert http_options.timeout == 12500
+
+
 def test_gemini_provider_is_implemented() -> None:
     """is_implemented() returns True (explicit, not inherited)."""
     from thoth.providers.gemini import GeminiProvider
@@ -390,6 +408,7 @@ def test_gemini_unknown_exception_maps_to_provider_error() -> None:
 def test_gemini_retry_classes_includes_rate_limit() -> None:
     """The Gemini retry-class set includes APIRateLimitError per Google's 429 guidance."""
     import httpx
+    from google.genai import errors as genai_errors
 
     from thoth.errors import APIRateLimitError
     from thoth.providers.gemini import _GEMINI_RETRY_CLASSES
@@ -397,6 +416,7 @@ def test_gemini_retry_classes_includes_rate_limit() -> None:
     assert APIRateLimitError in _GEMINI_RETRY_CLASSES
     assert httpx.TimeoutException in _GEMINI_RETRY_CLASSES
     assert httpx.ConnectError in _GEMINI_RETRY_CLASSES
+    assert genai_errors.ServerError in _GEMINI_RETRY_CLASSES
 
 
 def test_gemini_retry_classes_excludes_quota_error() -> None:
@@ -665,6 +685,45 @@ def test_gemini_stream_mid_iteration_error_maps_to_provider_error() -> None:
     with pytest.raises(ProviderError) as excinfo:
         asyncio.run(_consume_events(provider.stream("Q?", "test_mode")))
     assert "Bad mid-stream" in str(excinfo.value) or "bad request" in str(excinfo.value).lower()
+
+
+def test_gemini_stream_retries_transient_server_error_before_first_event() -> None:
+    """A transient stream startup 503 is retried before any output is emitted."""
+    from thoth.providers.gemini import GeminiProvider
+
+    attempts = {"n": 0}
+    chunks = [_make_chunk(parts=[{"text": "Recovered."}])]
+
+    async def _async_iter():
+        for chunk in chunks:
+            yield chunk
+
+    async def fake_stream(**kw):
+        attempts["n"] += 1
+        if attempts["n"] == 1:
+            raise _make_gemini_server_error(503, status="UNAVAILABLE", message="try again")
+        return _async_iter()
+
+    async def fake_sleep(delay: float) -> None:
+        return None
+
+    mock_client = SimpleNamespace()
+    mock_client.aio = SimpleNamespace()
+    mock_client.aio.models = SimpleNamespace()
+    mock_client.aio.models.generate_content_stream = fake_stream
+    mock_client.aio.models.generate_content = lambda **kw: None
+
+    with (
+        patch("google.genai.Client", return_value=mock_client),
+        patch("thoth.providers.gemini.asyncio.sleep", fake_sleep),
+    ):
+        provider = GeminiProvider(api_key="dummy", config={"kind": "immediate"})
+
+    events = asyncio.run(_consume_events(provider.stream("Q?", "test_mode")))
+
+    assert attempts["n"] == 2
+    assert [event.kind for event in events] == ["text", "done"]
+    assert events[0].text == "Recovered."
 
 
 # ---------------------------------------------------------------------------
