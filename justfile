@@ -120,14 +120,14 @@ test-serial:
     uv run pytest tests/ -v
 
 # Run extended (real-API) contract tests. Gated by `pytest -m extended`;
-# requires OPENAI_API_KEY (Perplexity skipped until provider lands). P18
-# Phase I — runs nightly via .github/workflows/extended.yml.
+# requires provider API keys for live provider coverage. P18 Phase I — runs
+# nightly via .github/workflows/extended.yml.
 [group: 'testing']
 test-extended:
     uv run pytest -m extended -v
 
 # Run live-API workflow regression tests. Gated by `pytest -m live_api`;
-# requires OPENAI_API_KEY. P20 — runs weekly via
+# requires provider API keys for live provider coverage. P20 — runs weekly via
 # .github/workflows/live-api.yml (Sat 7pm PDT).
 [group: 'testing']
 test-live-api:

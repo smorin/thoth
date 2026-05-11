@@ -13,8 +13,12 @@
 - **Code (config schema):** `src/thoth/config.py` (`KNOWN_MODELS`, `mode_kind`, `is_background_model`).
 - **Branch (port-not-merge reference):** `origin/claude/plan-next-tasks-xR2e4` commit `7c9d124`. Frozen reference for Gemini API knowledge (endpoint, headers, payload shape, citation extraction). Written against the pre-package monolithic `thoth` script; do not rebase. Use as a wire-shape cross-check only.
 - **Research:** [research/gemini-deep-research-api.v1.md](../research/gemini-deep-research-api.v1.md). Authoritative API reference; sections 1-2 (auth + surface), 5-6 (lifecycle + polling), 10 (known bugs + workarounds) drive implementation.
-- **External (Gemini SDK):** https://github.com/googleapis/python-genai (`google-genai>=1.55.0`).
-- **External (Interactions API):** `https://generativelanguage.googleapis.com/v1beta/interactions`.
+- **External (SDK package):** https://pypi.org/project/google-genai/ - PyPI page for `google-genai`; P28 minimum is `>=1.55.0`.
+- **External (SDK repo):** https://github.com/googleapis/python-genai - repository root; issues / changelog / examples.
+- **External (SDK reference):** https://googleapis.github.io/python-genai/ - reference docs for the async client and Interactions surface.
+- **External (deep-research announcement):** https://blog.google/innovation-and-ai/models-and-research/gemini-models/next-generation-gemini-deep-research/ - product framing for the `deep-research-pro-preview-12-2025` agent P28 wires up.
+- **External (deep-research docs):** https://ai.google.dev/gemini-api/docs/deep-research - authoritative API surface for Gemini Deep Research.
+- **External (Interactions API docs):** https://ai.google.dev/gemini-api/docs/interactions - the `client.aio.interactions.{create,get,cancel}` surface P28 calls; companion to the REST endpoint `https://generativelanguage.googleapis.com/v1beta/interactions`.
 - **Tests (mirror target):** `tests/test_oai_background.py`, `tests/test_async_checkpoint.py`, `tests/test_resume.py`, `tests/test_vcr_openai.py`, `tests/extended/test_openai_real_workflows.py`, `tests/extended/test_model_kind_runtime.py`.
 
 **Status:** `[ ]` Scoped, requirements refined.

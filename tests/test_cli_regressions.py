@@ -143,6 +143,7 @@ def test_background_forwards_openai_cli_api_key(monkeypatch) -> None:
     assert captured["cli_api_keys"] == {
         "openai": "sk-test",
         "perplexity": None,
+        "gemini": None,
         "mock": None,
     }
 
@@ -167,6 +168,7 @@ def test_background_forwards_perplexity_cli_api_key(monkeypatch) -> None:
     assert captured["cli_api_keys"] == {
         "openai": None,
         "perplexity": "pplx-test",
+        "gemini": None,
         "mock": None,
     }
 

@@ -27,6 +27,7 @@ ROOT_OPTION_LABELS: dict[str, str] = {
     "version": "--version",
     "api_key_openai": "--api-key-openai",
     "api_key_perplexity": "--api-key-perplexity",
+    "api_key_gemini": "--api-key-gemini",
     "api_key_mock": "--api-key-mock",
     "config_path": "--config",
     "profile": "--profile",
@@ -61,6 +62,7 @@ def inherited_api_keys(ctx: click.Context) -> dict[str, str | None]:
     return {
         "openai": inherited_value(ctx, "api_key_openai"),
         "perplexity": inherited_value(ctx, "api_key_perplexity"),
+        "gemini": inherited_value(ctx, "api_key_gemini"),
         "mock": inherited_value(ctx, "api_key_mock"),
     }
 

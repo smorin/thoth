@@ -41,7 +41,7 @@ def _make_config(
 
 
 def _scrub_provider_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    for var in ("OPENAI_API_KEY", "PERPLEXITY_API_KEY", "MOCK_API_KEY"):
+    for var in ("OPENAI_API_KEY", "PERPLEXITY_API_KEY", "GEMINI_API_KEY", "MOCK_API_KEY"):
         monkeypatch.delenv(var, raising=False)
 
 
@@ -81,10 +81,11 @@ def test_available_providers_honors_dict_iteration_order(
     _scrub_provider_env(monkeypatch)
     monkeypatch.setenv("OPENAI_API_KEY", "sk-real")
     monkeypatch.setenv("PERPLEXITY_API_KEY", "pplx-real")
+    monkeypatch.setenv("GEMINI_API_KEY", "AIza-real")
     monkeypatch.setenv("MOCK_API_KEY", "mock-real")
     config = _make_config()
 
-    assert available_providers(config) == ["openai", "perplexity", "mock"]
+    assert available_providers(config) == ["openai", "perplexity", "gemini", "mock"]
 
 
 def test_available_providers_picks_up_config_file_keys(
