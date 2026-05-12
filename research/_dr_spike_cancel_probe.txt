@@ -1,0 +1,9 @@
+Installed 25 packages in 19ms
+=== Probe 1: GET status of interaction after 500-cancel attempt ===
+  GET raised: InternalServerError: Error code: 500 - {'error': {'message': 'There was a problem processing your request. You will not be charged.', 'code': 'api_error'}}
+
+=== Probe 2: Retry cancel() on same id ===
+  cancel raised: google.genai._interactions.InternalServerError: Error code: 500 - {'error': {'message': 'There was a problem processing your request. You will not be charged.', 'code': 'api_error'}}
+
+=== Probe 3: GET status after retry cancel ===
+  GET raised: InternalServerError: Error code: 500 - {'error': {'message': 'There was a problem processing your request. You will not be charged.', 'code': 'api_error'}}
