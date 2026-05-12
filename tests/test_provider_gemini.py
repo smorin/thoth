@@ -1155,3 +1155,82 @@ def test_gemini_kind_mismatch_no_kind_in_config_no_op() -> None:
     )
     # No exception (matches OpenAI/Perplexity pattern)
     provider._validate_kind_for_model("test_mode")
+
+
+class TestMapGeminiErrorInteractionsSpecific:
+    """Task 2: _map_gemini_error catches google.genai._interactions exceptions."""
+
+    def _make_interactions_request(self):  # type: ignore[return]
+        import httpx
+
+        return httpx.Request("POST", "https://ai.googleapis.com/v1/interactions")
+
+    def test_interactions_404_produces_interaction_expired_message(self):
+        """interactions.get(bad-id) raises NotFoundError with status_code=404."""
+        import httpx
+        from google.genai._interactions import NotFoundError  # type: ignore[import-not-found]
+
+        from thoth.providers.gemini import _map_gemini_error
+
+        req = self._make_interactions_request()
+        resp = httpx.Response(404, content=b"", request=req)
+        exc = NotFoundError(
+            "Interaction not found: interactions/does-not-exist-spike",
+            response=resp,
+            body=None,
+        )
+        result = _map_gemini_error(exc, model="deep-research-preview-04-2026")
+        msg = str(result)
+        assert "interaction" in msg.lower()
+        assert "Model 'deep-research-preview-04-2026' not found" not in msg
+
+    def test_interactions_400_invalid_key_produces_api_key_error(self):
+        """interactions.create with bad key raises BadRequestError with status_code=400."""
+        import httpx
+        from google.genai._interactions import BadRequestError  # type: ignore[import-not-found]
+
+        from thoth.errors import APIKeyError, ThothError
+        from thoth.providers.gemini import _map_gemini_error
+
+        req = self._make_interactions_request()
+        resp = httpx.Response(400, content=b"", request=req)
+        exc = BadRequestError("API key not valid", response=resp, body=None)
+        result = _map_gemini_error(exc, model="deep-research-preview-04-2026")
+        assert isinstance(result, (APIKeyError, ThothError))
+        if not isinstance(result, APIKeyError):
+            # ThothError stores the URL in .suggestion, not in str() / message
+            suggestion = getattr(result, "suggestion", "") or ""
+            assert "aistudio.google.com" in suggestion
+
+    def test_interactions_500_produces_provider_error(self):
+        """interactions.{create,get,cancel} 5xx raises InternalServerError."""
+        import httpx
+        from google.genai._interactions import InternalServerError  # type: ignore[import-not-found]
+
+        from thoth.errors import ProviderError
+        from thoth.providers.gemini import _map_gemini_error
+
+        req = self._make_interactions_request()
+        resp = httpx.Response(500, content=b"", request=req)
+        exc = InternalServerError(
+            "Internal server error processing interaction",
+            response=resp,
+            body=None,
+        )
+        result = _map_gemini_error(exc, model="deep-research-preview-04-2026")
+        assert isinstance(result, ProviderError)
+        assert "server" in str(result).lower() or "5xx" in str(result).lower()
+
+    def test_duck_type_fallback_when_isinstance_misses(self, monkeypatch):
+        """If _InteractionsAPIError isinstance check fails, duck-type still catches."""
+        from thoth.errors import ProviderError
+        from thoth.providers.gemini import _map_gemini_error
+
+        class _FakeInteractionsError(Exception):
+            status_code: int
+
+        _FakeInteractionsError.__module__ = "google.genai._interactions_renamed"
+        exc = _FakeInteractionsError("transient outage")
+        exc.status_code = 503
+        result = _map_gemini_error(exc, model="deep-research-preview-04-2026")
+        assert isinstance(result, ProviderError)

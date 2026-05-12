@@ -20,6 +20,20 @@ from urllib.parse import urlparse
 
 import httpx
 from google.genai import errors as genai_errors  # type: ignore[import-not-found]
+
+# DR-specific exceptions live in a PRIVATE module (google.genai._interactions)
+# that does NOT inherit from google.genai.errors.APIError. Try-import so we
+# fail loudly today and degrade gracefully if the SDK ever renames the module.
+try:
+    from google.genai._interactions import (  # type: ignore[import-not-found]
+        GeminiNextGenAPIClientError as _InteractionsAPIError,
+    )
+
+    _HAS_INTERACTIONS_ERRORS = True
+except ImportError:  # pragma: no cover
+    _HAS_INTERACTIONS_ERRORS = False
+    _InteractionsAPIError = None  # type: ignore[assignment]  # ty: ignore[invalid-assignment]
+
 from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponential
 
 from thoth.config import is_background_model
@@ -40,6 +54,21 @@ from thoth.providers._helpers import (
 from thoth.providers.base import Citation, ResearchProvider, StreamEvent
 
 _PROVIDER_NAME_GEMINI = "gemini"
+
+
+def _is_interactions_error(exc: BaseException) -> bool:
+    """True for DR (Interactions API) exceptions, regardless of SDK module path.
+
+    Primary: isinstance check against the imported _InteractionsAPIError. If the
+    SDK has renamed the private module since pin-time, fall back to a duck-type
+    check (module name + status_code attribute). See spike §7.
+    """
+    if _HAS_INTERACTIONS_ERRORS and _InteractionsAPIError is not None:
+        if isinstance(exc, _InteractionsAPIError):
+            return True
+    module = type(exc).__module__ or ""
+    return module.startswith("google.genai._") and hasattr(exc, "status_code")
+
 
 _INVALID_KEY_PHRASES_GEMINI: tuple[str, ...] = (
     "api key not valid",
@@ -107,6 +136,55 @@ def _map_gemini_error(exc: Exception, model: str | None, verbose: bool = False) 
     Note: ModeKindMismatchError is propagated unmapped by the caller (provider's
     submit/stream methods); this function only handles SDK + httpx exceptions.
     """
+    # NEW: DR (Interactions API) exceptions are a separate hierarchy.
+    if _is_interactions_error(exc):
+        status_code = getattr(exc, "status_code", None)
+        message = getattr(exc, "message", None) or str(exc) or ""
+        msg_lower = message.lower()
+
+        if status_code == 400:
+            if any(p in msg_lower for p in _INVALID_KEY_PHRASES_GEMINI):
+                return _invalid_key_thotherror(
+                    "Gemini",
+                    "https://aistudio.google.com/app/apikey",
+                )
+            return ProviderError(_PROVIDER_NAME_GEMINI, f"Bad request: {message}")
+
+        if status_code == 404:
+            return ProviderError(
+                _PROVIDER_NAME_GEMINI,
+                f"Gemini interaction not found or expired: {message}. "
+                f"Paid-tier retention is 55 days; free-tier 1 day. Start a new "
+                f"operation if the interaction has aged out.",
+            )
+
+        if status_code == 429:
+            return APIRateLimitError(_PROVIDER_NAME_GEMINI)
+
+        if status_code == 403:
+            is_dr_model = model and "deep-research" in str(model).lower()
+            if is_dr_model and (
+                "tier" in msg_lower or "paid" in msg_lower or "billing" in msg_lower
+            ):
+                return ProviderError(
+                    _PROVIDER_NAME_GEMINI,
+                    f"Gemini Deep Research requires a paid tier (Tier 1+). "
+                    f"See https://ai.google.dev/pricing. Original error: {message}",
+                )
+            return ProviderError(_PROVIDER_NAME_GEMINI, f"Permission denied: {message}")
+
+        if status_code is not None and status_code >= 500:
+            return ProviderError(
+                _PROVIDER_NAME_GEMINI,
+                f"Gemini interactions server error ({status_code}): {message}. Retry shortly.",
+            )
+
+        return ProviderError(
+            _PROVIDER_NAME_GEMINI,
+            f"Gemini interactions API error ({status_code}): {message}",
+        )
+
+    # Existing branches follow unchanged: ClientError, ServerError, httpx.*, APIError
     if isinstance(exc, genai_errors.ClientError):
         # ClientError stores response_json under .details (full body) and pre-extracts
         # .code / .status / .message. We dig into .details for the structured
