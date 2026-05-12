@@ -137,14 +137,16 @@ class ClarificationConfig(BaseModel):
 class ModeConfig(BaseModel):
     """Schema for `[modes.<name>]` and profile-overlaid mode tables.
 
-    Models the well-known mode-level fields plus per-provider namespace
-    passthrough (`[modes.<name>.openai]`, `[modes.<name>.perplexity]`,
-    `[modes.<name>.gemini]`). The runtime's `_apply_mode_provider_config`
-    threads these namespaces into the provider's constructor config — see
-    `src/thoth/providers/__init__.py:_apply_mode_provider_config`.
+    Models the well-known mode-level fields plus per-provider namespaces
+    (`[modes.<name>.openai]`, `[modes.<name>.perplexity]`,
+    `[modes.<name>.gemini]`). The provider parameter normalizer validates
+    recognized namespace keys at runtime and routes explicit extension bags
+    such as `perplexity.extra_body`.
 
-    Provider namespaces are typed as permissive `dict[str, Any]` so SDK
-    options can evolve without schema drift; typos in the well-known
+    Provider namespaces stay typed as permissive `dict[str, Any]` at the
+    schema layer so the TOML shape is accepted there. Runtime normalization is
+    stricter: namespace keys must be registered provider parameters or
+    explicit extension bags such as `extra_body`. Typos in the well-known
     fields above are still caught by `extra="forbid"`.
     """
 
@@ -166,9 +168,8 @@ class ModeConfig(BaseModel):
     description: str | None = None
     stream: bool | None = None
 
-    # Provider-namespace passthrough — _apply_mode_provider_config reads these
-    # and deep-merges into provider_config[<name>]. Permissive shape lets
-    # SDK-specific options flow without schema updates.
+    # Provider namespaces. Runtime normalization validates recognized keys and
+    # explicit extension bags; the schema only accepts the namespace shape.
     openai: dict[str, Any] | None = None
     perplexity: dict[str, Any] | None = None
     gemini: dict[str, Any] | None = None

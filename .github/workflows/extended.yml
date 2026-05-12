@@ -1,7 +1,7 @@
 ---
 # P18 Phase I: nightly real-API contract tests.
 #
-# Runs `pytest -m extended` which exercises every entry in KNOWN_MODELS
+# Runs `pytest -m "extended and not extended_slow"` which exercises every entry in KNOWN_MODELS
 # against live provider APIs to detect drift between thoth's declared
 # `kind` and what the upstream API actually does. Gated on provider API-key
 # repo secrets. The job is informational — failures notify the team but do
@@ -19,7 +19,7 @@ permissions:
 
 jobs:
   extended:
-    name: pytest -m extended
+    name: pytest -m "extended and not extended_slow"
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6.0.2
@@ -32,5 +32,5 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           PERPLEXITY_API_KEY: ${{ secrets.PERPLEXITY_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-        run: uv run pytest -m extended -v
+        run: uv run pytest -m "extended and not extended_slow" -v
         continue-on-error: true

@@ -27,7 +27,7 @@ from tests.extended.conftest import (
     wait_for_provider_job_id,
 )
 
-pytestmark = pytest.mark.extended
+pytestmark = [pytest.mark.extended, pytest.mark.provider_openai]
 
 
 def test_openai_resume_async_cli_one_tick_after_explicit_async_submit(

@@ -645,13 +645,11 @@ class ConfigManager:
             mode_config = (BUILTIN_MODES.get(target_str) or {}).copy()
             # User config overlay still keyed on the original name.
             user_mode = self.data.get("modes", {}).get(mode, {})
-            mode_config.update(user_mode)
-            return mode_config
+            return self._deep_merge(mode_config, user_mode)
 
         mode_config = builtin.copy()
         user_mode = self.data.get("modes", {}).get(mode, {})
-        mode_config.update(user_mode)
-        return mode_config
+        return self._deep_merge(mode_config, user_mode)
 
     def get_effective_config(self) -> dict[str, Any]:
         """Return the merged effective configuration"""

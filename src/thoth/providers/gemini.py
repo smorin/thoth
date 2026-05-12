@@ -11,6 +11,7 @@ and the thinking-budget knob.
 
 from __future__ import annotations
 
+import asyncio
 import time
 import uuid
 from collections.abc import AsyncIterator
@@ -19,7 +20,7 @@ from urllib.parse import urlparse
 
 import httpx
 from google.genai import errors as genai_errors  # type: ignore[import-not-found]
-from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
+from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponential
 
 from thoth.config import is_background_model
 from thoth.errors import (
@@ -191,12 +192,36 @@ def _map_gemini_error(exc: Exception, model: str | None, verbose: bool = False) 
     return ProviderError(_PROVIDER_NAME_GEMINI, f"Unexpected error: {exc}")
 
 
+# Raw SDK exception types that are always retryable (transient transport /
+# server-side failures). 429-rate-limit responses arrive as
+# genai_errors.ClientError(code=429) — handled by the predicate below since
+# we don't want to retry every 4xx, only 429.
 _GEMINI_RETRY_CLASSES: tuple[type[BaseException], ...] = (
     httpx.TimeoutException,
     httpx.ConnectError,
     httpx.RemoteProtocolError,
-    APIRateLimitError,
+    genai_errors.ServerError,
 )
+
+_GEMINI_STREAM_MAX_ATTEMPTS = 3
+
+
+def _gemini_stream_retry_delay(attempt: int) -> float:
+    return float(min(4, 2 ** (attempt - 1)))
+
+
+def _is_retryable_gemini_exception(exc: BaseException) -> bool:
+    """True for transient transport/server errors and raw 429 rate-limit responses.
+
+    The Gemini SDK surfaces 429 as ``genai_errors.ClientError(code=429)``; the
+    wrapping into ``APIRateLimitError`` happens AFTER the retry classifier
+    runs in ``submit()`` (and after the stream loop's classification), so we
+    must inspect the raw SDK exception here, not the post-mapping
+    ``ThothError`` subclass.
+    """
+    if isinstance(exc, genai_errors.ClientError) and getattr(exc, "code", None) == 429:
+        return True
+    return isinstance(exc, _GEMINI_RETRY_CLASSES)
 
 
 class GeminiProvider(ResearchProvider):
@@ -217,8 +242,13 @@ class GeminiProvider(ResearchProvider):
         # Lazy-import google-genai to avoid hard dep at module-load time;
         # also lets the test suite mock the client without paying the import.
         from google import genai  # type: ignore[import-not-found]
+        from google.genai import types  # type: ignore[import-not-found]
 
-        self.client = genai.Client(api_key=api_key)
+        client_kwargs: dict[str, Any] = {"api_key": api_key}
+        timeout = (self.config or {}).get("timeout")
+        if timeout is not None:
+            client_kwargs["http_options"] = types.HttpOptions(timeout=int(float(timeout) * 1000))
+        self.client = genai.Client(**client_kwargs)
 
     def is_implemented(self) -> bool:
         return True
@@ -356,51 +386,72 @@ class GeminiProvider(ResearchProvider):
         if config is not None:
             kwargs["config"] = config
 
-        seen_citation_urls: set[str] = set()
+        last_exc: Exception | None = None
+        for attempt in range(1, _GEMINI_STREAM_MAX_ATTEMPTS + 1):
+            emitted_any = False
+            try:
+                async for event in self._stream_once(kwargs, seen_citation_urls=set()):
+                    emitted_any = True
+                    yield event
+                return
+            except ModeKindMismatchError:
+                raise  # propagate unmapped (per error-mapper convention)
+            except Exception as e:
+                last_exc = e
+                if (
+                    emitted_any
+                    or attempt >= _GEMINI_STREAM_MAX_ATTEMPTS
+                    or not _is_retryable_gemini_exception(e)
+                ):
+                    raise _map_gemini_error(e, self.model, verbose=verbose) from e
+                await asyncio.sleep(_gemini_stream_retry_delay(attempt))
 
-        try:
-            stream_iter = await self.client.aio.models.generate_content_stream(**kwargs)
-            async for chunk in stream_iter:
-                candidates = getattr(chunk, "candidates", None) or []
-                if not candidates:
-                    continue
-                candidate = candidates[0]
-                content = getattr(candidate, "content", None)
-                parts = getattr(content, "parts", None) if content else None
-                if parts:
-                    for part in parts:
-                        text = getattr(part, "text", "") or ""
-                        if not text:
-                            continue
-                        if getattr(part, "thought", False):
-                            yield StreamEvent(kind="reasoning", text=text)
-                        else:
-                            yield StreamEvent(kind="text", text=text)
+        if last_exc is not None:
+            raise _map_gemini_error(last_exc, self.model, verbose=verbose) from last_exc
 
-                grounding = getattr(candidate, "grounding_metadata", None)
-                if grounding is not None:
-                    grounding_chunks = getattr(grounding, "grounding_chunks", None) or []
-                    for gc in grounding_chunks:
-                        web = getattr(gc, "web", None)
-                        if web is None:
-                            continue
-                        url = getattr(web, "uri", None)
-                        if not url or url in seen_citation_urls:
-                            continue
-                        seen_citation_urls.add(url)
-                        title = getattr(web, "title", "") or urlparse(url).netloc
-                        yield StreamEvent(
-                            kind="citation",
-                            text=str(title),
-                            citation=Citation(title=str(title), url=str(url)),
-                        )
+    async def _stream_once(
+        self,
+        kwargs: dict[str, Any],
+        *,
+        seen_citation_urls: set[str],
+    ) -> AsyncIterator[StreamEvent]:
+        stream_iter = await self.client.aio.models.generate_content_stream(**kwargs)
+        async for chunk in stream_iter:
+            candidates = getattr(chunk, "candidates", None) or []
+            if not candidates:
+                continue
+            candidate = candidates[0]
+            content = getattr(candidate, "content", None)
+            parts = getattr(content, "parts", None) if content else None
+            if parts:
+                for part in parts:
+                    text = getattr(part, "text", "") or ""
+                    if not text:
+                        continue
+                    if getattr(part, "thought", False):
+                        yield StreamEvent(kind="reasoning", text=text)
+                    else:
+                        yield StreamEvent(kind="text", text=text)
 
-            yield StreamEvent(kind="done", text="")
+            grounding = getattr(candidate, "grounding_metadata", None)
+            if grounding is not None:
+                grounding_chunks = getattr(grounding, "grounding_chunks", None) or []
+                for gc in grounding_chunks:
+                    web = getattr(gc, "web", None)
+                    if web is None:
+                        continue
+                    url = getattr(web, "uri", None)
+                    if not url or url in seen_citation_urls:
+                        continue
+                    seen_citation_urls.add(url)
+                    title = getattr(web, "title", "") or urlparse(url).netloc
+                    yield StreamEvent(
+                        kind="citation",
+                        text=str(title),
+                        citation=Citation(title=str(title), url=str(url)),
+                    )
 
-        except ModeKindMismatchError:
-            raise  # propagate unmapped (per error-mapper convention)
-        except Exception as e:
-            raise _map_gemini_error(e, self.model, verbose=verbose) from e
+        yield StreamEvent(kind="done", text="")
 
     async def submit(
         self,
@@ -429,7 +480,7 @@ class GeminiProvider(ResearchProvider):
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=4, max=10),
-        retry=retry_if_exception_type(_GEMINI_RETRY_CLASSES),
+        retry=retry_if_exception(_is_retryable_gemini_exception),
         reraise=True,
     )
     async def _submit_with_retry(

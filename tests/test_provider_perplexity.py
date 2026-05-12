@@ -263,6 +263,32 @@ def test_perplexity_namespaced_direct_sdk_kwargs_override_flat() -> None:
     assert "temperature" not in captured["extra_body"]
 
 
+def test_perplexity_response_format_reaches_sync_and_async_request_shapes() -> None:
+    provider = PerplexityProvider(
+        api_key="pplx-test",
+        config={"perplexity": {"response_format": {"type": "json_object"}}},
+    )
+
+    sync_params = provider._build_request_params("prompt", None)
+    async_body = provider._build_async_request_body("prompt", None, "idem-test")
+
+    assert sync_params["response_format"] == {"type": "json_object"}
+    assert async_body["request"]["response_format"] == {"type": "json_object"}
+
+
+def test_perplexity_extra_body_reaches_sync_extra_body_and_async_request() -> None:
+    provider = PerplexityProvider(
+        api_key="pplx-test",
+        config={"perplexity": {"extra_body": {"new_vendor_flag": True}}},
+    )
+
+    sync_params = provider._build_request_params("prompt", None)
+    async_body = provider._build_async_request_body("prompt", None, "idem-test")
+
+    assert sync_params["extra_body"]["new_vendor_flag"] is True
+    assert async_body["request"]["extra_body"]["new_vendor_flag"] is True
+
+
 # ---------------------------------------------------------------------------
 # TS03 — error mapping + retry policy
 # ---------------------------------------------------------------------------
