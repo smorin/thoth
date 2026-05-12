@@ -7,6 +7,7 @@ from io import StringIO
 from pathlib import Path
 from typing import cast
 
+import pytest
 import tomlkit
 from rich.console import Console
 
@@ -99,6 +100,13 @@ def test_prefill_ignores_unknown_default_mode() -> None:
     doc["general"]["default_mode"] = "made-up"  # ty: ignore[invalid-assignment]
     pf = _prefill_from_doc(doc)
     assert pf.default_mode is None  # don't pre-fill garbage
+
+
+def test_prefill_ignores_interactive_default_mode() -> None:
+    doc = _build_starter_document()
+    doc["general"]["default_mode"] = "interactive"  # ty: ignore[invalid-assignment]
+    pf = _prefill_from_doc(doc)
+    assert pf.default_mode is None
 
 
 def test_load_or_build_returns_existing_doc(tmp_path: Path) -> None:
@@ -219,12 +227,14 @@ def test_dispatch_force_roundtrip_preserves_unknown(tmp_path: Path, monkeypatch)
     assert written["general"]["default_mode"] == "thinking"  # ty: ignore[not-subscriptable]
 
 
-def test_dispatch_json_envelope_regression(tmp_path: Path) -> None:
+def test_dispatch_json_envelope_regression(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """TS01-m: --json --non-interactive path is unchanged by P31."""
     from click.testing import CliRunner
 
+    import thoth.config as thoth_config
     from thoth.cli import cli
 
+    monkeypatch.setattr(thoth_config, "_config_path", None)
     runner = CliRunner()
     target = tmp_path / "thoth.config.toml"
     result = runner.invoke(

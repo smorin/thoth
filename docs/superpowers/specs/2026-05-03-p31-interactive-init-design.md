@@ -23,8 +23,9 @@ In scope:
 - Provider multi-select (openai, perplexity, gemini, plus a "skip all" option).
 - For each picked provider: detect-then-decide API-key handling (env-var ref,
   literal value in file, or skip).
-- Default-mode pick from the four built-ins (`default`, `thinking`,
-  `deep_research`, `interactive`).
+- Default-mode pick from the supported run modes (`default`, `thinking`,
+  `deep_research`). `interactive` remains an explicit CLI path, not a wizard
+  default-mode choice.
 - Review-and-confirm screen before writing.
 - TOML round-trip preserving unknown sections when `--force` is used on an
   existing file.
@@ -102,7 +103,7 @@ class ProviderChoice:
 @dataclass(frozen=True)
 class WizardAnswers:
     providers: tuple[ProviderChoice, ...]
-    default_mode: Literal["default", "thinking", "deep_research", "interactive"]
+    default_mode: Literal["default", "thinking", "deep_research"]
     target_path: Path  # echoed back so the review screen can show it
 ```
 
@@ -129,8 +130,8 @@ class WizardAnswers:
      | `openai` | `OPENAI_API_KEY` |
      | `perplexity` | `PERPLEXITY_API_KEY` |
      | `gemini` | `GEMINI_API_KEY` |
-   - Q3 — default-mode pick. Numbered list of four with one-line
-     descriptions; default is the pre-filled value or `default`.
+   - Q3 — default-mode pick. Numbered list of supported run modes with
+     one-line descriptions; default is the pre-filled value or `default`.
 4. **Review screen**: prints a summary block (target path, each provider's
    storage decision with last-4 chars where applicable, `default_mode`) and
    asks `[Y]es write / [n]o cancel / [e]dit`. `edit` re-runs steps 3a–3c
