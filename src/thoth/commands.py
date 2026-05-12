@@ -295,8 +295,9 @@ class CommandHandler:
 
         def _real_prompt(p: str) -> str:
             from rich.prompt import Prompt
+            from rich.text import Text
 
-            return Prompt.ask(p, default="")
+            return Prompt.ask(Text(p, style="prompt"), default="", show_default=False)
 
         answers = init_wizard.run(
             target=target,
