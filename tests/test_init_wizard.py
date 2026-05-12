@@ -80,6 +80,23 @@ def test_pick_many_empty_returns_empty_list() -> None:
     assert pick_many(["a", "b"], prompt_fn=sp) == []
 
 
+def test_pick_many_retries_three_malformed_inputs_before_error() -> None:
+    class CountingPrompts:
+        def __init__(self, answers: list[str]) -> None:
+            self.answers = list(answers)
+            self.calls = 0
+
+        def __call__(self, _prompt: str) -> str:
+            answer = self.answers[self.calls]
+            self.calls += 1
+            return answer
+
+    sp = CountingPrompts(["x", "0", "99"])
+    with pytest.raises(ThothError, match="invalid selection"):
+        pick_many(["a", "b"], prompt_fn=sp)
+    assert sp.calls == 3
+
+
 from thoth.init_wizard import prompt_providers  # noqa: E402
 
 
@@ -178,7 +195,11 @@ def test_key_literal_value_trimmed_once() -> None:
     assert pc == ProviderChoice("openai", "literal", "sk-pad")
 
 
-from thoth.init_wizard import prompt_default_mode  # noqa: E402
+from thoth.init_wizard import DEFAULT_MODE_OPTIONS, prompt_default_mode  # noqa: E402
+
+
+def test_default_mode_options_do_not_offer_interactive() -> None:
+    assert "interactive" not in DEFAULT_MODE_OPTIONS
 
 
 def test_default_mode_pick_thinking() -> None:

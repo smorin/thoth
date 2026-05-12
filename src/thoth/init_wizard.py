@@ -19,7 +19,7 @@ from thoth.errors import ThothError
 PromptFn = Callable[[str], str]
 ProviderName = Literal["openai", "perplexity", "gemini"]
 KeyStorage = Literal["env_ref", "literal", "skip"]
-DefaultMode = Literal["default", "thinking", "deep_research", "interactive"]
+DefaultMode = Literal["default", "thinking", "deep_research"]
 
 
 @dataclass(frozen=True)
@@ -84,12 +84,16 @@ def pick_many(
     """
     menu = _format_menu(options)
     full_prompt = f"{label}:\n{menu}\n> "
-    for empty_seen in range(2):
+    invalid_attempts = 0
+    empty_seen = False
+    while invalid_attempts < _MAX_RETRIES:
         raw = prompt_fn(full_prompt).strip()
         if not raw:
-            if empty_seen == 1:
+            if empty_seen:
                 return []
+            empty_seen = True
             continue
+        empty_seen = False
         picked: list[str] = []
         seen: set[int] = set()
         valid = True
@@ -108,6 +112,7 @@ def pick_many(
                 picked.append(options[n - 1])
         if valid and picked:
             return picked
+        invalid_attempts += 1
         # garbage → loop again as if empty (but consume retry budget)
     raise ThothError("invalid selection")
 
@@ -173,13 +178,11 @@ DEFAULT_MODE_OPTIONS: tuple[DefaultMode, ...] = (
     "default",
     "thinking",
     "deep_research",
-    "interactive",
 )
 DEFAULT_MODE_DESCRIPTIONS: dict[DefaultMode, str] = {
     "default": "default — the shipped research mode",
     "thinking": "thinking — fast / cheap reasoning",
     "deep_research": "deep_research — multi-provider deep research",
-    "interactive": "interactive — drop into REPL on bare `thoth`",
 }
 
 

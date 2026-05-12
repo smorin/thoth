@@ -155,7 +155,7 @@ from typing import Callable, Literal
 PromptFn = Callable[[str], str]
 ProviderName = Literal["openai", "perplexity", "gemini"]
 KeyStorage = Literal["env_ref", "literal", "skip"]
-DefaultMode = Literal["default", "thinking", "deep_research", "interactive"]
+DefaultMode = Literal["default", "thinking", "deep_research"]
 
 
 @dataclass(frozen=True)
@@ -632,13 +632,11 @@ DEFAULT_MODE_OPTIONS: tuple[DefaultMode, ...] = (
     "default",
     "thinking",
     "deep_research",
-    "interactive",
 )
 DEFAULT_MODE_DESCRIPTIONS: dict[DefaultMode, str] = {
     "default": "default — the shipped research mode",
     "thinking": "thinking — fast / cheap reasoning",
     "deep_research": "deep_research — multi-provider deep research",
-    "interactive": "interactive — drop into REPL on bare `thoth`",
 }
 
 
@@ -1496,7 +1494,7 @@ gh pr create --title "feat(p31): interactive init wizard" --body "$(cat <<'EOF'
 ## Summary
 - Replace placeholder in `init_command()` with a real interactive wizard
 - Detect-then-decide API-key handling for openai, perplexity, gemini
-- Default-mode pick from the four built-ins
+- Default-mode pick from the supported run modes
 - Review-and-confirm before writing; cancel returns 0 without touching disk
 - `--force` round-trips existing TOML, preserving unknown sections
 
