@@ -536,120 +536,202 @@ two-tier DR agent ID listing (Task 11 gate)."
 
 ### Task 2: Extend `_map_gemini_error` for Interactions-API-specific failures
 
-**Convention reference (P26+P27):** the error mapper stays a single function — no sync/async split since the Interactions API surface is async-only and reuses the same `genai_errors.ClientError`/`ServerError` exception types. Existing branches (401/403/404/429/400/5xx) remain. P28 adds discriminators where the same HTTP code now has two meanings.
+**Spike-driven correction (2026-05-12):** DR exceptions are **NOT** subclasses of `google.genai.errors.APIError` as the original plan assumed. They live in a **separate private hierarchy** at `google.genai._interactions.GeminiNextGenAPIClientError` (with `BadRequestError`, `NotFoundError`, `InternalServerError` subclasses). The existing `_map_gemini_error` will NOT catch them — they will propagate unhandled unless we explicitly add a branch. Use `exc.status_code` (int) — NOT `exc.code` (always `None` for these). See `research/gemini-dr-api-spike-2026-05-11.md` §7 for evidence.
+
+**Catching strategy:** try-import the private module at module load; fall back to duck-type discrimination if the SDK has renamed it (locked by user 2026-05-12).
+
+**Convention reference (P26+P27):** the error mapper stays a single function — no sync/async split since the Interactions API surface is async-only.
 
 **Files:**
-- Modify: `src/thoth/providers/gemini.py:_map_gemini_error`
+- Modify: `src/thoth/providers/gemini.py` (top-of-module imports + `_map_gemini_error`)
 - Modify: `tests/test_provider_gemini.py` (add test class)
 
-- [ ] **Step 1: Write failing test for interaction-not-found discrimination**
+- [ ] **Step 1: Add try-import + helper at module top**
 
-Existing `_map_gemini_error` maps 404 to `"Model {model!r} not found"`. After P28, the same 404 might come from `interactions.get(bad_id)` and should produce a different message.
+In `src/thoth/providers/gemini.py`, just below the existing `from google.genai import errors as genai_errors` line, add:
+
+```python
+# DR-specific exceptions live in a PRIVATE module (google.genai._interactions)
+# that does NOT inherit from google.genai.errors.APIError. Try-import so we
+# fail loudly today and degrade gracefully if the SDK ever renames the module.
+try:
+    from google.genai._interactions import (  # type: ignore[import-not-found]
+        GeminiNextGenAPIClientError as _InteractionsAPIError,
+    )
+
+    _HAS_INTERACTIONS_ERRORS = True
+except ImportError:  # pragma: no cover
+    _HAS_INTERACTIONS_ERRORS = False
+    _InteractionsAPIError = None  # type: ignore[assignment]
+
+
+def _is_interactions_error(exc: BaseException) -> bool:
+    """True for DR (Interactions API) exceptions, regardless of SDK module path.
+
+    Primary: isinstance check against the imported _InteractionsAPIError. If the
+    SDK has renamed the private module since pin-time, fall back to a duck-type
+    check (module name + status_code attribute). See spike §7.
+    """
+    if _HAS_INTERACTIONS_ERRORS and _InteractionsAPIError is not None:
+        if isinstance(exc, _InteractionsAPIError):
+            return True
+    module = type(exc).__module__ or ""
+    return module.startswith("google.genai._") and hasattr(exc, "status_code")
+```
+
+- [ ] **Step 2: Write failing tests using the actual exception classes from the spike**
 
 Append to `tests/test_provider_gemini.py`:
 
 ```python
 class TestMapGeminiErrorInteractionsSpecific:
-    """Task 2: _map_gemini_error discriminates interactions vs models 404."""
+    """Task 2: _map_gemini_error catches google.genai._interactions exceptions."""
 
-    def test_interaction_not_found_404_when_resource_is_interaction(self):
-        from google.genai import errors as genai_errors
-
-        from thoth.providers.gemini import _map_gemini_error
-
-        # Construct a ClientError that looks like an interactions.get(bad-id) 404
-        exc = genai_errors.ClientError(
-            code=404,
-            response={
-                "error": {
-                    "code": 404,
-                    "status": "NOT_FOUND",
-                    "message": "Interaction not found: interactions/does-not-exist",
-                }
-            },
-        )
-        result = _map_gemini_error(exc, model="deep-research-preview-04-2026")
-        assert "Interaction" in str(result) or "interaction" in str(result)
-        # Must NOT say "Model ... not found" for an interactions 404
-        assert "Model 'deep-research-preview-04-2026' not found" not in str(result)
-
-    def test_free_tier_403_for_deep_research_gives_useful_message(self):
-        from google.genai import errors as genai_errors
+    def test_interactions_404_produces_interaction_expired_message(self):
+        """interactions.get(bad-id) raises NotFoundError with status_code=404."""
+        from google.genai._interactions import NotFoundError  # type: ignore[import-not-found]
 
         from thoth.providers.gemini import _map_gemini_error
 
-        exc = genai_errors.ClientError(
-            code=403,
-            response={
-                "error": {
-                    "code": 403,
-                    "status": "PERMISSION_DENIED",
-                    "message": "Deep Research requires a paid tier",
-                }
-            },
+        # Construct a real NotFoundError as the spike observed it.
+        # The exact constructor signature is documented in
+        # research/gemini-dr-api-spike-2026-05-11.md §7. Use the spike-derived
+        # shape — do not invent.
+        exc = NotFoundError(
+            status_code=404,
+            message="Interaction not found: interactions/does-not-exist-spike",
         )
         result = _map_gemini_error(exc, model="deep-research-preview-04-2026")
         msg = str(result)
-        assert "paid" in msg.lower() or "tier" in msg.lower()
-        # The message should point users at pricing/upgrade docs
-        assert "google" in msg.lower() or "pricing" in msg.lower() or "ai.google.dev" in msg
+        assert "interaction" in msg.lower()
+        # Must NOT collapse onto the chat-completion 404 message
+        assert "Model 'deep-research-preview-04-2026' not found" not in msg
+
+    def test_interactions_400_invalid_key_produces_api_key_error(self):
+        """interactions.create with bad key raises BadRequestError with status_code=400."""
+        from google.genai._interactions import BadRequestError  # type: ignore[import-not-found]
+
+        from thoth.errors import APIKeyError, ThothError
+        from thoth.providers.gemini import _map_gemini_error
+
+        exc = BadRequestError(status_code=400, message="API key not valid")
+        result = _map_gemini_error(exc, model="deep-research-preview-04-2026")
+        # Either APIKeyError or a ThothError mentioning the AI Studio URL
+        assert isinstance(result, (APIKeyError, ThothError))
+        if not isinstance(result, APIKeyError):
+            assert "aistudio.google.com" in str(result)
+
+    def test_interactions_500_produces_provider_error(self):
+        """interactions.{create,get,cancel} 5xx raises InternalServerError."""
+        from google.genai._interactions import InternalServerError  # type: ignore[import-not-found]
+
+        from thoth.errors import ProviderError
+        from thoth.providers.gemini import _map_gemini_error
+
+        exc = InternalServerError(
+            status_code=500, message="Internal server error processing interaction"
+        )
+        result = _map_gemini_error(exc, model="deep-research-preview-04-2026")
+        assert isinstance(result, ProviderError)
+        assert "server" in str(result).lower() or "5xx" in str(result).lower()
+
+    def test_duck_type_fallback_when_isinstance_misses(self, monkeypatch):
+        """If _InteractionsAPIError isinstance check fails, duck-type still catches.
+
+        Simulates an SDK rename: forge an exception whose module is
+        google.genai._interactions but doesn't inherit from our captured class.
+        """
+        from thoth.errors import ProviderError
+        from thoth.providers.gemini import _map_gemini_error
+
+        class _FakeInteractionsError(Exception):
+            pass
+
+        # Patch the module path to make duck-type catch it
+        _FakeInteractionsError.__module__ = "google.genai._interactions_renamed"
+        exc = _FakeInteractionsError("transient outage")
+        exc.status_code = 503  # type: ignore[attr-defined]
+        result = _map_gemini_error(exc, model="deep-research-preview-04-2026")
+        # Falls through to the generic provider error
+        assert isinstance(result, ProviderError)
 ```
 
-- [ ] **Step 2: Run failing tests**
+- [ ] **Step 3: Run failing tests**
 
 ```bash
 uv run pytest tests/test_provider_gemini.py::TestMapGeminiErrorInteractionsSpecific -v
 ```
 
-Expected: 2 FAIL — current `_map_gemini_error` 404 branch returns "Model ... not found" regardless of whether the resource is an interaction.
+Expected: 4 FAIL — `_map_gemini_error` doesn't catch `_interactions` exceptions yet.
 
-- [ ] **Step 3: Extend `_map_gemini_error` to discriminate**
+- [ ] **Step 4: Add the `_is_interactions_error` branch to `_map_gemini_error`**
 
-In `src/thoth/providers/gemini.py:_map_gemini_error` modify the 404 branch:
-
-```python
-if code == 404 or status == "NOT_FOUND":
-    msg_lower = message.lower()
-    if "interaction" in msg_lower:
-        return ProviderError(
-            _PROVIDER_NAME_GEMINI,
-            f"Gemini interaction not found or expired: {message}. "
-            f"Paid-tier retention is 55 days; free-tier 1 day. Start a new "
-            f"operation if the interaction has aged out.",
-        )
-    model_str = repr(model) if model else "(unknown)"
-    return ProviderError(
-        _PROVIDER_NAME_GEMINI,
-        f"Model {model_str} not found or unavailable. "
-        f"Run `thoth providers --models --provider gemini` to list valid models.",
-    )
-```
-
-And modify the 403 branch (PERMISSION_DENIED) to recognize the free-tier-blocked-from-DR case:
+In `src/thoth/providers/gemini.py:_map_gemini_error`, add a NEW first conditional BEFORE the existing `isinstance(exc, genai_errors.ClientError)` block:
 
 ```python
-if code == 403 or status == "PERMISSION_DENIED":
-    msg_lower = message.lower()
-    is_dr_model = model and "deep-research" in str(model).lower()
-    if is_dr_model and ("tier" in msg_lower or "paid" in msg_lower or "billing" in msg_lower):
+def _map_gemini_error(exc: Exception, model: str | None, verbose: bool = False) -> ThothError:
+    # NEW: DR (Interactions API) exceptions are a separate hierarchy.
+    if _is_interactions_error(exc):
+        status_code = getattr(exc, "status_code", None)
+        message = getattr(exc, "message", None) or str(exc) or ""
+        msg_lower = message.lower()
+
+        if status_code == 400:
+            # Invalid-key paths come through as 400 BadRequest from the
+            # interactions endpoint (the chat-completion endpoint returns 401).
+            if any(p in msg_lower for p in _INVALID_KEY_PHRASES_GEMINI):
+                return _invalid_key_thotherror(
+                    "Gemini",
+                    "https://aistudio.google.com/app/apikey",
+                )
+            return ProviderError(_PROVIDER_NAME_GEMINI, f"Bad request: {message}")
+
+        if status_code == 404:
+            return ProviderError(
+                _PROVIDER_NAME_GEMINI,
+                f"Gemini interaction not found or expired: {message}. "
+                f"Paid-tier retention is 55 days; free-tier 1 day. Start a new "
+                f"operation if the interaction has aged out.",
+            )
+
+        if status_code == 429:
+            return APIRateLimitError(_PROVIDER_NAME_GEMINI)
+
+        if status_code == 403:
+            is_dr_model = model and "deep-research" in str(model).lower()
+            if is_dr_model and ("tier" in msg_lower or "paid" in msg_lower or "billing" in msg_lower):
+                return ProviderError(
+                    _PROVIDER_NAME_GEMINI,
+                    f"Gemini Deep Research requires a paid tier (Tier 1+). "
+                    f"See https://ai.google.dev/pricing. Original error: {message}",
+                )
+            return ProviderError(_PROVIDER_NAME_GEMINI, f"Permission denied: {message}")
+
+        if status_code is not None and status_code >= 500:
+            return ProviderError(
+                _PROVIDER_NAME_GEMINI,
+                f"Gemini interactions server error ({status_code}): {message}. "
+                f"Retry shortly.",
+            )
+
+        # Unknown status_code on a recognised _interactions exception.
         return ProviderError(
             _PROVIDER_NAME_GEMINI,
-            f"Gemini Deep Research requires a paid tier (Tier 1+). "
-            f"See https://ai.google.dev/pricing. Original error: {message}",
+            f"Gemini interactions API error ({status_code}): {message}",
         )
-    return ProviderError(
-        _PROVIDER_NAME_GEMINI,
-        f"Permission denied: {message}",
-    )
+
+    # Existing branches follow unchanged: ClientError, ServerError, httpx.*, APIError
+    if isinstance(exc, genai_errors.ClientError):
+        ...  # P24 code stays
 ```
 
-- [ ] **Step 4: Run tests until green**
+- [ ] **Step 5: Run tests until green**
 
 ```bash
 uv run pytest tests/test_provider_gemini.py::TestMapGeminiErrorInteractionsSpecific -v
 ```
 
-Expected: 2 PASS. Then run the full provider test file to confirm no regressions:
+Expected: 4 PASS. Then run the full provider test file to confirm no regressions:
 
 ```bash
 uv run pytest tests/test_provider_gemini.py -v
@@ -657,17 +739,24 @@ uv run pytest tests/test_provider_gemini.py -v
 
 Expected: all existing tests still pass.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
 git add src/thoth/providers/gemini.py tests/test_provider_gemini.py
-git commit -m "feat(p28): extend _map_gemini_error for interactions-namespace errors
+git commit -m "feat(p28): map google.genai._interactions exceptions to ThothError types
 
-404 on interactions.get(id) now produces a useful 'interaction expired'
-message instead of the 'Model ... not found' message used for chat-model
-404s. 403 on Deep Research models with tier/paid/billing phrasing now
-surfaces the upgrade-required hint with a pricing URL. Existing chat-model
-404/403 paths are unchanged."
+Per spike findings (research/gemini-dr-api-spike-2026-05-11.md §7), DR
+exceptions raise from google.genai._interactions, a private module that
+does NOT inherit from google.genai.errors.APIError. The existing
+_map_gemini_error did not catch them.
+
+Adds try-import + duck-type fallback (_is_interactions_error helper)
+and a new branch in _map_gemini_error that uses exc.status_code (int)
+rather than exc.code (None for this hierarchy). Covers 400 (incl
+invalid-key), 403 (incl free-tier-blocked-from-DR), 404 (interaction
+expired/not-found), 429 (rate limit), and 5xx. Existing chat-mode
+ClientError/ServerError/httpx branches remain unchanged.
+"
 ```
 
 ---
@@ -987,13 +1076,28 @@ and same tenacity policy as P24's _submit_with_retry."
 
 ---
 
-### Task 6: `_deep_research_check_status` — failing tests + implementation
+### Task 6: `_deep_research_check_status` — failing tests + baseline mapping
+
+**Spike-driven correction (2026-05-12):** the SDK declares **6** status values, not 4: the type hint on `interaction.status` is `Literal['in_progress', 'requires_action', 'completed', 'failed', 'cancelled', 'incomplete']`. Per spike §5. The mapping decision for `requires_action` and `incomplete` is locked at the v1-conservative defaults below; **Tasks 6a + 6b run follow-up spikes to investigate**, **Task 6c revises the mapping if those spikes find better answers.**
+
+**Failure-type discriminator strategy (locked 2026-05-12):** rather than adding new top-level OperationStatus values (invasive — touches state machine + 7 consumer modules), the provider returns a new failure-type discriminator in the status dict. The runtime translates this into `OperationStatus.failure_type` (existing field at `src/thoth/models.py:125` with `"recoverable" | "permanent" | None`). v1 adds `"requires_action"` as a third failure_type value.
+
+**Baseline mapping table:**
+
+| Gemini status | Provider returns | `OperationStatus.status` (runtime) | `OperationStatus.failure_type` (runtime) | Revisit? |
+|---|---|---|---|---|
+| `in_progress` | `{"status": "in_progress"}` | `running` | None | — |
+| `requires_action` | `{"status": "permanent_error", "failure_type": "requires_action"}` | `failed` | `requires_action` (NEW) | Task 6a |
+| `completed` | `{"status": "completed"}` | `completed` | None | — |
+| `failed` | `{"status": "permanent_error", "failure_type": "permanent"}` | `failed` | `permanent` | — |
+| `cancelled` | `{"status": "cancelled"}` | `cancelled` | None | — |
+| `incomplete` | `{"status": "permanent_error", "failure_type": "permanent"}` | `failed` | `permanent` (v1 conservative) | Task 6b |
 
 **Files:**
 - Modify: `src/thoth/providers/gemini.py:GeminiProvider`
 - Modify: `tests/test_provider_gemini.py`
 
-- [ ] **Step 1: Failing tests**
+- [ ] **Step 1: Failing tests (6 status values)**
 
 ```python
 class TestGeminiDeepResearchCheckStatus:
@@ -1001,15 +1105,17 @@ class TestGeminiDeepResearchCheckStatus:
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize(
-        "live_status,expected_thoth_status",
+        "live_status,expected_thoth_status,expected_failure_type",
         [
-            ("in_progress", "in_progress"),
-            ("completed", "completed"),
-            ("failed", "permanent_error"),
-            ("cancelled", "cancelled"),
+            ("in_progress",     "in_progress",     None),
+            ("requires_action", "permanent_error", "requires_action"),
+            ("completed",       "completed",       None),
+            ("failed",          "permanent_error", "permanent"),
+            ("cancelled",       "cancelled",       None),
+            ("incomplete",      "permanent_error", "permanent"),
         ],
     )
-    async def test_status_mapping(self, live_status, expected_thoth_status):
+    async def test_status_mapping(self, live_status, expected_thoth_status, expected_failure_type):
         from thoth.providers.gemini import GeminiProvider
 
         provider = GeminiProvider(
@@ -1021,6 +1127,45 @@ class TestGeminiDeepResearchCheckStatus:
         provider.client.aio.interactions.get = fake_get
         result = await provider._deep_research_check_status("interactions/abc")
         assert result["status"] == expected_thoth_status
+        if expected_failure_type is None:
+            assert "failure_type" not in result or result["failure_type"] is None
+        else:
+            assert result["failure_type"] == expected_failure_type
+        # raw_status always preserved for diagnostics
+        assert result["raw_status"] == live_status
+
+    @pytest.mark.asyncio
+    async def test_requires_action_error_message_explains_v1_unsupported(self):
+        """requires_action is rare for the 9 gemini_*_research modes; if it fires,
+        the user needs a clear message about what happened."""
+        from thoth.providers.gemini import GeminiProvider
+
+        provider = GeminiProvider(
+            api_key="dummy", config={"model": "deep-research-preview-04-2026"}
+        )
+        provider.jobs["interactions/abc"] = {"kind": "deep_research", "interaction_id": "interactions/abc"}
+        fake_get = AsyncMock(return_value=MagicMock(status="requires_action"))
+        provider.client.aio.interactions = MagicMock()
+        provider.client.aio.interactions.get = fake_get
+        result = await provider._deep_research_check_status("interactions/abc")
+        assert "requires_action" in result["failure_type"]
+        assert "approval" in result["error"].lower() or "action" in result["error"].lower()
+
+    @pytest.mark.asyncio
+    async def test_incomplete_error_message_documents_v1_limitation(self):
+        """incomplete may be refetchable (Task 6b spike investigates).
+        v1 treats as permanent failure; document this in the error message."""
+        from thoth.providers.gemini import GeminiProvider
+
+        provider = GeminiProvider(
+            api_key="dummy", config={"model": "deep-research-preview-04-2026"}
+        )
+        provider.jobs["interactions/abc"] = {"kind": "deep_research", "interaction_id": "interactions/abc"}
+        fake_get = AsyncMock(return_value=MagicMock(status="incomplete"))
+        provider.client.aio.interactions = MagicMock()
+        provider.client.aio.interactions.get = fake_get
+        result = await provider._deep_research_check_status("interactions/abc")
+        assert "incomplete" in result["error"].lower() or "truncated" in result["error"].lower()
 
     @pytest.mark.asyncio
     async def test_unknown_job_id(self):
@@ -1035,11 +1180,46 @@ class TestGeminiDeepResearchCheckStatus:
 
 Run, expect FAIL.
 
-- [ ] **Step 2: Implement**
+- [ ] **Step 2: Implement with 6-value mapping**
 
 ```python
+# Status mapping table at module top (just below the constants block):
+_DR_STATUS_MAPPING: dict[str, dict[str, Any]] = {
+    "in_progress":     {"status": "in_progress"},
+    "completed":       {"status": "completed"},
+    "cancelled":       {"status": "cancelled"},
+    "failed":          {"status": "permanent_error", "failure_type": "permanent"},
+    "requires_action": {
+        "status": "permanent_error",
+        "failure_type": "requires_action",
+        "error": (
+            "Gemini interaction is waiting on tool or human approval "
+            "(status='requires_action'). This flow is not supported in "
+            "P28 v1; the 9 gemini_*_research modes do not request tool "
+            "approval. If you see this, please file a bug. See plan v2 "
+            "Task 6a for the follow-up spike investigating trigger conditions."
+        ),
+    },
+    "incomplete": {
+        "status": "permanent_error",
+        "failure_type": "permanent",
+        "error": (
+            "Gemini Deep Research returned status='incomplete' — the run "
+            "finished but output may be truncated. P28 v1 treats this as "
+            "a permanent failure conservatively. Re-run the prompt if the "
+            "report is needed. Plan v2 Task 6b investigates whether refetch "
+            "is possible (may flip this to recoverable in v1.1)."
+        ),
+    },
+}
+
+
 async def _deep_research_check_status(self, job_id: str) -> dict[str, Any]:
-    """Poll interactions.get; map Gemini status to Thoth status enum."""
+    """Poll interactions.get; map Gemini status to Thoth status + failure_type.
+
+    SDK declares 6 statuses (spike §5). v1 mapping is conservative for
+    requires_action and incomplete; Tasks 6a/6b spike + 6c revise.
+    """
     if job_id not in self.jobs:
         return {"status": "not_found", "error": f"Unknown job_id: {job_id}"}
     try:
@@ -1048,68 +1228,514 @@ async def _deep_research_check_status(self, job_id: str) -> dict[str, Any]:
         mapped = _map_gemini_error(e, self.model)
         if _is_retryable_gemini_exception(e):
             return {"status": "transient_error", "error": str(mapped)}
-        return {"status": "permanent_error", "error": str(mapped)}
+        return {"status": "permanent_error", "failure_type": "permanent", "error": str(mapped)}
 
     live = str(getattr(interaction, "status", "in_progress"))
     self.jobs[job_id]["last_status"] = live
     self.jobs[job_id]["last_interaction"] = interaction
-    mapping = {
-        "in_progress": "in_progress",
-        "completed": "completed",
-        "failed": "permanent_error",
-        "cancelled": "cancelled",
-    }
-    return {
-        "status": mapping.get(live, "in_progress"),
-        "raw_status": live,
-    }
+
+    # Default fallthrough for unknown future SDK status values.
+    mapped = _DR_STATUS_MAPPING.get(
+        live, {"status": "in_progress"}  # treat unknown as still running
+    )
+    return {**mapped, "raw_status": live}
 ```
 
 - [ ] **Step 3: Run + commit**
 
 ```bash
 uv run pytest tests/test_provider_gemini.py::TestGeminiDeepResearchCheckStatus -v
-git add -A && git commit -m "feat(p28): implement _deep_research_check_status
+git add -A && git commit -m "feat(p28): implement _deep_research_check_status with 6-value mapping
 
-interactions.get → translate Gemini status enum (in_progress/completed/
-failed/cancelled) to Thoth status enum. Errors classified as transient
-vs permanent via the existing _is_retryable_gemini_exception filter,
-so the runtime polling loop's transient retry budget kicks in for
-network blips without surfacing them as user errors."
+Maps the SDK's 6 status values (in_progress, requires_action, completed,
+failed, cancelled, incomplete) to Thoth provider-status + failure_type
+discriminator. v1 conservatively treats requires_action and incomplete
+as permanent_error; Tasks 6a/6b spike further to determine if better
+handling is warranted (Task 6c may revise the mapping)."
+```
+
+---
+
+### Task 6a: SPIKE — investigate `requires_action` trigger conditions
+
+**Why this task exists:** `requires_action` is in the SDK type hint but absent from public Interactions API docs. We need to know when it appears (tool-approval flows, content-filter trips, quota interruptions, other) so v1.1 can implement proper recovery if warranted. Live-API spend authorized.
+
+**Files:**
+- Create: `scripts/spike/p28/spike_dr_requires_action.py`
+- Modify: `research/gemini-dr-api-spike-2026-05-11.md` (add §6a section)
+
+- [ ] **Step 1: Write the spike script**
+
+The script attempts to deliberately trigger `requires_action` by:
+1. Submitting a DR with `tools=[{"type": "code_execution"}]` (a tool that arguably could need approval)
+2. Submitting with `agent_config={"collaborative_planning": True}` (the docs mention collaborative planning)
+3. Submitting with content that might trigger filter/safety review (e.g., a prompt about a controversial topic, carefully chosen not to violate policy)
+4. Polling each interaction; logging every transition. Capture full response shape if `requires_action` appears.
+
+```python
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.11"
+# dependencies = ["google-genai>=1.74.0"]
+# ///
+"""P28 Task 6a spike: trigger requires_action and capture payload shape.
+
+Outputs to research/_dr_spike_requires_action.json + _dr_spike_requires_action.txt.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import json
+import os
+import sys
+import time
+from pathlib import Path
+
+from google import genai
+
+AGENT = "deep-research-preview-04-2026"
+OUT_DIR = Path(__file__).parent.parent.parent.parent / "research"
+
+PROBES = [
+    # Probe 1: tool that may require approval
+    {
+        "label": "tool_code_execution",
+        "input": "Run a quick Python computation to estimate pi via Monte Carlo with 10k samples.",
+        "extra": {"tools": [{"type": "code_execution"}]},
+    },
+    # Probe 2: collaborative_planning enabled
+    {
+        "label": "collaborative_planning",
+        "input": "Plan a 3-paper literature review on consensus algorithms.",
+        "extra": {"agent_config": {"type": "deep-research", "collaborative_planning": True}},
+    },
+    # Probe 3: file_search tool (experimental per docs)
+    {
+        "label": "tool_file_search",
+        "input": "Search any uploaded files for distributed-systems content.",
+        "extra": {"tools": [{"type": "file_search"}]},
+    },
+]
+
+
+async def submit_and_poll(client, label, input_str, extra):
+    print(f"\n--- Probe: {label} ---")
+    try:
+        kwargs = {"agent": AGENT, "input": input_str, "background": True, "store": True, **extra}
+        resp = await client.aio.interactions.create(**kwargs)
+    except Exception as exc:
+        print(f"  CREATE FAILED: {type(exc).__name__}({getattr(exc, 'status_code', '?')}): {exc}")
+        return {"label": label, "create_error": f"{type(exc).__name__}: {exc}"}
+    interaction_id = getattr(resp, "id", None)
+    print(f"  submitted; id={interaction_id}")
+    deadline = time.monotonic() + 10 * 60  # 10 min cap per probe
+    transitions = []
+    last = None
+    captured_payload = None
+    while time.monotonic() < deadline:
+        await asyncio.sleep(5)
+        try:
+            interaction = await client.aio.interactions.get(id=interaction_id)
+        except Exception as exc:
+            transitions.append({"t": time.monotonic(), "error": f"{type(exc).__name__}: {exc}"})
+            continue
+        status = str(getattr(interaction, "status", "?"))
+        if status != last:
+            print(f"    status -> {status!r}")
+            transitions.append({"t": time.monotonic(), "status": status})
+            last = status
+        if status == "requires_action":
+            captured_payload = repr(interaction)[:5000]
+            print(f"    !!! captured requires_action payload (5000 char preview)")
+            break
+        if status in {"completed", "failed", "cancelled", "incomplete"}:
+            break
+    return {
+        "label": label,
+        "interaction_id": interaction_id,
+        "transitions": transitions,
+        "final_status": last,
+        "captured_payload": captured_payload,
+    }
+
+
+async def main_async() -> int:
+    api_key = os.environ.get("GEMINI_API_KEY")
+    if not api_key:
+        print("GEMINI_API_KEY not set", file=sys.stderr)
+        return 2
+    client = genai.Client(api_key=api_key)
+    results = []
+    for probe in PROBES:
+        results.append(await submit_and_poll(client, **probe))
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    (OUT_DIR / "_dr_spike_requires_action.json").write_text(json.dumps(results, indent=2))
+    triggered = [r for r in results if "requires_action" in (r.get("captured_payload") or "")]
+    print(f"\n=== SUMMARY ===")
+    print(f"Probes run: {len(results)}; requires_action triggered: {len(triggered)}")
+    return 0
+
+
+def main() -> int:
+    return asyncio.run(main_async())
+
+
+if __name__ == "__main__":
+    sys.exit(main())
+```
+
+- [ ] **Step 2: Run the spike (live API, user-authorized)**
+
+```bash
+uv run scripts/spike/p28/spike_dr_requires_action.py 2>&1 | tee research/_dr_spike_requires_action.txt
+```
+
+Expected: 3 probes run; one or zero trigger requires_action. ~$2-5 wall spend.
+
+- [ ] **Step 3: Update findings doc §6a**
+
+Add a §6a section to `research/gemini-dr-api-spike-2026-05-11.md`:
+
+```markdown
+## §6a `requires_action` trigger conditions (Task 6a)
+
+**Probes run:** 3 — tool=code_execution, collaborative_planning=True, tool=file_search.
+**`requires_action` observed:** [yes for probe N | no in any probe].
+
+If observed: document the captured payload shape (top-level attrs, what
+field tells the caller what action is needed). If not observed: document
+that requires_action is rare in the explored configuration space and may
+require manual triggers we couldn't construct. Either way, the v1 mapping
+(permanent_error + failure_type=requires_action with clear error message)
+remains correct; Task 6c may upgrade based on findings.
+```
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add scripts/spike/p28/spike_dr_requires_action.py research/_dr_spike_requires_action.* research/gemini-dr-api-spike-2026-05-11.md
+git commit -m "spike(p28): investigate requires_action trigger conditions"
+```
+
+(commitlint allows `chore` not `spike`; use `chore(p28):` if commitlint complains.)
+
+---
+
+### Task 6b: SPIKE — investigate `incomplete` recoverability
+
+**Why this task exists:** the SDK type hint exposes `incomplete` but the docs don't describe what it means. We need to know whether the work is genuinely lost (treat as permanent) or whether `interactions.get()` after `incomplete` can continue/refetch the rest (treat as recoverable, plug into the existing resume flow). Live-API spend authorized.
+
+**Files:**
+- Create: `scripts/spike/p28/spike_dr_incomplete.py`
+- Modify: `research/gemini-dr-api-spike-2026-05-11.md` (add §6b)
+
+- [ ] **Step 1: Write the spike script**
+
+Trigger `incomplete` deliberately by exhausting the 60-min hard cap or by submitting near-quota-exhaustion. A reliable trigger is hard — alternative: probe `interactions.get()` and `interactions.<other_method>` to see if there's a `continue`/`resume` method even before observing `incomplete` in the wild.
+
+```python
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.11"
+# dependencies = ["google-genai>=1.74.0"]
+# ///
+"""P28 Task 6b spike: investigate incomplete recoverability.
+
+Two probes:
+1. Surface probe — does the SDK have a continue() or resume() method on
+   interactions? If yes, recovery is likely possible.
+2. Trigger probe — submit a deliberately near-budget DR prompt to try to
+   trigger 'incomplete' (60-min hard cap from spike §3). May not actually
+   trigger; that's fine — surface probe alone is informative.
+
+Outputs to research/_dr_spike_incomplete.json + _dr_spike_incomplete.txt.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import inspect
+import json
+import os
+import sys
+import time
+from pathlib import Path
+
+from google import genai
+
+AGENT = "deep-research-preview-04-2026"
+OUT_DIR = Path(__file__).parent.parent.parent.parent / "research"
+
+
+async def surface_probe(client) -> dict:
+    print("=== Surface probe: methods available on client.aio.interactions ===")
+    methods = [m for m in dir(client.aio.interactions) if not m.startswith("_")]
+    print(f"  methods: {methods}")
+    # Look for continue/resume/refetch-shaped methods
+    candidates = [m for m in methods if any(s in m.lower() for s in ("continue", "resume", "refetch", "retry"))]
+    print(f"  candidates for recovery: {candidates or 'NONE'}")
+    # Inspect signatures of all methods
+    sigs = {}
+    for m in methods:
+        attr = getattr(client.aio.interactions, m)
+        try:
+            sigs[m] = str(inspect.signature(attr))
+        except (TypeError, ValueError):
+            sigs[m] = "<no signature>"
+    return {"methods": methods, "recovery_candidates": candidates, "signatures": sigs}
+
+
+async def trigger_probe(client) -> dict:
+    print("\n=== Trigger probe: attempt to elicit 'incomplete' ===")
+    # Very-broad prompt to consume the 60-min cap and possibly truncate.
+    prompt = (
+        "Provide an exhaustive analysis of every published consensus algorithm "
+        "from 1980 to 2025, including formal correctness proofs, network "
+        "assumptions, performance benchmarks across at least 10 deployments "
+        "each, and a comparative matrix with citations. Be maximally thorough."
+    )
+    try:
+        resp = await client.aio.interactions.create(
+            agent=AGENT, input=prompt, background=True, store=True
+        )
+    except Exception as exc:
+        return {"create_error": f"{type(exc).__name__}: {exc}"}
+    interaction_id = getattr(resp, "id", None)
+    print(f"  submitted overscoped prompt; id={interaction_id}")
+    deadline = time.monotonic() + 65 * 60  # 65 min (just past hard cap)
+    transitions: list[dict] = []
+    last = None
+    final_interaction = None
+    while time.monotonic() < deadline:
+        await asyncio.sleep(15)
+        try:
+            interaction = await client.aio.interactions.get(id=interaction_id)
+        except Exception as exc:
+            transitions.append({"t": time.monotonic(), "error": f"{type(exc).__name__}: {exc}"})
+            continue
+        status = str(getattr(interaction, "status", "?"))
+        if status != last:
+            print(f"    status -> {status!r}")
+            transitions.append({"t": time.monotonic(), "status": status})
+            last = status
+        if status in {"completed", "failed", "cancelled", "incomplete"}:
+            final_interaction = interaction
+            break
+    payload = repr(final_interaction)[:5000] if final_interaction is not None else None
+    return {
+        "interaction_id": interaction_id,
+        "transitions": transitions,
+        "final_status": last,
+        "final_payload_preview": payload,
+    }
+
+
+async def main_async() -> int:
+    api_key = os.environ.get("GEMINI_API_KEY")
+    if not api_key:
+        print("GEMINI_API_KEY not set", file=sys.stderr)
+        return 2
+    client = genai.Client(api_key=api_key)
+    results = {
+        "surface": await surface_probe(client),
+        "trigger": await trigger_probe(client),
+    }
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    (OUT_DIR / "_dr_spike_incomplete.json").write_text(json.dumps(results, indent=2, default=str))
+    print(f"\n=== SUMMARY ===")
+    print(f"recovery_candidates: {results['surface']['recovery_candidates']}")
+    print(f"trigger final_status: {results['trigger'].get('final_status')}")
+    return 0
+
+
+def main() -> int:
+    return asyncio.run(main_async())
+
+
+if __name__ == "__main__":
+    sys.exit(main())
+```
+
+- [ ] **Step 2: Run the spike (live API, user-authorized)**
+
+```bash
+uv run scripts/spike/p28/spike_dr_incomplete.py 2>&1 | tee research/_dr_spike_incomplete.txt
+```
+
+Wall time: up to 65 min for the trigger probe. ~$3-7 wall spend.
+
+- [ ] **Step 3: Update findings doc §6b**
+
+Add a §6b section with concrete findings: methods available, whether recovery candidates exist, whether `incomplete` was observed and its payload shape.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add scripts/spike/p28/spike_dr_incomplete.py research/_dr_spike_incomplete.* research/gemini-dr-api-spike-2026-05-11.md
+git commit -m "spike(p28): investigate incomplete recoverability"
+```
+
+---
+
+### Task 6c: Revise `_deep_research_check_status` mapping per 6a/6b findings
+
+**Pre-condition:** Tasks 6a and 6b have committed their findings to `research/gemini-dr-api-spike-2026-05-11.md` §6a and §6b.
+
+**Decision tree:**
+
+- If §6b found a recovery method (e.g., `interactions.continue(id)` or similar): flip `incomplete` mapping to `failure_type="recoverable"` and verify the resume flow auto-retriggers via the existing `failure_type=recoverable` state-machine transition (`failed → running`).
+- If §6b found no recovery method: keep `failure_type="permanent"` and update the error message to be definitive ("output is lost, re-run from scratch").
+- If §6a captured a `requires_action` payload with a `respond()` or similar method: add a clear "this can be auto-handled in v1.1" note to the error message. v1 still treats as permanent.
+- If §6a did NOT trigger `requires_action`: tighten the error message to explicitly say "this state is rare and unexpected for gemini_*_research modes — please file a bug if encountered."
+
+- [ ] **Step 1: Apply mapping revisions per findings**
+
+Update `_DR_STATUS_MAPPING` in `src/thoth/providers/gemini.py` and the corresponding test parametrize values in `tests/test_provider_gemini.py`. Diff size depends on findings.
+
+- [ ] **Step 2: Run tests until green**
+
+```bash
+uv run pytest tests/test_provider_gemini.py::TestGeminiDeepResearchCheckStatus -v
+```
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add -A && git commit -m "feat(p28): revise DR status mapping per 6a/6b spike findings
+
+[describe the actual changes based on what 6a/6b found]"
 ```
 
 ---
 
 ### Task 7: `_deep_research_get_result` — failing tests + implementation
 
-**Pre-condition:** Task 1 spike step 3 has resolved the citation extraction strategy and `research/gemini-dr-api-spike-2026-05-11.md` §4 documents the exact attribute path (e.g. `step.content[i].citations`). If §4 says "BLOCKED", **stop and reconvene** before writing the failing test — do not invent a citation shape.
+**Spike-driven correction (2026-05-12):** the citation extraction path the original plan assumed was wrong. Per spike §4:
+
+- **Path is `interaction.steps[N].content[0].annotations[]`** (where `N` is the index of the first `model_output` step), NOT `interaction.outputs[-1].annotations[]`. The `outputs` field does not exist on DR responses.
+- **Attribute name is `annotations`**, not `citations`.
+- **Only the first `model_output` step's `content[0]` carries them.** Subsequent `model_output` steps don't.
+- Each annotation is a `URLCitation` with shape: `{type: 'url_citation', __type__: 'URLCitation', start_index: int, end_index: int, title: None, url: <Vertex AI redirect URL>}`.
+- **`title` is always `None`** in observed responses.
+- **`url` is a Vertex AI grounding redirect**, not the original source URL.
+- The **last step** (`step[-1].content[0].text`) contains a **rendered "Sources" block** with `[domain](redirect-url)` markdown — the SDK's own attempt at human-readable display, with domains parsed from the redirect targets.
+
+**Citation rendering strategy (locked by user 2026-05-12 — "layered"):**
+
+1. **Parse the SDK's rendered Sources block** from `step[-1].content[0].text` into a `url → domain` map.
+2. **Follow each redirect URL** (HEAD request, bounded concurrency, 2s per-request timeout) to extract the real source URL.
+3. **Title derivation chain:** parsed_sources.get(redirect_url) → urlparse(source_url).netloc → URL string itself.
+4. **Link target:** source URL (post-redirect) if redirect-follow succeeded; otherwise the redirect URL.
+5. **Failure modes:** if SDK Sources block parse fails, fall through to `urlparse(source).netloc`; if all redirects time out, citations still render with the redirect URLs as both title and link target.
 
 **Files:**
-- Modify: `src/thoth/providers/gemini.py:GeminiProvider`
-- Modify: `tests/test_provider_gemini.py`
+- Modify: `src/thoth/providers/gemini.py:GeminiProvider` (add helpers + method)
+- Modify: `tests/test_provider_gemini.py` (add test class)
 
-- [ ] **Step 1: Write failing tests using the spike-validated citation shape**
+- [ ] **Step 1: Add helper functions at module bottom (below GeminiProvider class)**
 
-The test fixtures **MUST** use the exact attribute names documented in `research/gemini-dr-api-spike-2026-05-11.md` §4. Example assuming the spike found `step.content[i].citations: list[{title, uri}]` (replace if spike found a different shape):
+Following P27 convention (helpers below the class — see `perplexity.py:873-979`):
+
+```python
+# --- DR citation rendering helpers (P28) ---
+
+import re
+import asyncio as _asyncio_for_helpers  # already imported at top; alias avoids confusion
+
+_DR_SOURCES_BLOCK_RE = re.compile(r"\[([^\]]+)\]\(([^)]+)\)")
+_DR_REDIRECT_PREFIXES: tuple[str, ...] = (
+    "https://vertexaisearch.cloud.google.com/grounding-api-redirect/",
+)
+
+
+def _parse_sdk_sources_block(text: str | None) -> dict[str, str]:
+    """Parse the SDK's rendered Sources block into {url: domain_title}.
+
+    The SDK's last step typically contains markdown like:
+        [usenix.org](https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZ...)
+        [arxiv.org](https://vertexaisearch.cloud.google.com/grounding-api-redirect/BXK...)
+    Returns a dict mapping each redirect URL to the SDK-extracted domain label.
+    Empty dict on parse failure or no matches.
+    """
+    if not text:
+        return {}
+    return {url: title for title, url in _DR_SOURCES_BLOCK_RE.findall(text)}
+
+
+def _is_dr_redirect(url: str) -> bool:
+    return any(url.startswith(p) for p in _DR_REDIRECT_PREFIXES)
+
+
+async def _follow_dr_redirect(
+    url: str, *, timeout_s: float = 2.0, client: httpx.AsyncClient | None = None
+) -> str | None:
+    """Follow a Vertex AI grounding redirect to extract the source URL.
+
+    Returns the final URL on success, None on any failure (timeout, error,
+    non-redirect response). The caller is responsible for falling back to
+    the redirect URL when None is returned.
+    """
+    if not _is_dr_redirect(url):
+        return url
+    owns_client = client is None
+    client = client or httpx.AsyncClient(timeout=timeout_s, follow_redirects=False)
+    try:
+        resp = await client.head(url, follow_redirects=False)
+        location = resp.headers.get("Location") or resp.headers.get("location")
+        return location if location else None
+    except (httpx.RequestError, httpx.HTTPStatusError):
+        return None
+    finally:
+        if owns_client:
+            await client.aclose()
+
+
+async def _resolve_dr_redirects(
+    urls: list[str], *, concurrency: int = 10, timeout_s: float = 2.0
+) -> dict[str, str | None]:
+    """Bounded-concurrency redirect resolution for a list of URLs.
+
+    Returns {original_url: resolved_url_or_None}. Designed for the ~85 citations
+    per DR result observed in the spike; ~17s worst-case at 10 concurrent + 2s
+    timeout. Caller can ignore None entries and fall back to original_url.
+    """
+    sem = _asyncio_for_helpers.Semaphore(concurrency)
+
+    async def _one(client: httpx.AsyncClient, u: str) -> tuple[str, str | None]:
+        async with sem:
+            return u, await _follow_dr_redirect(u, timeout_s=timeout_s, client=client)
+
+    async with httpx.AsyncClient(timeout=timeout_s, follow_redirects=False) as client:
+        results = await _asyncio_for_helpers.gather(
+            *(_one(client, u) for u in urls), return_exceptions=False
+        )
+    return dict(results)
+```
+
+- [ ] **Step 2: Write failing tests using the spike-correct shape**
+
+Append to `tests/test_provider_gemini.py`:
 
 ```python
 class TestGeminiDeepResearchGetResult:
-    """Task 7: _deep_research_get_result renders steps[] + extracts citations.
+    """Task 7: _deep_research_get_result with layered citation rendering.
 
-    Citation shape per spike findings: see
-    research/gemini-dr-api-spike-2026-05-11.md §4 for the authoritative
-    attribute path. This test class encodes whatever the spike documented.
+    Citation shape per spike §4:
+      - Path: interaction.steps[N].content[0].annotations[]
+      - URLCitation has {type, start_index, end_index, title=None, url=<redirect>}
+      - Only the first model_output step carries annotations
+      - Last step's content[0].text has the rendered [domain](url) Sources block
     """
 
     @pytest.mark.asyncio
-    async def test_get_result_renders_model_output_text(self):
+    async def test_renders_model_output_text(self):
         from thoth.providers.gemini import GeminiProvider
 
         provider = GeminiProvider(
             api_key="dummy", config={"model": "deep-research-preview-04-2026"}
         )
-        # Build a fake interaction matching the spike-documented shape
-        text_item = MagicMock(type="text", text="The three papers are...")
+        text_item = MagicMock(type="text", text="The three papers are...", annotations=[])
         model_output_step = MagicMock(type="model_output", content=[text_item])
         fake_interaction = MagicMock(status="completed", steps=[model_output_step])
         provider.jobs["interactions/abc"] = {
@@ -1121,18 +1747,59 @@ class TestGeminiDeepResearchGetResult:
         assert "The three papers are..." in result
 
     @pytest.mark.asyncio
-    async def test_get_result_renders_sources_block_when_citations_present(self):
+    async def test_extracts_annotations_from_first_model_output_step(self, monkeypatch):
+        """Citation extraction follows the spike-validated path."""
         from thoth.providers.gemini import GeminiProvider
 
         provider = GeminiProvider(
             api_key="dummy", config={"model": "deep-research-preview-04-2026"}
         )
-        # Citation shape per spike §4 — REPLACE if spike documented different attrs.
-        citation_item = MagicMock(
-            title="Paxos Made Simple",
-            uri="https://example.org/paxos.pdf",
+        # Real shape: URLCitation has title=None, url=<redirect>
+        ann = MagicMock(
+            type="url_citation",
+            title=None,
+            url="https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZ123",
+            start_index=0,
+            end_index=10,
         )
-        text_item = MagicMock(type="text", text="Body", citations=[citation_item])
+        text_item = MagicMock(type="text", text="Body", annotations=[ann])
+        model_output_step = MagicMock(type="model_output", content=[text_item])
+        # Last step has the SDK-rendered Sources block we parse for domains
+        sources_text = (
+            "**Sources:**\n\n"
+            "- [usenix.org](https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZ123)\n"
+        )
+        sources_item = MagicMock(type="text", text=sources_text, annotations=[])
+        sources_step = MagicMock(type="model_output", content=[sources_item])
+        fake_interaction = MagicMock(status="completed", steps=[model_output_step, sources_step])
+        provider.jobs["interactions/abc"] = {
+            "kind": "deep_research",
+            "interaction_id": "interactions/abc",
+            "last_interaction": fake_interaction,
+        }
+        # Patch redirect follow to return a fake source URL (no real network)
+        async def fake_resolve(urls, **kwargs):
+            return {u: "https://www.usenix.org/paper.pdf" for u in urls}
+
+        monkeypatch.setattr("thoth.providers.gemini._resolve_dr_redirects", fake_resolve)
+
+        result = await provider._deep_research_get_result("interactions/abc", False)
+        assert "## Sources" in result
+        assert "usenix.org" in result  # title from parsed SDK Sources block
+        # Link target should be the resolved source URL (per layered strategy)
+        assert "https://www.usenix.org/paper.pdf" in result
+
+    @pytest.mark.asyncio
+    async def test_falls_back_to_redirect_url_when_follow_fails(self, monkeypatch):
+        """If redirect-follow returns None, render the redirect URL as link target."""
+        from thoth.providers.gemini import GeminiProvider
+
+        provider = GeminiProvider(
+            api_key="dummy", config={"model": "deep-research-preview-04-2026"}
+        )
+        redirect_url = "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZ123"
+        ann = MagicMock(type="url_citation", title=None, url=redirect_url, start_index=0, end_index=10)
+        text_item = MagicMock(type="text", text="Body", annotations=[ann])
         model_output_step = MagicMock(type="model_output", content=[text_item])
         fake_interaction = MagicMock(status="completed", steps=[model_output_step])
         provider.jobs["interactions/abc"] = {
@@ -1140,19 +1807,24 @@ class TestGeminiDeepResearchGetResult:
             "interaction_id": "interactions/abc",
             "last_interaction": fake_interaction,
         }
+        async def fake_resolve(urls, **kwargs):
+            return {u: None for u in urls}  # simulate redirect-follow failures
+
+        monkeypatch.setattr("thoth.providers.gemini._resolve_dr_redirects", fake_resolve)
+
         result = await provider._deep_research_get_result("interactions/abc", False)
         assert "## Sources" in result
-        assert "Paxos Made Simple" in result
-        assert "https://example.org/paxos.pdf" in result
+        # Should contain the redirect URL since follow failed
+        assert redirect_url in result
 
     @pytest.mark.asyncio
-    async def test_get_result_no_sources_when_citations_absent(self):
+    async def test_no_sources_block_when_no_annotations(self):
         from thoth.providers.gemini import GeminiProvider
 
         provider = GeminiProvider(
             api_key="dummy", config={"model": "deep-research-preview-04-2026"}
         )
-        text_item = MagicMock(type="text", text="Body without sources", citations=[])
+        text_item = MagicMock(type="text", text="Body without sources", annotations=[])
         model_output_step = MagicMock(type="model_output", content=[text_item])
         fake_interaction = MagicMock(status="completed", steps=[model_output_step])
         provider.jobs["interactions/abc"] = {
@@ -1162,20 +1834,60 @@ class TestGeminiDeepResearchGetResult:
         }
         result = await provider._deep_research_get_result("interactions/abc", False)
         assert "## Sources" not in result
+
+    @pytest.mark.asyncio
+    async def test_dedupes_by_resolved_url(self, monkeypatch):
+        """Two redirects pointing to the same source dedupe to one entry."""
+        from thoth.providers.gemini import GeminiProvider
+
+        provider = GeminiProvider(
+            api_key="dummy", config={"model": "deep-research-preview-04-2026"}
+        )
+        ann1 = MagicMock(
+            type="url_citation", title=None,
+            url="https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZ123",
+            start_index=0, end_index=10,
+        )
+        ann2 = MagicMock(
+            type="url_citation", title=None,
+            url="https://vertexaisearch.cloud.google.com/grounding-api-redirect/BXK456",
+            start_index=20, end_index=30,
+        )
+        text_item = MagicMock(type="text", text="Body", annotations=[ann1, ann2])
+        model_output_step = MagicMock(type="model_output", content=[text_item])
+        fake_interaction = MagicMock(status="completed", steps=[model_output_step])
+        provider.jobs["interactions/abc"] = {
+            "kind": "deep_research",
+            "interaction_id": "interactions/abc",
+            "last_interaction": fake_interaction,
+        }
+        async def fake_resolve(urls, **kwargs):
+            # Both redirects resolve to the SAME source — should dedupe
+            return {u: "https://www.usenix.org/paper.pdf" for u in urls}
+
+        monkeypatch.setattr("thoth.providers.gemini._resolve_dr_redirects", fake_resolve)
+
+        result = await provider._deep_research_get_result("interactions/abc", False)
+        # The single deduplicated source appears exactly once in the Sources block
+        assert result.count("https://www.usenix.org/paper.pdf") == 1
 ```
 
-- [ ] **Step 2: Implement**
+Run, expect FAIL.
+
+- [ ] **Step 3: Implement `_deep_research_get_result`**
 
 ```python
 async def _deep_research_get_result(self, job_id: str, verbose: bool = False) -> str:
     """Render the completed interaction as markdown text + ## Sources.
 
-    Reads the cached interaction stashed by _deep_research_check_status. If
-    no cache exists (resume flow), re-fetches via interactions.get first.
-
-    Citation extraction follows the structured shape documented in
-    research/gemini-dr-api-spike-2026-05-11.md §4 (v1 strategy: structured
-    citations only, no regex fallback per user 2026-05-11 decision).
+    Citation extraction per spike §4 (locked 2026-05-12, "layered" strategy):
+      1. Walk interaction.steps[] looking for step.type='model_output'.
+      2. For each, walk content[].annotations[] to collect URLCitation entries.
+      3. Parse the LAST step's text for the SDK-rendered Sources block (gives
+         domain titles for the Vertex AI redirect URLs).
+      4. Bounded-concurrency HEAD-follow each redirect URL to extract source URL.
+      5. Render via render_sources_block; link target = source URL when resolved,
+         redirect URL otherwise.
     """
     if job_id not in self.jobs:
         raise ProviderError(_PROVIDER_NAME_GEMINI, f"Unknown job_id: {job_id}")
@@ -1189,9 +1901,11 @@ async def _deep_research_get_result(self, job_id: str, verbose: bool = False) ->
             raise _map_gemini_error(e, self.model, verbose=verbose) from e
 
     steps = getattr(interaction, "steps", None) or []
+
+    # Pass 1: collect text from all model_output steps + annotations from each.
     text_parts: list[str] = []
-    citations: list[Citation] = []
-    seen_urls: set[str] = set()
+    raw_annotations: list[Any] = []
+    last_step_text: str | None = None
     for step in steps:
         if str(getattr(step, "type", "")) != "model_output":
             continue
@@ -1200,16 +1914,38 @@ async def _deep_research_get_result(self, job_id: str, verbose: bool = False) ->
             text = getattr(item, "text", None) or ""
             if text:
                 text_parts.append(text)
-            # Citation extraction per spike-documented attribute path.
-            # If spike found a different shape, update this block.
-            item_citations = getattr(item, "citations", None) or []
-            for c in item_citations:
-                url = getattr(c, "uri", None) or getattr(c, "url", None)
-                if not url or url in seen_urls:
-                    continue
-                seen_urls.add(url)
-                title = getattr(c, "title", "") or urlparse(url).netloc
-                citations.append(Citation(title=str(title), url=str(url)))
+                last_step_text = text  # tracks the most recent rendered text
+            anns = getattr(item, "annotations", None) or []
+            raw_annotations.extend(anns)
+
+    # Pass 2: derive title-lookup map from the SDK-rendered Sources block.
+    parsed_sources = _parse_sdk_sources_block(last_step_text)
+
+    # Pass 3: resolve redirect URLs in bounded-concurrency parallel.
+    redirect_urls = [
+        getattr(a, "url", None) for a in raw_annotations if getattr(a, "url", None)
+    ]
+    resolved = await _resolve_dr_redirects(redirect_urls) if redirect_urls else {}
+
+    # Pass 4: assemble Citation list with title derivation + final URL choice + dedupe.
+    citations: list[Citation] = []
+    seen_final_urls: set[str] = set()
+    for ann in raw_annotations:
+        redirect_url = getattr(ann, "url", None)
+        if not redirect_url:
+            continue
+        resolved_url = resolved.get(redirect_url)
+        final_url = resolved_url or redirect_url
+        if final_url in seen_final_urls:
+            continue
+        seen_final_urls.add(final_url)
+        # Title derivation chain
+        title = parsed_sources.get(redirect_url)
+        if not title and resolved_url:
+            title = urlparse(resolved_url).netloc or None
+        if not title:
+            title = urlparse(redirect_url).netloc or redirect_url
+        citations.append(Citation(title=str(title), url=str(final_url)))
 
     answer = "".join(text_parts).strip()
     if not answer and verbose:
@@ -1223,24 +1959,231 @@ async def _deep_research_get_result(self, job_id: str, verbose: bool = False) ->
     return "\n\n".join(sections)
 ```
 
-- [ ] **Step 3: Run + commit**
+- [ ] **Step 4: Run + commit**
 
 ```bash
 uv run pytest tests/test_provider_gemini.py::TestGeminiDeepResearchGetResult -v
-git add -A && git commit -m "feat(p28): implement _deep_research_get_result with structured citations
+git add -A && git commit -m "feat(p28): _deep_research_get_result with layered citation rendering
 
-Renders interaction.steps[] where step.type='model_output' as markdown.
-Extracts citations from item.citations[] (shape per spike §4); dedupes
-by URL across steps; renders ## Sources block via the shared
-render_sources_block helper. Empty citations omit the Sources section;
-empty text returns empty string."
+Per spike §4 + user-locked strategy (2026-05-12):
+- Reads interaction.steps[].content[].annotations[] (not outputs[-1])
+- Parses SDK's rendered Sources block from last step for domain titles
+- Bounded-concurrency HEAD-follow on Vertex AI redirect URLs (10 concurrent,
+  2s timeout each) to extract real source URLs
+- Title-derivation chain: parsed_sources -> urlparse(source).netloc -> URL
+- Dedupes by final resolved URL
+- Falls back to redirect URL if follow fails — citations still render"
 ```
+
+---
+
+### Task 8a: SPIKE — re-verify cancel against a properly-sized DR task
+
+**Why this task exists:** Task 1 spike step 4 confirmed `client.aio.interactions.cancel()` exists on the SDK, but the cancel test returned HTTP 500 — and subsequent `interactions.get()` on the same interaction also returned 500. The cause is ambiguous: the spike used a deliberately overscoped prompt that may have triggered server-side capacity rejection *before* cancel was called. Per user clarification (2026-05-12): "make sure the prompt is big enough because calling cancel on a prompt that already ran might cause the 500."
+
+This task re-runs the cancel test with a **Goldilocks prompt** (substantial enough to keep DR running for 3-10 minutes, NOT so overscoped it triggers server rejection), uses a **wait-then-poll-then-cancel** pattern to confirm `in_progress` before cancelling, and verifies the cancel return path + terminal state transition + partial-output preservation.
+
+**Files:**
+- Create: `scripts/spike/p28/spike_dr_cancel_v2.py`
+- Modify: `research/gemini-dr-api-spike-2026-05-11.md` (add §6 update — replace v1 finding with v2 verification)
+
+- [ ] **Step 1: Write the v2 cancel spike**
+
+```python
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.11"
+# dependencies = ["google-genai>=1.74.0"]
+# ///
+"""P28 Task 8a spike: re-verify cancel() with a properly-sized DR task.
+
+v1 (Task 1 step 4) used an overscoped prompt and got HTTP 500 — ambiguous
+whether cancel itself broke or whether the server rejected the request
+before cancel was called. v2 uses a Goldilocks prompt and a
+wait-then-poll-then-cancel pattern.
+
+Outputs to research/_dr_spike_cancel_v2.json + _dr_spike_cancel_v2.txt.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import json
+import os
+import sys
+import time
+from pathlib import Path
+
+from google import genai
+
+AGENT = "deep-research-preview-04-2026"
+# Goldilocks prompt: substantial enough for ~3-10 min runtime, not so
+# overscoped it triggers server rejection.
+PROMPT = (
+    "Provide a comprehensive technical comparison of Paxos, Raft, and "
+    "Viewstamped Replication consensus algorithms. Cover protocol mechanics, "
+    "failure handling, leader election, log replication, and 3+ real-world "
+    "deployments of each. Cite sources."
+)
+OUT = Path(__file__).parent.parent.parent.parent / "research" / "_dr_spike_cancel_v2.json"
+
+
+async def main_async() -> int:
+    api_key = os.environ.get("GEMINI_API_KEY")
+    if not api_key:
+        print("GEMINI_API_KEY not set", file=sys.stderr)
+        return 2
+    client = genai.Client(api_key=api_key)
+
+    print("Submitting Goldilocks DR task...")
+    try:
+        resp = await client.aio.interactions.create(
+            agent=AGENT, input=PROMPT, background=True, store=True
+        )
+    except Exception as exc:
+        print(f"  CREATE FAILED: {type(exc).__name__}: {exc}")
+        return 1
+    interaction_id = getattr(resp, "id", None)
+    print(f"  id={interaction_id}")
+
+    # Wait-then-poll: confirm the interaction is actually IN_PROGRESS before
+    # cancelling. Cancelling an already-completed/failed interaction may be
+    # what caused the v1 500.
+    print("Waiting + polling for in_progress confirmation (5 attempts, 3s apart)...")
+    pre_cancel_status = None
+    for attempt in range(5):
+        await asyncio.sleep(3)
+        try:
+            interaction = await client.aio.interactions.get(id=interaction_id)
+            pre_cancel_status = str(getattr(interaction, "status", "?"))
+            print(f"  attempt {attempt + 1}: status={pre_cancel_status!r}")
+            if pre_cancel_status == "in_progress":
+                break
+        except Exception as exc:
+            print(f"  attempt {attempt + 1}: GET error {type(exc).__name__}: {exc}")
+    if pre_cancel_status != "in_progress":
+        print(f"  Interaction never reached in_progress (saw: {pre_cancel_status!r}); aborting")
+        return 1
+
+    print("\nCalling cancel() on confirmed-in_progress interaction...")
+    cancel_t0 = time.monotonic()
+    cancel_outcome: dict = {}
+    try:
+        cancel_result = await client.aio.interactions.cancel(id=interaction_id)
+        cancel_outcome = {
+            "succeeded": True,
+            "duration_s": time.monotonic() - cancel_t0,
+            "result_type": type(cancel_result).__name__,
+            "result_repr": repr(cancel_result)[:500],
+        }
+        print(f"  cancel returned in {cancel_outcome['duration_s']:.2f}s")
+    except Exception as exc:
+        cancel_outcome = {
+            "succeeded": False,
+            "duration_s": time.monotonic() - cancel_t0,
+            "exception_type": type(exc).__name__,
+            "exception_module": type(exc).__module__,
+            "status_code": getattr(exc, "status_code", None),
+            "message": str(exc)[:500],
+        }
+        print(f"  cancel FAILED: {type(exc).__name__}({getattr(exc, 'status_code', '?')}): {exc}")
+
+    # Post-cancel: poll for terminal state, check if partial output preserved.
+    print("\nPolling for post-cancel terminal state (up to 90s)...")
+    transitions = [{"t": 0.0, "status": pre_cancel_status}]
+    final_interaction = None
+    deadline = time.monotonic() + 90
+    last_observed = pre_cancel_status
+    while time.monotonic() < deadline:
+        await asyncio.sleep(5)
+        try:
+            interaction = await client.aio.interactions.get(id=interaction_id)
+            status = str(getattr(interaction, "status", "?"))
+            if status != last_observed:
+                print(f"  status -> {status!r}")
+                transitions.append({"t": time.monotonic(), "status": status})
+                last_observed = status
+            if status in {"cancelled", "completed", "failed", "incomplete"}:
+                final_interaction = interaction
+                break
+        except Exception as exc:
+            print(f"  post-cancel GET error: {type(exc).__name__}({getattr(exc, 'status_code', '?')}): {exc}")
+            transitions.append({"t": time.monotonic(), "error": f"{type(exc).__name__}: {exc}"})
+            break
+
+    partial_output_present = False
+    if final_interaction is not None:
+        steps = getattr(final_interaction, "steps", None) or []
+        partial_output_present = any(
+            getattr(s, "content", None) for s in steps if str(getattr(s, "type", "")) == "model_output"
+        )
+    OUT.parent.mkdir(parents=True, exist_ok=True)
+    OUT.write_text(json.dumps({
+        "interaction_id": interaction_id,
+        "pre_cancel_status": pre_cancel_status,
+        "cancel_outcome": cancel_outcome,
+        "post_cancel_transitions": transitions,
+        "final_status": last_observed,
+        "partial_output_present": partial_output_present,
+    }, indent=2, default=str))
+    print(f"\n=== SUMMARY ===")
+    print(f"Pre-cancel status: {pre_cancel_status}")
+    print(f"Cancel succeeded: {cancel_outcome.get('succeeded')}")
+    print(f"Final status: {last_observed}")
+    print(f"Partial output preserved: {partial_output_present}")
+    return 0
+
+
+def main() -> int:
+    return asyncio.run(main_async())
+
+
+if __name__ == "__main__":
+    sys.exit(main())
+```
+
+- [ ] **Step 2: Run the spike (live API, user-authorized)**
+
+```bash
+uv run scripts/spike/p28/spike_dr_cancel_v2.py 2>&1 | tee research/_dr_spike_cancel_v2.txt
+```
+
+Wall time: ~2-3 min (Goldilocks prompt; cancel called early). Spend: ~$0.10-0.30.
+
+- [ ] **Step 3: Update findings doc §6**
+
+Update `research/gemini-dr-api-spike-2026-05-11.md` §6 to REPLACE the v1 inconclusive finding with the v2 evidence:
+
+```markdown
+## §6 Cancel behavior (v2 — re-verified 2026-05-12)
+
+v1 inconclusive finding (overscoped prompt → 500) superseded.
+
+v2 setup: Goldilocks prompt, wait-then-poll-then-cancel pattern.
+
+Results (from research/_dr_spike_cancel_v2.json):
+- Pre-cancel status confirmed: <yes/no>
+- cancel() outcome: <success/exception details>
+- Final terminal state: <cancelled/failed/completed/incomplete>
+- Partial output preserved: <yes/no>
+- Conclusion for Task 8 implementation: <implement defensively per the
+  guarded pattern OR cancel works cleanly OR defer to v1.1>
+```
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add scripts/spike/p28/spike_dr_cancel_v2.py research/_dr_spike_cancel_v2.* research/gemini-dr-api-spike-2026-05-11.md
+git commit -m "spike(p28): re-verify cancel() with Goldilocks prompt + wait-poll-cancel pattern"
+```
+
+(If commitlint rejects `spike`, use `chore(p28):`.)
 
 ---
 
 ### Task 8: `cancel()` — failing tests + implementation
 
-**Pre-condition:** Task 1 spike step 4 confirmed `client.aio.interactions.cancel()` exists.
+**Pre-condition:** Task 8a has populated §6 in `research/gemini-dr-api-spike-2026-05-11.md` with the verified cancel behavior. The implementation below is the **defensive baseline** — adjust if Task 8a reveals different behavior.
 
 **Files:**
 - Modify: `src/thoth/providers/gemini.py:GeminiProvider` (add `cancel` method)
@@ -1271,6 +2214,31 @@ class TestGeminiCancel:
         assert provider.jobs["interactions/abc"]["cancel_requested"] is True
 
     @pytest.mark.asyncio
+    async def test_cancel_5xx_returns_best_effort_cancelled(self):
+        """Per spike §6: cancel may return 5xx in edge cases; treat as best-effort."""
+        from google.genai._interactions import InternalServerError  # type: ignore[import-not-found]
+
+        from thoth.providers.gemini import GeminiProvider
+
+        provider = GeminiProvider(
+            api_key="dummy", config={"model": "deep-research-preview-04-2026"}
+        )
+        provider.jobs["interactions/abc"] = {
+            "kind": "deep_research", "interaction_id": "interactions/abc"
+        }
+        fake_cancel = AsyncMock(
+            side_effect=InternalServerError(status_code=500, message="cancel failed server-side")
+        )
+        provider.client.aio.interactions = MagicMock()
+        provider.client.aio.interactions.cancel = fake_cancel
+        result = await provider.cancel("interactions/abc")
+        # Cancel still reports cancelled (best-effort); the runtime treats SIGINT
+        # as satisfied. check_status will surface the actual state on next poll.
+        assert result["status"] == "cancelled"
+        assert result.get("best_effort") is True
+        assert provider.jobs["interactions/abc"]["cancel_requested"] is True
+
+    @pytest.mark.asyncio
     async def test_cancel_noop_for_immediate_jobs(self):
         """Immediate jobs (chat completion) don't support upstream cancel."""
         from thoth.providers.gemini import GeminiProvider
@@ -1282,7 +2250,7 @@ class TestGeminiCancel:
         # No upstream call — immediate jobs are already complete
 ```
 
-- [ ] **Step 2: Implement**
+- [ ] **Step 2: Implement defensively**
 
 ```python
 async def cancel(self, job_id: str) -> dict[str, Any]:
@@ -1291,32 +2259,47 @@ async def cancel(self, job_id: str) -> dict[str, Any]:
     Immediate (chat-completion) jobs are already complete by the time submit
     returns, so cancel is a no-op there. DR jobs run server-side and must
     be explicitly cancelled via the Interactions API.
+
+    Defensive 5xx handling per spike §6: if cancel itself returns a server
+    error, mark cancel_requested locally and report cancelled best-effort.
+    The runtime treats SIGINT as satisfied; check_status will surface the
+    actual server-side state on the next poll.
     """
     if job_id not in self.jobs:
         return {"status": "not_found", "error": f"Unknown job_id: {job_id}"}
     job = self.jobs[job_id]
     if job.get("kind") != "deep_research":
-        # Immediate-path: nothing to cancel upstream
-        return {"status": "cancelled"}
+        return {"status": "cancelled"}  # immediate path — already complete
+
+    job["cancel_requested"] = True
     try:
-        job["cancel_requested"] = True
         await self.client.aio.interactions.cancel(id=job_id)
+        return {"status": "cancelled"}
     except Exception as e:
+        # 5xx / network / unknown — treat as best-effort. Map for the error
+        # field but still report cancelled so the runtime's SIGINT path
+        # completes cleanly.
+        if _is_interactions_error(e) and (getattr(e, "status_code", None) or 0) >= 500:
+            return {
+                "status": "cancelled",
+                "best_effort": True,
+                "error": f"cancel returned server error ({getattr(e, 'status_code', '?')}); "
+                f"interaction may still be running. Next check_status will reflect.",
+            }
         raise _map_gemini_error(e, self.model) from e
-    return {"status": "cancelled"}
 ```
 
 - [ ] **Step 3: Run + commit**
 
 ```bash
 uv run pytest tests/test_provider_gemini.py::TestGeminiCancel -v
-git add -A && git commit -m "feat(p28): implement GeminiProvider.cancel()
+git add -A && git commit -m "feat(p28): implement GeminiProvider.cancel() with defensive 5xx handling
 
 DR jobs: invoke client.aio.interactions.cancel(id) and set
-cancel_requested flag (used by check_status to disambiguate
-user-initiated vs server-initiated cancels per research doc §10).
-Immediate jobs: no-op (chat completion is already complete by the
-time submit returns)."
+cancel_requested flag. 5xx errors from cancel are treated as best-effort
+(returns status=cancelled + best_effort=True) per spike §6 v2 finding;
+the runtime's SIGINT path completes cleanly and check_status will surface
+actual state on next poll. Immediate jobs: no-op (already complete)."
 ```
 
 ---
