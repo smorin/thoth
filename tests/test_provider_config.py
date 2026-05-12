@@ -7,11 +7,14 @@ from __future__ import annotations
 
 import asyncio
 import types
+import warnings
 from pathlib import Path
 from typing import Any, cast
+from unittest.mock import patch
 
 import pytest
 
+from thoth.errors import ThothError
 from thoth.providers.openai import OpenAIProvider
 
 
@@ -29,7 +32,8 @@ def test_max_tool_calls_reaches_request_payload() -> None:
         return types.SimpleNamespace(id="job-gap01-1")
 
     provider = OpenAIProvider(
-        api_key="dummy", config={"model": "o3-deep-research", "max_tool_calls": 80}
+        api_key="dummy",
+        config={"model": "o3-deep-research", "openai": {"max_tool_calls": 80}},
     )
     provider.client = cast(
         Any, types.SimpleNamespace(responses=types.SimpleNamespace(create=fake_create))
@@ -52,7 +56,8 @@ def test_code_interpreter_false_excludes_tool() -> None:
         return types.SimpleNamespace(id="job-gap01-2")
 
     provider = OpenAIProvider(
-        api_key="dummy", config={"model": "o3-deep-research", "code_interpreter": False}
+        api_key="dummy",
+        config={"model": "o3-deep-research", "openai": {"code_interpreter": False}},
     )
     provider.client = cast(
         Any, types.SimpleNamespace(responses=types.SimpleNamespace(create=fake_create))
@@ -243,7 +248,7 @@ def test_create_provider_passes_perplexity_namespace_from_mode_config() -> None:
 
 
 def test_create_provider_passes_openai_request_settings_from_mode_config() -> None:
-    """P23-RS01: OpenAI mode request settings reach OpenAIProvider.config."""
+    """OpenAI common and provider-namespaced mode settings reach config."""
     from types import SimpleNamespace
 
     from thoth.config import ConfigManager
@@ -258,12 +263,512 @@ def test_create_provider_passes_openai_request_settings_from_mode_config() -> No
         "model": "gpt-4.1-mini",
         "kind": "immediate",
         "temperature": 0.2,
-        "max_tool_calls": 12,
+        "openai": {"max_tool_calls": 12},
         "system_prompt": "not provider config",
     }
 
     provider = create_provider("openai", config, mode_config=mode_config)
 
     assert provider.config["temperature"] == 0.2
-    assert provider.config["max_tool_calls"] == 12
+    assert provider.config["openai"]["temperature"] == 0.2
+    assert provider.config["openai"]["max_tool_calls"] == 12
+    assert "max_tool_calls" not in provider.config
     assert "system_prompt" not in provider.config
+
+
+def test_create_provider_preserves_legacy_flat_openai_max_tool_calls() -> None:
+    """Historical flat mode max_tool_calls still reaches OpenAI without warning."""
+    from types import SimpleNamespace
+
+    from thoth.config import ConfigManager
+    from thoth.providers import create_provider
+
+    config = cast(
+        ConfigManager,
+        SimpleNamespace(data={"providers": {"openai": {"api_key": "sk-test"}}}),
+    )
+    mode_config: dict[str, Any] = {
+        "provider": "openai",
+        "model": "gpt-4.1-mini",
+        "kind": "immediate",
+        "max_tool_calls": 12,
+    }
+
+    provider = create_provider("openai", config, mode_config=mode_config)
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        resolved = cast(OpenAIProvider, provider)._resolve_provider_config_value("max_tool_calls")
+
+    assert resolved == 12
+    assert provider.config["openai"]["max_tool_calls"] == 12
+    assert "max_tool_calls" not in provider.config
+    assert not [w for w in caught if issubclass(w.category, DeprecationWarning)]
+
+
+def test_create_provider_preserves_perplexity_extra_body_extension_bag() -> None:
+    from types import SimpleNamespace
+
+    from thoth.config import ConfigManager
+    from thoth.providers import create_provider
+
+    config = cast(
+        ConfigManager,
+        SimpleNamespace(data={"providers": {"perplexity": {"api_key": "pplx-test"}}}),
+    )
+    mode_config: dict[str, Any] = {
+        "provider": "perplexity",
+        "model": "sonar",
+        "kind": "immediate",
+        "perplexity": {"extra_body": {"future_sdk_option": True}},
+    }
+
+    provider = create_provider("perplexity", config, mode_config=mode_config)
+    request_params = cast(Any, provider)._build_request_params("prompt", None)
+
+    assert provider.config["perplexity"]["extra_body"]["future_sdk_option"] is True
+    assert request_params["extra_body"]["future_sdk_option"] is True
+
+
+# ---------------------------------------------------------------------------
+# P24 Task 3.1 — [modes.X.openai] namespace migration with backwards-compat
+# deprecation. Mirrors P23/Perplexity's [modes.X.perplexity] namespace pattern.
+# ---------------------------------------------------------------------------
+
+
+def test_openai_reads_namespaced_temperature() -> None:
+    """OpenAIProvider reads [modes.X.openai].temperature."""
+    provider = OpenAIProvider(
+        api_key="dummy",
+        config={"openai": {"temperature": 0.42}, "kind": "immediate"},
+    )
+    assert provider._resolve_provider_config_value("temperature", 0.7) == 0.42
+
+
+def test_openai_reads_flat_temperature_with_deprecation_warning() -> None:
+    """Flat top-level temperature still works but emits DeprecationWarning."""
+    provider = OpenAIProvider(
+        api_key="dummy",
+        config={"temperature": 0.42, "kind": "immediate"},
+    )
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        resolved = provider._resolve_provider_config_value("temperature", 0.7)
+
+    assert resolved == 0.42
+    dep_warnings = [w for w in caught if issubclass(w.category, DeprecationWarning)]
+    assert any(
+        "namespace" in str(w.message).lower()
+        or "flat config" in str(w.message).lower()
+        or "modes." in str(w.message)
+        for w in dep_warnings
+    ), "expected DeprecationWarning advising migration to [modes.X.openai] namespace"
+
+
+def test_openai_namespaced_overrides_flat_silently() -> None:
+    """When both namespaced and flat keys exist, namespaced wins. No deprecation."""
+    provider = OpenAIProvider(
+        api_key="dummy",
+        config={
+            "temperature": 0.1,
+            "openai": {"temperature": 0.9},
+            "kind": "immediate",
+        },
+    )
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        resolved = provider._resolve_provider_config_value("temperature", 0.7)
+
+    assert resolved == 0.9
+    dep_warnings = [w for w in caught if issubclass(w.category, DeprecationWarning)]
+    assert not dep_warnings, "DeprecationWarning fired even though user is on the namespace path"
+
+
+def test_openai_default_when_neither_present() -> None:
+    """Returns the default when neither namespaced nor flat key is set."""
+    provider = OpenAIProvider(api_key="dummy", config={"kind": "immediate"})
+    assert provider._resolve_provider_config_value("temperature", 0.7) == 0.7
+    assert provider._resolve_provider_config_value("max_tool_calls", None) is None
+
+
+class _OpenAIEmptyStreamCM:
+    """Async context manager that yields no upstream events."""
+
+    async def __aenter__(self) -> _OpenAIEmptyStreamCM:
+        return self
+
+    async def __aexit__(self, exc_type: Any, exc: Any, tb: Any) -> None:
+        return None
+
+    def __aiter__(self) -> _OpenAIEmptyStreamCM:
+        return self
+
+    async def __anext__(self) -> Any:
+        raise StopAsyncIteration
+
+
+def _capture_openai_stream_request(provider: OpenAIProvider) -> dict[str, Any]:
+    captured: dict[str, Any] = {}
+
+    def fake_stream(**kwargs: Any) -> _OpenAIEmptyStreamCM:
+        captured.update(kwargs)
+        return _OpenAIEmptyStreamCM()
+
+    async def drive() -> list[Any]:
+        return [event async for event in provider.stream("hi", mode="openai_reasoning")]
+
+    with patch.object(provider.client.responses, "stream", new=fake_stream):
+        asyncio.run(drive())
+    return captured
+
+
+def test_openai_reasoning_builtin_mode_enables_reasoning_and_web_search() -> None:
+    """Built-in OpenAI reasoning mode opts into reasoning summaries + web search."""
+    from thoth.config import BUILTIN_MODES
+
+    mode = BUILTIN_MODES["openai_reasoning"]
+    assert mode["provider"] == "openai"
+    assert mode["model"] == "o3"
+    assert mode["kind"] == "immediate"
+    assert mode["openai"] == {"reasoning_summary": "auto", "web_search": True}
+
+
+def test_openai_stream_namespaced_reasoning_summary_reaches_request() -> None:
+    """[modes.X.openai].reasoning_summary enables Responses stream reasoning."""
+    provider = OpenAIProvider(
+        api_key="dummy",
+        config={
+            "model": "o3",
+            "kind": "immediate",
+            "openai": {"reasoning_summary": "auto"},
+        },
+    )
+
+    captured = _capture_openai_stream_request(provider)
+
+    assert captured["reasoning"] == {"summary": "auto"}
+
+
+def test_openai_stream_web_search_true_reaches_request_tools() -> None:
+    """[modes.X.openai].web_search=true opts immediate streaming into web search."""
+    provider = OpenAIProvider(
+        api_key="dummy",
+        config={
+            "model": "o3",
+            "kind": "immediate",
+            "openai": {"web_search": True},
+        },
+    )
+
+    captured = _capture_openai_stream_request(provider)
+
+    assert captured["tools"] == [{"type": "web_search_preview"}]
+
+
+def test_openai_stream_web_search_false_omits_request_tools() -> None:
+    """[modes.X.openai].web_search=false leaves immediate streaming ungrounded."""
+    provider = OpenAIProvider(
+        api_key="dummy",
+        config={
+            "model": "o3",
+            "kind": "immediate",
+            "openai": {"reasoning_summary": "auto", "web_search": False},
+        },
+    )
+
+    captured = _capture_openai_stream_request(provider)
+
+    assert captured["reasoning"] == {"summary": "auto"}
+    assert "tools" not in captured
+
+
+# ---------------------------------------------------------------------------
+# P24 Task 5.1 — Gemini provider registry + CLI plumbing surface tests.
+# Mirrors P23 Perplexity precedent.
+# ---------------------------------------------------------------------------
+
+
+def test_create_provider_returns_gemini_when_provider_is_gemini() -> None:
+    """P24-T07: create_provider('gemini', ...) returns a GeminiProvider instance."""
+    from types import SimpleNamespace
+    from unittest.mock import patch
+
+    from thoth.config import ConfigManager
+    from thoth.providers import create_provider
+    from thoth.providers.gemini import GeminiProvider
+
+    mock_client = SimpleNamespace()
+    mock_client.aio = SimpleNamespace()
+    mock_client.aio.models = SimpleNamespace()
+
+    config = cast(
+        ConfigManager,
+        SimpleNamespace(data={"providers": {"gemini": {"api_key": "AIza-test"}}}),
+    )
+
+    with patch("google.genai.Client", return_value=mock_client):
+        provider = create_provider("gemini", config)
+
+    assert isinstance(provider, GeminiProvider)
+
+
+def test_provider_env_vars_includes_gemini() -> None:
+    """P24-T07: PROVIDER_ENV_VARS['gemini'] = 'GEMINI_API_KEY'."""
+    from thoth.providers import PROVIDER_ENV_VARS
+
+    assert PROVIDER_ENV_VARS.get("gemini") == "GEMINI_API_KEY"
+
+
+def test_providers_dict_includes_gemini() -> None:
+    """P24-T07: the PROVIDERS dict registers GeminiProvider under 'gemini' key."""
+    from thoth.providers import PROVIDERS
+    from thoth.providers.gemini import GeminiProvider
+
+    assert PROVIDERS.get("gemini") is GeminiProvider
+
+
+def test_provider_cli_flags_includes_gemini() -> None:
+    """P24-T07: PROVIDER_CLI_FLAGS['gemini'] = '--api-key-gemini'."""
+    from thoth.providers import PROVIDER_CLI_FLAGS
+
+    assert PROVIDER_CLI_FLAGS.get("gemini") == "--api-key-gemini"
+
+
+def test_create_provider_passes_gemini_model_from_mode_config() -> None:
+    """P24-T07: mode-config model passes through to GeminiProvider."""
+    from types import SimpleNamespace
+    from unittest.mock import patch
+
+    from thoth.config import ConfigManager
+    from thoth.providers import create_provider
+
+    mock_client = SimpleNamespace()
+    mock_client.aio = SimpleNamespace()
+    mock_client.aio.models = SimpleNamespace()
+
+    config = cast(
+        ConfigManager,
+        SimpleNamespace(data={"providers": {"gemini": {"api_key": "AIza-test"}}}),
+    )
+    mode_config: dict[str, Any] = {"model": "gemini-2.5-pro", "kind": "immediate"}
+
+    with patch("google.genai.Client", return_value=mock_client):
+        provider = create_provider("gemini", config, mode_config=mode_config)
+    assert provider.config.get("model") == "gemini-2.5-pro"
+
+
+def test_create_provider_passes_gemini_namespace_from_mode_config() -> None:
+    """P24-T07: mode_config['gemini'] reaches GeminiProvider.config."""
+    from types import SimpleNamespace
+    from unittest.mock import patch
+
+    from thoth.config import ConfigManager
+    from thoth.providers import create_provider
+
+    mock_client = SimpleNamespace()
+    mock_client.aio = SimpleNamespace()
+    mock_client.aio.models = SimpleNamespace()
+
+    config = cast(
+        ConfigManager,
+        SimpleNamespace(data={"providers": {"gemini": {"api_key": "AIza-test"}}}),
+    )
+    mode_config: dict[str, Any] = {
+        "provider": "gemini",
+        "model": "gemini-2.5-flash-lite",
+        "kind": "immediate",
+        "gemini": {
+            "tools": ["google_search"],
+            "thinking_budget": 0,
+        },
+    }
+
+    with patch("google.genai.Client", return_value=mock_client):
+        provider = create_provider("gemini", config, mode_config=mode_config)
+
+    assert provider.config["gemini"] == {
+        "tools": ["google_search"],
+        "thinking_budget": 0,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Provider parameter normalizer through-path coverage.
+#
+# Values under [providers.defaults] and [providers.X] should flow to provider
+# constructors as global defaults. Mode-level provider namespaces retain
+# higher precedence, and OpenAI must not treat normalized root/provider
+# defaults as deprecated flat mode passthrough.
+# ---------------------------------------------------------------------------
+
+
+def test_providers_defaults_temperature_flows_to_openai_without_deprecation() -> None:
+    from types import SimpleNamespace
+
+    from thoth.config import ConfigManager
+    from thoth.providers import create_provider
+
+    config = cast(
+        ConfigManager,
+        SimpleNamespace(
+            data={
+                "providers": {
+                    "defaults": {"temperature": 0.3},
+                    "openai": {"api_key": "sk-test"},
+                }
+            }
+        ),
+    )
+
+    provider = create_provider("openai", config)
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        resolved = cast(OpenAIProvider, provider)._resolve_provider_config_value("temperature", 0.7)
+
+    assert resolved == 0.3
+    assert cast(OpenAIProvider, provider).config["openai"]["temperature"] == 0.3
+    dep_warnings = [w for w in caught if issubclass(w.category, DeprecationWarning)]
+    assert not dep_warnings
+
+
+def test_providers_defaults_temperature_flows_to_perplexity_and_gemini() -> None:
+    from types import SimpleNamespace
+    from unittest.mock import patch
+
+    from thoth.config import ConfigManager
+    from thoth.providers import create_provider
+
+    config = cast(
+        ConfigManager,
+        SimpleNamespace(
+            data={
+                "providers": {
+                    "defaults": {"temperature": 0.31},
+                    "perplexity": {"api_key": "pplx-test"},
+                    "gemini": {"api_key": "AIza-test"},
+                }
+            }
+        ),
+    )
+
+    perplexity_provider = create_provider("perplexity", config)
+    assert perplexity_provider.config["temperature"] == 0.31
+    assert perplexity_provider.config["perplexity"]["temperature"] == 0.31
+
+    mock_client = SimpleNamespace()
+    mock_client.aio = SimpleNamespace()
+    mock_client.aio.models = SimpleNamespace()
+    with patch("google.genai.Client", return_value=mock_client):
+        gemini_provider = create_provider("gemini", config)
+    assert gemini_provider.config["temperature"] == 0.31
+    assert gemini_provider.config["gemini"]["temperature"] == 0.31
+
+
+def test_root_providers_namespace_temperature_flows_to_openai_provider() -> None:
+    """[providers.openai].temperature flows to OpenAIProvider as a default.
+
+    Desired: when no [modes.X.openai].temperature is set, the value from
+    [providers.openai].temperature is used as a global default — without
+    emitting a DeprecationWarning advising migration to a mode-level key
+    (the user is *intentionally* setting a global default).
+    """
+    from types import SimpleNamespace
+
+    from thoth.config import ConfigManager
+    from thoth.providers import create_provider
+
+    config = cast(
+        ConfigManager,
+        SimpleNamespace(data={"providers": {"openai": {"api_key": "sk-test", "temperature": 0.3}}}),
+    )
+
+    provider = create_provider("openai", config)
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        resolved = cast(OpenAIProvider, provider)._resolve_provider_config_value("temperature", 0.7)
+
+    assert resolved == 0.3
+    dep_warnings = [w for w in caught if issubclass(w.category, DeprecationWarning)]
+    assert not dep_warnings, (
+        "Reading a value sourced from [providers.openai] should NOT emit the "
+        "[modes.X.openai] migration DeprecationWarning."
+    )
+
+
+def test_mode_level_openai_temperature_overrides_root_providers_default() -> None:
+    """[modes.X.openai].temperature wins over [providers.openai].temperature."""
+    from types import SimpleNamespace
+
+    from thoth.config import ConfigManager
+    from thoth.providers import create_provider
+
+    config = cast(
+        ConfigManager,
+        SimpleNamespace(data={"providers": {"openai": {"api_key": "sk-test", "temperature": 0.3}}}),
+    )
+    mode_config: dict[str, Any] = {
+        "provider": "openai",
+        "model": "gpt-4.1-mini",
+        "kind": "immediate",
+        "openai": {"temperature": 0.9},
+    }
+
+    provider = create_provider("openai", config, mode_config=mode_config)
+    resolved = cast(OpenAIProvider, provider)._resolve_provider_config_value("temperature", 0.7)
+    assert resolved == 0.9
+
+
+def test_root_providers_namespace_unknown_keys_are_rejected() -> None:
+    """Unrecognized keys at [providers.X] surface as user-facing ThothError."""
+    from types import SimpleNamespace
+
+    from thoth.config import ConfigManager
+    from thoth.providers import create_provider
+
+    config = cast(
+        ConfigManager,
+        SimpleNamespace(
+            data={"providers": {"openai": {"api_key": "sk-test", "definitely_not_a_real_key": "x"}}}
+        ),
+    )
+    with pytest.raises(
+        ThothError,
+        match=r"Unsupported provider parameter: providers\.openai\.definitely_not_a_real_key",
+    ):
+        create_provider("openai", config)
+
+
+def test_root_providers_namespace_works_for_perplexity_and_gemini() -> None:
+    """[providers.perplexity] / [providers.gemini] flow through symmetrically."""
+    from types import SimpleNamespace
+    from unittest.mock import patch
+
+    from thoth.config import ConfigManager
+    from thoth.providers import create_provider
+
+    # Perplexity: a root-level key should be reachable as a default.
+    pplx_config = cast(
+        ConfigManager,
+        SimpleNamespace(
+            data={"providers": {"perplexity": {"api_key": "pplx-test", "temperature": 0.25}}}
+        ),
+    )
+    pplx_provider = create_provider("perplexity", pplx_config)
+    assert pplx_provider.config.get("temperature") == 0.25
+
+    # Gemini: same shape.
+    mock_client = SimpleNamespace()
+    mock_client.aio = SimpleNamespace()
+    mock_client.aio.models = SimpleNamespace()
+    gemini_config = cast(
+        ConfigManager,
+        SimpleNamespace(
+            data={"providers": {"gemini": {"api_key": "AIza-test", "temperature": 0.4}}}
+        ),
+    )
+    with patch("google.genai.Client", return_value=mock_client):
+        gemini_provider = create_provider("gemini", gemini_config)
+    assert gemini_provider.config.get("temperature") == 0.4

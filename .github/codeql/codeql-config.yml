@@ -17,6 +17,14 @@ name: "thoth CodeQL config"
 # Both alerts (#2, #3, #4, #5) were dismissed as "false positive" with
 # documented rationale; this config prevents them from re-appearing on every
 # push that shifts line numbers.
+#
+# 3. tests/** — py/incomplete-url-substring-sanitization. The rule targets
+#    code that *sanitizes* URLs by substring matching (an unsafe pattern). Test
+#    code commonly asserts URL presence with `"https://example.com" in rendered`
+#    — that's a positive presence check, not a sanitizer. Production code in
+#    src/ is still scanned by the rule; only tests/** are excluded.
+paths-ignore:
+  - "tests/**"
 query-filters:
   - exclude:
       id: py/clear-text-logging-sensitive-data

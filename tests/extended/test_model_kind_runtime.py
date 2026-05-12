@@ -7,18 +7,16 @@ declared `kind` matches the model's actual API behavior:
     (single round-trip; no async polling required)
   * `kind == "background"` → first `check_status(submit())` returns one of
     `"running"`, `"queued"`, or `"completed"` (the latter only if the
-    upstream API was very fast). For background hits, we then `cancel()`
-    to limit cost.
-  * Background models whose upstream jobs cannot be cancelled are deferred to
-    the weekly `live_api` workflow instead.
+    upstream API was very fast). For background hits, we then call
+    `cancel()` as best-effort cleanup.
 
 Gated by `@pytest.mark.extended`. Default `pytest` skips this entire
-module (`addopts = "-m 'not extended'"`); run explicitly with
-`uv run pytest -m extended` or `just test-extended` after exporting the
-required API keys.
+module (`addopts = "-m 'not extended and not live_api'"`); run explicitly
+with `just test-extended` after exporting the required API keys.
 
-Cost target: <$0.10 per full run (small ping prompts; cancel before
-deep-research jobs run to completion).
+Cost target: small prompts for all providers. Background providers with
+upstream cancel stop after the kind check; providers without upstream cancel
+may continue billing after the test records the live runtime behavior.
 """
 
 from __future__ import annotations
@@ -35,29 +33,37 @@ from thoth.models import KNOWN_MODELS
 # importing/instantiating providers when the user hasn't opted in.
 pytestmark = pytest.mark.extended
 
+PROVIDER_MARKS = {
+    "openai": pytest.mark.provider_openai,
+    "perplexity": pytest.mark.provider_perplexity,
+    "gemini": pytest.mark.provider_gemini,
+}
+
+
+def _spec_param(spec):
+    mark = PROVIDER_MARKS.get(spec.provider)
+    marks = [] if mark is None else [mark]
+    return pytest.param(spec, marks=marks, id=f"{spec.provider}/{spec.id}")
+
 
 def _missing_keys_for(provider: str) -> list[str]:
     needs = {
         "openai": ["OPENAI_API_KEY"],
         "perplexity": ["PERPLEXITY_API_KEY"],
+        "gemini": ["GEMINI_API_KEY"],
         "mock": [],
     }.get(provider, [])
     return [k for k in needs if not os.environ.get(k)]
 
 
 def _runtime_check_skip_reason(spec) -> str | None:
-    if spec.provider == "perplexity" and spec.id == "sonar-deep-research":
-        return (
-            "Perplexity sonar-deep-research has no upstream cancel API; "
-            "weekly live_api coverage submits once and verifies resume instead."
-        )
+    _ = spec
     return None
 
 
 @pytest.mark.parametrize(
     "spec",
-    KNOWN_MODELS,
-    ids=lambda s: f"{s.provider}/{s.id}",
+    [_spec_param(spec) for spec in KNOWN_MODELS],
 )
 def test_model_kind_matches_runtime_behavior(spec) -> None:
     """Submit a tiny ping; assert kind contract holds against the live API."""
@@ -86,8 +92,8 @@ def test_model_kind_matches_runtime_behavior(spec) -> None:
         job_id = await provider.submit("ping", mode="_runtime_check_")
         status = await provider.check_status(job_id)
         if spec.kind == "background" and status.get("status") in ("running", "queued"):
-            # Cancel before the deep-research job actually runs to completion
-            # — the test only needed to confirm submission was async.
+            # Best-effort cleanup: providers with upstream cancel stop the job;
+            # providers without it report their unsupported status and continue.
             try:
                 await provider.cancel(job_id)
             except NotImplementedError:

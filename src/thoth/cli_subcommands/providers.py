@@ -32,12 +32,13 @@ from thoth.cli_subcommands._option_policy import (
 )
 from thoth.completion.sources import provider_names as _provider_names_completer
 
-PROVIDER_CHOICES = ("openai", "perplexity", "mock")
+PROVIDER_CHOICES = ("openai", "perplexity", "gemini", "mock")
 
 _PROVIDERS_LIST_HONOR = DEFAULT_HONOR | {
     "provider",
     "api_key_openai",
     "api_key_perplexity",
+    "api_key_gemini",
     "api_key_mock",
 }
 _PROVIDERS_MODELS_HONOR = _PROVIDERS_LIST_HONOR | {"timeout"}

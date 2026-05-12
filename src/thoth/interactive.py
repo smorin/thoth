@@ -89,7 +89,7 @@ class SlashCommandRegistry:
         self.console.print("[cyan]Available commands:[/cyan]")
         self.console.print("  /help              - Show this help")
         self.console.print("  /mode <mode>       - Change research mode")
-        self.console.print("  /provider <name>   - Set provider (openai, perplexity, mock)")
+        self.console.print("  /provider <name>   - Set provider (openai, perplexity, gemini, mock)")
         self.console.print("  /async             - Toggle async mode")
         self.console.print("  /multiline         - Toggle multiline input mode")
         self.console.print("  /status            - Check last operation status")
@@ -149,7 +149,7 @@ class SlashCommandRegistry:
 
     def set_provider(self, args: str) -> str:
         """Set provider"""
-        providers = ["openai", "perplexity", "mock", "auto"]
+        providers = ["openai", "perplexity", "gemini", "mock", "auto"]
         if not args:
             self.console.print("[cyan]Available providers:[/cyan]")
             for i, provider in enumerate(providers, 1):
@@ -161,6 +161,7 @@ class SlashCommandRegistry:
                 desc = {
                     "openai": "OpenAI GPT models",
                     "perplexity": "Perplexity Sonar (web-grounded synchronous search)",
+                    "gemini": "Gemini 2.5 (web-grounded synchronous search with optional thinking)",
                     "mock": "Mock provider for testing",
                     "auto": "Automatic provider selection",
                 }.get(provider, "")
@@ -183,12 +184,12 @@ class SlashCommandRegistry:
                 if provider == "auto":
                     self.current_provider = None
                     self.console.print("[green]Provider set to:[/green] auto")
-                elif provider in ["openai", "perplexity", "mock"]:
+                elif provider in ["openai", "perplexity", "gemini", "mock"]:
                     self.current_provider = provider
                     self.console.print(f"[green]Provider set to:[/green] {provider}")
                 else:
                     self.console.print(f"[red]Unknown provider:[/red] {provider}")
-                    self.console.print("Valid providers: openai, perplexity, mock, auto")
+                    self.console.print("Valid providers: openai, perplexity, gemini, mock, auto")
         self.console.print()
         return "continue"
 
@@ -801,6 +802,10 @@ class InteractiveSession:
             providers = [
                 ("openai", "OpenAI GPT models"),
                 ("perplexity", "Perplexity Sonar (web-grounded synchronous search)"),
+                (
+                    "gemini",
+                    "Gemini 2.5 (web-grounded synchronous search with optional thinking)",
+                ),
                 ("mock", "Mock provider for testing"),
                 ("auto", "Automatic provider selection"),
             ]

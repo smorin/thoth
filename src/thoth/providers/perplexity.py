@@ -32,9 +32,14 @@ from thoth.errors import (
     ProviderError,
     ThothError,
 )
+from thoth.providers._helpers import (
+    _extract_unsupported_param,
+    _invalid_key_thotherror,
+    debug_print_empty_response,
+    render_sources_block,
+)
 from thoth.providers._status import _translate_provider_status
 from thoth.providers.base import Citation, ResearchProvider, StreamEvent
-from thoth.utils import md_link_title, md_link_url
 
 _THINK_OPEN = "<think>"
 _THINK_CLOSE = "</think>"
@@ -100,7 +105,7 @@ class _ThinkStreamParser:
         return [("text", text)]
 
 
-_PROVIDER_NAME = "perplexity"
+_PROVIDER_NAME_PERPLEXITY = "perplexity"
 _INVALID_KEY_PHRASES = ("invalid api key", "incorrect api key", "invalid_api_key")
 
 # Provider-status → Thoth-status template for the async API. Caller fills in
@@ -140,26 +145,6 @@ def _rate_limit_error_is_quota(exc: BaseException) -> bool:
     return any(marker in text for marker in quota_markers)
 
 
-def _invalid_key_thotherror(provider: str, settings_url: str) -> ThothError:
-    """Friendly ThothError for an upstream-rejected API key.
-
-    Distinct from APIKeyError (which signals 'no key found'); this one
-    signals 'a key was supplied but the upstream rejected it'. Different
-    user actions (rotate vs. set), different exit_code semantics.
-
-    Currently called by both `_map_perplexity_error` (sync) and
-    `_map_perplexity_error_async` to keep the wording byte-identical
-    across the two error-mapping paths. If a third caller emerges
-    (e.g., Gemini in P28), promote this helper to `thoth/errors.py`.
-    """
-    return ThothError(
-        f"{provider} API key is invalid",
-        f"Your {provider.title()} API key was rejected by the API. "
-        f"Check your key at {settings_url}",
-        exit_code=2,
-    )
-
-
 def _map_perplexity_error(
     exc: BaseException, model: str | None = None, verbose: bool = False
 ) -> ThothError:
@@ -174,18 +159,26 @@ def _map_perplexity_error(
         body = getattr(exc, "body", None) or {}
         combined = (str(exc) + " " + str(body)).lower()
         if any(phrase in combined for phrase in _INVALID_KEY_PHRASES):
-            return _invalid_key_thotherror(_PROVIDER_NAME, "https://www.perplexity.ai/settings/api")
-        return APIKeyError(_PROVIDER_NAME)
+            return _invalid_key_thotherror("Perplexity", "https://www.perplexity.ai/settings/api")
+        return APIKeyError(_PROVIDER_NAME_PERPLEXITY)
 
     if isinstance(exc, openai.RateLimitError):
         if _rate_limit_error_is_quota(exc):
-            return APIQuotaError(_PROVIDER_NAME)
-        return APIRateLimitError(_PROVIDER_NAME)
+            return APIQuotaError(_PROVIDER_NAME_PERPLEXITY)
+        return APIRateLimitError(_PROVIDER_NAME_PERPLEXITY)
 
     if isinstance(exc, openai.PermissionDeniedError):
         return ProviderError(
-            _PROVIDER_NAME,
+            _PROVIDER_NAME_PERPLEXITY,
             "Permission denied (check tier / model access).",
+            raw_error=raw,
+        )
+
+    if isinstance(exc, openai.NotFoundError):
+        return ProviderError(
+            _PROVIDER_NAME_PERPLEXITY,
+            f"Model '{model}' not found. Please check available models with "
+            f"'thoth providers models --provider perplexity'",
             raw_error=raw,
         )
 
@@ -196,48 +189,56 @@ def _map_perplexity_error(
     # BadRequestError depending on SDK version. Checked BEFORE BadRequestError
     # so a 402 surfacing as BadRequestError still routes to APIQuotaError.
     if getattr(exc, "status_code", None) == 402:
-        return APIQuotaError(_PROVIDER_NAME)
+        return APIQuotaError(_PROVIDER_NAME_PERPLEXITY)
 
     if isinstance(exc, openai.BadRequestError):
+        param = _extract_unsupported_param(str(exc))
+        if param:
+            return ProviderError(
+                _PROVIDER_NAME_PERPLEXITY,
+                f"Perplexity does not support parameter '{param}' for this model. "
+                "Remove it from the mode config or its provider namespace.",
+                raw_error=raw,
+            )
         # A4: use {model!r} for parity with _map_perplexity_error_async — repr
         # quoting is more correct for free-form upstream model strings.
         hint = f" (model: {model!r})" if model else ""
         return ProviderError(
-            _PROVIDER_NAME,
+            _PROVIDER_NAME_PERPLEXITY,
             f"Bad request{hint}. Check model name and request shape.",
             raw_error=raw,
         )
 
     if isinstance(exc, openai.APITimeoutError):
         return ProviderError(
-            _PROVIDER_NAME,
+            _PROVIDER_NAME_PERPLEXITY,
             "Request timed out. Try again, or raise --timeout.",
             raw_error=raw,
         )
 
     if isinstance(exc, openai.APIConnectionError):
         return ProviderError(
-            _PROVIDER_NAME,
+            _PROVIDER_NAME_PERPLEXITY,
             "Network connection error reaching api.perplexity.ai.",
             raw_error=raw,
         )
 
     if isinstance(exc, openai.InternalServerError):
         return ProviderError(
-            _PROVIDER_NAME,
+            _PROVIDER_NAME_PERPLEXITY,
             "Perplexity server error (5xx). Retry shortly.",
             raw_error=raw,
         )
 
     if isinstance(exc, openai.APIError):
         return ProviderError(
-            _PROVIDER_NAME,
+            _PROVIDER_NAME_PERPLEXITY,
             f"Perplexity API error: {exc}",
             raw_error=raw,
         )
 
     return ProviderError(
-        _PROVIDER_NAME,
+        _PROVIDER_NAME_PERPLEXITY,
         f"Unexpected error: {exc}",
         raw_error=raw,
     )
@@ -289,24 +290,39 @@ def _map_perplexity_error_async(
         if status == 401:
             if any(phrase in body_lower for phrase in _INVALID_KEY_PHRASES):
                 return _invalid_key_thotherror(
-                    _PROVIDER_NAME, "https://www.perplexity.ai/settings/api"
+                    "Perplexity", "https://www.perplexity.ai/settings/api"
                 )
-            return APIKeyError(_PROVIDER_NAME)
+            return APIKeyError(_PROVIDER_NAME_PERPLEXITY)
         if status == 402:
-            return APIQuotaError(_PROVIDER_NAME)
+            return APIQuotaError(_PROVIDER_NAME_PERPLEXITY)
         if status == 403:
             # A2: parity with _map_perplexity_error's PermissionDeniedError
             # handler — emit the same hint so users see the tier/model-access
             # diagnostic on both sync and async paths.
             return ProviderError(
-                _PROVIDER_NAME,
+                _PROVIDER_NAME_PERPLEXITY,
                 "Permission denied (check tier / model access).",
                 raw_error=raw,
             )
+        if status == 404:
+            return ProviderError(
+                _PROVIDER_NAME_PERPLEXITY,
+                f"Model '{model}' not found. Please check available models with "
+                f"'thoth providers models --provider perplexity'",
+                raw_error=raw,
+            )
         if status == 422:
+            param = _extract_unsupported_param(body_text)
+            if param:
+                return ProviderError(
+                    _PROVIDER_NAME_PERPLEXITY,
+                    f"Perplexity does not support parameter '{param}' for this model. "
+                    "Remove it from the mode config or its provider namespace.",
+                    raw_error=raw,
+                )
             hint = f" (model: {model!r})" if model else ""
             return ProviderError(
-                _PROVIDER_NAME,
+                _PROVIDER_NAME_PERPLEXITY,
                 f"Invalid async request{hint}. Model may not support /v1/async/sonar.",
                 raw_error=raw,
             )
@@ -328,11 +344,11 @@ def _map_perplexity_error_async(
                 "blocked",
             )
             if any(marker in body_lower for marker in quota_markers):
-                return APIQuotaError(_PROVIDER_NAME)
-            return APIRateLimitError(_PROVIDER_NAME)
+                return APIQuotaError(_PROVIDER_NAME_PERPLEXITY)
+            return APIRateLimitError(_PROVIDER_NAME_PERPLEXITY)
         if 500 <= status < 600:
             return ProviderError(
-                _PROVIDER_NAME,
+                _PROVIDER_NAME_PERPLEXITY,
                 "Perplexity server error (5xx). Retry shortly.",
                 raw_error=raw,
             )
@@ -341,27 +357,27 @@ def _map_perplexity_error_async(
         # through to the generic HTTP-{status} bucket on purpose. Keeping it
         # explicit so future maintainers don't add a redundant 400 branch.
         return ProviderError(
-            _PROVIDER_NAME,
+            _PROVIDER_NAME_PERPLEXITY,
             f"HTTP {status} from Perplexity async API: {body_text[:200]}",
             raw_error=raw,
         )
 
     if isinstance(exc, httpx.TimeoutException):
         return ProviderError(
-            _PROVIDER_NAME,
+            _PROVIDER_NAME_PERPLEXITY,
             "Request timed out. Try again, or raise --timeout.",
             raw_error=raw,
         )
 
     if isinstance(exc, httpx.ConnectError):
         return ProviderError(
-            _PROVIDER_NAME,
+            _PROVIDER_NAME_PERPLEXITY,
             "Network connection error reaching api.perplexity.ai.",
             raw_error=raw,
         )
 
     return ProviderError(
-        _PROVIDER_NAME,
+        _PROVIDER_NAME_PERPLEXITY,
         f"Unexpected error: {exc}",
         raw_error=raw,
     )
@@ -369,7 +385,7 @@ def _map_perplexity_error_async(
 
 PERPLEXITY_BASE_URL = "https://api.perplexity.ai"
 
-_DIRECT_SDK_KEYS: tuple[str, ...] = (
+_DIRECT_SDK_KEYS_PERPLEXITY: tuple[str, ...] = (
     "max_tokens",
     "temperature",
     "top_p",
@@ -468,11 +484,21 @@ class PerplexityProvider(ResearchProvider):
     def _build_extra_body(self) -> dict[str, Any]:
         """Forward `config['perplexity'].*` keys through to extra_body.
 
+        Direct OpenAI-SDK kwargs also live under `config['perplexity']`, but
+        are consumed by `_build_request_params()` and intentionally excluded
+        from extra_body.
+
         Defaults applied when not configured:
         - web_search_options.search_context_size = "medium"
         - stream_mode = "concise"
         """
         perplexity_cfg: dict[str, Any] = dict(self.config.get("perplexity") or {})
+        for key in _DIRECT_SDK_KEYS_PERPLEXITY:
+            perplexity_cfg.pop(key, None)
+
+        explicit_extra_body = perplexity_cfg.pop("extra_body", {}) or {}
+        if not isinstance(explicit_extra_body, dict):
+            explicit_extra_body = {}
 
         web_search_options = dict(perplexity_cfg.pop("web_search_options", {}) or {})
         web_search_options.setdefault("search_context_size", "medium")
@@ -483,6 +509,7 @@ class PerplexityProvider(ResearchProvider):
             "web_search_options": web_search_options,
             "stream_mode": stream_mode,
         }
+        extra_body.update(explicit_extra_body)
         extra_body.update(perplexity_cfg)
         return extra_body
 
@@ -492,8 +519,16 @@ class PerplexityProvider(ResearchProvider):
             "messages": self._build_messages(prompt, system_prompt),
             "extra_body": self._build_extra_body(),
         }
-        for key in _DIRECT_SDK_KEYS:
-            if key in self.config:
+        perplexity_cfg = self.config.get("perplexity") or {}
+        if not isinstance(perplexity_cfg, dict):
+            perplexity_cfg = {}
+        # Resolution order (P24 follow-up #3 + P33 root-providers-level passthrough):
+        #   1. self.config["perplexity"][key]  -- mode-level [modes.X.perplexity] namespace
+        #   2. self.config[key]                -- root [providers.perplexity] level (flat)
+        for key in _DIRECT_SDK_KEYS_PERPLEXITY:
+            if key in perplexity_cfg:
+                params[key] = perplexity_cfg[key]
+            elif key in self.config:
                 params[key] = self.config[key]
         return params
 
@@ -584,7 +619,7 @@ class PerplexityProvider(ResearchProvider):
         request_id = payload.get("id")
         if not request_id:
             raise ProviderError(
-                _PROVIDER_NAME,
+                _PROVIDER_NAME_PERPLEXITY,
                 "Async submit response missing 'id' field",
                 raw_error=str(payload) if verbose else None,
             )
@@ -808,7 +843,7 @@ class PerplexityProvider(ResearchProvider):
         except httpx.HTTPStatusError as exc:
             if exc.response.status_code == 404:
                 raise ProviderError(
-                    _PROVIDER_NAME,
+                    _PROVIDER_NAME_PERPLEXITY,
                     f"Job {job_id!r} not found. Async results expire 7 days after submission.",
                 ) from exc
             raise _map_perplexity_error_async(exc, model=self.model) from exc
@@ -843,10 +878,10 @@ class PerplexityProvider(ResearchProvider):
         fresh if the cached state isn't COMPLETED yet.
         """
         if job_id not in self.jobs:
-            raise ProviderError(_PROVIDER_NAME, f"Unknown job_id: {job_id}")
+            raise ProviderError(_PROVIDER_NAME_PERPLEXITY, f"Unknown job_id: {job_id}")
         job_info = self.jobs[job_id]
         if not job_info.get("background", False):
-            return _render_answer_with_sources(job_info["response"])
+            return _render_answer_with_sources(job_info["response"], verbose=verbose)
         return await self._get_async_result(job_id, job_info, verbose)
 
     async def _get_async_result(self, job_id: str, job_info: dict[str, Any], verbose: bool) -> str:
@@ -888,7 +923,7 @@ def _format_async_response(response: dict[str, Any]) -> str:
 
     sources = _format_async_sources_block(response.get("search_results") or [])
     if sources:
-        parts.append(sources)
+        parts.append(f"\n\n{sources}")
 
     cost = _format_async_cost_block(response.get("usage") or {})
     if cost:
@@ -916,22 +951,16 @@ def _is_likely_truncated(content: str, finish_reason: str) -> bool:
 
 def _format_async_sources_block(search_results: list[Any]) -> str:
     """Markdown `## Sources` list, URL-deduped. Empty input -> empty string."""
-    if not search_results:
-        return ""
-    seen_urls: set[str] = set()
-    sources: list[str] = []
+    citations: list[Citation] = []
     for entry in search_results:
         if not isinstance(entry, dict):
             continue
         url = entry.get("url") or ""
-        if not url or url in seen_urls:
+        if not url:
             continue
-        seen_urls.add(url)
         title = entry.get("title") or url
-        sources.append(f"- [{md_link_title(str(title))}]({md_link_url(str(url))})")
-    if not sources:
-        return ""
-    return "\n\n## Sources\n\n" + "\n".join(sources)
+        citations.append(Citation(title=str(title), url=str(url)))
+    return render_sources_block(citations)
 
 
 def _format_async_cost_block(usage: dict[str, Any]) -> str:
@@ -949,28 +978,35 @@ def _format_async_cost_block(usage: dict[str, Any]) -> str:
     return f"\n\n## Cost\n\nTotal: ${amount:.4f}"
 
 
-def _render_answer_with_sources(response: Any) -> str:
-    """Extract content + append a deduped `## Sources` block from search_results."""
+def _render_answer_with_sources(response: Any, verbose: bool = False) -> str:
+    """Extract content + append a deduped `## Sources` block from search_results.
+
+    When ``verbose`` is True and the response carries no content, emit a debug
+    ladder to stderr (model_dump_json -> __dict__ -> repr). Mirrors openai.py's
+    pattern so an empty Perplexity response is not silently swallowed.
+    """
     choices = getattr(response, "choices", None) or []
     content = ""
     if choices:
         message = getattr(choices[0], "message", None)
         content = getattr(message, "content", "") or ""
 
+    if verbose and not content and response is not None:
+        debug_print_empty_response(response, provider_label="Perplexity")
+
     search_results = getattr(response, "search_results", None) or []
-    seen_urls: set[str] = set()
-    sources: list[str] = []
+    citations: list[Citation] = []
     for entry in search_results:
         url = _entry_get(entry, "url") or ""
-        if not url or url in seen_urls:
+        if not url:
             continue
-        seen_urls.add(url)
         title = _entry_get(entry, "title") or url
-        sources.append(f"- [{md_link_title(title)}]({md_link_url(url)})")
+        citations.append(Citation(title=str(title), url=str(url)))
 
+    sources = render_sources_block(citations)
     if not sources:
         return content
-    return f"{content}\n\n## Sources\n\n" + "\n".join(sources)
+    return f"{content}\n\n{sources}" if content else sources
 
 
 def _entry_get(entry: Any, key: str) -> Any:

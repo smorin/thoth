@@ -176,13 +176,18 @@ so `git commit` and PR CI never trigger real network calls or spend.
 
 | Marker | Trigger | Schedule | Purpose |
 |---|---|---|---|
-| `extended` | `just test-extended` / `pytest -m extended` | nightly via `.github/workflows/extended.yml` (09:00 UTC) | model-kind drift watch — every entry in `KNOWN_MODELS` matches upstream API behavior |
-| `live_api` | `just test-live-api` / `pytest -m live_api` | weekly via `.github/workflows/live-api.yml` (Sun 02:00 UTC = Sat 7pm PDT) | CLI workflow regression — streaming, file output, append, secret masking, mismatch defense |
+| `extended` | `just test-extended` / `pytest -m "extended and not extended_slow"` | nightly via `.github/workflows/extended.yml` (09:00 UTC) | model-kind drift watch — every entry in `KNOWN_MODELS` matches upstream API behavior |
+| `live_api` | `just test-live-api` / `pytest -m "live_api and not extended_slow"` | weekly via `.github/workflows/live-api.yml` (Sun 02:00 UTC = Sat 7pm PDT) | CLI workflow regression — streaming, file output, append, secret masking, mismatch defense |
 
 Both workflows run with `continue-on-error: true` (informational, not
-blocking) and require the `OPENAI_API_KEY` repo secret. To trigger
-manually: `gh workflow run "Extended Contract Tests (nightly)"` or
-`gh workflow run "Live-API Workflow Tests (weekly)"`.
+blocking) and require the `OPENAI_API_KEY`, `PERPLEXITY_API_KEY`, and
+`GEMINI_API_KEY` repo secrets for full provider coverage. Provider-scoped
+manual targets are available as `just test-extended-openai`,
+`just test-extended-perplexity`, `just test-extended-gemini`,
+`just test-live-api-openai`, `just test-live-api-perplexity`, and
+`just test-live-api-gemini`. To trigger manually: `gh workflow run
+"Extended Contract Tests (nightly)"` or `gh workflow run "Live-API Workflow
+Tests (weekly)"`.
 
 ## Planning Documents Management
 

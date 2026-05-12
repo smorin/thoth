@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import types
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -170,3 +172,68 @@ def test_commentary_excluded_when_final_answer_present() -> None:
     assert "https://commentary.example" not in result, (
         f"commentary citation leaked into result: {result!r}"
     )
+
+
+def _response_with_annotations(annotations: list[Any]) -> types.SimpleNamespace:
+    return types.SimpleNamespace(
+        output=[
+            types.SimpleNamespace(
+                type="message",
+                status="completed",
+                phase="final_answer",
+                content=[
+                    types.SimpleNamespace(
+                        type="output_text",
+                        text="Report body.",
+                        annotations=annotations,
+                    )
+                ],
+            )
+        ]
+    )
+
+
+def test_get_result_skips_typed_non_url_annotation_even_with_url(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Known non-url annotation types are skipped and logged."""
+    caplog.set_level(logging.WARNING, logger="thoth.providers.openai")
+    provider = OpenAIProvider(api_key="dummy")
+    response = _response_with_annotations(
+        [
+            {
+                "type": "file_citation",
+                "url": "https://should-not-render.example",
+                "title": "File citation",
+            }
+        ]
+    )
+    provider.jobs["job-1"] = {"background": False, "response": response}
+
+    result = asyncio.run(provider.get_result("job-1"))
+
+    assert "Report body." in result
+    assert "## Sources" not in result
+    assert "https://should-not-render.example" not in result
+    assert "file_citation" in caplog.text
+    assert "https://should-not-render.example" in caplog.text
+
+
+def test_get_result_accepts_missing_type_url_annotation_with_warning(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Legacy annotations with url/title but no type still render and warn."""
+    caplog.set_level(logging.WARNING, logger="thoth.providers.openai")
+    provider = OpenAIProvider(api_key="dummy")
+    response = _response_with_annotations(
+        [{"url": "https://legacy.example", "title": "Legacy Source"}]
+    )
+    provider.jobs["job-1"] = {"background": False, "response": response}
+
+    result = asyncio.run(provider.get_result("job-1"))
+
+    assert "## Sources" in result
+    assert "https://legacy.example" in result
+    assert "Legacy Source" in result
+    assert "missing" in caplog.text.lower()
+    assert "https://legacy.example" in caplog.text

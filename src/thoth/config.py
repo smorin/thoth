@@ -142,6 +142,17 @@ BUILTIN_MODES = {
         "system_prompt": "You are a helpful assistant for quick analysis.",
         "description": "Quick thinking and analysis mode for simple questions.",
     },
+    "openai_reasoning": {
+        "provider": "openai",
+        "model": "o3",
+        "kind": "immediate",
+        "system_prompt": "You are a helpful assistant for quick, grounded analysis.",
+        "description": "OpenAI o3 immediate mode with reasoning summaries and web search grounding.",
+        "openai": {
+            "reasoning_summary": "auto",
+            "web_search": True,
+        },
+    },
     "deep_research": {
         "provider": "openai",
         "model": "o3-deep-research",
@@ -203,6 +214,38 @@ BUILTIN_MODES = {
         "description": "Perplexity Sonar Deep Research — multi-step research via async API. ~$1.32/query at reasoning_effort=high.",
         "perplexity": {
             "reasoning_effort": "high",
+        },
+    },
+    # P24: Gemini built-in immediate (synchronous) modes.
+    "gemini_quick": {
+        "provider": "gemini",
+        "model": "gemini-2.5-flash-lite",
+        "kind": "immediate",
+        "description": "Fast Gemini 2.5 Flash-Lite with web grounding (no thinking).",
+        "gemini": {
+            "tools": ["google_search"],
+            "thinking_budget": 0,
+        },
+    },
+    "gemini_pro": {
+        "provider": "gemini",
+        "model": "gemini-2.5-pro",
+        "kind": "immediate",
+        "description": "Gemini 2.5 Pro with web grounding and dynamic thinking.",
+        "gemini": {
+            "tools": ["google_search"],
+            "thinking_budget": -1,
+        },
+    },
+    "gemini_reasoning": {
+        "provider": "gemini",
+        "model": "gemini-2.5-pro",
+        "kind": "immediate",
+        "description": "Gemini 2.5 Pro with web grounding, dynamic thinking, and surfaced thought summaries.",
+        "gemini": {
+            "tools": ["google_search"],
+            "thinking_budget": -1,
+            "include_thoughts": True,
         },
     },
 }
@@ -602,13 +645,11 @@ class ConfigManager:
             mode_config = (BUILTIN_MODES.get(target_str) or {}).copy()
             # User config overlay still keyed on the original name.
             user_mode = self.data.get("modes", {}).get(mode, {})
-            mode_config.update(user_mode)
-            return mode_config
+            return self._deep_merge(mode_config, user_mode)
 
         mode_config = builtin.copy()
         user_mode = self.data.get("modes", {}).get(mode, {})
-        mode_config.update(user_mode)
-        return mode_config
+        return self._deep_merge(mode_config, user_mode)
 
     def get_effective_config(self) -> dict[str, Any]:
         """Return the merged effective configuration"""

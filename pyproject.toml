@@ -38,6 +38,7 @@ dependencies = [
     "prompt-toolkit>=3.0",
     "tomlkit>=0.13",
     "thothspinner>=1.2.6",
+    "google-genai>=1.74.0",
     "pydantic>=2.12.5,<3",
 ]
 
@@ -69,14 +70,17 @@ testpaths = ["tests"]
 # Real-API tests are gated out of the default suite via `addopts`:
 #   - `extended`: model-kind drift watch (P18 Phase I); nightly via
 #     .github/workflows/extended.yml. Run with `just test-extended`.
-#   - `extended_slow`: opt-in OpenAI completion lifecycle checks; run manually
-#     with THOTH_EXTENDED_SLOW=1.
+#   - `extended_slow`: opt-in provider completion lifecycle checks; run
+#     manually with THOTH_EXTENDED_SLOW=1.
 #   - `live_api`: workflow regression suite (P20); weekly via
 #     .github/workflows/live-api.yml. Run with `just test-live-api`.
 markers = [
     "extended: real-API contract tests; gated, not run by default",
     "extended_slow: slower real-API contract tests that intentionally run live jobs to completion",
     "live_api: real-API workflow regression tests; gated, weekly cron",
+    "provider_openai: tests that exercise OpenAI-specific live or provider behavior",
+    "provider_perplexity: tests that exercise Perplexity-specific live or provider behavior",
+    "provider_gemini: tests that exercise Gemini-specific live or provider behavior",
 ]
 addopts = "-m 'not extended and not live_api'"
 

@@ -1,51 +1,108 @@
 """P20: Live-API workflow regression suite.
 
-Slim scope (TS03-TS08): real-API CLI behaviors that mocks cannot
-catch — streaming, file output, append, no-metadata, secret
-masking, and mismatch defense. Sibling to the `extended` marker
-suite (`test_model_kind_runtime.py`, `test_openai_real_workflows.py`)
-but distinct in cadence and purpose: this suite watches user-visible
-CLI workflow drift, not model-kind contracts.
+Slim scope (TS03-TS08): real-API CLI behaviors that mocks cannot catch across
+OpenAI, Perplexity, and Gemini immediate modes — streaming, file output,
+append, no-metadata, secret masking, and mismatch defense. Sibling to the
+`extended` marker suite (`test_model_kind_runtime.py`,
+`test_openai_real_workflows.py`) but distinct in cadence and purpose: this
+suite watches user-visible CLI workflow drift, not model-kind contracts.
 
 Gated by `@pytest.mark.live_api`; default `pytest` skips this
 module via `addopts = "-m 'not extended and not live_api'"`. Run
 explicitly with `just test-live-api` or weekly via
 `.github/workflows/live-api.yml` (Saturday 7pm PDT).
 
-Cost target: <$0.20 per full run (short prompts, single-shot
-immediate streams, one no-HTTP test).
+Cost target: short prompts and immediate-mode calls for each provider, plus one
+no-HTTP mismatch-defense test.
 """
 
 from __future__ import annotations
 
 import asyncio
+from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
 
 from tests.extended.conftest import (
     assert_metadata_absent,
+    assert_metadata_present,
     assert_no_secret_leaked,
     assert_nonempty_file,
+    require_gemini_key,
+    require_perplexity_key,
     run_thoth,
 )
 
 pytestmark = pytest.mark.live_api
 
 
+@dataclass(frozen=True)
+class ImmediateProviderCase:
+    provider: str
+    mode: str
+    env_var: str
+    api_key_flag: str
+    fixture_name: str
+
+
+IMMEDIATE_PROVIDER_CASES = [
+    ImmediateProviderCase(
+        provider="openai",
+        mode="thinking",
+        env_var="OPENAI_API_KEY",
+        api_key_flag="--api-key-openai",
+        fixture_name="live_cli_env",
+    ),
+    ImmediateProviderCase(
+        provider="perplexity",
+        mode="perplexity_quick",
+        env_var="PERPLEXITY_API_KEY",
+        api_key_flag="--api-key-perplexity",
+        fixture_name="live_perplexity_env",
+    ),
+    ImmediateProviderCase(
+        provider="gemini",
+        mode="gemini_quick",
+        env_var="GEMINI_API_KEY",
+        api_key_flag="--api-key-gemini",
+        fixture_name="live_gemini_env",
+    ),
+]
+
+PROVIDER_MARKS = {
+    "openai": pytest.mark.provider_openai,
+    "perplexity": pytest.mark.provider_perplexity,
+    "gemini": pytest.mark.provider_gemini,
+}
+
+
+def _case_param(case: ImmediateProviderCase):
+    return pytest.param(case, marks=[PROVIDER_MARKS[case.provider]], id=case.provider)
+
+
+@pytest.fixture(params=[_case_param(case) for case in IMMEDIATE_PROVIDER_CASES])
+def live_immediate_case(
+    request: pytest.FixtureRequest,
+) -> tuple[ImmediateProviderCase, dict[str, str], Path]:
+    case = request.param
+    env, state_root = request.getfixturevalue(case.fixture_name)
+    return case, env, state_root
+
+
 def test_immediate_streaming_smoke(
-    live_cli_env: tuple[dict[str, str], Path],
+    live_immediate_case: tuple[ImmediateProviderCase, dict[str, str], Path],
 ) -> None:
     """P20-TS03: immediate `thoth ask` streams to stdout, no result file, no bg hints."""
-    env, tmp_path = live_cli_env
+    case, env, tmp_path = live_immediate_case
     result, elapsed = run_thoth(
         [
             "ask",
             "Reply with the word ok.",
             "--mode",
-            "thinking",
+            case.mode,
             "--provider",
-            "openai",
+            case.provider,
         ],
         env,
         timeout=120,
@@ -65,20 +122,20 @@ def test_immediate_streaming_smoke(
 
 
 def test_immediate_out_file_writes_and_silences_stdout(
-    live_cli_env: tuple[dict[str, str], Path],
+    live_immediate_case: tuple[ImmediateProviderCase, dict[str, str], Path],
     tmp_path,
 ) -> None:
     """P20-TS04: `--out FILE` writes non-empty file; stdout suppressed."""
-    env, _state_root = live_cli_env
+    case, env, _state_root = live_immediate_case
     target = tmp_path / "answer.md"
     result, _elapsed = run_thoth(
         [
             "ask",
             "Reply with the word ok.",
             "--mode",
-            "thinking",
+            case.mode,
             "--provider",
-            "openai",
+            case.provider,
             "--out",
             str(target),
         ],
@@ -95,19 +152,19 @@ def test_immediate_out_file_writes_and_silences_stdout(
 
 
 def test_append_grows_file_and_preserves_prefix(
-    live_cli_env: tuple[dict[str, str], Path],
+    live_immediate_case: tuple[ImmediateProviderCase, dict[str, str], Path],
     tmp_path,
 ) -> None:
     """P20-TS05: `--append` grows the file; first run's prefix is preserved."""
-    env, _state_root = live_cli_env
+    case, env, _state_root = live_immediate_case
     target = tmp_path / "appended.md"
     cmd = [
         "ask",
         "Reply with one short word.",
         "--mode",
-        "thinking",
+        case.mode,
         "--provider",
-        "openai",
+        case.provider,
         "--out",
         str(target),
         "--append",
@@ -131,7 +188,7 @@ def test_append_grows_file_and_preserves_prefix(
 
 
 def test_no_metadata_immediate_smoke(
-    live_cli_env: tuple[dict[str, str], Path],
+    live_immediate_case: tuple[ImmediateProviderCase, dict[str, str], Path],
     tmp_path,
 ) -> None:
     """P20-TS06: `--no-metadata` is innocuous on the immediate `--out` path.
@@ -141,16 +198,16 @@ def test_no_metadata_immediate_smoke(
     this flag. This test asserts the flag doesn't break the path and locks
     in metadata-free output as a regression guard.
     """
-    env, _state_root = live_cli_env
+    case, env, _state_root = live_immediate_case
     target = tmp_path / "no-metadata.md"
     result, _ = run_thoth(
         [
             "ask",
             "Reply with one short word.",
             "--mode",
-            "thinking",
+            case.mode,
             "--provider",
-            "openai",
+            case.provider,
             "--out",
             str(target),
             "--no-metadata",
@@ -165,23 +222,23 @@ def test_no_metadata_immediate_smoke(
 
 
 def test_cli_api_key_does_not_leak(
-    live_cli_env: tuple[dict[str, str], Path],
+    live_immediate_case: tuple[ImmediateProviderCase, dict[str, str], Path],
 ) -> None:
-    """P20-TS07: `--api-key-openai` works without env var and key not echoed."""
-    env, _state_root = live_cli_env
-    secret = env["OPENAI_API_KEY"]
+    """P20-TS07: provider CLI API-key flags work without env var and do not echo."""
+    case, env, _state_root = live_immediate_case
+    secret = env[case.env_var]
     env_no_key = env.copy()
-    env_no_key.pop("OPENAI_API_KEY", None)
+    env_no_key.pop(case.env_var, None)
 
     result, _ = run_thoth(
         [
             "ask",
             "Reply with the word ok.",
             "--mode",
-            "thinking",
+            case.mode,
             "--provider",
-            "openai",
-            "--api-key-openai",
+            case.provider,
+            case.api_key_flag,
             secret,
         ],
         env_no_key,
@@ -195,6 +252,113 @@ def test_cli_api_key_does_not_leak(
     assert secret not in result.stderr, "API key leaked to stderr"
 
 
+def test_combined_report_live_all_providers(
+    live_cli_env: tuple[dict[str, str], Path],
+    tmp_path: Path,
+) -> None:
+    """Live all-provider smoke: --combined writes provider files plus combined report.
+
+    This intentionally has no provider-specific marker. It requires OpenAI,
+    Perplexity, and Gemini together, so provider-scoped live targets should
+    not pick it up independently.
+    """
+    require_perplexity_key()
+    require_gemini_key()
+    env, _state_root = live_cli_env
+    output_root = tmp_path / "outputs"
+    config_path = tmp_path / "combined-live.toml"
+    config_path.write_text(
+        f"""version = "2.0"
+
+[paths]
+base_output_dir = "{output_root}"
+
+[providers.openai]
+api_key = "${{OPENAI_API_KEY}}"
+
+[providers.perplexity]
+api_key = "${{PERPLEXITY_API_KEY}}"
+
+[providers.gemini]
+api_key = "${{GEMINI_API_KEY}}"
+
+[execution]
+poll_interval = 1
+max_wait = 5
+
+[modes.live_combined_smoke]
+kind = "background"
+providers = ["openai", "perplexity", "gemini"]
+system_prompt = "Answer tersely."
+
+[modes.live_combined_smoke.openai]
+kind = "immediate"
+model = "o3"
+
+[modes.live_combined_smoke.perplexity]
+kind = "immediate"
+model = "sonar"
+web_search_options = {{ search_context_size = "low" }}
+
+[modes.live_combined_smoke.gemini]
+kind = "immediate"
+model = "gemini-2.5-flash-lite"
+thinking_budget = 0
+""",
+        encoding="utf-8",
+    )
+
+    result, elapsed = run_thoth(
+        [
+            "ask",
+            "Reply with one short sentence confirming this combined live smoke ran.",
+            "--mode",
+            "live_combined_smoke",
+            "--config",
+            str(config_path),
+            "--output-dir",
+            str(output_root),
+            "--combined",
+        ],
+        env,
+        timeout=180,
+    )
+    assert result.returncode == 0, result.stderr + result.stdout
+    assert elapsed < 180
+    assert_no_secret_leaked(result, env)
+
+    provider_paths = {
+        "openai": list(output_root.glob("*_live_combined_smoke_openai_*.md")),
+        "perplexity": list(output_root.glob("*_live_combined_smoke_perplexity_*.md")),
+        "gemini": list(output_root.glob("*_live_combined_smoke_gemini_*.md")),
+    }
+    for provider, paths in provider_paths.items():
+        assert len(paths) == 1, f"expected one {provider} output file, found {paths}"
+        assert_nonempty_file(paths[0])
+        assert_metadata_present(
+            paths[0],
+            prompt_fragment="combined live smoke",
+            mode="live_combined_smoke",
+            provider=provider,
+        )
+
+    combined_paths = list(output_root.glob("*_live_combined_smoke_combined_*.md"))
+    assert len(combined_paths) == 1, f"expected one combined output file, found {combined_paths}"
+    combined_path = combined_paths[0]
+    assert_nonempty_file(combined_path)
+    assert_metadata_present(
+        combined_path,
+        prompt_fragment="combined live smoke",
+        mode="live_combined_smoke",
+        provider="combined",
+    )
+    combined_text = combined_path.read_text(encoding="utf-8")
+    assert "# Combined Research Report:" in combined_text
+    for heading in ("## Openai Results", "## Perplexity Results", "## Gemini Results"):
+        assert heading in combined_text
+
+
+@pytest.mark.provider_openai
 def test_mismatch_defense_no_http(monkeypatch: pytest.MonkeyPatch) -> None:
     """P20-TS08: immediate-declared deep-research model raises pre-HTTP.
 

@@ -72,7 +72,7 @@ def config_keys(ctx: Any, param: Any, incomplete: str) -> list[str]:
 
 def provider_names(ctx: Any, param: Any, incomplete: str) -> list[str]:
     """Static provider names — matches PROVIDER_CHOICES in providers.py."""
-    return _starts_with(["openai", "perplexity", "mock"], incomplete)
+    return _starts_with(["openai", "perplexity", "gemini", "mock"], incomplete)
 
 
 def mode_kind(ctx: Any, param: Any, incomplete: str) -> list[str]:

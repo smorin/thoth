@@ -72,6 +72,7 @@ Older entries may use `**Primary spec**`, `**Plan**`, or
 <!-- Descending P-number order. Scoped / in-progress / done first;
      ideas last. One row per file; one file per row. -->
 
+- [?] **P39** — [Pluggy-Based Plugin System for Providers & Commands](projects/P39-pluggy-plugin-system-.md)
 - [ ] **P38** — [Perplexity Sync VCR Replay](projects/P38-perplexity-sync-vcr-replay.md)
 - [?] **P37** — [Review starter-profile selection](projects/P37-starter-profile-review-.md)
 - [x] **P36** — [Uniform `--help` + Useful API-Key Errors](projects/P36-help-uniform-errors.md)
@@ -86,7 +87,7 @@ Older entries may use `**Primary spec**`, `**Plan**`, or
 - [x] **P27** — [Perplexity — Background Deep Research](projects/P27-perplexity-background-deep-research.md)
 - [x] **P26** — [OpenAI — Background Deep Research](projects/P26-openai-background-deep-research.md)
 - [ ] **P25** — [Architecture Review & Cleanup — Immediate Providers](projects/P25-arch-review-immediate-providers.md)
-- [ ] **P24** — [Gemini — Immediate (Synchronous) Calls](projects/P24-gemini-immediate-sync.md)
+- [~] **P24** — [Gemini — Immediate (Synchronous) Calls](projects/P24-gemini-immediate-sync.md) — main contract shipped via PR #54 (Gemini provider + cross-provider consistency); 7 reviewer-flagged follow-up tasks tracked in the project file's *Post-ship follow-ups* section (TS17-TS21 + T18-T24).
 - [x] **P23** — [Perplexity — Immediate (Synchronous) Calls](projects/P23-perplexity-immediate-sync.md)
 - [x] **P22** — [OpenAI — Immediate (Synchronous) Calls](projects/P22-openai-immediate-sync.md)
 - [x] **P21c** — [Config Filename Standardization](projects/P21c-config-filename-standardization.md)

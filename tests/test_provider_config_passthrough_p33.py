@@ -1,20 +1,21 @@
 """P33 provider config passthrough — provider-level, mode-level, future-provider.
 
 Complements `tests/extended/test_provider_config_passthrough.py` (which lives
-behind the `extended` marker and covers MODE-level passthrough). These tests
+behind the `extended` marker and covers mode-level runtime routing). These tests
 run in the default suite and cover:
 
 1. Provider-level config (`[providers.openai]`, `[providers.perplexity]`)
    reaches the provider's runtime `self.config`.
-2. Mode-level overrides (`[modes.x]`) are merged into provider_config via
-   `_apply_mode_provider_config`.
+2. Mode-level overrides (`[modes.x]`) are normalized into provider config via
+   `ProviderRuntimeConfig`.
 3. The provider-namespace nested table (`[modes.x.perplexity]` or
    `[providers.perplexity.perplexity]`) deep-merges into the provider's
    `self.config[<provider_name>]` slot, which Perplexity's runtime
    forwards to `extra_body`.
-4. Forward-compatibility: an unknown SDK key set inside the
-   `perplexity` namespace flows through without schema rejection (the
-   namespace is intentionally permissive `dict[str, Any]`).
+4. Legacy forward-compatibility: an unknown SDK key set inside the root
+   `[providers.perplexity.perplexity]` namespace validates at the schema
+   layer. The normalized mode-level extension path is now explicit
+   `perplexity.extra_body`.
 5. Future-provider flexibility: `GeminiConfig` (placeholder) accepts
    the same ProviderConfigBase fields, ready for P28 to wire runtime.
 
@@ -25,8 +26,8 @@ sync-wrapped with `asyncio.run(coro)`.
 See:
   - `src/thoth/providers/__init__.py:create_provider` — provider_config
     construction
-  - `src/thoth/providers/__init__.py:_apply_mode_provider_config` —
-    mode-level overlay
+  - `src/thoth/providers/parameter_config.py` — shared provider parameter
+    normalization
   - `src/thoth/providers/openai.py:OpenAIProvider.submit` — config
     consumption
   - `src/thoth/providers/perplexity.py:_build_request_params /
@@ -261,12 +262,12 @@ def test_perplexity_mode_namespace_deep_merges_with_provider_namespace() -> None
 # -------------------- Forward-compatibility tests --------------------
 
 
-def test_perplexity_namespace_accepts_unknown_sdk_keys() -> None:
-    """A new Perplexity SDK key (not modeled in our schema) under the
-    `perplexity` namespace must validate and reach the runtime.
+def test_perplexity_root_nested_namespace_accepts_legacy_unknown_sdk_keys() -> None:
+    """A new Perplexity SDK key under the legacy root nested namespace validates.
 
-    Schema treats `perplexity: dict[str, Any]` as permissive specifically
-    so SDK additions don't require schema updates.
+    Runtime mode/provider namespace passthrough now uses explicit `extra_body`,
+    but the schema keeps root `[providers.perplexity.perplexity]` permissive
+    for existing configs.
     """
     from thoth.config_schema import ConfigSchema, PerplexityConfig
 
