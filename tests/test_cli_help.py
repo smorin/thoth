@@ -11,8 +11,10 @@ def test_auto_help_mentions_happy_path():
     assert "happy path for chaining modes" in _help()
 
 
-def test_input_file_help_mentions_advanced_usage():
-    assert "non-thoth document" in _help()
+def test_input_file_help_marks_deprecated_alias():
+    out = _help()
+    assert "Deprecated alias for --prompt-file" in out
+    assert "Prefer --prompt-file" in out
 
 
 def test_help_has_workflow_chain():
