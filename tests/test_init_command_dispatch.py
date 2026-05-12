@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
+from io import StringIO
 from pathlib import Path
+from typing import cast
 
 import tomlkit
+from rich.console import Console
 
 from thoth.commands import (
     CommandHandler,
@@ -157,6 +161,41 @@ def test_dispatch_wizard_cancel_no_file_written(tmp_path: Path, monkeypatch) -> 
     h = CommandHandler(ConfigManager())
     h.init_command(config_path=str(target), force=False)
     assert not target.exists()
+
+
+def test_dispatch_real_prompt_renders_wizard_brackets_plainly(tmp_path: Path, monkeypatch) -> None:
+    """Regression: Rich markup must not eat wizard labels like [n]o."""
+    target = tmp_path / "thoth.config.toml"
+    rendered = StringIO()
+
+    import rich.prompt as rich_prompt
+
+    import thoth.init_wizard as wiz
+
+    prompt_text = (
+        "Default mode:\n  1) default\n[default: default] > \nWrite this? [Y]es / [n]o / [e]dit > "
+    )
+
+    def fake_run(**kwargs: object) -> None:
+        prompt_fn = cast(Callable[[str], str], kwargs["prompt_fn"])
+        answer = prompt_fn(prompt_text)
+        assert answer == "y"
+        return None
+
+    monkeypatch.setattr(
+        rich_prompt,
+        "get_console",
+        lambda: Console(file=rendered, force_terminal=False, width=120),
+    )
+    monkeypatch.setattr("builtins.input", lambda: "y")
+    monkeypatch.setattr(wiz, "run", fake_run)
+
+    h = CommandHandler(ConfigManager())
+    h.init_command(config_path=str(target), force=False)
+
+    output = rendered.getvalue()
+    assert "[default: default]" in output
+    assert "Write this? [Y]es / [n]o / [e]dit > " in output
 
 
 def test_dispatch_force_roundtrip_preserves_unknown(tmp_path: Path, monkeypatch) -> None:
