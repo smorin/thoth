@@ -496,6 +496,10 @@ class PerplexityProvider(ResearchProvider):
         for key in _DIRECT_SDK_KEYS_PERPLEXITY:
             perplexity_cfg.pop(key, None)
 
+        explicit_extra_body = perplexity_cfg.pop("extra_body", {}) or {}
+        if not isinstance(explicit_extra_body, dict):
+            explicit_extra_body = {}
+
         web_search_options = dict(perplexity_cfg.pop("web_search_options", {}) or {})
         web_search_options.setdefault("search_context_size", "medium")
 
@@ -505,6 +509,7 @@ class PerplexityProvider(ResearchProvider):
             "web_search_options": web_search_options,
             "stream_mode": stream_mode,
         }
+        extra_body.update(explicit_extra_body)
         extra_body.update(perplexity_cfg)
         return extra_body
 

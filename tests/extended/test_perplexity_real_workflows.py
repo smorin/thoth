@@ -33,7 +33,7 @@ from tests.extended.conftest import (
     wait_for_provider_job_id,
 )
 
-pytestmark = pytest.mark.live_api
+pytestmark = [pytest.mark.live_api, pytest.mark.provider_perplexity]
 
 PERPLEXITY_BACKGROUND_STATUSES = {"queued", "running", "completed", "cancelled"}
 

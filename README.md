@@ -706,9 +706,12 @@ Use `thoth_test` for the actual regression suite. It mixes provider-agnostic CLI
 | `./thoth_test -r --interactive` | Interactive-only `pexpect` tests (`INT-*`) | Debugging terminal UI and interactive mode |
 | `./thoth_test -r --provider mock` | Provider-agnostic tests plus mock-provider coverage | Fastest broad regression run with no real API keys |
 | `./thoth_test -r --provider openai` | Provider-agnostic tests plus OpenAI-specific cases | Validating OpenAI integration with a real key |
+| `./thoth_test -r --provider gemini` | Provider-agnostic tests plus Gemini-specific smoke cases | Validating Gemini runner wiring with a real key |
 | `./thoth_test -r --all-providers` | Every provider test the suite knows about | Full provider matrix validation |
-| `just test-extended` | Real-API provider contract tests (`pytest -m extended`) | Nightly job; manual when investigating provider-API changes |
-| `just test-live-api` | Real-API CLI workflow regression suite (`pytest -m live_api`) | Weekly job (Sat 7pm PDT); manual when verifying user-visible streaming/file/secret behavior |
+| `just test-extended` | Real-API provider contract tests (`pytest -m "extended and not extended_slow"`) | Nightly job; manual when investigating provider-API changes |
+| `just test-extended-openai` / `just test-extended-perplexity` / `just test-extended-gemini` | Provider-scoped extended tests | Debugging one provider without running the full live contract matrix |
+| `just test-live-api` | Real-API CLI workflow regression suite (`pytest -m "live_api and not extended_slow"`) | Weekly job (Sat 7pm PDT); manual when verifying user-visible streaming/file/secret behavior |
+| `just test-live-api-openai` / `just test-live-api-perplexity` / `just test-live-api-gemini` | Provider-scoped live workflow tests | Debugging one provider's live CLI workflows |
 
 `thoth_test -r` behaves like this:
 - Always runs provider-agnostic tests.

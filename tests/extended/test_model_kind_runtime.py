@@ -11,9 +11,8 @@ declared `kind` matches the model's actual API behavior:
     `cancel()` as best-effort cleanup.
 
 Gated by `@pytest.mark.extended`. Default `pytest` skips this entire
-module (`addopts = "-m 'not extended'"`); run explicitly with
-`uv run pytest -m extended` or `just test-extended` after exporting the
-required API keys.
+module (`addopts = "-m 'not extended and not live_api'"`); run explicitly
+with `just test-extended` after exporting the required API keys.
 
 Cost target: small prompts for all providers. Background providers with
 upstream cancel stop after the kind check; providers without upstream cancel
@@ -34,6 +33,18 @@ from thoth.models import KNOWN_MODELS
 # importing/instantiating providers when the user hasn't opted in.
 pytestmark = pytest.mark.extended
 
+PROVIDER_MARKS = {
+    "openai": pytest.mark.provider_openai,
+    "perplexity": pytest.mark.provider_perplexity,
+    "gemini": pytest.mark.provider_gemini,
+}
+
+
+def _spec_param(spec):
+    mark = PROVIDER_MARKS.get(spec.provider)
+    marks = [] if mark is None else [mark]
+    return pytest.param(spec, marks=marks, id=f"{spec.provider}/{spec.id}")
+
 
 def _missing_keys_for(provider: str) -> list[str]:
     needs = {
@@ -52,8 +63,7 @@ def _runtime_check_skip_reason(spec) -> str | None:
 
 @pytest.mark.parametrize(
     "spec",
-    KNOWN_MODELS,
-    ids=lambda s: f"{s.provider}/{s.id}",
+    [_spec_param(spec) for spec in KNOWN_MODELS],
 )
 def test_model_kind_matches_runtime_behavior(spec) -> None:
     """Submit a tiny ping; assert kind contract holds against the live API."""

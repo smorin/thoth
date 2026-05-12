@@ -124,14 +124,49 @@ test-serial:
 # nightly via .github/workflows/extended.yml.
 [group: 'testing']
 test-extended:
-    uv run pytest -m extended -v
+    uv run pytest -m "extended and not extended_slow" -v
+
+# Run OpenAI extended tests only.
+[group: 'testing']
+test-extended-openai:
+    uv run pytest -m "extended and provider_openai and not extended_slow" -v
+
+# Run Perplexity extended tests only.
+[group: 'testing']
+test-extended-perplexity:
+    uv run pytest -m "extended and provider_perplexity and not extended_slow" -v
+
+# Run Gemini extended tests only.
+[group: 'testing']
+test-extended-gemini:
+    uv run pytest -m "extended and provider_gemini and not extended_slow" -v
+
+# Run opt-in slow real-API lifecycle tests.
+[group: 'testing']
+test-extended-slow:
+    THOTH_EXTENDED_SLOW=1 uv run pytest -m extended_slow -v
 
 # Run live-API workflow regression tests. Gated by `pytest -m live_api`;
 # requires provider API keys for live provider coverage. P20 — runs weekly via
 # .github/workflows/live-api.yml (Sat 7pm PDT).
 [group: 'testing']
 test-live-api:
-    uv run pytest -m live_api -v
+    uv run pytest -m "live_api and not extended_slow" -v
+
+# Run OpenAI live-API workflow tests only.
+[group: 'testing']
+test-live-api-openai:
+    uv run pytest -m "live_api and provider_openai and not extended_slow" -v
+
+# Run Perplexity live-API workflow tests only.
+[group: 'testing']
+test-live-api-perplexity:
+    uv run pytest -m "live_api and provider_perplexity and not extended_slow" -v
+
+# Run Gemini live-API workflow tests only.
+[group: 'testing']
+test-live-api-gemini:
+    uv run pytest -m "live_api and provider_gemini and not extended_slow" -v
 
 # Run tests skipping interactive mode (fast, CI-safe)
 [group: 'testing']

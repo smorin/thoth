@@ -23,18 +23,18 @@ from tests.extended.conftest import (
     run_thoth,
 )
 
-pytestmark = pytest.mark.live_api
+pytestmark = [pytest.mark.live_api, pytest.mark.provider_gemini]
 
 
 def test_ext_gem_imm_quick_mode_emits_grounded_answer(
     live_gemini_env: tuple[dict[str, str], Path],
 ) -> None:
-    """Live: --provider gemini --mode gemini_quick produces grounded text + ## Sources."""
+    """Live: --provider gemini --mode gemini_quick can produce grounded text + sources."""
     env, _ = live_gemini_env
     result, elapsed = run_thoth(
         [
             "ask",
-            "Reply in one short sentence about the Gemini API.",
+            "Use Google Search and cite sources: what is the current Gemini API documentation page about grounding with Google Search?",
             "--mode",
             "gemini_quick",
             "--provider",
