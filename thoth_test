@@ -79,6 +79,19 @@ INTERACTIVE_STEP_TIMEOUT = int(os.getenv("THOTH_TEST_STEP_TIMEOUT", "3"))
 CACHE_DIR = Path(os.getenv("THOTH_TEST_CACHE_DIR") or ".thoth_test_cache")
 CACHE_FILE = CACHE_DIR / "last_run.json"
 REPORT_SCHEMA_VERSION = 1
+PROVIDER_ENV_VARS = {
+    "openai": "OPENAI_API_KEY",
+    "perplexity": "PERPLEXITY_API_KEY",
+    "gemini": "GEMINI_API_KEY",
+}
+PROVIDER_API_KEY_FLAGS = {
+    "mock": "--api-key-mock",
+    "openai": "--api-key-openai",
+    "perplexity": "--api-key-perplexity",
+    "gemini": "--api-key-gemini",
+}
+PROVIDER_NAMES = ("mock", "openai", "perplexity", "gemini")
+LIVE_PROVIDER_NAMES = tuple(PROVIDER_ENV_VARS)
 
 # Make thoth package importable from fixture tests without per-call boilerplate.
 _THOTH_SRC = str(Path(__file__).resolve().parent / "src")
@@ -166,12 +179,16 @@ def generate_mock_api_key() -> str:
     return f"mock-key-{uuid4().hex[:16]}"
 
 
+def shared_uv_cache_dir() -> str:
+    """Return the uv cache inherited by this runner, or the normal user cache."""
+    return os.getenv("UV_CACHE_DIR") or str(Path.home() / ".cache" / "uv")
+
+
 def get_test_api_keys() -> dict[str, str]:
     """Get API keys for testing (real or generated)"""
     return {
         "mock": generate_mock_api_key(),
-        "openai": os.getenv("OPENAI_API_KEY", ""),
-        "perplexity": os.getenv("PERPLEXITY_API_KEY", ""),
+        **{provider: os.getenv(env_var, "") for provider, env_var in PROVIDER_ENV_VARS.items()},
     }
 
 
@@ -179,11 +196,9 @@ def get_available_providers(test_api_keys: dict[str, str]) -> list[str]:
     """Determine which providers are available for testing"""
     providers = ["mock"]  # Mock is always available
 
-    if test_api_keys.get("openai"):
-        providers.append("openai")
-
-    if test_api_keys.get("perplexity"):
-        providers.append("perplexity")
+    for provider in LIVE_PROVIDER_NAMES:
+        if test_api_keys.get(provider):
+            providers.append(provider)
 
     return providers
 
@@ -519,7 +534,7 @@ def _prepare_test_isolation(
     # uv falls back to XDG_CACHE_HOME when UV_CACHE_DIR is unset; pointing it at
     # the per-test tmpdir would force a fresh package re-download on every test
     # (and break T-SIG-01's 1.5s SIGINT timing). Keep uv on the shared cache.
-    env.setdefault("UV_CACHE_DIR", str(Path.home() / ".cache" / "uv"))
+    env.setdefault("UV_CACHE_DIR", shared_uv_cache_dir())
     return tmpdir, cmd, env, output_base
 
 
@@ -725,7 +740,7 @@ def p35_set_default_deep_research_setup(config_home: Path) -> None:
     env["XDG_CONFIG_HOME"] = str(config_home)
     env["XDG_STATE_HOME"] = str(config_home)
     env["XDG_CACHE_HOME"] = str(config_home)
-    env["UV_CACHE_DIR"] = str(Path.home() / ".cache" / "uv")
+    env["UV_CACHE_DIR"] = shared_uv_cache_dir()
     proc = subprocess.run(
         [THOTH_EXECUTABLE, "modes", "set-default", "deep_research"],
         env=env,
@@ -759,7 +774,7 @@ def p35_unset_default_teardown(config_home: Path) -> None:
     env["XDG_CONFIG_HOME"] = str(config_home)
     env["XDG_STATE_HOME"] = str(config_home)
     env["XDG_CACHE_HOME"] = str(config_home)
-    env["UV_CACHE_DIR"] = str(Path.home() / ".cache" / "uv")
+    env["UV_CACHE_DIR"] = shared_uv_cache_dir()
     proc = subprocess.run(
         [THOTH_EXECUTABLE, "modes", "unset-default"],
         env=env,
@@ -794,22 +809,16 @@ def validate_test_environment(
         for provider in requested_providers:
             if provider == "mock":
                 continue  # Mock is always available
-            elif provider == "openai":
-                if test_api_keys["openai"]:
-                    console.print(f"OpenAI API Key: {test_api_keys['openai'][:8]}... ✓")
+            elif provider in LIVE_PROVIDER_NAMES:
+                env_var = PROVIDER_ENV_VARS[provider]
+                display_name = provider.capitalize() if provider != "openai" else "OpenAI"
+                if test_api_keys[provider]:
+                    console.print(f"{display_name} API Key: {test_api_keys[provider][:8]}... ✓")
                 else:
                     console.print(
-                        "[red]OpenAI API Key: Not set (required for requested tests)[/red]"
+                        f"[red]{display_name} API Key: Not set (required for requested tests)[/red]"
                     )
-                    missing_keys.append("OPENAI_API_KEY")
-            elif provider == "perplexity":
-                if test_api_keys["perplexity"]:
-                    console.print(f"Perplexity API Key: {test_api_keys['perplexity'][:8]}... ✓")
-                else:
-                    console.print(
-                        "[red]Perplexity API Key: Not set (required for requested tests)[/red]"
-                    )
-                    missing_keys.append("PERPLEXITY_API_KEY")
+                    missing_keys.append(env_var)
 
         if missing_keys:
             console.print(
@@ -821,17 +830,15 @@ def validate_test_environment(
             sys.exit(1)
     else:
         # Default behavior: show status of all providers
-        if test_api_keys["openai"]:
-            console.print(f"OpenAI API Key: {test_api_keys['openai'][:8]}... ✓")
-        else:
-            console.print("[yellow]OpenAI API Key: Not set (OpenAI tests will be skipped)[/yellow]")
-
-        if test_api_keys["perplexity"]:
-            console.print(f"Perplexity API Key: {test_api_keys['perplexity'][:8]}... ✓")
-        else:
-            console.print(
-                "[yellow]Perplexity API Key: Not set (Perplexity tests will be skipped)[/yellow]"
-            )
+        for provider, env_var in PROVIDER_ENV_VARS.items():
+            display_name = provider.capitalize() if provider != "openai" else "OpenAI"
+            if test_api_keys[provider]:
+                console.print(f"{display_name} API Key: {test_api_keys[provider][:8]}... ✓")
+            else:
+                console.print(
+                    f"[yellow]{display_name} API Key: Not set "
+                    f"({display_name} tests will be skipped; set {env_var})[/yellow]"
+                )
 
     console.print("")  # Blank line
 
@@ -858,7 +865,7 @@ class InteractiveTestRunner:
         # Set up environment
         test_env = os.environ.copy()
         test_env["COLUMNS"] = "80"  # Standard terminal width
-        test_env.setdefault("UV_CACHE_DIR", str(Path.home() / ".cache" / "uv"))
+        test_env.setdefault("UV_CACHE_DIR", shared_uv_cache_dir())
 
         # Add test-specific environment variables
         if test_case.env:
@@ -876,10 +883,9 @@ class InteractiveTestRunner:
                 # Interactive mock tests submit work that completes in ~0.1s, so
                 # keep polling tight and let the child exit naturally.
                 test_env.setdefault("THOTH_POLL_INTERVAL", "1")
-            elif test_case.provider == "openai":
-                test_env["OPENAI_API_KEY"] = os.getenv("OPENAI_API_KEY", "")
-            elif test_case.provider == "perplexity":
-                test_env["PERPLEXITY_API_KEY"] = os.getenv("PERPLEXITY_API_KEY", "")
+            elif test_case.provider in PROVIDER_ENV_VARS:
+                env_var = PROVIDER_ENV_VARS[test_case.provider]
+                test_env[env_var] = os.getenv(env_var, "")
 
         try:
             # Spawn the interactive process
@@ -1241,7 +1247,7 @@ class TestRunner:
         self.test_api_keys = get_test_api_keys()
         self.available_providers = get_available_providers(self.test_api_keys)
         self.requested_providers = requested_providers
-        self.skipped_by_provider = {"openai": 0, "perplexity": 0}
+        self.skipped_by_provider = {provider: 0 for provider in LIVE_PROVIDER_NAMES}
         self.verbose = verbose
         self.save_output = save_output
         self.quiet = quiet
@@ -1410,24 +1416,14 @@ class TestRunner:
                     # Don't override if already set in test_env
                     if "MOCK_API_KEY" not in test_env:
                         test_env["MOCK_API_KEY"] = api_key
-                elif test_case.provider == "openai":
-                    if "OPENAI_API_KEY" not in test_env:
-                        test_env["OPENAI_API_KEY"] = api_key
-                elif test_case.provider == "perplexity":
-                    if "PERPLEXITY_API_KEY" not in test_env:
-                        test_env["PERPLEXITY_API_KEY"] = api_key
+                elif test_case.provider in PROVIDER_ENV_VARS:
+                    env_var = PROVIDER_ENV_VARS[test_case.provider]
+                    if env_var not in test_env:
+                        test_env[env_var] = api_key
 
             elif test_case.api_key_method == "cli":
                 # Add API key as command-line argument
-                # Determine the correct API key flag based on provider
-                if test_case.provider == "mock":
-                    api_key_flag = "--api-key-mock"
-                elif test_case.provider == "openai":
-                    api_key_flag = "--api-key-openai"
-                elif test_case.provider == "perplexity":
-                    api_key_flag = "--api-key-perplexity"
-                else:
-                    api_key_flag = "--api-key-mock"  # Default to mock
+                api_key_flag = PROVIDER_API_KEY_FLAGS.get(test_case.provider, "--api-key-mock")
 
                 if api_key_flag not in test_command:
                     test_command.extend([api_key_flag, api_key])
@@ -1783,8 +1779,8 @@ api_key = "{api_key}"
             console.print("Requested providers: All available")
 
         # Count tests by provider
-        provider_test_counts = {"mock": 0, "openai": 0, "perplexity": 0, "none": 0}
-        provider_run_counts = {"mock": 0, "openai": 0, "perplexity": 0, "none": 0}
+        provider_test_counts = dict.fromkeys((*PROVIDER_NAMES, "none"), 0)
+        provider_run_counts = dict.fromkeys((*PROVIDER_NAMES, "none"), 0)
 
         for test_case in self.filtered_tests:
             provider_key = test_case.provider or "none"
@@ -1802,7 +1798,7 @@ api_key = "{api_key}"
 
         # Display provider matrix
         console.print("\nProvider Test Matrix:")
-        for provider in ["mock", "openai", "perplexity"]:
+        for provider in PROVIDER_NAMES:
             total = provider_test_counts[provider]
             ran = provider_run_counts[provider]
             skipped = total - ran
@@ -2664,23 +2660,6 @@ all_tests = [
         provider="mock",
         api_key_method="env",
     ),
-    # Combined Report Tests
-    TestCase(
-        test_id="COMB-01",
-        description="Combined report generation with --combined flag",
-        command=[THOTH_EXECUTABLE, "test combined", "--combined"],
-        expected_stdout_patterns=[r"Research completed"],
-        expected_files=[
-            "*_mock_*.md",
-            "*_openai_*.md",
-            "*_perplexity_*.md",
-            "*_combined_*.md",
-        ],
-        cleanup_files=["*_*.md"],
-        expected_exit_code=0,
-        skip=True,
-        skip_reason="Requires multiple providers to be configured",
-    ),
     TestCase(
         test_id="COMB-02",
         description="No combined report without --combined flag",
@@ -2830,6 +2809,25 @@ all_tests = [
         expected_exit_code=1,
         env={"PERPLEXITY_API_KEY": "pplx-test-bogus-key"},
         provider="perplexity",
+    ),
+    TestCase(
+        test_id="REAL-03",
+        description="Gemini provider with real API key",
+        command=[
+            THOTH_EXECUTABLE,
+            "ask",
+            "Reply in one short sentence.",
+            "--provider",
+            "gemini",
+            "--model",
+            "gemini-2.5-flash-lite",
+        ],
+        expected_stdout_patterns=[r".+"],
+        not_expected_files=["*_gemini_*.md"],
+        expected_exit_code=0,
+        provider="gemini",
+        api_key_method="env",
+        timeout=120,
     ),
     # Signal handling tests
     TestCase(
@@ -2999,7 +2997,7 @@ all_tests = [
         ],
         expected_stderr_patterns=[
             r"Invalid value for '--provider'",
-            r"openai.*perplexity.*mock",
+            r"openai.*perplexity.*gemini.*mock",
         ],
         expected_exit_code=2,
     ),
@@ -3808,7 +3806,7 @@ def main(
         if provider:
             preview_providers = [p.strip() for p in provider.split(",")]
         elif all_providers:
-            preview_providers = ["mock", "openai", "perplexity"]
+            preview_providers = list(PROVIDER_NAMES)
 
         preview_tests, _ = resolve_selection(
             all_tests,
@@ -3851,14 +3849,14 @@ def main(
     if provider:
         requested_providers = [p.strip() for p in provider.split(",")]
         # Validate provider names
-        valid_providers = ["mock", "openai", "perplexity"]
+        valid_providers = list(PROVIDER_NAMES)
         invalid = [p for p in requested_providers if p not in valid_providers]
         if invalid:
             console.print(f"[red]Error: Invalid provider(s): {', '.join(invalid)}[/red]")
             console.print(f"Valid providers: {', '.join(valid_providers)}")
             sys.exit(1)
     elif all_providers:
-        requested_providers = ["mock", "openai", "perplexity"]
+        requested_providers = list(PROVIDER_NAMES)
 
     tests_to_run, selection_warnings = resolve_selection(
         all_tests,

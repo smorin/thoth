@@ -152,12 +152,6 @@ def available_providers(
     return available
 
 
-def _active_profile_name(config: ConfigManager) -> str | None:
-    selection = getattr(config, "profile_selection", None)
-    name = getattr(selection, "name", None)
-    return str(name) if name else None
-
-
 def create_provider(
     provider_name: str,
     config: ConfigManager,
@@ -192,14 +186,20 @@ def create_provider(
             )
         return MockProvider(name=provider_name, delay=0.1, api_key=mock_api_key)
 
-    runtime_config = build_provider_runtime_config(
-        provider_name=provider_name,
-        config=config,
-        active_profile=_active_profile_name(config),
-        mode_name=None,
-        mode_config=mode_config,
-        timeout_override=timeout_override,
-    )
+    try:
+        runtime_config = build_provider_runtime_config(
+            provider_name=provider_name,
+            config=config,
+            mode_config=mode_config,
+            timeout_override=timeout_override,
+        )
+    except ValueError as exc:
+        raise ThothError(
+            str(exc),
+            "Check the provider configuration for unsupported keys. "
+            "Provider-specific SDK options must use a registered parameter "
+            "or an explicit extension bag such as extra_body.",
+        ) from exc
     provider_config = runtime_config.to_legacy_config()
     api_key = resolve_api_key(provider_name, cli_api_key, provider_config)
 

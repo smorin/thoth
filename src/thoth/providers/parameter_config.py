@@ -260,16 +260,6 @@ def _apply_provider_namespace_layer(
         runtime.extension_bags.pop(runtime.provider_name, None)
 
 
-def _profile_data(config_data: dict[str, Any], active_profile: str | None) -> dict[str, Any]:
-    if not active_profile:
-        return {}
-    profiles = config_data.get("profiles")
-    if not isinstance(profiles, dict):
-        return {}
-    profile = profiles.get(active_profile)
-    return profile if isinstance(profile, dict) else {}
-
-
 def _provider_namespace(layer: dict[str, Any] | None, provider_name: str) -> dict[str, Any] | None:
     if not isinstance(layer, dict):
         return None
@@ -281,11 +271,12 @@ def build_provider_runtime_config(
     *,
     provider_name: str,
     config: Any,
-    active_profile: str | None,
-    mode_name: str | None,
     mode_config: dict[str, Any] | None,
     timeout_override: float | None,
 ) -> ProviderRuntimeConfig:
+    # ConfigManager applies the selected profile as a normal config layer before
+    # provider normalization. mode_config is likewise expected to be the resolved
+    # mode config from ConfigManager.get_mode_config().
     config_data = getattr(config, "data", {})
     if not isinstance(config_data, dict):
         config_data = {}
@@ -314,53 +305,12 @@ def build_provider_runtime_config(
         reject_unknown=True,
     )
 
-    profile = _profile_data(config_data, active_profile)
-    profile_providers = profile.get("providers")
-    profile_providers = profile_providers if isinstance(profile_providers, dict) else {}
-    if active_profile:
-        _apply_general_layer(
-            runtime,
-            profile_providers.get("defaults"),
-            source=f"profiles.{active_profile}.providers.defaults",
-            common_keys=ALL_PROVIDER_COMMON_REQUEST_KEYS,
-            auth_keys=NO_KEYS,
-            client_keys=ALL_PROVIDER_CLIENT_KEYS,
-            provider_request_keys=NO_KEYS,
-            unknown_to_provider_request=False,
-            reject_unknown=True,
-        )
-        _apply_general_layer(
-            runtime,
-            profile_providers.get(provider_name),
-            source=f"profiles.{active_profile}.providers.{provider_name}",
-            common_keys=PROVIDER_COMMON_REQUEST_KEYS,
-            unknown_to_provider_request=False,
-            reject_unknown=True,
-        )
-
     _apply_mode_generic_layer(runtime, mode_config, source="mode_config")
     _apply_provider_namespace_layer(
         runtime,
         _provider_namespace(mode_config, provider_name),
         source=f"mode_config.{provider_name}",
     )
-
-    profile_mode: dict[str, Any] | None = None
-    if active_profile and mode_name:
-        profile_modes = profile.get("modes")
-        if isinstance(profile_modes, dict):
-            mode = profile_modes.get(mode_name)
-            profile_mode = mode if isinstance(mode, dict) else None
-        _apply_mode_generic_layer(
-            runtime,
-            profile_mode,
-            source=f"profiles.{active_profile}.modes.{mode_name}",
-        )
-        _apply_provider_namespace_layer(
-            runtime,
-            _provider_namespace(profile_mode, provider_name),
-            source=f"profiles.{active_profile}.modes.{mode_name}.{provider_name}",
-        )
 
     if timeout_override is not None:
         _merge_value(runtime.client, "timeout", timeout_override)

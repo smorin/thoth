@@ -1,3 +1,4 @@
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
 
@@ -11,89 +12,122 @@ def _config(data: dict[str, Any]) -> ConfigManager:
     return cast(ConfigManager, SimpleNamespace(data=data))
 
 
-def test_provider_defaults_precedence_l2_to_l5() -> None:
-    config = _config(
-        {
-            "providers": {
-                "defaults": {
-                    "timeout": 30,
-                    "temperature": 0.2,
-                    "kind": "background",
-                },
-                "gemini": {
-                    "api_key": "AIza-test",
-                    "temperature": 0.4,
-                    "kind": "immediate",
-                },
-            },
-            "profiles": {
-                "work": {
-                    "providers": {
-                        "defaults": {"timeout": 45},
-                        "gemini": {"temperature": 0.6, "kind": "background"},
-                    }
-                }
-            },
-        }
+def _loaded_config(tmp_path: Path, text: str, *, profile: str | None = None) -> ConfigManager:
+    config_path = tmp_path / "thoth.config.toml"
+    config_path.write_text(text.strip() + "\n", encoding="utf-8")
+    manager = ConfigManager(config_path=config_path)
+    cli_args = {"_profile": profile} if profile else {}
+    manager.load_all_layers(cli_args)
+    return manager
+
+
+def test_active_profile_provider_overlay_is_consumed_after_config_manager_merge(
+    tmp_path: Path,
+) -> None:
+    config = _loaded_config(
+        tmp_path,
+        """
+        version = "2.0"
+
+        [providers.gemini]
+        api_key = "AIza-root"
+        timeout = 30
+        temperature = 0.4
+
+        [profiles.work.providers.gemini]
+        api_key = "AIza-profile"
+        timeout = 45
+        temperature = 0.6
+        """,
+        profile="work",
     )
 
     runtime = build_provider_runtime_config(
         provider_name="gemini",
         config=config,
-        active_profile="work",
-        mode_name=None,
         mode_config=None,
         timeout_override=None,
     )
 
-    assert runtime.auth["api_key"] == "AIza-test"
+    assert "profiles" not in config.data
+    assert runtime.auth["api_key"] == "AIza-profile"
     assert runtime.client["timeout"] == 45
     assert runtime.common_request["temperature"] == 0.6
-    assert runtime.routing["kind"] == "background"
+    assert runtime.sources["client.timeout"] == "providers.gemini"
 
 
-def test_mode_common_and_provider_namespace_precedence_l6_to_l9() -> None:
+def test_normalizer_does_not_reapply_raw_profiles_table() -> None:
+    """Profiles are a ConfigManager layer, not a second provider-normalizer path."""
     config = _config(
         {
             "providers": {
-                "defaults": {"temperature": 0.1},
-                "perplexity": {"api_key": "pplx-test"},
+                "openai": {
+                    "api_key": "sk-provider",
+                    "temperature": 0.2,
+                }
             },
             "profiles": {
                 "work": {
-                    "modes": {
-                        "focused": {
-                            "top_p": 0.8,
-                            "kind": "immediate",
-                            "temperature": 0.4,
-                            "perplexity": {
-                                "kind": "background",
-                                "temperature": 0.7,
-                                "response_format": {"type": "json_schema"},
-                            },
+                    "providers": {
+                        "openai": {
+                            "temperature": 0.9,
+                            "max_tool_calls": 20,
                         }
                     }
                 }
             },
         }
     )
-    mode_config = {
-        "provider": "perplexity",
-        "model": "sonar",
-        "kind": "immediate",
-        "temperature": 0.3,
-        "perplexity": {
-            "temperature": 0.5,
-            "kind": "immediate",
-            "response_format": {"type": "json_object"},
-        },
-    }
+
+    runtime = build_provider_runtime_config(
+        provider_name="openai",
+        config=config,
+        mode_config=None,
+        timeout_override=None,
+    )
+
+    assert runtime.common_request["temperature"] == 0.2
+    assert runtime.provider_request == {}
+    assert runtime.sources["common_request.temperature"] == "providers.openai"
+
+
+def test_profile_mode_overlay_is_consumed_from_resolved_mode_config(tmp_path: Path) -> None:
+    config = _loaded_config(
+        tmp_path,
+        """
+        version = "2.0"
+
+        [providers.perplexity]
+        api_key = "pplx-test"
+        temperature = 0.1
+
+        [modes.focused]
+        provider = "perplexity"
+        model = "sonar"
+        kind = "immediate"
+        temperature = 0.3
+
+        [modes.focused.perplexity]
+        temperature = 0.5
+        kind = "immediate"
+        response_format = { type = "json_object" }
+
+        [profiles.work.modes.focused]
+        top_p = 0.8
+        temperature = 0.4
+
+        [profiles.work.modes.focused.perplexity]
+        kind = "background"
+        temperature = 0.7
+        response_format = { type = "json_schema" }
+        """,
+        profile="work",
+    )
+    mode_config = config.get_mode_config("focused")
 
     runtime = build_provider_runtime_config(
         provider_name="perplexity",
         config=config,
-        active_profile="work",
-        mode_name="focused",
         mode_config=mode_config,
         timeout_override=None,
     )
@@ -117,8 +151,6 @@ def test_provider_namespace_model_is_provider_specific_override() -> None:
     runtime = build_provider_runtime_config(
         provider_name="perplexity",
         config=config,
-        active_profile=None,
-        mode_name="focused",
         mode_config={
             "provider": "perplexity",
             "model": "sonar",
@@ -146,8 +178,6 @@ def test_runtime_timeout_override_wins_over_config_layers() -> None:
     runtime = build_provider_runtime_config(
         provider_name="openai",
         config=config,
-        active_profile=None,
-        mode_name=None,
         mode_config=None,
         timeout_override=60,
     )
@@ -160,23 +190,11 @@ def test_all_provider_defaults_only_promote_shared_fields() -> None:
         {
             "providers": {
                 "defaults": {
-                    "timeout": 30,
-                    "temperature": 0.2,
-                    "kind": "immediate",
+                    "timeout": 45,
+                    "temperature": 0.4,
+                    "kind": "background",
                 },
-                "openai": {"api_key": "sk-provider"},
-            },
-            "profiles": {
-                "work": {
-                    "providers": {
-                        "defaults": {
-                            "timeout": 45,
-                            "temperature": 0.4,
-                            "kind": "background",
-                        },
-                        "openai": {"api_key": "sk-profile"},
-                    }
-                }
+                "openai": {"api_key": "sk-profile"},
             },
         }
     )
@@ -184,8 +202,6 @@ def test_all_provider_defaults_only_promote_shared_fields() -> None:
     runtime = build_provider_runtime_config(
         provider_name="openai",
         config=config,
-        active_profile="work",
-        mode_name=None,
         mode_config=None,
         timeout_override=None,
     )
@@ -220,8 +236,6 @@ def test_all_provider_defaults_reject_disallowed_fields() -> None:
         build_provider_runtime_config(
             provider_name="openai",
             config=config,
-            active_profile=None,
-            mode_name=None,
             mode_config=None,
             timeout_override=None,
         )
@@ -242,8 +256,6 @@ def test_mode_generic_params_do_not_promote_auth_client_or_unknown_keys() -> Non
     runtime = build_provider_runtime_config(
         provider_name="openai",
         config=config,
-        active_profile=None,
-        mode_name="fast",
         mode_config={
             "api_key": "mode-secret-should-not-promote",
             "timeout": 5,
@@ -271,8 +283,6 @@ def test_legacy_flat_mode_provider_native_key_is_preserved_for_selected_provider
     runtime = build_provider_runtime_config(
         provider_name="openai",
         config=config,
-        active_profile=None,
-        mode_name="fast",
         mode_config={
             "provider": "openai",
             "model": "gpt-4.1-mini",
@@ -286,44 +296,35 @@ def test_legacy_flat_mode_provider_native_key_is_preserved_for_selected_provider
     assert runtime.to_legacy_config()["openai"]["max_tool_calls"] == 12
 
 
-def test_root_provider_recognized_native_keys_become_provider_request() -> None:
-    config = _config(
-        {
-            "providers": {
-                "openai": {
-                    "api_key": "sk-provider",
-                    "max_tool_calls": 50,
-                },
-                "perplexity": {
-                    "api_key": "pplx-provider",
-                    "stream_mode": "full",
-                },
-            },
-            "profiles": {
-                "work": {
-                    "providers": {
-                        "openai": {
-                            "max_tool_calls": 30,
-                        }
-                    }
-                }
-            },
-        }
+def test_root_provider_recognized_native_keys_become_provider_request(tmp_path: Path) -> None:
+    config = _loaded_config(
+        tmp_path,
+        """
+        version = "2.0"
+
+        [providers.openai]
+        api_key = "sk-provider"
+        max_tool_calls = 50
+
+        [providers.perplexity]
+        api_key = "pplx-provider"
+        stream_mode = "full"
+
+        [profiles.work.providers.openai]
+        max_tool_calls = 30
+        """,
+        profile="work",
     )
 
     openai_runtime = build_provider_runtime_config(
         provider_name="openai",
         config=config,
-        active_profile="work",
-        mode_name=None,
         mode_config=None,
         timeout_override=None,
     )
     perplexity_runtime = build_provider_runtime_config(
         provider_name="perplexity",
         config=config,
-        active_profile=None,
-        mode_name=None,
         mode_config=None,
         timeout_override=None,
     )
@@ -348,8 +349,6 @@ def test_unknown_root_provider_key_is_rejected() -> None:
         build_provider_runtime_config(
             provider_name="perplexity",
             config=config,
-            active_profile=None,
-            mode_name=None,
             mode_config=None,
             timeout_override=None,
         )
@@ -368,8 +367,6 @@ def test_unknown_mode_provider_namespace_key_is_rejected() -> None:
         build_provider_runtime_config(
             provider_name="perplexity",
             config=config,
-            active_profile=None,
-            mode_name="focused",
             mode_config={
                 "provider": "perplexity",
                 "model": "sonar",
@@ -392,8 +389,6 @@ def test_mode_provider_namespace_extra_body_is_allowed() -> None:
     runtime = build_provider_runtime_config(
         provider_name="perplexity",
         config=config,
-        active_profile=None,
-        mode_name="focused",
         mode_config={
             "provider": "perplexity",
             "model": "sonar",
@@ -406,34 +401,31 @@ def test_mode_provider_namespace_extra_body_is_allowed() -> None:
     assert runtime.extension_bags["perplexity"]["extra_body"] == {"new_vendor_flag": True}
 
 
-def test_profile_mode_provider_namespace_extra_body_is_allowed() -> None:
-    config = _config(
-        {
-            "providers": {
-                "perplexity": {"api_key": "pplx-test"},
-            },
-            "profiles": {
-                "work": {
-                    "modes": {
-                        "focused": {
-                            "perplexity": {"extra_body": {"profile_vendor_flag": True}},
-                        }
-                    }
-                }
-            },
-        }
+def test_profile_mode_provider_namespace_extra_body_is_allowed(tmp_path: Path) -> None:
+    config = _loaded_config(
+        tmp_path,
+        """
+        version = "2.0"
+
+        [providers.perplexity]
+        api_key = "pplx-test"
+
+        [modes.focused]
+        provider = "perplexity"
+        model = "sonar"
+        kind = "immediate"
+
+        [profiles.work.modes.focused.perplexity]
+        extra_body = { profile_vendor_flag = true }
+        """,
+        profile="work",
     )
+    mode_config = config.get_mode_config("focused")
 
     runtime = build_provider_runtime_config(
         provider_name="perplexity",
         config=config,
-        active_profile="work",
-        mode_name="focused",
-        mode_config={
-            "provider": "perplexity",
-            "model": "sonar",
-            "kind": "immediate",
-        },
+        mode_config=mode_config,
         timeout_override=None,
     )
 
@@ -453,8 +445,6 @@ def test_perplexity_extra_body_survives_runtime_to_legacy_request_shapes() -> No
     runtime = build_provider_runtime_config(
         provider_name="perplexity",
         config=config,
-        active_profile=None,
-        mode_name="focused",
         mode_config={
             "provider": "perplexity",
             "model": "sonar",
@@ -475,35 +465,34 @@ def test_perplexity_extra_body_survives_runtime_to_legacy_request_shapes() -> No
     assert async_body["request"]["extra_body"]["new_vendor_flag"] is True
 
 
-def test_profile_perplexity_extra_body_survives_runtime_to_legacy_request_shapes() -> None:
+def test_profile_perplexity_extra_body_survives_runtime_to_legacy_request_shapes(
+    tmp_path: Path,
+) -> None:
     from thoth.providers.perplexity import PerplexityProvider
 
-    config = _config(
-        {
-            "providers": {
-                "perplexity": {"api_key": "pplx-test"},
-            },
-            "profiles": {
-                "work": {
-                    "modes": {
-                        "focused": {
-                            "perplexity": {"extra_body": {"profile_vendor_flag": True}},
-                        }
-                    }
-                }
-            },
-        }
+    config = _loaded_config(
+        tmp_path,
+        """
+        version = "2.0"
+
+        [providers.perplexity]
+        api_key = "pplx-test"
+
+        [modes.focused]
+        provider = "perplexity"
+        model = "sonar"
+        kind = "immediate"
+
+        [profiles.work.modes.focused.perplexity]
+        extra_body = { profile_vendor_flag = true }
+        """,
+        profile="work",
     )
+    mode_config = config.get_mode_config("focused")
     runtime = build_provider_runtime_config(
         provider_name="perplexity",
         config=config,
-        active_profile="work",
-        mode_name="focused",
-        mode_config={
-            "provider": "perplexity",
-            "model": "sonar",
-            "kind": "immediate",
-        },
+        mode_config=mode_config,
         timeout_override=None,
     )
 

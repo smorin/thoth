@@ -144,9 +144,10 @@ class ModeConfig(BaseModel):
     such as `perplexity.extra_body`.
 
     Provider namespaces stay typed as permissive `dict[str, Any]` at the
-    schema layer so new provider-specific keys can be staged before the
-    runtime registry is updated. Typos in the well-known fields above are
-    still caught by `extra="forbid"`.
+    schema layer so the TOML shape is accepted there. Runtime normalization is
+    stricter: namespace keys must be registered provider parameters or
+    explicit extension bags such as `extra_body`. Typos in the well-known
+    fields above are still caught by `extra="forbid"`.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -168,7 +169,7 @@ class ModeConfig(BaseModel):
     stream: bool | None = None
 
     # Provider namespaces. Runtime normalization validates recognized keys and
-    # explicit extension bags; the schema remains permissive for staged SDK keys.
+    # explicit extension bags; the schema only accepts the namespace shape.
     openai: dict[str, Any] | None = None
     perplexity: dict[str, Any] | None = None
     gemini: dict[str, Any] | None = None

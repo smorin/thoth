@@ -23,7 +23,7 @@ from tests.extended.conftest import (
     run_thoth,
 )
 
-pytestmark = pytest.mark.live_api
+pytestmark = [pytest.mark.live_api, pytest.mark.provider_gemini]
 
 
 def test_ext_gem_imm_quick_mode_emits_grounded_answer(

@@ -124,6 +124,25 @@ def test_list_respects_provider_filter():
     assert filtered_ids, "mock filter should keep at least mock-provider tests"
 
 
+def test_list_accepts_gemini_provider_filter():
+    proc = _run_thoth_test("--list", "--provider", "gemini")
+    assert proc.returncode == 0
+    assert "REAL-03\tgemini\t" in proc.stdout
+
+
+def test_list_omits_obsolete_combined_placeholder():
+    proc = _run_thoth_test("--list")
+    assert proc.returncode == 0
+    assert "COMB-01\t" not in proc.stdout
+
+
+def test_provider_discovery_includes_gemini_when_key_is_set(thoth_test_mod, monkeypatch):
+    monkeypatch.setenv("GEMINI_API_KEY", "AIza-test")
+    keys = thoth_test_mod.get_test_api_keys()
+    assert keys["gemini"] == "AIza-test"
+    assert "gemini" in thoth_test_mod.get_available_providers(keys)
+
+
 def test_id_exact_match_runs_only_that_test(thoth_test_mod):
     TC = thoth_test_mod.TestCase
     all_tests = [

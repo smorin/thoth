@@ -18,7 +18,7 @@ from tests.extended.conftest import (
     wait_for_provider_job_id,
 )
 
-pytestmark = pytest.mark.extended
+pytestmark = [pytest.mark.extended, pytest.mark.provider_openai]
 
 BACKGROUND_STATUSES = {"queued", "running", "completed"}
 

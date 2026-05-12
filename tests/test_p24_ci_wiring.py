@@ -26,6 +26,7 @@ def test_workflow_passes_gemini_api_key(workflow: str) -> None:
         step for step in jobs[job_name]["steps"] if str(step.get("run", "")).startswith("uv run")
     )
     env = test_step.get("env") or {}
+    run_command = str(test_step.get("run", ""))
 
     assert "GEMINI_API_KEY" in env, (
         f"{workflow} missing GEMINI_API_KEY env binding — Gemini "
@@ -36,6 +37,9 @@ def test_workflow_passes_gemini_api_key(workflow: str) -> None:
     )
     assert "PERPLEXITY_API_KEY" in env, (
         f"{workflow} should still pass PERPLEXITY_API_KEY (unchanged from P23)"
+    )
+    assert "not extended_slow" in run_command, (
+        f"{workflow} should keep slow live-provider lifecycle tests opt-in"
     )
 
 

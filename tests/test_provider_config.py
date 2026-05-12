@@ -14,6 +14,7 @@ from unittest.mock import patch
 
 import pytest
 
+from thoth.errors import ThothError
 from thoth.providers.openai import OpenAIProvider
 
 
@@ -721,7 +722,7 @@ def test_mode_level_openai_temperature_overrides_root_providers_default() -> Non
 
 
 def test_root_providers_namespace_unknown_keys_are_rejected() -> None:
-    """Unrecognized keys at [providers.X] raise instead of silently passing through."""
+    """Unrecognized keys at [providers.X] surface as user-facing ThothError."""
     from types import SimpleNamespace
 
     from thoth.config import ConfigManager
@@ -734,7 +735,7 @@ def test_root_providers_namespace_unknown_keys_are_rejected() -> None:
         ),
     )
     with pytest.raises(
-        ValueError,
+        ThothError,
         match=r"Unsupported provider parameter: providers\.openai\.definitely_not_a_real_key",
     ):
         create_provider("openai", config)
