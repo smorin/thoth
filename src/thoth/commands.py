@@ -276,10 +276,9 @@ class CommandHandler:
         console.print(f"✓ Operating System: {sys.platform} (supported)\n")
         console.print(f"Configuration file will be created at: {target}\n")
 
-        target.parent.mkdir(parents=True, exist_ok=True)
-
         if non_interactive:
             doc = _build_starter_document()
+            target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text(tomlkit.dumps(doc))
             console.print(f"\n[green]✓[/green] Configuration saved to {target}")
             console.print('\nYou can now run: thoth deep_research "your prompt"')
@@ -310,6 +309,7 @@ class CommandHandler:
             return
 
         _apply_wizard_answers(base_doc, answers)
+        target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(tomlkit.dumps(base_doc))
         console.print(f"\n[green]✓[/green] Configuration saved to {target}")
         console.print('\nYou can now run: thoth deep_research "your prompt"')
