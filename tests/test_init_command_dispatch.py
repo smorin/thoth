@@ -242,11 +242,14 @@ def test_dispatch_json_envelope_regression(tmp_path: Path, monkeypatch: pytest.M
         ["--config", str(target), "init", "--json", "--non-interactive"],
     )
     assert result.exit_code == 0, result.output
-    # The exact JSON shape comes from get_init_data() which P31 doesn't
-    # touch; just assert the envelope is valid JSON and references the
-    # target path.
     import json
 
     payload = json.loads(result.output)
-    assert "data" in payload or "ok" in payload  # tolerant of either env shape
+    # Repo-wide JSON envelope contract: see tests/test_json_envelopes.py.
+    # Successful responses are {"status": "ok", "data": {...}}; the init
+    # data payload carries config_path, created, thoth_version, non_interactive.
+    assert payload["status"] == "ok"
+    assert payload["data"]["config_path"] == str(target)
+    assert payload["data"]["created"] is True
+    assert payload["data"]["non_interactive"] is True
     assert target.exists()
