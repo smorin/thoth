@@ -20,7 +20,7 @@ from urllib.parse import urlparse
 
 import httpx
 from google.genai import errors as genai_errors  # type: ignore[import-not-found]
-from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
+from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponential
 
 from thoth.config import is_background_model
 from thoth.errors import (
@@ -192,12 +192,15 @@ def _map_gemini_error(exc: Exception, model: str | None, verbose: bool = False) 
     return ProviderError(_PROVIDER_NAME_GEMINI, f"Unexpected error: {exc}")
 
 
+# Raw SDK exception types that are always retryable (transient transport /
+# server-side failures). 429-rate-limit responses arrive as
+# genai_errors.ClientError(code=429) — handled by the predicate below since
+# we don't want to retry every 4xx, only 429.
 _GEMINI_RETRY_CLASSES: tuple[type[BaseException], ...] = (
     httpx.TimeoutException,
     httpx.ConnectError,
     httpx.RemoteProtocolError,
     genai_errors.ServerError,
-    APIRateLimitError,
 )
 
 _GEMINI_STREAM_MAX_ATTEMPTS = 3
@@ -208,6 +211,16 @@ def _gemini_stream_retry_delay(attempt: int) -> float:
 
 
 def _is_retryable_gemini_exception(exc: BaseException) -> bool:
+    """True for transient transport/server errors and raw 429 rate-limit responses.
+
+    The Gemini SDK surfaces 429 as ``genai_errors.ClientError(code=429)``; the
+    wrapping into ``APIRateLimitError`` happens AFTER the retry classifier
+    runs in ``submit()`` (and after the stream loop's classification), so we
+    must inspect the raw SDK exception here, not the post-mapping
+    ``ThothError`` subclass.
+    """
+    if isinstance(exc, genai_errors.ClientError) and getattr(exc, "code", None) == 429:
+        return True
     return isinstance(exc, _GEMINI_RETRY_CLASSES)
 
 
@@ -467,7 +480,7 @@ class GeminiProvider(ResearchProvider):
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=4, max=10),
-        retry=retry_if_exception_type(_GEMINI_RETRY_CLASSES),
+        retry=retry_if_exception(_is_retryable_gemini_exception),
         reraise=True,
     )
     async def _submit_with_retry(

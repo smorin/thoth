@@ -459,8 +459,13 @@ def test_list_with_last_failed_no_cache_exits_2(tmp_path):
 
 
 def test_rerun_hint_uses_id_not_t(thoth_test_mod, tmp_path, monkeypatch, capsys):
-    # Redirect the cache so the report write doesn't hit the repo.
-    monkeypatch.setattr(thoth_test_mod, "CACHE_FILE", tmp_path / "cache.json")
+    # Redirect the cache so the report write doesn't hit the repo. Must patch
+    # BOTH the module attribute and write_cache_atomic.__defaults__ because
+    # generate_report calls write_cache_atomic(report) bare and Python freezes
+    # the default arg at function-definition time.
+    fake_cache = tmp_path / "cache.json"
+    monkeypatch.setattr(thoth_test_mod, "CACHE_FILE", fake_cache)
+    monkeypatch.setattr(thoth_test_mod.write_cache_atomic, "__defaults__", (fake_cache,))
     runner = thoth_test_mod.TestRunner()
     runner.start_time = 0.0
     runner.filtered_tests = [

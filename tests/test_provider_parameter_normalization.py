@@ -296,6 +296,30 @@ def test_legacy_flat_mode_provider_native_key_is_preserved_for_selected_provider
     assert runtime.to_legacy_config()["openai"]["max_tool_calls"] == 12
 
 
+def test_mode_level_max_tokens_routes_to_provider_request() -> None:
+    config = _config(
+        {
+            "providers": {
+                "perplexity": {"api_key": "pplx-x"},
+            }
+        }
+    )
+
+    runtime = build_provider_runtime_config(
+        provider_name="perplexity",
+        config=config,
+        mode_config={
+            "provider": "perplexity",
+            "max_tokens": 4096,
+        },
+        timeout_override=None,
+    )
+
+    assert runtime.provider_request["max_tokens"] == 4096
+    assert runtime.to_legacy_config()["perplexity"]["max_tokens"] == 4096
+    assert runtime.sources["provider_request.max_tokens"] == "mode_config"
+
+
 def test_root_provider_recognized_native_keys_become_provider_request(tmp_path: Path) -> None:
     config = _loaded_config(
         tmp_path,

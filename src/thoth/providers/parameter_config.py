@@ -72,7 +72,7 @@ PROVIDER_NATIVE_REQUEST_KEYS: frozenset[str] = frozenset(
         "web_search_options",
     }
 )
-LEGACY_MODE_PROVIDER_NATIVE_KEYS: frozenset[str] = frozenset({"max_tool_calls"})
+LEGACY_MODE_PROVIDER_NATIVE_KEYS: frozenset[str] = frozenset({"max_tokens", "max_tool_calls"})
 FRAMEWORK_KEYS: frozenset[str] = frozenset(
     {
         "provider",

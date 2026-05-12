@@ -405,18 +405,42 @@ def test_gemini_unknown_exception_maps_to_provider_error() -> None:
     assert "Unexpected" in str(mapped) or "???" in str(mapped)
 
 
-def test_gemini_retry_classes_includes_rate_limit() -> None:
-    """The Gemini retry-class set includes APIRateLimitError per Google's 429 guidance."""
+def test_gemini_retry_classifier_retries_transient_raw_exceptions_and_429() -> None:
+    """The Gemini retry classifier matches raw transport/server errors and raw 429.
+
+    Wrapping into APIRateLimitError happens AFTER retry classification, so the
+    classifier must inspect the raw genai_errors.ClientError(code=429) — not
+    the post-mapping ThothError subclass.
+    """
     import httpx
     from google.genai import errors as genai_errors
 
-    from thoth.errors import APIRateLimitError
-    from thoth.providers.gemini import _GEMINI_RETRY_CLASSES
+    from thoth.providers.gemini import (
+        _GEMINI_RETRY_CLASSES,
+        _is_retryable_gemini_exception,
+    )
 
-    assert APIRateLimitError in _GEMINI_RETRY_CLASSES
+    # Raw transient classes still listed for transport/server-side failures.
     assert httpx.TimeoutException in _GEMINI_RETRY_CLASSES
     assert httpx.ConnectError in _GEMINI_RETRY_CLASSES
     assert genai_errors.ServerError in _GEMINI_RETRY_CLASSES
+
+    # 429 is recognized at the predicate level on the raw SDK exception.
+    rate_limit = genai_errors.ClientError.__new__(genai_errors.ClientError)
+    rate_limit.code = 429
+    rate_limit.message = "rate limit"
+    rate_limit.status = "RESOURCE_EXHAUSTED"
+    assert _is_retryable_gemini_exception(rate_limit) is True
+
+    # Non-429 4xx (e.g. 400) is NOT retried.
+    bad_request = genai_errors.ClientError.__new__(genai_errors.ClientError)
+    bad_request.code = 400
+    bad_request.message = "bad request"
+    bad_request.status = "INVALID_ARGUMENT"
+    assert _is_retryable_gemini_exception(bad_request) is False
+
+    # Raw transient exceptions remain retryable via the predicate too.
+    assert _is_retryable_gemini_exception(httpx.TimeoutException("t")) is True
 
 
 def test_gemini_retry_classes_excludes_quota_error() -> None:
@@ -1017,9 +1041,17 @@ def test_gemini_submit_retry_decorator_retries_transient_errors() -> None:
     with patch("google.genai.Client", return_value=mock_client):
         provider = GeminiProvider(api_key="dummy", config={"kind": "immediate"})
 
-    # Patch tenacity wait to instant for test speed
-    with patch("thoth.providers.gemini.wait_exponential", return_value=lambda r: 0):
-        job_id = asyncio.run(provider.submit("Q?", "test_mode"))
+    # Force tenacity to wait zero seconds between retries. Patching the
+    # module-level `wait_exponential` AFTER class definition is a no-op
+    # because the decorator already captured its return value; swap the
+    # bound wait strategy on the retrying object directly.
+    from typing import Any, cast
+
+    import tenacity
+
+    retrying = cast(Any, provider._submit_with_retry).retry
+    retrying.wait = tenacity.wait_none()
+    job_id = asyncio.run(provider.submit("Q?", "test_mode"))
 
     assert call_count["n"] == 3  # 2 fails + 1 success
     assert job_id in provider.jobs
