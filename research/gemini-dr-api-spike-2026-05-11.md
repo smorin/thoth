@@ -269,6 +269,77 @@ polling on an undocumented state.
 
 ---
 
+## §6b `incomplete` recoverability (Task 6b spike — 2026-05-13)
+
+### Surface probe (no API call)
+
+`client.aio.interactions` exposes these methods (inspected via
+`inspect.signature` on `google-genai>=1.74.0`):
+
+```
+cancel, create, delete, get, with_raw_response, with_streaming_response
+```
+
+**Recovery candidates**: NONE. There is no `continue`, `resume`,
+`refetch`, or `retry` method.
+
+Notable observations:
+- `create()` has a `previous_interaction_id` parameter for chaining
+  conversations, but that's about CONVERSATION CONTINUATION, not
+  refetching an incomplete background result.
+- `get()` has `last_event_id` + `stream=True` for SSE-stream resumption —
+  a different mechanism that doesn't apply to polled background runs.
+- `delete(id)` exists but is destructive, not a recovery path.
+
+### Trigger probe (status)
+
+The first run of `spike_dr_incomplete.py` (PID 37777, 12:03-01:03 AM
+local) had its `tee` output pipe killed when the dispatching subagent
+exited; the Python process kept running but its stdout went nowhere.
+Final JSON was never written (the script writes once at the end). A
+second run was launched (PID 34607/34610, 01:03 AM) but killed after
+finding the surface-probe data above was sufficient to answer the
+recoverability question. Estimated 6b spend: ~$3-7 in API budget that
+generated no captured data — paid for the lesson that re-launching
+spike scripts after subagent death is wasteful.
+
+### Implication for v1 mapping
+
+**Confirmed correct as-written.** Plan v2 Task 6's `_DR_STATUS_MAPPING`
+treats `incomplete` as `{"status": "permanent_error", "failure_type":
+"permanent"}` with an explanatory error message. Since the SDK has
+no recovery method, there is no v1.1 wiring opportunity here either —
+this finding may instead trigger a feature request to Google for
+`interactions.continue()` or similar.
+
+### Implication for `requires_action` (§6a + this)
+
+Per §6a, none of three probe configurations elicited `requires_action`.
+Combined with the surface probe here showing no `respond()`/`answer()`
+method on `client.aio.interactions`, v1's `permanent_error` +
+`failure_type="requires_action"` treatment with the "if you see this,
+file a bug" error message is correct. v1.1 may revisit if the SDK
+adds a respond surface.
+
+### Bonus finding
+
+`create()` parameter typing has the literal:
+
+```python
+agent: Union[Literal[
+    'deep-research-pro-preview-12-2025',
+    'deep-research-preview-04-2026',
+    'deep-research-max-preview-04-2026'
+], str]
+```
+
+This confirms §1 (spike): legacy `deep-research-pro-preview-12-2025`
+IS still in the SDK's recognized agent enum, alongside the two new
+tiers. v1 ships the speed-efficiency tier; max + legacy remain
+reachable via mode-config override.
+
+---
+
 ## §7 Interactions-specific error classes
 
 ### Public `google.genai.errors` hierarchy
