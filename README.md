@@ -205,7 +205,10 @@ web_search = false  # set true to enable web_search_preview
 ```
 
 Background-kind modes (e.g. `deep_research`, `quick_research`,
-`exploration`, etc.) continue to use `--project` / `--output-dir` for
+`exploration`, and the Gemini Deep Research modes: `gemini_quick_research`,
+`gemini_exploration`, `gemini_deep_dive`, `gemini_tutorial`,
+`gemini_solution`, `gemini_prd`, `gemini_tdd`, `gemini_deep_research`,
+`gemini_comparison`) continue to use `--project` / `--output-dir` for
 persistent output. `--out` is currently immediate-only.
 
 ### Cancelling a running operation
@@ -419,7 +422,7 @@ parallel = true
 thoth --profile all_deep "compare vector databases"
 ```
 
-> **Gemini support.** The `gemini` provider supports immediate grounded modes such as `gemini_quick`, `gemini_pro`, and `gemini_reasoning`. Gemini does not currently provide a Thoth background/deep-research mode.
+> **Gemini support.** The `gemini` provider supports immediate grounded modes such as `gemini_quick`, `gemini_pro`, and `gemini_reasoning`, plus nine background deep-research modes (`gemini_quick_research`, `gemini_exploration`, `gemini_deep_dive`, `gemini_tutorial`, `gemini_solution`, `gemini_prd`, `gemini_tdd`, `gemini_deep_research`, `gemini_comparison`) added in P28.
 
 #### Use one deep-research provider
 
@@ -563,6 +566,35 @@ thoth "prompt" --provider openai -v
 - Short prompts: 15-30 seconds
 - Deep research: 60-120 seconds
 - Complex analysis: 180+ seconds
+
+### Gemini Deep Research costs (P28)
+
+Gemini Deep Research is a paid-tier feature (Tier 1+ on Google AI Studio).
+Estimated cost per task:
+- `deep-research-preview-04-2026` (default for the 9 `gemini_*_research` modes): **$1–$3 per task**
+- `deep-research-max-preview-04-2026` (deferred to a successor project): **$3–$7 per task**
+
+Both agents are currently in **preview**; pricing and behavior may change.
+The 60-minute hard research-time limit is enforced upstream — if you hit
+this with longer prompts, set `[execution].max_wait = 60` in your config
+(default is 30 minutes).
+
+### Gemini modes (P28)
+
+The 9 background deep-research modes added in P28 each map to the
+`deep-research-preview-04-2026` model via the Gemini Interactions API:
+
+| Mode | Description |
+|---|---|
+| `gemini_quick_research` | Quick Gemini Deep Research — short summary. |
+| `gemini_exploration` | Open-ended exploratory Gemini Deep Research. |
+| `gemini_deep_dive` | In-depth Gemini Deep Research dive. |
+| `gemini_tutorial` | Tutorial-format Gemini Deep Research. |
+| `gemini_solution` | Solution-recommendation Gemini Deep Research. |
+| `gemini_prd` | PRD-format Gemini Deep Research. |
+| `gemini_tdd` | TDD-plan Gemini Deep Research. |
+| `gemini_deep_research` | Exhaustive Gemini Deep Research. |
+| `gemini_comparison` | Comparison-table Gemini Deep Research. |
 
 ## Error Handling
 
