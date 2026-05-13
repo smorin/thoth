@@ -624,6 +624,45 @@ class GeminiProvider(ResearchProvider):
             "last_status": str(getattr(interaction, "status", "in_progress")),
         }
 
+    async def cancel(self, job_id: str) -> dict[str, Any]:
+        """Cancel a job. For DR, calls interactions.cancel; for immediate, no-op.
+
+        Immediate (chat-completion) jobs are already complete by the time submit
+        returns, so cancel is a no-op there. DR jobs run server-side and must
+        be explicitly cancelled via the Interactions API.
+
+        Defensive 5xx handling (Task 8a spike deferred to v1.1):
+        if cancel itself returns a server error, mark cancel_requested
+        locally and report cancelled best-effort. The runtime treats SIGINT
+        as satisfied; check_status will surface the actual server-side
+        state on the next poll.
+        """
+        if job_id not in self.jobs:
+            return {"status": "not_found", "error": f"Unknown job_id: {job_id}"}
+        job = self.jobs[job_id]
+        if job.get("kind") != "deep_research":
+            return {"status": "cancelled"}  # immediate path — already complete
+
+        job["cancel_requested"] = True
+        try:
+            await self.client.aio.interactions.cancel(id=job_id)
+            return {"status": "cancelled"}
+        except Exception as e:
+            # 5xx / network / unknown — treat as best-effort. Map for the error
+            # field but still report cancelled so the runtime's SIGINT path
+            # completes cleanly.
+            if _is_interactions_error(e) and (getattr(e, "status_code", None) or 0) >= 500:
+                return {
+                    "status": "cancelled",
+                    "best_effort": True,
+                    "error": (
+                        f"cancel returned server error "
+                        f"({getattr(e, 'status_code', '?')}); interaction may "
+                        f"still be running. Next check_status will reflect."
+                    ),
+                }
+            raise _map_gemini_error(e, self.model) from e
+
     def _is_dr_job(self, job_id: str) -> bool:
         """Job-id discriminator. DR jobs are stored with kind='deep_research' in self.jobs."""
         job = self.jobs.get(job_id)

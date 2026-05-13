@@ -1792,3 +1792,89 @@ class TestGeminiDeepResearchModes:
             assert entry["provider"] == "gemini"
             assert entry["kind"] == "background"
             assert entry["model"] == "deep-research-preview-04-2026"
+
+
+class TestGeminiCancel:
+    """Task 8: cancel() invokes interactions.cancel for DR jobs (defensive)."""
+
+    def test_cancel_calls_interactions_cancel(self):
+        async def _run():
+            from unittest.mock import AsyncMock, MagicMock
+
+            from thoth.providers.gemini import GeminiProvider
+
+            provider = GeminiProvider(
+                api_key="dummy", config={"model": "deep-research-preview-04-2026"}
+            )
+            provider.jobs["interactions/abc"] = {
+                "kind": "deep_research", "interaction_id": "interactions/abc"
+            }
+            fake_cancel = AsyncMock(return_value=None)
+            provider.client = MagicMock()
+            provider.client.aio.interactions.cancel = fake_cancel
+            result = await provider.cancel("interactions/abc")
+            fake_cancel.assert_awaited_once_with(id="interactions/abc")
+            assert result == {"status": "cancelled"}
+            assert provider.jobs["interactions/abc"]["cancel_requested"] is True
+
+        asyncio.run(_run())
+
+    def test_cancel_5xx_returns_best_effort_cancelled(self):
+        """Per Task 1 spike §6 + Task 8a deferred — cancel may return 5xx.
+        Defensive impl: treat as best-effort, runtime SIGINT path still completes."""
+        async def _run():
+            from unittest.mock import AsyncMock, MagicMock
+
+            import httpx
+            from google.genai._interactions import InternalServerError
+
+            from thoth.providers.gemini import GeminiProvider
+
+            provider = GeminiProvider(
+                api_key="dummy", config={"model": "deep-research-preview-04-2026"}
+            )
+            provider.jobs["interactions/abc"] = {
+                "kind": "deep_research", "interaction_id": "interactions/abc"
+            }
+            req = httpx.Request("POST", "https://example.com")
+            resp = httpx.Response(500, request=req)
+            exc = InternalServerError("cancel failed server-side", response=resp, body=None)
+            fake_cancel = AsyncMock(side_effect=exc)
+            provider.client = MagicMock()
+            provider.client.aio.interactions.cancel = fake_cancel
+            result = await provider.cancel("interactions/abc")
+            # Cancel reports cancelled (best-effort); runtime SIGINT path satisfied.
+            # check_status will surface actual state on next poll.
+            assert result["status"] == "cancelled"
+            assert result.get("best_effort") is True
+            assert provider.jobs["interactions/abc"]["cancel_requested"] is True
+
+        asyncio.run(_run())
+
+    def test_cancel_noop_for_immediate_jobs(self):
+        """Immediate jobs (chat completion) don't support upstream cancel."""
+        async def _run():
+            from unittest.mock import MagicMock
+
+            from thoth.providers.gemini import GeminiProvider
+
+            provider = GeminiProvider(api_key="dummy", config={"model": "gemini-2.5-flash-lite"})
+            provider.jobs["job-imm"] = {"kind": "immediate", "response": MagicMock()}
+            result = await provider.cancel("job-imm")
+            assert result["status"] == "cancelled"
+            # No upstream call
+
+        asyncio.run(_run())
+
+    def test_cancel_unknown_job_id(self):
+        """cancel on unknown id returns not_found."""
+        async def _run():
+            from thoth.providers.gemini import GeminiProvider
+
+            provider = GeminiProvider(
+                api_key="dummy", config={"model": "deep-research-preview-04-2026"}
+            )
+            result = await provider.cancel("interactions/unknown")
+            assert result["status"] == "not_found"
+
+        asyncio.run(_run())
