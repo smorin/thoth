@@ -183,9 +183,11 @@ def test_ext_gem_bg_cancel_synthetic_id_produces_useful_status(
 
     # cancel() is implemented: upstream 404 on synthetic ID → not_found status
     # (NOT upstream_unsupported which would require NotImplementedError).
+    # "cancelled" is also valid: Gemini may return 5xx for a synthetic ID, which
+    # maps to {"status": "cancelled", "best_effort": True}.
     gemini_status = data["providers"]["gemini"]["status"]
-    assert gemini_status in {"not_found", "permanent_error"}, (
-        f"expected not_found or permanent_error for synthetic cancel; got {gemini_status!r}"
+    assert gemini_status in {"not_found", "permanent_error", "cancelled"}, (
+        f"expected not_found, permanent_error, or cancelled for synthetic cancel; got {gemini_status!r}"
     )
     # The provider status must NOT be upstream_unsupported (that would mean cancel() raises
     # NotImplementedError, but cancel IS implemented in P28).
