@@ -1702,6 +1702,50 @@ class TestGeminiDeepResearchGetResult:
 
         asyncio.run(_run())
 
+    def test_dedupes_redirect_urls_before_head_follow(self, monkeypatch):
+        """Same redirect URL across many annotations should be HEAD-followed once."""
+
+        async def _run():
+            from unittest.mock import MagicMock
+
+            from thoth.providers.gemini import GeminiProvider
+
+            provider = GeminiProvider(
+                api_key="dummy", config={"model": "deep-research-preview-04-2026"}
+            )
+            same_url = "https://vertexaisearch.cloud.google.com/grounding-api-redirect/SAME"
+            anns = [
+                MagicMock(
+                    type="url_citation",
+                    title=None,
+                    url=same_url,
+                    start_index=i * 10,
+                    end_index=(i * 10) + 5,
+                )
+                for i in range(5)
+            ]
+            text_item = MagicMock(type="text", text="Body", annotations=anns)
+            model_output_step = MagicMock(type="model_output", content=[text_item])
+            fake_interaction = MagicMock(status="completed", steps=[model_output_step])
+            provider.jobs["interactions/abc"] = {
+                "kind": "deep_research",
+                "interaction_id": "interactions/abc",
+                "last_interaction": fake_interaction,
+            }
+            urls_received_by_resolver: list[list[str]] = []
+
+            async def fake_resolve(urls, **kwargs):
+                urls_received_by_resolver.append(list(urls))
+                return {u: "https://www.usenix.org/paper.pdf" for u in urls}
+
+            monkeypatch.setattr("thoth.providers.gemini._resolve_dr_redirects", fake_resolve)
+            await provider._deep_research_get_result("interactions/abc", False)
+            # Even though 5 annotations have the same URL, the resolver was called with ONE URL
+            assert len(urls_received_by_resolver) == 1
+            assert urls_received_by_resolver[0] == [same_url]
+
+        asyncio.run(_run())
+
 
 class TestGeminiReconnect:
     """Task 9: reconnect() re-attaches DR state after process restart."""
@@ -1807,7 +1851,8 @@ class TestGeminiCancel:
                 api_key="dummy", config={"model": "deep-research-preview-04-2026"}
             )
             provider.jobs["interactions/abc"] = {
-                "kind": "deep_research", "interaction_id": "interactions/abc"
+                "kind": "deep_research",
+                "interaction_id": "interactions/abc",
             }
             fake_cancel = AsyncMock(return_value=None)
             provider.client = MagicMock()
@@ -1822,6 +1867,7 @@ class TestGeminiCancel:
     def test_cancel_5xx_returns_best_effort_cancelled(self):
         """Per Task 1 spike §6 + Task 8a deferred — cancel may return 5xx.
         Defensive impl: treat as best-effort, runtime SIGINT path still completes."""
+
         async def _run():
             from unittest.mock import AsyncMock, MagicMock
 
@@ -1834,7 +1880,8 @@ class TestGeminiCancel:
                 api_key="dummy", config={"model": "deep-research-preview-04-2026"}
             )
             provider.jobs["interactions/abc"] = {
-                "kind": "deep_research", "interaction_id": "interactions/abc"
+                "kind": "deep_research",
+                "interaction_id": "interactions/abc",
             }
             req = httpx.Request("POST", "https://example.com")
             resp = httpx.Response(500, request=req)
@@ -1853,6 +1900,7 @@ class TestGeminiCancel:
 
     def test_cancel_noop_for_immediate_jobs(self):
         """Immediate jobs (chat completion) don't support upstream cancel."""
+
         async def _run():
             from unittest.mock import MagicMock
 
@@ -1868,6 +1916,7 @@ class TestGeminiCancel:
 
     def test_cancel_unknown_job_id_upstream_404_returns_not_found(self):
         """cancel with upstream 404 returns not_found (truly nonexistent ID)."""
+
         async def _run():
             from unittest.mock import AsyncMock, MagicMock
 
@@ -1893,6 +1942,7 @@ class TestGeminiCancel:
 
     def test_cancel_unknown_dr_job_attempts_upstream(self):
         """thoth cancel after process restart: jobs dict is empty but we still try."""
+
         async def _run():
             from unittest.mock import AsyncMock, MagicMock
 

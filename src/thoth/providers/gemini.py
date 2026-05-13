@@ -844,9 +844,13 @@ class GeminiProvider(ResearchProvider):
         parsed_sources = _parse_sdk_sources_block(last_step_text)
 
         # Pass 3: resolve redirect URLs in bounded-concurrency parallel.
-        redirect_urls: list[str] = [
-            u for a in raw_annotations if (u := getattr(a, "url", None)) is not None
-        ]
+        # Dedupe before the HEAD-follow loop — the same grounding redirect URL
+        # can appear many times across annotations. dict.fromkeys preserves
+        # order while removing duplicates; the resolved dict is keyed by URL
+        # anyway so downstream citation assembly already handles per-URL lookup.
+        redirect_urls: list[str] = list(
+            dict.fromkeys(u for a in raw_annotations if (u := getattr(a, "url", None)) is not None)
+        )
         resolved = await _resolve_dr_redirects(redirect_urls) if redirect_urls else {}
 
         # Pass 4: assemble Citation list with title derivation + final URL + dedupe.
