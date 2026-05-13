@@ -245,7 +245,18 @@ class GeminiConfig(ProviderConfigBase):
     added when P28 lands.
     """
 
-    pass
+    poll_interval: int = Field(
+        default=10,
+        description="Seconds between Deep Research interaction.get polls.",
+    )
+    max_wait_minutes: int = Field(
+        default=60,
+        description=(
+            "Max research time before timing out the polling loop. "
+            "Upstream Gemini Deep Research hard-limit is 60 minutes; "
+            "exceeding indicates a server-side stall."
+        ),
+    )
 
 
 class MockConfig(ProviderConfigBase):

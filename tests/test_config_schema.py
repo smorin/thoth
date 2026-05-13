@@ -361,6 +361,17 @@ def test_starter_keys_excludes_advanced_execution_fields() -> None:
     assert not leaked, f"Advanced fields leaked into starter_keys(): {leaked}"
 
 
+def test_gemini_config_has_dr_tunables() -> None:
+    """Task 11: GeminiConfig exposes Deep Research polling tunables."""
+    from thoth.config_schema import GeminiConfig
+
+    cfg = GeminiConfig(api_key="test-key")
+    assert hasattr(cfg, "poll_interval")
+    assert cfg.poll_interval == 10  # default 10s
+    assert hasattr(cfg, "max_wait_minutes")
+    assert cfg.max_wait_minutes == 60  # upstream max research time
+
+
 def test_starter_keys_excludes_clarification_section() -> None:
     """The whole `clarification` section is not shipped (no StarterField anywhere)."""
     from thoth.config_schema import ConfigSchema
