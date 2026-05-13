@@ -1717,7 +1717,9 @@ class TestGeminiReconnect:
             )
             # Cold start: jobs dict empty
             assert "interactions/abc" not in provider.jobs
-            fake_get = AsyncMock(return_value=MagicMock(status="in_progress", id="interactions/abc"))
+            fake_get = AsyncMock(
+                return_value=MagicMock(status="in_progress", id="interactions/abc")
+            )
             # interactions is read-only on AsyncClient — replace provider.client entirely
             provider.client = MagicMock()
             provider.client.aio.interactions.get = fake_get
@@ -1733,6 +1735,7 @@ class TestGeminiReconnect:
 
     def test_reconnect_propagates_mapped_error_on_failure(self):
         """A 404 from interactions.get is mapped via _map_gemini_error."""
+
         async def _run():
             from unittest.mock import AsyncMock, MagicMock
 
@@ -1758,3 +1761,34 @@ class TestGeminiReconnect:
                 assert "interaction" in str(e).lower()
 
         asyncio.run(_run())
+
+
+class TestGeminiDeepResearchModes:
+    """Task 10: 9 gemini_*_research modes are in KNOWN_MODELS."""
+
+    EXPECTED = (
+        "gemini_quick_research",
+        "gemini_exploration",
+        "gemini_deep_dive",
+        "gemini_tutorial",
+        "gemini_solution",
+        "gemini_prd",
+        "gemini_tdd",
+        "gemini_deep_research",
+        "gemini_comparison",
+    )
+
+    def test_all_modes_present(self):
+        from thoth.config import BUILTIN_MODES as KNOWN_MODELS
+
+        for mode in self.EXPECTED:
+            assert mode in KNOWN_MODELS, f"Missing mode {mode!r}"
+
+    def test_all_modes_use_dr_agent_and_background_kind(self):
+        from thoth.config import BUILTIN_MODES as KNOWN_MODELS
+
+        for mode in self.EXPECTED:
+            entry = KNOWN_MODELS[mode]
+            assert entry["provider"] == "gemini"
+            assert entry["kind"] == "background"
+            assert entry["model"] == "deep-research-preview-04-2026"
