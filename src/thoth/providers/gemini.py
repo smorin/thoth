@@ -12,6 +12,7 @@ and the thinking-budget knob.
 from __future__ import annotations
 
 import asyncio
+import re
 import time
 import uuid
 from collections.abc import AsyncIterator
@@ -718,7 +719,84 @@ class GeminiProvider(ResearchProvider):
         return {**mapped, "raw_status": live}
 
     async def _deep_research_get_result(self, job_id: str, verbose: bool = False) -> str:
-        raise NotImplementedError("Implemented in Task 7")
+        """Render the completed DR interaction as markdown text + ## Sources.
+
+        Citation extraction per spike §4 (layered strategy, user-locked 2026-05-12):
+          1. Walk interaction.steps[] looking for step.type='model_output'.
+          2. For each, walk content[].annotations[] to collect URLCitation entries.
+          3. Parse the LAST step's text for the SDK-rendered Sources block (gives
+             domain titles for the Vertex AI redirect URLs).
+          4. Bounded-concurrency HEAD-follow each redirect to extract source URL.
+          5. Render via render_sources_block; link target = source URL when resolved,
+             redirect URL otherwise.
+        """
+        if job_id not in self.jobs:
+            raise ProviderError(_PROVIDER_NAME_GEMINI, f"Unknown job_id: {job_id}")
+        job = self.jobs[job_id]
+        interaction = job.get("last_interaction")
+        if interaction is None:
+            try:
+                interaction = await self.client.aio.interactions.get(id=job_id)
+                job["last_interaction"] = interaction
+            except Exception as e:
+                raise _map_gemini_error(e, self.model, verbose=verbose) from e
+
+        steps = getattr(interaction, "steps", None) or []
+
+        # Pass 1: collect text from all model_output steps + annotations from each.
+        text_parts: list[str] = []
+        raw_annotations: list[Any] = []
+        last_step_text: str | None = None
+        for step in steps:
+            if str(getattr(step, "type", "")) != "model_output":
+                continue
+            content = getattr(step, "content", None) or []
+            for item in content:
+                text = getattr(item, "text", None) or ""
+                if text:
+                    text_parts.append(text)
+                    last_step_text = text  # tracks most-recent rendered text
+                anns = getattr(item, "annotations", None) or []
+                raw_annotations.extend(anns)
+
+        # Pass 2: derive title-lookup map from the SDK-rendered Sources block.
+        parsed_sources = _parse_sdk_sources_block(last_step_text)
+
+        # Pass 3: resolve redirect URLs in bounded-concurrency parallel.
+        redirect_urls: list[str] = [
+            u for a in raw_annotations if (u := getattr(a, "url", None)) is not None
+        ]
+        resolved = await _resolve_dr_redirects(redirect_urls) if redirect_urls else {}
+
+        # Pass 4: assemble Citation list with title derivation + final URL + dedupe.
+        citations: list[Citation] = []
+        seen_final_urls: set[str] = set()
+        for ann in raw_annotations:
+            redirect_url = getattr(ann, "url", None)
+            if not redirect_url:
+                continue
+            resolved_url = resolved.get(redirect_url)
+            final_url = resolved_url or redirect_url
+            if final_url in seen_final_urls:
+                continue
+            seen_final_urls.add(final_url)
+            title = parsed_sources.get(redirect_url)
+            if not title and resolved_url:
+                title = urlparse(resolved_url).netloc or None
+            if not title:
+                title = urlparse(redirect_url).netloc or redirect_url
+            citations.append(Citation(title=str(title), url=str(final_url)))
+
+        answer = "".join(text_parts).strip()
+        if not answer and verbose:
+            debug_print_empty_response(interaction, provider_label="Gemini DR")
+
+        sections: list[str] = []
+        if answer:
+            sections.append(answer)
+        if citations:
+            sections.append(render_sources_block(citations))
+        return "\n\n".join(sections)
 
     @retry(
         stop=stop_after_attempt(3),
@@ -817,3 +895,68 @@ class GeminiProvider(ResearchProvider):
             title = getattr(web, "title", "") or urlparse(url).netloc
             citations.append(Citation(title=str(title), url=str(url)))
         return render_sources_block(citations)
+
+
+# --- DR citation rendering helpers (P28 Task 7) ---
+
+_DR_SOURCES_BLOCK_RE = re.compile(r"\[([^\]]+)\]\(([^)]+)\)")
+_DR_REDIRECT_PREFIXES: tuple[str, ...] = (
+    "https://vertexaisearch.cloud.google.com/grounding-api-redirect/",
+)
+
+
+def _parse_sdk_sources_block(text: str | None) -> dict[str, str]:
+    """Parse the SDK's rendered Sources block into {url: domain_title}.
+
+    The DR SDK's last step typically contains markdown like:
+        [usenix.org](https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZ...)
+    Returns {redirect_url: domain_title}; empty dict on failure / no matches.
+    """
+    if not text:
+        return {}
+    return {url: title for title, url in _DR_SOURCES_BLOCK_RE.findall(text)}
+
+
+def _is_dr_redirect(url: str) -> bool:
+    return any(url.startswith(p) for p in _DR_REDIRECT_PREFIXES)
+
+
+async def _follow_dr_redirect(
+    url: str, *, timeout_s: float = 2.0, client: httpx.AsyncClient | None = None
+) -> str | None:
+    """Follow a Vertex AI grounding redirect to extract the source URL.
+
+    Returns the resolved URL on success, None on any failure (timeout, error,
+    no Location header). Caller falls back to the redirect URL when None.
+    """
+    if not _is_dr_redirect(url):
+        return url
+    owns_client = client is None
+    client = client or httpx.AsyncClient(timeout=timeout_s, follow_redirects=False)
+    try:
+        resp = await client.head(url, follow_redirects=False)
+        location = resp.headers.get("Location") or resp.headers.get("location")
+        return location if location else None
+    except (httpx.RequestError, httpx.HTTPStatusError):
+        return None
+    finally:
+        if owns_client:
+            await client.aclose()
+
+
+async def _resolve_dr_redirects(
+    urls: list[str], *, concurrency: int = 10, timeout_s: float = 2.0
+) -> dict[str, str | None]:
+    """Bounded-concurrency redirect resolution.
+
+    Returns {original_url: resolved_url_or_None}.
+    """
+    sem = asyncio.Semaphore(concurrency)
+
+    async def _one(client: httpx.AsyncClient, u: str) -> tuple[str, str | None]:
+        async with sem:
+            return u, await _follow_dr_redirect(u, timeout_s=timeout_s, client=client)
+
+    async with httpx.AsyncClient(timeout=timeout_s, follow_redirects=False) as client:
+        results = await asyncio.gather(*(_one(client, u) for u in urls))
+    return dict(results)

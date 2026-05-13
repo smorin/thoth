@@ -1529,3 +1529,175 @@ class TestGeminiDeepResearchCheckStatus:
             assert result["status"] == "not_found"
 
         asyncio.run(_run())
+
+
+class TestGeminiDeepResearchGetResult:
+    """Task 7: _deep_research_get_result with layered citation rendering."""
+
+    def test_renders_model_output_text(self):
+        async def _run():
+            from unittest.mock import MagicMock
+
+            from thoth.providers.gemini import GeminiProvider
+
+            provider = GeminiProvider(
+                api_key="dummy", config={"model": "deep-research-preview-04-2026"}
+            )
+            text_item = MagicMock(type="text", text="The three papers are...", annotations=[])
+            model_output_step = MagicMock(type="model_output", content=[text_item])
+            fake_interaction = MagicMock(status="completed", steps=[model_output_step])
+            provider.jobs["interactions/abc"] = {
+                "kind": "deep_research",
+                "interaction_id": "interactions/abc",
+                "last_interaction": fake_interaction,
+            }
+            result = await provider._deep_research_get_result("interactions/abc", False)
+            assert "The three papers are..." in result
+
+        asyncio.run(_run())
+
+    def test_extracts_annotations_from_model_output_step(self, monkeypatch):
+        async def _run():
+            from unittest.mock import MagicMock
+
+            from thoth.providers.gemini import GeminiProvider
+
+            provider = GeminiProvider(
+                api_key="dummy", config={"model": "deep-research-preview-04-2026"}
+            )
+            ann = MagicMock(
+                type="url_citation",
+                title=None,
+                url="https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZ123",
+                start_index=0,
+                end_index=10,
+            )
+            text_item = MagicMock(type="text", text="Body", annotations=[ann])
+            model_output_step = MagicMock(type="model_output", content=[text_item])
+            sources_text = (
+                "**Sources:**\n\n"
+                "- [usenix.org](https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZ123)\n"
+            )
+            sources_item = MagicMock(type="text", text=sources_text, annotations=[])
+            sources_step = MagicMock(type="model_output", content=[sources_item])
+            fake_interaction = MagicMock(
+                status="completed", steps=[model_output_step, sources_step]
+            )
+            provider.jobs["interactions/abc"] = {
+                "kind": "deep_research",
+                "interaction_id": "interactions/abc",
+                "last_interaction": fake_interaction,
+            }
+
+            async def fake_resolve(urls, **kwargs):
+                return {u: "https://www.usenix.org/paper.pdf" for u in urls}
+
+            monkeypatch.setattr("thoth.providers.gemini._resolve_dr_redirects", fake_resolve)
+
+            result = await provider._deep_research_get_result("interactions/abc", False)
+            assert "## Sources" in result
+            assert "usenix.org" in result
+            assert "https://www.usenix.org/paper.pdf" in result
+
+        asyncio.run(_run())
+
+    def test_falls_back_to_redirect_url_when_follow_fails(self, monkeypatch):
+        async def _run():
+            from unittest.mock import MagicMock
+
+            from thoth.providers.gemini import GeminiProvider
+
+            provider = GeminiProvider(
+                api_key="dummy", config={"model": "deep-research-preview-04-2026"}
+            )
+            redirect_url = "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZ123"
+            ann = MagicMock(
+                type="url_citation",
+                title=None,
+                url=redirect_url,
+                start_index=0,
+                end_index=10,
+            )
+            text_item = MagicMock(type="text", text="Body", annotations=[ann])
+            model_output_step = MagicMock(type="model_output", content=[text_item])
+            fake_interaction = MagicMock(status="completed", steps=[model_output_step])
+            provider.jobs["interactions/abc"] = {
+                "kind": "deep_research",
+                "interaction_id": "interactions/abc",
+                "last_interaction": fake_interaction,
+            }
+
+            async def fake_resolve(urls, **kwargs):
+                return {u: None for u in urls}
+
+            monkeypatch.setattr("thoth.providers.gemini._resolve_dr_redirects", fake_resolve)
+
+            result = await provider._deep_research_get_result("interactions/abc", False)
+            assert "## Sources" in result
+            assert redirect_url in result
+
+        asyncio.run(_run())
+
+    def test_no_sources_block_when_no_annotations(self):
+        async def _run():
+            from unittest.mock import MagicMock
+
+            from thoth.providers.gemini import GeminiProvider
+
+            provider = GeminiProvider(
+                api_key="dummy", config={"model": "deep-research-preview-04-2026"}
+            )
+            text_item = MagicMock(type="text", text="Body without sources", annotations=[])
+            model_output_step = MagicMock(type="model_output", content=[text_item])
+            fake_interaction = MagicMock(status="completed", steps=[model_output_step])
+            provider.jobs["interactions/abc"] = {
+                "kind": "deep_research",
+                "interaction_id": "interactions/abc",
+                "last_interaction": fake_interaction,
+            }
+            result = await provider._deep_research_get_result("interactions/abc", False)
+            assert "## Sources" not in result
+
+        asyncio.run(_run())
+
+    def test_dedupes_by_resolved_url(self, monkeypatch):
+        async def _run():
+            from unittest.mock import MagicMock
+
+            from thoth.providers.gemini import GeminiProvider
+
+            provider = GeminiProvider(
+                api_key="dummy", config={"model": "deep-research-preview-04-2026"}
+            )
+            ann1 = MagicMock(
+                type="url_citation",
+                title=None,
+                url="https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZ123",
+                start_index=0,
+                end_index=10,
+            )
+            ann2 = MagicMock(
+                type="url_citation",
+                title=None,
+                url="https://vertexaisearch.cloud.google.com/grounding-api-redirect/BXK456",
+                start_index=20,
+                end_index=30,
+            )
+            text_item = MagicMock(type="text", text="Body", annotations=[ann1, ann2])
+            model_output_step = MagicMock(type="model_output", content=[text_item])
+            fake_interaction = MagicMock(status="completed", steps=[model_output_step])
+            provider.jobs["interactions/abc"] = {
+                "kind": "deep_research",
+                "interaction_id": "interactions/abc",
+                "last_interaction": fake_interaction,
+            }
+
+            async def fake_resolve(urls, **kwargs):
+                return {u: "https://www.usenix.org/paper.pdf" for u in urls}
+
+            monkeypatch.setattr("thoth.providers.gemini._resolve_dr_redirects", fake_resolve)
+
+            result = await provider._deep_research_get_result("interactions/abc", False)
+            assert result.count("https://www.usenix.org/paper.pdf") == 1
+
+        asyncio.run(_run())
