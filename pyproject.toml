@@ -123,11 +123,3 @@ line-ending = "auto"
 skip = ".git,.venv,htmlcov,uv.lock,bun.lock,requirements.txt,archive,planning,research,node_modules"
 ignore-words-list = "thoth,perplexity,sonar,pplx,openai,hel"
 
-[tool.ty.rules]
-# Third-party libraries (notably `google-genai`) expose private submodules
-# such as `google.genai._interactions` whose types are not part of the
-# public stubs ty can resolve. We silence `unresolved-import` project-wide
-# so legitimate imports of these libraries do not require per-line
-# `# type: ignore[import-not-found]` noise. Genuine import typos are still
-# caught by ruff (F401/F811) and the test suite at import time.
-unresolved-import = "ignore"
