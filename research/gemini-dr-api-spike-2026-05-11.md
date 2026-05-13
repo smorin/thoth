@@ -216,6 +216,59 @@ The overscoped task submission may have triggered a server-side error condition 
 
 ---
 
+## §6a `requires_action` trigger conditions (Task 6a spike — 2026-05-13)
+
+**Probes run** (from `spike_dr_requires_action.py`, 5s poll interval, 10-min budget per probe):
+
+1. `tool_code_execution` — submitted with `tools=[{"type":"code_execution"}]`.
+   Final observed status: `in_progress` (10-min budget exhausted before any
+   terminal transition); `requires_action` triggered: **NO**.
+2. `collaborative_planning` — submitted with
+   `agent_config={"type":"deep-research","collaborative_planning": True}`.
+   Final status: `completed` (~16s wall after submit); `requires_action`
+   triggered: **NO**. The collaborative-planning flag did NOT cause the
+   server to pause for plan approval — the agent ran to completion.
+3. `tool_file_search` — submitted with `tools=[{"type":"file_search"}]`.
+   Final status: `completed` (~489s wall after submit); `requires_action`
+   triggered: **NO**.
+
+All three `interactions.create(...)` calls succeeded — neither the `tools`
+parameter nor `agent_config.collaborative_planning` was rejected with a 400.
+This confirms the SDK accepts these knobs, but the server did NOT respond
+with a `requires_action` pause in any of them.
+
+### Captured payload
+
+Not triggered in any probe; the explored configuration space did not elicit
+`requires_action`. No payload was captured. The status remains documented
+only via the SDK's `Literal[...]` type hint (see §5).
+
+### Implication for v1 mapping
+
+**Keep the v1 baseline.** Without an observed `requires_action` payload,
+there is no actionable recovery path to implement. The v1 mapping should
+treat `requires_action` as a permanent terminal failure with
+`failure_type=requires_action` so that:
+
+- Operations halt cleanly when this status appears (no infinite poll).
+- The `failure_type` tag makes the case grep-able in logs and easy to revisit
+  if Gemini documents the recovery path later.
+- A future probe (Task 9 follow-up or a separate spike) can re-investigate
+  if real production traffic ever hits this status — at which point we will
+  have a concrete interaction ID to dump and a clear failure surface.
+
+This matches the §5 mapping table's conservative direction (treat as
+terminal failure rather than continue-polling), preventing indefinite
+polling on an undocumented state.
+
+> **Spend & wall-time note.** 3 probes / 10-min budget per probe. Two
+> probes completed (paid DR runs); one timed out at the poll-budget
+> boundary (the interaction itself kept running server-side after the
+> script stopped polling — Gemini bills for server work, not for our
+> polling). Estimated spend: ~$2-3.
+
+---
+
 ## §7 Interactions-specific error classes
 
 ### Public `google.genai.errors` hierarchy

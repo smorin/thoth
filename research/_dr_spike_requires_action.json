@@ -1,0 +1,46 @@
+[
+  {
+    "label": "tool_code_execution",
+    "interaction_id": "v1_ChZJdk1EYXA4TV9MZi00d19hcV9DZ0FnEhZJdk1EYXA4TV9MZi00d19hcV9DZ0Fn",
+    "transitions": [
+      {
+        "t": 1660921.677642375,
+        "status": "in_progress"
+      }
+    ],
+    "final_status": "in_progress",
+    "captured_payload": null
+  },
+  {
+    "label": "collaborative_planning",
+    "interaction_id": "v1_ChdmUFVEYXRMeUpmQ3ZfdU1QeHJDYW9BdxIXZlBVRGF0THlKZkN2X3VNUHhyQ2FvQXc",
+    "transitions": [
+      {
+        "t": 1661524.331399916,
+        "status": "in_progress"
+      },
+      {
+        "t": 1661540.462581916,
+        "status": "completed"
+      }
+    ],
+    "final_status": "completed",
+    "captured_payload": null
+  },
+  {
+    "label": "tool_file_search",
+    "interaction_id": "v1_ChdrdlVEYW92WElmQ3ZfdU1QMTdDYW9BdxIXa3ZVRGFvdlhJZkN2X3VNUDE3Q2FvQXc",
+    "transitions": [
+      {
+        "t": 1661546.191618291,
+        "status": "in_progress"
+      },
+      {
+        "t": 1662035.620486625,
+        "status": "completed"
+      }
+    ],
+    "final_status": "completed",
+    "captured_payload": null
+  }
+]
