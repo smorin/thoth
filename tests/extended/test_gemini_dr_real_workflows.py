@@ -120,14 +120,25 @@ def test_ext_gem_bg_submit_async_persists_job_id(
     assert checkpoint["providers"]["gemini"]["status"] in {"running", "completed", "in_progress"}
 
 
-def test_ext_gem_bg_cancel_renders_upstream_unsupported(
+def test_ext_gem_bg_cancel_synthetic_id_produces_useful_status(
     live_gemini_env: tuple[dict[str, str], Path],
 ) -> None:
-    """EXT-GEM-BG-CANCEL: thoth cancel surfaces upstream_unsupported correctly.
+    """EXT-GEM-BG-CANCEL: thoth cancel on a synthetic ID surfaces a useful status.
 
-    Gemini's base provider raises NotImplementedError from cancel(); the
-    CLI must render the upstream_unsupported status. This uses a synthetic
-    local checkpoint to avoid the cost of submitting a real Deep Research job.
+    cancel() IS implemented for Gemini DR (P28). This test uses a synthetic local
+    checkpoint with a fake job_id to exercise the cancel path without submitting a
+    real Deep Research job (no API cost beyond the cancel attempt itself).
+
+    Expected behavior with the new cancel() impl:
+      - Fresh provider (no prior jobs dict), seeds a minimal DR entry.
+      - Attempts upstream interactions.cancel on the synthetic ID.
+      - Upstream returns 404 (NotFoundError) → provider returns {"status": "not_found"}.
+      - cancel_operation records "not_found" in providers["gemini"].
+      - Local checkpoint is still marked "cancelled" regardless.
+
+    The key assertion: cancel no longer raises NotImplementedError (no
+    upstream_unsupported), and a useful provider status is surfaced rather
+    than a raw exception.
     """
     env, state_root = live_gemini_env
     operation_id = "research-20260513-120000-aaaaaaaaaaaaaaaa"
@@ -170,11 +181,20 @@ def test_ext_gem_bg_cancel_renders_upstream_unsupported(
     data: dict[str, Any] = envelope["data"]
     assert data["operation_id"] == operation_id
 
-    # Gemini raises NotImplementedError; the runner records upstream_unsupported.
+    # cancel() is implemented: upstream 404 on synthetic ID → not_found status
+    # (NOT upstream_unsupported which would require NotImplementedError).
     gemini_status = data["providers"]["gemini"]["status"]
-    assert gemini_status == "upstream_unsupported"
+    assert gemini_status in {"not_found", "permanent_error"}, (
+        f"expected not_found or permanent_error for synthetic cancel; got {gemini_status!r}"
+    )
+    # The provider status must NOT be upstream_unsupported (that would mean cancel() raises
+    # NotImplementedError, but cancel IS implemented in P28).
+    assert gemini_status != "upstream_unsupported", (
+        "cancel() is implemented for Gemini DR; upstream_unsupported means it raised "
+        "NotImplementedError which is wrong"
+    )
 
-    # Local checkpoint must reflect cancelled regardless of upstream support.
+    # Local checkpoint must reflect cancelled regardless of upstream result.
     checkpoint = json.loads(checkpoint_path(state_root, operation_id).read_text())
     assert checkpoint["status"] == "cancelled"
 
