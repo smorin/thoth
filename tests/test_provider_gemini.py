@@ -1379,3 +1379,56 @@ class TestGeminiJobsSchema:
             job_id = asyncio.run(provider._immediate_submit("x", "gemini_quick", None, False))
         assert provider.jobs[job_id]["kind"] == "immediate"
         assert "response" in provider.jobs[job_id]
+
+
+class TestGeminiDeepResearchSubmit:
+    """Task 5: _deep_research_submit calls client.aio.interactions.create correctly."""
+
+    def test_submit_calls_interactions_create_with_agent_background_store(self):
+        async def _run():
+            import asyncio  # noqa: F401
+            from unittest.mock import AsyncMock, MagicMock
+
+            from thoth.providers.gemini import GeminiProvider
+
+            provider = GeminiProvider(
+                api_key="dummy", config={"model": "deep-research-preview-04-2026"}
+            )
+            fake_create = AsyncMock(return_value=MagicMock(id="interactions/xyz-123"))
+            provider.client = MagicMock()
+            provider.client.aio.interactions.create = fake_create
+            job_id = await provider._deep_research_submit(
+                "Research X", "gemini_deep_research", None, False
+            )
+            fake_create.assert_awaited_once()
+            call_kwargs = fake_create.call_args.kwargs
+            assert call_kwargs["agent"] == "deep-research-preview-04-2026"
+            assert call_kwargs["input"] == "Research X"
+            assert call_kwargs["background"] is True
+            assert call_kwargs["store"] is True
+            assert job_id == "interactions/xyz-123"
+            assert provider.jobs[job_id]["kind"] == "deep_research"
+            assert provider.jobs[job_id]["interaction_id"] == "interactions/xyz-123"
+
+        asyncio.run(_run())
+
+    def test_submit_does_not_cache_response_body(self):
+        """DR submit returns immediately; the response body is not yet available.
+        self.jobs entry must NOT contain a 'response' key (only metadata)."""
+
+        async def _run():
+            from unittest.mock import AsyncMock, MagicMock
+
+            from thoth.providers.gemini import GeminiProvider
+
+            provider = GeminiProvider(
+                api_key="dummy", config={"model": "deep-research-preview-04-2026"}
+            )
+            provider.client = MagicMock()
+            provider.client.aio.interactions.create = AsyncMock(
+                return_value=MagicMock(id="interactions/abc")
+            )
+            job_id = await provider._deep_research_submit("x", "gemini_deep_research", None, False)
+            assert "response" not in provider.jobs[job_id]
+
+        asyncio.run(_run())

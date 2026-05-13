@@ -603,9 +603,59 @@ class GeminiProvider(ResearchProvider):
         return job_id
 
     async def _deep_research_submit(
-        self, prompt: str, mode: str, system_prompt: str | None, verbose: bool
+        self,
+        prompt: str,
+        mode: str,
+        system_prompt: str | None = None,
+        verbose: bool = False,
     ) -> str:
-        raise NotImplementedError("Implemented in Task 5")
+        """Submit a Deep Research interaction; return the interaction id.
+
+        Unlike the immediate path, the response body is NOT yet available — the
+        actual research runs asynchronously and is polled via check_status. The
+        self.jobs entry stores only metadata (kind, interaction_id, submitted_at,
+        mode, model). The response is fetched lazily by _deep_research_get_result.
+
+        Note: system_prompt is ignored on the DR path; the Interactions API for
+        Deep Research does not document a system-instruction parameter, and the
+        mode's system_prompt is implicitly part of the agent's behavior.
+        """
+        self._validate_kind_for_model(mode)
+        try:
+            response = await self._deep_research_submit_with_retry(prompt)
+        except ModeKindMismatchError:
+            raise
+        except Exception as e:
+            raise _map_gemini_error(e, self.model, verbose=verbose) from e
+
+        interaction_id = getattr(response, "id", None)
+        if not interaction_id:
+            raise ProviderError(
+                _PROVIDER_NAME_GEMINI,
+                "interactions.create returned a response without an id",
+            )
+        self.jobs[interaction_id] = {
+            "kind": "deep_research",
+            "interaction_id": interaction_id,
+            "mode": mode,
+            "model": self.model,
+            "submitted_at": time.time(),
+        }
+        return interaction_id
+
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=4, max=10),
+        retry=retry_if_exception(_is_retryable_gemini_exception),
+        reraise=True,
+    )
+    async def _deep_research_submit_with_retry(self, prompt: str) -> Any:
+        return await self.client.aio.interactions.create(
+            agent=self.model,
+            input=prompt,
+            background=True,
+            store=True,
+        )
 
     async def _deep_research_check_status(self, job_id: str) -> dict[str, Any]:
         raise NotImplementedError("Implemented in Task 6")
