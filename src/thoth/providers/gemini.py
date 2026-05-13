@@ -105,6 +105,38 @@ _DIRECT_SDK_KEYS_GEMINI: tuple[str, ...] = (
     "include_thoughts",
 )
 
+# Mapping from Gemini interaction status strings (spike §5) to Thoth provider-
+# status dicts. The 6 SDK-documented values are enumerated here; unknown future
+# values fall through to in_progress (safe — caller will poll again).
+_DR_STATUS_MAPPING: dict[str, dict[str, Any]] = {
+    "in_progress": {"status": "in_progress"},
+    "completed": {"status": "completed"},
+    "cancelled": {"status": "cancelled"},
+    "failed": {"status": "permanent_error", "failure_type": "permanent"},
+    "requires_action": {
+        "status": "permanent_error",
+        "failure_type": "requires_action",
+        "error": (
+            "Gemini interaction is waiting on tool or human approval "
+            "(status='requires_action'). This flow is not supported in "
+            "P28 v1; the 9 gemini_*_research modes do not request tool "
+            "approval. If you see this, please file a bug. See plan v2 "
+            "Task 6a for the follow-up spike investigating trigger conditions."
+        ),
+    },
+    "incomplete": {
+        "status": "permanent_error",
+        "failure_type": "permanent",
+        "error": (
+            "Gemini Deep Research returned status='incomplete' — the run "
+            "finished but output may be truncated. P28 v1 treats this as "
+            "a permanent failure conservatively. Re-run the prompt if the "
+            "report is needed. Plan v2 Task 6b investigates whether refetch "
+            "is possible (may flip this to recoverable in v1.1)."
+        ),
+    },
+}
+
 
 def _is_gemini_quota_exhaustion(message: str, details: list[dict[str, Any]] | None) -> bool:
     """Distinguish quota/credits exhaustion from ordinary rate-limiting on a 429.
@@ -658,7 +690,32 @@ class GeminiProvider(ResearchProvider):
         )
 
     async def _deep_research_check_status(self, job_id: str) -> dict[str, Any]:
-        raise NotImplementedError("Implemented in Task 6")
+        """Poll interactions.get; map Gemini status to Thoth status + failure_type.
+
+        SDK declares 6 statuses (spike §5). v1 mapping is conservative for
+        requires_action and incomplete; Tasks 6a/6b spike + 6c revise.
+        """
+        if job_id not in self.jobs:
+            return {"status": "not_found", "error": f"Unknown job_id: {job_id}"}
+        try:
+            interaction = await self.client.aio.interactions.get(id=job_id)
+        except Exception as e:
+            mapped = _map_gemini_error(e, self.model)
+            if _is_retryable_gemini_exception(e):
+                return {"status": "transient_error", "error": str(mapped)}
+            return {
+                "status": "permanent_error",
+                "failure_type": "permanent",
+                "error": str(mapped),
+            }
+
+        live = str(getattr(interaction, "status", "in_progress"))
+        self.jobs[job_id]["last_status"] = live
+        self.jobs[job_id]["last_interaction"] = interaction
+
+        # Unknown future SDK status values default to in_progress (safe — runtime polls again).
+        mapped = _DR_STATUS_MAPPING.get(live, {"status": "in_progress"})
+        return {**mapped, "raw_status": live}
 
     async def _deep_research_get_result(self, job_id: str, verbose: bool = False) -> str:
         raise NotImplementedError("Implemented in Task 7")

@@ -1432,3 +1432,100 @@ class TestGeminiDeepResearchSubmit:
             assert "response" not in provider.jobs[job_id]
 
         asyncio.run(_run())
+
+
+class TestGeminiDeepResearchCheckStatus:
+    """Task 6: _deep_research_check_status polls interactions.get and maps status."""
+
+    @pytest.mark.parametrize(
+        "live_status,expected_thoth_status,expected_failure_type",
+        [
+            ("in_progress", "in_progress", None),
+            ("requires_action", "permanent_error", "requires_action"),
+            ("completed", "completed", None),
+            ("failed", "permanent_error", "permanent"),
+            ("cancelled", "cancelled", None),
+            ("incomplete", "permanent_error", "permanent"),
+        ],
+    )
+    def test_status_mapping(self, live_status, expected_thoth_status, expected_failure_type):
+        async def _run():
+            from unittest.mock import AsyncMock, MagicMock
+
+            from thoth.providers.gemini import GeminiProvider
+
+            provider = GeminiProvider(
+                api_key="dummy", config={"model": "deep-research-preview-04-2026"}
+            )
+            provider.jobs["interactions/abc"] = {
+                "kind": "deep_research",
+                "interaction_id": "interactions/abc",
+            }
+            fake_get = AsyncMock(return_value=MagicMock(status=live_status))
+            # interactions is read-only on AsyncClient — replace provider.client
+            provider.client = MagicMock()
+            provider.client.aio.interactions.get = fake_get
+            result = await provider._deep_research_check_status("interactions/abc")
+            assert result["status"] == expected_thoth_status
+            if expected_failure_type is None:
+                assert "failure_type" not in result or result["failure_type"] is None
+            else:
+                assert result["failure_type"] == expected_failure_type
+            assert result["raw_status"] == live_status
+
+        asyncio.run(_run())
+
+    def test_requires_action_error_message_explains_v1_unsupported(self):
+        async def _run():
+            from unittest.mock import AsyncMock, MagicMock
+
+            from thoth.providers.gemini import GeminiProvider
+
+            provider = GeminiProvider(
+                api_key="dummy", config={"model": "deep-research-preview-04-2026"}
+            )
+            provider.jobs["interactions/abc"] = {
+                "kind": "deep_research",
+                "interaction_id": "interactions/abc",
+            }
+            fake_get = AsyncMock(return_value=MagicMock(status="requires_action"))
+            provider.client = MagicMock()
+            provider.client.aio.interactions.get = fake_get
+            result = await provider._deep_research_check_status("interactions/abc")
+            assert "requires_action" in result["failure_type"]
+            assert "approval" in result["error"].lower() or "action" in result["error"].lower()
+
+        asyncio.run(_run())
+
+    def test_incomplete_error_message_documents_v1_limitation(self):
+        async def _run():
+            from unittest.mock import AsyncMock, MagicMock
+
+            from thoth.providers.gemini import GeminiProvider
+
+            provider = GeminiProvider(
+                api_key="dummy", config={"model": "deep-research-preview-04-2026"}
+            )
+            provider.jobs["interactions/abc"] = {
+                "kind": "deep_research",
+                "interaction_id": "interactions/abc",
+            }
+            fake_get = AsyncMock(return_value=MagicMock(status="incomplete"))
+            provider.client = MagicMock()
+            provider.client.aio.interactions.get = fake_get
+            result = await provider._deep_research_check_status("interactions/abc")
+            assert "incomplete" in result["error"].lower() or "truncated" in result["error"].lower()
+
+        asyncio.run(_run())
+
+    def test_unknown_job_id(self):
+        async def _run():
+            from thoth.providers.gemini import GeminiProvider
+
+            provider = GeminiProvider(
+                api_key="dummy", config={"model": "deep-research-preview-04-2026"}
+            )
+            result = await provider._deep_research_check_status("interactions/unknown")
+            assert result["status"] == "not_found"
+
+        asyncio.run(_run())
