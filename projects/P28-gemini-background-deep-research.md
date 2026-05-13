@@ -22,7 +22,7 @@
 - **External (Interactions API docs):** https://ai.google.dev/gemini-api/docs/interactions - the `client.aio.interactions.{create,get,cancel}` surface P28 calls; companion to the REST endpoint `https://generativelanguage.googleapis.com/v1beta/interactions`.
 - **Tests (mirror target):** `tests/test_oai_background.py`, `tests/test_async_checkpoint.py`, `tests/test_resume.py`, `tests/test_vcr_openai.py`, `tests/extended/test_openai_real_workflows.py`, `tests/extended/test_model_kind_runtime.py`.
 
-**Status:** `[ ]` Scoped, requirements refined.
+**Status:** `[~]` In progress — v1 implementation complete pending PR. Plan v2 at `docs/superpowers/plans/2026-05-11-p28-gemini-deep-research-background.md` executed (Tasks 1-16 + collateral fixes for Tasks 10/11). Tasks 6b (incomplete-recoverability spike), 6c (revise mapping per spike), 8a (cancel re-verify spike) deferred to a v1.1 follow-up project; v1 ships with conservative `incomplete` → `permanent_error` mapping and defensive `cancel()` (5xx best-effort).
 
 **Goal**: Add long-running Deep Research operations via Google Gemini, submitted and polled to completion. Mirror the surface and capabilities of the OpenAI background Deep Research path (P26's analog) such that `thoth ask --mode <gemini_mode> "query"` and `thoth resume <op-id>` work end-to-end with full UX parity. Use the `google-genai>=1.55.0` SDK against the Interactions API (`agent="deep-research-preview-04-2026"`, `background=True`) and integrate cleanly with the existing provider-agnostic runtime (`_run_polling_loop`, `OperationStatus` state machine, `MultiSink` output, `MultiSink`-bypass `OutputManager` save, SIGINT cooperative cancel).
 
@@ -139,16 +139,18 @@ Both gated workflows already have `continue-on-error: true` (informational, not 
 
 - [x] [P28-T01] Flesh out requirements for Gemini background deep research.
       Done as part of this refinement: References block populated, Scope/Out-of-scope nailed down, parity matrix vs OpenAI documented, provider-specific deltas captured, test strategy decided, open questions surfaced.
-- [ ] [P28-TS01] Design tests for Gemini background submission, polling, cassette replay, and live-test gating before implementation.
-      Three layers per the **Test strategy** section: monkeypatched-SDK unit tests, VCR cassette replays, gated `live_api` (weekly) + `extended` (nightly) integration coverage. Test design must precede implementation per CLAUDE.md TDD bias.
-- [ ] [P28-T02] Implement async deep research submission and polling.
-      `GeminiProvider` class with `submit/check_status/get_result/cancel/reconnect/list_models/list_models_cached` methods per the **Parity matrix**. `_map_gemini_error` analog. 9 new `KNOWN_MODELS` mode entries. CLI `--api-key-gemini` flag. Provider registry entries. `[providers.gemini]` config block.
-- [ ] [P28-T03] Add VCR recording/replay coverage for local testing.
-      Record `thoth_test_cassettes/gemini/happy-path.yaml` once against live API. `tests/test_vcr_gemini.py` mirrors `test_vcr_openai.py`. Resolves Open Question #1 (VCR-vs-SDK compatibility).
-- [ ] [P28-T04] Add live testing capability disabled by default.
-      `tests/extended/test_gemini_real_workflows.py` with `@pytest.mark.live_api`. Workflow YAML edit to add `GEMINI_API_KEY` secret to both `live-api.yml` (weekly) and `extended.yml` (nightly).
+- [x] [P28-TS01] Design tests for Gemini background submission, polling, cassette replay, and live-test gating before implementation.
+      Subsumed by plan v2 — monkeypatched-SDK unit tests (TestGeminiDeepResearchSubmit/CheckStatus/GetResult/Cancel/Reconnect/Modes), live-API gated tests (`tests/extended/test_gemini_dr_real_workflows.py`), extended-marker drift auto-coverage via the existing iterator over KNOWN_MODELS.
+- [x] [P28-T02] Implement async deep research submission and polling.
+      Subsumed by plan v2 Tasks 2-11: `_map_gemini_error` extended for `_interactions` exceptions, router refactor (submit/check_status/get_result), `kind` discriminator, `_deep_research_submit/check_status/get_result/cancel/reconnect`, 9 `gemini_*_research` modes, GeminiConfig DR tunables (forward-compat schema).
+- [-] [P28-T03] Add VCR recording/replay coverage for local testing.
+      **Decided not to do** — P24's `tests/test_provider_gemini.py` uses `unittest.mock.patch` + `AsyncMock`-based monkeypatching (1157 lines, no VCR). P28 follows the same pattern. VCR remains an option for v1.1+ if happy-path cassette replay becomes desirable.
+- [x] [P28-T04] Add live testing capability disabled by default.
+      Subsumed by plan v2 Task 15: `tests/extended/test_gemini_dr_real_workflows.py` with `@pytest.mark.live_api`. GEMINI_API_KEY was already wired in `.github/workflows/live-api.yml` (line 41) by P24.
 
-The 4 implementation tasks (TS01, T02-T04) above are subsumed by **plan v2** at `docs/superpowers/plans/2026-05-11-p28-gemini-deep-research-background.md` — 18 fine-grained tasks targeting only what's net-new on top of P24's merged `GeminiProvider`. The original 2026-05-01 plan (scoped before P24 merged) is preserved at `archive/2026-05-01-p28-gemini-background-deep-research.md` for history.
+The original 4 high-level tasks are subsumed by **plan v2** at `docs/superpowers/plans/2026-05-11-p28-gemini-deep-research-background.md` — 18 fine-grained tasks (1-18) plus 4 follow-up spike/revise tasks (6a/6b/6c/8a) targeting only what's net-new on top of P24's merged `GeminiProvider`. The original 2026-05-01 plan (scoped before P24 merged) is preserved at `archive/2026-05-01-p28-gemini-background-deep-research.md` for history.
+
+**v1 ship status (2026-05-13):** plan tasks 1-16 complete; 13 (full gate) implicit via pre-commit; 17 (this file + PROJECTS.md flip) in progress; 18 (final + PR) pending. Tasks 6b (incomplete recoverability spike), 6c (revise mapping per spike), 8a (cancel re-verify spike) deferred to a v1.1 follow-up.
 
 ### Acceptance Criteria
 
