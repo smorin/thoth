@@ -749,7 +749,7 @@ def cli(
         first = args[0] if args else None
         if interactive or (first in ctx.command.commands if first else False):
             raise click.BadParameter("--pick-model only applies to research runs")
-        if not args and not prompt_opt and not prompt_file:
+        if not args and not prompt_opt and not prompt_file and not input_file:
             raise click.BadParameter("--pick-model only applies to research runs with a prompt")
 
 

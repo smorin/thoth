@@ -78,6 +78,27 @@ def test_input_file_root_matches_prompt_file_kwargs(tmp_path: Path, monkeypatch)
     assert snapshot_pf.get("input_file") is None
 
 
+def test_input_file_root_pick_model_counts_as_prompt_source(tmp_path: Path, monkeypatch):
+    captured = _stub_run_research(monkeypatch)
+    picked = {}
+
+    def fake_pick(models):
+        picked["called"] = True
+        return "gpt-4o-mini"
+
+    monkeypatch.setattr("thoth.interactive_picker.pick_model", fake_pick)
+    f = tmp_path / "p.txt"
+    f.write_text("prompt for model picker")
+
+    r = CliRunner().invoke(cli, ["--input-file", str(f), "--mode", "default", "--pick-model"])
+
+    assert r.exit_code == 0, r.output
+    assert picked.get("called") is True
+    assert captured.get("prompt") == "prompt for model picker"
+    assert captured.get("input_file") is None
+    assert captured.get("model_override") == "gpt-4o-mini"
+
+
 def test_input_file_root_stdin(monkeypatch):
     captured = _stub_run_research(monkeypatch)
     r = CliRunner().invoke(cli, ["--input-file", "-", "default"], input="from stdin")
