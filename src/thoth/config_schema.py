@@ -245,16 +245,34 @@ class GeminiConfig(ProviderConfigBase):
     added when P28 lands.
     """
 
+    # Forward-compat for v1.1: these provider-namespace tunables are
+    # accepted by the schema but NOT yet honored by the runtime polling
+    # loop in v1. The runtime currently reads `[execution].poll_interval`
+    # / `[execution].max_wait` for ALL providers (see src/thoth/run.py
+    # _run_polling_loop). v1.1 will wire per-provider overrides:
+    # `[providers.gemini].poll_interval` / `.max_wait_minutes` will then
+    # take precedence over the global `[execution]` values when polling
+    # a kind="background" Gemini interaction.
+    #
+    # v1 workaround for Gemini DR users who need longer waits: set
+    # `[execution].max_wait = 60` in your config (default is 30 minutes;
+    # upstream Gemini DR hard limit is 60 minutes).
     poll_interval: int = Field(
         default=10,
-        description="Seconds between Deep Research interaction.get polls.",
+        description=(
+            "Seconds between Deep Research interaction.get polls. "
+            "v1: schema-only (runtime uses [execution].poll_interval); "
+            "wired in v1.1."
+        ),
     )
     max_wait_minutes: int = Field(
         default=60,
         description=(
             "Max research time before timing out the polling loop. "
             "Upstream Gemini Deep Research hard-limit is 60 minutes; "
-            "exceeding indicates a server-side stall."
+            "exceeding indicates a server-side stall. "
+            "v1: schema-only (runtime uses [execution].max_wait); "
+            "wired in v1.1."
         ),
     )
 
