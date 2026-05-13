@@ -553,6 +553,34 @@ class GeminiProvider(ResearchProvider):
         system_prompt: str | None = None,
         verbose: bool = False,
     ) -> str:
+        """Route to immediate (chat-completion) or deep-research (interactions) path."""
+        self._validate_kind_for_model(mode)
+        if is_background_model(self.model):
+            return await self._deep_research_submit(prompt, mode, system_prompt, verbose)
+        return await self._immediate_submit(prompt, mode, system_prompt, verbose)
+
+    async def check_status(self, job_id: str) -> dict[str, Any]:
+        if self._is_dr_job(job_id):
+            return await self._deep_research_check_status(job_id)
+        return await self._immediate_check_status(job_id)
+
+    async def get_result(self, job_id: str, verbose: bool = False) -> str:
+        if self._is_dr_job(job_id):
+            return await self._deep_research_get_result(job_id, verbose)
+        return await self._immediate_get_result(job_id, verbose)
+
+    def _is_dr_job(self, job_id: str) -> bool:
+        """Job-id discriminator. DR jobs are stored with kind='deep_research' in self.jobs."""
+        job = self.jobs.get(job_id)
+        return bool(job and job.get("kind") == "deep_research")
+
+    async def _immediate_submit(
+        self,
+        prompt: str,
+        mode: str,
+        system_prompt: str | None = None,
+        verbose: bool = False,
+    ) -> str:
         """One-shot non-stream generate_content. Stashes response under a job_id."""
         self._validate_kind_for_model(mode)
 
@@ -569,6 +597,17 @@ class GeminiProvider(ResearchProvider):
         )
         self.jobs[job_id] = {"response": response, "created_at": time.time()}
         return job_id
+
+    async def _deep_research_submit(
+        self, prompt: str, mode: str, system_prompt: str | None, verbose: bool
+    ) -> str:
+        raise NotImplementedError("Implemented in Task 5")
+
+    async def _deep_research_check_status(self, job_id: str) -> dict[str, Any]:
+        raise NotImplementedError("Implemented in Task 6")
+
+    async def _deep_research_get_result(self, job_id: str, verbose: bool = False) -> str:
+        raise NotImplementedError("Implemented in Task 7")
 
     @retry(
         stop=stop_after_attempt(3),
@@ -599,13 +638,13 @@ class GeminiProvider(ResearchProvider):
             kwargs["config"] = config
         return await self.client.aio.models.generate_content(**kwargs)
 
-    async def check_status(self, job_id: str) -> dict[str, Any]:
+    async def _immediate_check_status(self, job_id: str) -> dict[str, Any]:
         """Return completion status for a previously-submitted job."""
         if job_id not in self.jobs:
             return {"status": "not_found", "error": f"Unknown job_id: {job_id}"}
         return {"status": "completed", "progress": 1.0}
 
-    async def get_result(self, job_id: str, verbose: bool = False) -> str:
+    async def _immediate_get_result(self, job_id: str, verbose: bool = False) -> str:
         """Render the stashed response as text + ## Reasoning + ## Sources."""
         if job_id not in self.jobs:
             raise ProviderError(_PROVIDER_NAME_GEMINI, f"Unknown job_id: {job_id}")

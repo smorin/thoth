@@ -1311,3 +1311,53 @@ class TestMapGeminiErrorInteractionsSpecific:
         exc.status_code = 503
         result = _map_gemini_error(exc, model="deep-research-preview-04-2026")
         assert isinstance(result, ProviderError)
+
+
+class TestGeminiProviderRouting:
+    """Task 3: submit/check_status/get_result route on is_background_model."""
+
+    def test_submit_routes_to_immediate_for_chat_model(self, monkeypatch):
+        import asyncio
+
+        from thoth.providers.gemini import GeminiProvider
+
+        provider = GeminiProvider(api_key="dummy", config={"model": "gemini-2.5-flash-lite"})
+        called = {"immediate": False, "deep_research": False}
+
+        async def fake_immediate(prompt, mode, system_prompt, verbose):
+            called["immediate"] = True
+            return "immediate-job-id"
+
+        async def fake_dr(prompt, mode, system_prompt, verbose):
+            called["deep_research"] = True
+            return "dr-job-id"
+
+        monkeypatch.setattr(provider, "_immediate_submit", fake_immediate)
+        monkeypatch.setattr(provider, "_deep_research_submit", fake_dr)
+        result = asyncio.run(provider.submit("x", "gemini_quick", None, False))
+        assert result == "immediate-job-id"
+        assert called == {"immediate": True, "deep_research": False}
+
+    def test_submit_routes_to_dr_for_deep_research_model(self, monkeypatch):
+        import asyncio
+
+        from thoth.providers.gemini import GeminiProvider
+
+        provider = GeminiProvider(
+            api_key="dummy", config={"model": "deep-research-preview-04-2026"}
+        )
+        called = {"immediate": False, "deep_research": False}
+
+        async def fake_immediate(prompt, mode, system_prompt, verbose):
+            called["immediate"] = True
+            return "immediate-job-id"
+
+        async def fake_dr(prompt, mode, system_prompt, verbose):
+            called["deep_research"] = True
+            return "dr-job-id"
+
+        monkeypatch.setattr(provider, "_immediate_submit", fake_immediate)
+        monkeypatch.setattr(provider, "_deep_research_submit", fake_dr)
+        result = asyncio.run(provider.submit("x", "gemini_deep_research", None, False))
+        assert result == "dr-job-id"
+        assert called == {"immediate": False, "deep_research": True}
