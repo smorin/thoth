@@ -1701,3 +1701,60 @@ class TestGeminiDeepResearchGetResult:
             assert result.count("https://www.usenix.org/paper.pdf") == 1
 
         asyncio.run(_run())
+
+
+class TestGeminiReconnect:
+    """Task 9: reconnect() re-attaches DR state after process restart."""
+
+    def test_reconnect_repopulates_jobs_entry(self):
+        async def _run():
+            from unittest.mock import AsyncMock, MagicMock
+
+            from thoth.providers.gemini import GeminiProvider
+
+            provider = GeminiProvider(
+                api_key="dummy", config={"model": "deep-research-preview-04-2026"}
+            )
+            # Cold start: jobs dict empty
+            assert "interactions/abc" not in provider.jobs
+            fake_get = AsyncMock(return_value=MagicMock(status="in_progress", id="interactions/abc"))
+            # interactions is read-only on AsyncClient — replace provider.client entirely
+            provider.client = MagicMock()
+            provider.client.aio.interactions.get = fake_get
+            await provider.reconnect("interactions/abc")
+            fake_get.assert_awaited_once_with(id="interactions/abc")
+            assert "interactions/abc" in provider.jobs
+            assert provider.jobs["interactions/abc"]["kind"] == "deep_research"
+            assert provider.jobs["interactions/abc"]["interaction_id"] == "interactions/abc"
+            assert provider.jobs["interactions/abc"]["last_status"] == "in_progress"
+            assert provider.jobs["interactions/abc"]["last_interaction"] is not None
+
+        asyncio.run(_run())
+
+    def test_reconnect_propagates_mapped_error_on_failure(self):
+        """A 404 from interactions.get is mapped via _map_gemini_error."""
+        async def _run():
+            from unittest.mock import AsyncMock, MagicMock
+
+            import httpx
+            from google.genai._interactions import NotFoundError
+
+            from thoth.errors import ProviderError
+            from thoth.providers.gemini import GeminiProvider
+
+            provider = GeminiProvider(
+                api_key="dummy", config={"model": "deep-research-preview-04-2026"}
+            )
+            req = httpx.Request("GET", "https://example.com")
+            resp = httpx.Response(404, request=req)
+            exc = NotFoundError("Interaction not found", response=resp, body=None)
+            fake_get = AsyncMock(side_effect=exc)
+            provider.client = MagicMock()
+            provider.client.aio.interactions.get = fake_get
+            try:
+                await provider.reconnect("interactions/expired")
+                raise AssertionError("expected ProviderError")
+            except ProviderError as e:
+                assert "interaction" in str(e).lower()
+
+        asyncio.run(_run())

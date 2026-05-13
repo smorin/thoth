@@ -602,6 +602,28 @@ class GeminiProvider(ResearchProvider):
             return await self._deep_research_get_result(job_id, verbose)
         return await self._immediate_get_result(job_id, verbose)
 
+    async def reconnect(self, job_id: str) -> None:
+        """Re-attach to an existing DR interaction after process restart.
+
+        Called by the runtime's resume_operation flow. Verifies the interaction
+        still exists upstream and seeds self.jobs[job_id] so subsequent
+        check_status / get_result calls work. Immediate jobs cannot be reconnected
+        (their response was lost with the process); they would have been
+        completed before the process ended.
+        """
+        try:
+            interaction = await self.client.aio.interactions.get(id=job_id)
+        except Exception as e:
+            raise _map_gemini_error(e, self.model) from e
+        self.jobs[job_id] = {
+            "kind": "deep_research",
+            "interaction_id": job_id,
+            "model": self.model,
+            "reconnected_at": time.time(),
+            "last_interaction": interaction,
+            "last_status": str(getattr(interaction, "status", "in_progress")),
+        }
+
     def _is_dr_job(self, job_id: str) -> bool:
         """Job-id discriminator. DR jobs are stored with kind='deep_research' in self.jobs."""
         job = self.jobs.get(job_id)
