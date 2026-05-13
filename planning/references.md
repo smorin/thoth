@@ -21,7 +21,7 @@
 - Agents (Deep Research, two-tier as of 2026-05-04):
   - `deep-research-preview-04-2026` — speed/efficiency, default for P28 v1
   - `deep-research-max-preview-04-2026` — max comprehensiveness, deferred to a successor project
-- Legacy (no longer listed): `deep-research-pro-preview-12-2025`
+- Legacy (still listed as of 2026-05-12 spike; P28 v1 does not use it): `deep-research-pro-preview-12-2025`
 - API: Interactions API (`/v1beta/interactions`)
 - Auth header: `x-goog-api-key: $GEMINI_API_KEY`
 

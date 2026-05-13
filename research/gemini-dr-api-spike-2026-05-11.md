@@ -27,7 +27,7 @@ candidate agent IDs:
 
 ## §2 Submit response shape
 
-`spike_dr_submit.py` called `client.aio.interactions.create(agent=AGENT, message=PROMPT)`.
+`spike_dr_submit.py` called `client.aio.interactions.create(agent=AGENT, input=PROMPT)`.
 
 - **Return type**: `google.genai._interactions.types.interaction.Interaction` (Pydantic model)
 - **`interaction.id`** format: `"v1_<base64-url-safe-blob>"` — NOT prefixed with `"interactions/"`.

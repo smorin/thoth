@@ -15,7 +15,7 @@ from google import genai
 CANDIDATES = (
     "deep-research-preview-04-2026",
     "deep-research-max-preview-04-2026",
-    "deep-research-pro-preview-12-2025",  # legacy — must NOT appear
+    "deep-research-pro-preview-12-2025",  # legacy — still listed as of 2026-05-12 spike
 )
 
 
