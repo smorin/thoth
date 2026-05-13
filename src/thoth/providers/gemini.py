@@ -19,13 +19,13 @@ from typing import Any
 from urllib.parse import urlparse
 
 import httpx
-from google.genai import errors as genai_errors  # type: ignore[import-not-found]
+from google.genai import errors as genai_errors
 
 # DR-specific exceptions live in a PRIVATE module (google.genai._interactions)
 # that does NOT inherit from google.genai.errors.APIError. Try-import so we
 # fail loudly today and degrade gracefully if the SDK ever renames the module.
 try:
-    from google.genai._interactions import (  # type: ignore[import-not-found]
+    from google.genai._interactions import (
         GeminiNextGenAPIClientError as _InteractionsAPIError,
     )
 
@@ -334,8 +334,8 @@ class GeminiProvider(ResearchProvider):
         self.jobs: dict[str, dict[str, Any]] = {}
         # Lazy-import google-genai to avoid hard dep at module-load time;
         # also lets the test suite mock the client without paying the import.
-        from google import genai  # type: ignore[import-not-found]
-        from google.genai import types  # type: ignore[import-not-found]
+        from google import genai
+        from google.genai import types
 
         client_kwargs: dict[str, Any] = {"api_key": api_key}
         timeout = (self.config or {}).get("timeout")
@@ -375,7 +375,7 @@ class GeminiProvider(ResearchProvider):
         the final request: `model=`, `contents=contents`,
         `config=GenerateContentConfig(system_instruction=system_instruction, ...)`.
         """
-        from google.genai import types  # type: ignore[import-not-found]
+        from google.genai import types
 
         contents = [types.Content(role="user", parts=[types.Part(text=prompt)])]
         return contents, system_prompt or None
@@ -387,7 +387,7 @@ class GeminiProvider(ResearchProvider):
         Unknown names are silently skipped (forward-compat for future tool
         families).
         """
-        from google.genai import types  # type: ignore[import-not-found]
+        from google.genai import types
 
         tools: list[Any] = []
         for name in tool_names:
@@ -410,7 +410,7 @@ class GeminiProvider(ResearchProvider):
         All other keys in _DIRECT_SDK_KEYS_GEMINI pass through to
         GenerateContentConfig by name.
         """
-        from google.genai import types  # type: ignore[import-not-found]
+        from google.genai import types
 
         gemini_cfg = (self.config or {}).get("gemini") or {}
         if not isinstance(gemini_cfg, dict) or not gemini_cfg:
@@ -468,7 +468,7 @@ class GeminiProvider(ResearchProvider):
         contents, system = self._build_messages_and_system(prompt, system_prompt)
         config = self._build_generate_content_config()
         if system:
-            from google.genai import types  # type: ignore[import-not-found]
+            from google.genai import types
 
             if config is None:
                 config = types.GenerateContentConfig(system_instruction=system)
@@ -587,7 +587,7 @@ class GeminiProvider(ResearchProvider):
         contents, system = self._build_messages_and_system(prompt, system_prompt)
         config = self._build_generate_content_config()
         if system:
-            from google.genai import types  # type: ignore[import-not-found]
+            from google.genai import types
 
             if config is None:
                 config = types.GenerateContentConfig(system_instruction=system)
