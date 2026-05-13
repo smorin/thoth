@@ -1219,7 +1219,84 @@ class TestMapGeminiErrorInteractionsSpecific:
         )
         result = _map_gemini_error(exc, model="deep-research-preview-04-2026")
         assert isinstance(result, ProviderError)
-        assert "server" in str(result).lower() or "5xx" in str(result).lower()
+        assert "server" in str(result).lower()
+
+    def test_interactions_429_produces_rate_limit_error(self):
+        """interactions.* 429 maps to APIRateLimitError."""
+        import httpx
+        from google.genai._interactions import RateLimitError  # type: ignore[import-not-found]
+
+        from thoth.errors import APIRateLimitError
+        from thoth.providers.gemini import _map_gemini_error
+
+        req = httpx.Request("POST", "https://example.com")
+        resp = httpx.Response(429, request=req)
+        exc = RateLimitError("rate limited", response=resp, body=None)
+        result = _map_gemini_error(exc, model="deep-research-preview-04-2026")
+        assert isinstance(result, APIRateLimitError)
+
+    def test_interactions_403_dr_tier_gives_pricing_hint(self):
+        """403 with tier/paid wording AND a deep-research model surfaces pricing URL."""
+        import httpx
+        from google.genai._interactions import (
+            PermissionDeniedError,  # type: ignore[import-not-found]
+        )
+
+        from thoth.errors import ProviderError
+        from thoth.providers.gemini import _map_gemini_error
+
+        req = httpx.Request("POST", "https://example.com")
+        resp = httpx.Response(403, request=req)
+        exc = PermissionDeniedError("Deep Research requires paid tier", response=resp, body=None)
+        result = _map_gemini_error(exc, model="deep-research-preview-04-2026")
+        assert isinstance(result, ProviderError)
+        assert "pricing" in str(result).lower() or "ai.google.dev" in str(result)
+
+    def test_interactions_403_non_dr_model_no_pricing_hint(self):
+        """403 on a non-DR model gives a plain permission-denied (no pricing URL)."""
+        import httpx
+        from google.genai._interactions import (
+            PermissionDeniedError,  # type: ignore[import-not-found]
+        )
+
+        from thoth.providers.gemini import _map_gemini_error
+
+        req = httpx.Request("POST", "https://example.com")
+        resp = httpx.Response(403, request=req)
+        exc = PermissionDeniedError("forbidden", response=resp, body=None)
+        result = _map_gemini_error(exc, model="gemini-2.5-flash-lite")
+        assert "permission denied" in str(result).lower()
+        assert "ai.google.dev/pricing" not in str(result)
+
+    def test_interactions_401_invalid_key_produces_api_key_error(self):
+        """401 with key-related message routes via _invalid_key_thotherror or APIKeyError."""
+        import httpx
+        from google.genai._interactions import AuthenticationError  # type: ignore[import-not-found]
+
+        from thoth.errors import APIKeyError, ThothError
+        from thoth.providers.gemini import _map_gemini_error
+
+        req = httpx.Request("POST", "https://example.com")
+        resp = httpx.Response(401, request=req)
+        exc = AuthenticationError("api key not valid", response=resp, body=None)
+        result = _map_gemini_error(exc, model="deep-research-preview-04-2026")
+        assert isinstance(result, (APIKeyError, ThothError))
+        if not isinstance(result, APIKeyError):
+            assert "aistudio.google.com" in getattr(result, "suggestion", "")
+
+    def test_interactions_401_generic_gives_api_key_error(self):
+        """401 without key-phrase routes to APIKeyError."""
+        import httpx
+        from google.genai._interactions import AuthenticationError  # type: ignore[import-not-found]
+
+        from thoth.errors import APIKeyError
+        from thoth.providers.gemini import _map_gemini_error
+
+        req = httpx.Request("POST", "https://example.com")
+        resp = httpx.Response(401, request=req)
+        exc = AuthenticationError("unauthorized", response=resp, body=None)
+        result = _map_gemini_error(exc, model="deep-research-preview-04-2026")
+        assert isinstance(result, APIKeyError)
 
     def test_duck_type_fallback_when_isinstance_misses(self, monkeypatch):
         """If _InteractionsAPIError isinstance check fails, duck-type still catches."""

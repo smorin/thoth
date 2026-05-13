@@ -142,6 +142,13 @@ def _map_gemini_error(exc: Exception, model: str | None, verbose: bool = False) 
         message = getattr(exc, "message", None) or str(exc) or ""
         msg_lower = message.lower()
 
+        if status_code is None:
+            # Connection/timeout errors in the _interactions hierarchy have no status_code.
+            return ProviderError(
+                _PROVIDER_NAME_GEMINI,
+                f"Network error reaching the Gemini Deep Research API: {message}",
+            )
+
         if status_code == 400:
             if any(p in msg_lower for p in _INVALID_KEY_PHRASES_GEMINI):
                 return _invalid_key_thotherror(
@@ -149,6 +156,14 @@ def _map_gemini_error(exc: Exception, model: str | None, verbose: bool = False) 
                     "https://aistudio.google.com/app/apikey",
                 )
             return ProviderError(_PROVIDER_NAME_GEMINI, f"Bad request: {message}")
+
+        if status_code == 401:
+            if any(p in msg_lower for p in _INVALID_KEY_PHRASES_GEMINI):
+                return _invalid_key_thotherror(
+                    "Gemini",
+                    "https://aistudio.google.com/app/apikey",
+                )
+            return APIKeyError(_PROVIDER_NAME_GEMINI)
 
         if status_code == 404:
             return ProviderError(
