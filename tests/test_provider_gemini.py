@@ -1361,3 +1361,21 @@ class TestGeminiProviderRouting:
         result = asyncio.run(provider.submit("x", "gemini_deep_research", None, False))
         assert result == "dr-job-id"
         assert called == {"immediate": False, "deep_research": True}
+
+
+class TestGeminiJobsSchema:
+    """Task 4: self.jobs entries have a 'kind' discriminator."""
+
+    def test_immediate_submit_stashes_kind_immediate(self):
+        import asyncio
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        from thoth.providers.gemini import GeminiProvider
+
+        provider = GeminiProvider(api_key="dummy", config={"model": "gemini-2.5-flash-lite"})
+        fake_response = MagicMock(id="fake-resp-id")
+        with patch.object(provider, "_submit_with_retry", new_callable=AsyncMock) as m:
+            m.return_value = fake_response
+            job_id = asyncio.run(provider._immediate_submit("x", "gemini_quick", None, False))
+        assert provider.jobs[job_id]["kind"] == "immediate"
+        assert "response" in provider.jobs[job_id]

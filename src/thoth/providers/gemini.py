@@ -595,7 +595,11 @@ class GeminiProvider(ResearchProvider):
             getattr(response, "id", None)
             or f"gemini-{time.strftime('%Y%m%d%H%M%S')}-{uuid.uuid4().hex[:8]}"
         )
-        self.jobs[job_id] = {"response": response, "created_at": time.time()}
+        self.jobs[job_id] = {
+            "kind": "immediate",
+            "response": response,
+            "created_at": time.time(),
+        }
         return job_id
 
     async def _deep_research_submit(
