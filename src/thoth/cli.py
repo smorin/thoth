@@ -196,6 +196,54 @@ def _config_default_project(config: ConfigManager) -> str | None:
     return str(raw) if raw else None
 
 
+def _has_positional_prompt(args: list[str], ctx: click.Context | None = None) -> bool:
+    """Return True if `args` carry prompt text (not just a mode word or subcommand)."""
+    if not args:
+        return False
+    first = args[0]
+    if first in _thoth_config.BUILTIN_MODES:
+        return len(args) > 1
+    if ctx is not None and first in getattr(ctx.command, "commands", {}):
+        return False
+    return True
+
+
+def _normalize_input_file_alias(
+    args: list[str],
+    opts: dict,
+    *,
+    ctx: click.Context | None = None,
+) -> None:
+    """P24-T25: rewrite `--input-file` to `--prompt-file` as a backward-compat alias.
+
+    Raises BadParameter on collisions with any other prompt source. After
+    rewrite, `opts["input_file"]` is cleared so the path is not propagated
+    into `OperationStatus.input_files` (and thus not into checkpoint or
+    output metadata).
+    """
+    input_file = opts.get("input_file")
+    if not input_file:
+        return
+    if opts.get("prompt_file"):
+        raise click.BadParameter(
+            "Cannot use --input-file with --prompt-file (--input-file is a deprecated alias)",
+            param_hint="--input-file",
+        )
+    if opts.get("prompt_opt"):
+        raise click.BadParameter(
+            "Cannot use --input-file with --prompt (--input-file is a deprecated alias)",
+            param_hint="--input-file",
+        )
+    if _has_positional_prompt(args, ctx):
+        raise click.BadParameter(
+            "Cannot use --input-file with positional prompt argument "
+            "(--input-file is a deprecated alias)",
+            param_hint="--input-file",
+        )
+    opts["prompt_file"] = input_file
+    opts["input_file"] = None
+
+
 def _resolve_mode_and_prompt(
     args: list[str],
     opts: dict,
@@ -419,6 +467,7 @@ def _dispatch_click_fallback(
     _invoke_group_callback(ctx)
     opts = ctx.obj or {}
     args, opts = _extract_fallback_options(args, opts)
+    _normalize_input_file_alias(args, opts, ctx=ctx)
     _apply_config_path(opts.get("config_path"))
 
     if opts.get("model") and opts.get("pick_model"):
@@ -677,11 +726,11 @@ def cli(
     # the @click.group. If a subcommand later takes ownership of one of
     # these flags, move the corresponding check to that subcommand's
     # callback.
+    # --input-file is a deprecated alias for --prompt-file (see
+    # `_normalize_input_file_alias`); its mutex checks fire at the
+    # dispatch sites, not here.
     if prompt_file and prompt_opt:
         raise click.BadParameter("Cannot use --prompt-file with --prompt")
-
-    if input_file and auto:
-        raise click.BadParameter("Cannot use --input-file with --auto")
 
     # Q5-A row 7: --clarify is meaningful only inside --interactive.
     if clarify and not interactive:
@@ -700,7 +749,7 @@ def cli(
         first = args[0] if args else None
         if interactive or (first in ctx.command.commands if first else False):
             raise click.BadParameter("--pick-model only applies to research runs")
-        if not args and not prompt_opt and not prompt_file:
+        if not args and not prompt_opt and not prompt_file and not input_file:
             raise click.BadParameter("--pick-model only applies to research runs with a prompt")
 
 

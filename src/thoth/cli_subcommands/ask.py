@@ -90,6 +90,30 @@ def ask(
     inherited_prompt_file = inherited_value(ctx, "prompt_file")
     effective_prompt_opt = prompt_opt if prompt_opt is not None else inherited_prompt_opt
     effective_prompt_file = prompt_file if prompt_file is not None else inherited_prompt_file
+    effective_input_file = pick_value(input_file, ctx, "input_file")
+
+    # --input-file is a backward-compat alias for --prompt-file. Mutex
+    # vs other prompt sources, then rewrite so it never reaches
+    # OperationStatus.input_files.
+    if effective_input_file:
+        if positional:
+            raise click.BadParameter(
+                "Cannot use --input-file with positional prompt argument "
+                "(--input-file is a deprecated alias)",
+                param_hint="--input-file",
+            )
+        if effective_prompt_opt:
+            raise click.BadParameter(
+                "Cannot use --input-file with --prompt (--input-file is a deprecated alias)",
+                param_hint="--input-file",
+            )
+        if effective_prompt_file:
+            raise click.BadParameter(
+                "Cannot use --input-file with --prompt-file (--input-file is a deprecated alias)",
+                param_hint="--input-file",
+            )
+        effective_prompt_file = effective_input_file
+        effective_input_file = None
 
     # Q7-B + Q3-C mutex: positional vs --prompt vs --prompt-file
     if positional and effective_prompt_opt:
@@ -140,7 +164,6 @@ def ask(
 
     effective_provider = pick_value(provider, ctx, "provider")
     effective_output_dir = pick_value(output_dir, ctx, "output_dir")
-    effective_input_file = pick_value(input_file, ctx, "input_file")
     effective_async = bool(async_mode or inherited.get("async_mode"))
     effective_auto = bool(auto or inherited.get("auto"))
     effective_verbose = bool(verbose or inherited.get("verbose"))

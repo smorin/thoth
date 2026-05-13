@@ -2267,11 +2267,10 @@ all_tests = [
     ),
     TestCase(
         test_id="BG-07",
-        description="Background mode records --input-file in output metadata",
+        description="Background mode reads --input-file as the prompt (alias) and omits input_files metadata",
         command=[
             THOTH_EXECUTABLE,
             "deep_research",
-            "background input file",
             "--provider",
             "mock",
             "--input-file",
@@ -2282,12 +2281,11 @@ all_tests = [
         expected_files=["*_mock_*.md"],
         expected_file_content_patterns={
             "*_mock_*.md": [
-                r"Prompt: background input file",
+                r"Prompt: background input file content",
                 r"Mode: deep_research",
-                r"input_files:",
-                r"input\.md",
             ]
         },
+        not_expected_file_content_patterns={"*_mock_*.md": [r"input_files:"]},
         cleanup_files=["*_mock_*.md"],
         expected_exit_code=0,
         provider="mock",

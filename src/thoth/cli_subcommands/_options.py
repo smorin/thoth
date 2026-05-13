@@ -47,8 +47,9 @@ _RESEARCH_OPTIONS: list[tuple[tuple, dict]] = [
         ("--input-file",),
         {
             "help": (
-                "Use the file at PATH as input for this mode. Use when feeding a "
-                "non-thoth document, an older run, or a file from a different project."
+                "Deprecated alias for --prompt-file. PATH is read as the prompt "
+                "(use - for stdin); mutually exclusive with positional prompt, "
+                "--prompt, and --prompt-file. Prefer --prompt-file."
             ),
         },
     ),
