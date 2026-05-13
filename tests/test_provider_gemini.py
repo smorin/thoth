@@ -1866,15 +1866,49 @@ class TestGeminiCancel:
 
         asyncio.run(_run())
 
-    def test_cancel_unknown_job_id(self):
-        """cancel on unknown id returns not_found."""
+    def test_cancel_unknown_job_id_upstream_404_returns_not_found(self):
+        """cancel with upstream 404 returns not_found (truly nonexistent ID)."""
         async def _run():
+            from unittest.mock import AsyncMock, MagicMock
+
+            import httpx
+            from google.genai._interactions import NotFoundError
+
             from thoth.providers.gemini import GeminiProvider
 
             provider = GeminiProvider(
                 api_key="dummy", config={"model": "deep-research-preview-04-2026"}
             )
+            req = httpx.Request("POST", "https://example.com")
+            resp = httpx.Response(404, request=req)
+            exc = NotFoundError("interaction not found", response=resp, body=None)
+            fake_cancel = AsyncMock(side_effect=exc)
+            provider.client = MagicMock()
+            provider.client.aio.interactions.cancel = fake_cancel
             result = await provider.cancel("interactions/unknown")
+            fake_cancel.assert_awaited_once_with(id="interactions/unknown")
             assert result["status"] == "not_found"
+
+        asyncio.run(_run())
+
+    def test_cancel_unknown_dr_job_attempts_upstream(self):
+        """thoth cancel after process restart: jobs dict is empty but we still try."""
+        async def _run():
+            from unittest.mock import AsyncMock, MagicMock
+
+            from thoth.providers.gemini import GeminiProvider
+
+            provider = GeminiProvider(
+                api_key="dummy", config={"model": "deep-research-preview-04-2026"}
+            )
+            # No prior submit/reconnect — jobs dict empty (post-restart scenario).
+            assert "interactions/restarted" not in provider.jobs
+            fake_cancel = AsyncMock(return_value=None)
+            provider.client = MagicMock()
+            provider.client.aio.interactions.cancel = fake_cancel
+            result = await provider.cancel("interactions/restarted")
+            # The upstream call WAS attempted (not short-circuited to not_found)
+            fake_cancel.assert_awaited_once_with(id="interactions/restarted")
+            assert result["status"] == "cancelled"
 
         asyncio.run(_run())

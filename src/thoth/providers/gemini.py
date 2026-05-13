@@ -631,6 +631,13 @@ class GeminiProvider(ResearchProvider):
         returns, so cancel is a no-op there. DR jobs run server-side and must
         be explicitly cancelled via the Interactions API.
 
+        Post-restart resilience: `thoth cancel` instantiates a fresh provider
+        with an empty self.jobs dict. If job_id is unknown (post-restart), seed a
+        minimal DR entry and attempt the upstream cancel anyway. Let the upstream
+        404 response discriminate truly-nonexistent IDs — do NOT short-circuit to
+        not_found based on local state alone. Mirrors OpenAI's cancel() pattern
+        (src/thoth/providers/openai.py: attempt reconnect first, then cancel).
+
         Defensive 5xx handling (Task 8a spike deferred to v1.1):
         if cancel itself returns a server error, mark cancel_requested
         locally and report cancelled best-effort. The runtime treats SIGINT
@@ -638,7 +645,14 @@ class GeminiProvider(ResearchProvider):
         state on the next poll.
         """
         if job_id not in self.jobs:
-            return {"status": "not_found", "error": f"Unknown job_id: {job_id}"}
+            # Seed a minimal DR entry so the upstream cancel can proceed.
+            # This covers the post-process-restart case where self.jobs is empty.
+            self.jobs[job_id] = {
+                "kind": "deep_research",
+                "interaction_id": job_id,
+                "model": self.model,
+                "cancel_requested": True,
+            }
         job = self.jobs[job_id]
         if job.get("kind") != "deep_research":
             return {"status": "cancelled"}  # immediate path — already complete
@@ -648,19 +662,25 @@ class GeminiProvider(ResearchProvider):
             await self.client.aio.interactions.cancel(id=job_id)
             return {"status": "cancelled"}
         except Exception as e:
-            # 5xx / network / unknown — treat as best-effort. Map for the error
-            # field but still report cancelled so the runtime's SIGINT path
-            # completes cleanly.
-            if _is_interactions_error(e) and (getattr(e, "status_code", None) or 0) >= 500:
-                return {
-                    "status": "cancelled",
-                    "best_effort": True,
-                    "error": (
-                        f"cancel returned server error "
-                        f"({getattr(e, 'status_code', '?')}); interaction may "
-                        f"still be running. Next check_status will reflect."
-                    ),
-                }
+            if _is_interactions_error(e):
+                sc = getattr(e, "status_code", None) or 0
+                if sc == 404:
+                    return {
+                        "status": "not_found",
+                        "error": f"Interaction not found or expired: {job_id}",
+                    }
+                if sc >= 500:
+                    # 5xx / network — treat as best-effort. Runtime SIGINT path completes;
+                    # check_status will surface actual server-side state on next poll.
+                    return {
+                        "status": "cancelled",
+                        "best_effort": True,
+                        "error": (
+                            f"cancel returned server error "
+                            f"({sc}); interaction may "
+                            f"still be running. Next check_status will reflect."
+                        ),
+                    }
             raise _map_gemini_error(e, self.model) from e
 
     def _is_dr_job(self, job_id: str) -> bool:
