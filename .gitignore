@@ -51,6 +51,9 @@ research-outputs/
 ~/.doxa-research/checkpoints/
 *.md
 openai.env
+
+# Local credentials — copy from .pypirc.template and fill in tokens
+.pypirc
 !README.md
 !CHANGELOG.md
 !CONTRIBUTING.md

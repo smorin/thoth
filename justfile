@@ -211,6 +211,65 @@ publish-test:
 publish:
     uv publish
 
+# ─── Release (Manual / .pypirc fallback) ─────────────────────────────
+# Fallback path for when OIDC trusted publishing is unavailable (CI down,
+# hot-fix from laptop). Primary path is `just publish` / `just publish-test`.
+# Requires `.pypirc` (copy from `.pypirc.template`, chmod 600) with API
+# tokens. `uv publish` is used (not twine); tokens are parsed from `.pypirc`
+# and passed via `--token`.
+
+# Verify .pypirc exists and is locked to mode 0600
+[group: 'release-manual']
+check-pypirc:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ ! -f .pypirc ]; then
+        echo "ERROR: .pypirc not found."
+        echo ""
+        echo "Create it from the template, then fill in your tokens:"
+        echo "  cp .pypirc.template .pypirc"
+        echo "  chmod 600 .pypirc"
+        echo "  \$EDITOR .pypirc"
+        echo ""
+        echo "PyPI tokens:     https://pypi.org/manage/account/token/"
+        echo "TestPyPI tokens: https://test.pypi.org/manage/account/token/"
+        exit 1
+    fi
+    perms=$(stat -f '%A' .pypirc 2>/dev/null || stat -c '%a' .pypirc 2>/dev/null)
+    if [ "$perms" != "600" ]; then
+        echo "ERROR: .pypirc has insecure permissions ($perms)."
+        echo "Run: chmod 600 .pypirc"
+        exit 1
+    fi
+
+# Manually publish to PyPI using token from .pypirc (uv publish)
+[group: 'release-manual']
+publish-manual: check-pypirc
+    #!/usr/bin/env bash
+    set -euo pipefail
+    token=$(python3 -c "import configparser,sys; c=configparser.ConfigParser(); c.read('.pypirc'); print(c['pypi']['password'])")
+    if [ -z "$token" ] || [ "$token" = "REPLACE_WITH_PYPI_TOKEN" ]; then
+        echo "ERROR: PyPI token not set in .pypirc [pypi] section."
+        exit 1
+    fi
+    rm -rf dist/
+    uv build
+    uv publish --token "$token"
+
+# Manually publish to TestPyPI using token from .pypirc (uv publish)
+[group: 'release-manual']
+publish-test-manual: check-pypirc
+    #!/usr/bin/env bash
+    set -euo pipefail
+    token=$(python3 -c "import configparser,sys; c=configparser.ConfigParser(); c.read('.pypirc'); print(c['testpypi']['password'])")
+    if [ -z "$token" ] || [ "$token" = "REPLACE_WITH_TESTPYPI_TOKEN" ]; then
+        echo "ERROR: TestPyPI token not set in .pypirc [testpypi] section."
+        exit 1
+    fi
+    rm -rf dist/
+    uv build
+    uv publish --publish-url https://test.pypi.org/legacy/ --token "$token"
+
 # ─── Dev ──────────────────────────────────────────────────────────────
 
 # Show doxa help

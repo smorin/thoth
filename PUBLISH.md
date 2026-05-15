@@ -138,3 +138,46 @@ To publish manually (requires API token):
 ```bash
 uv publish --token pypi-...
 ```
+
+---
+
+## Manual Fallback (uv + `.pypirc`)
+
+Use this path only when OIDC trusted publishing is unavailable (CI down,
+release-please blocked, urgent laptop publish). The primary path remains
+release-please → `publish.yml`.
+
+### One-time setup
+
+1. Create your tokens (if you don't already have them):
+   - PyPI:     https://pypi.org/manage/account/token/
+   - TestPyPI: https://test.pypi.org/manage/account/token/
+2. Copy the template and fill in tokens:
+   ```bash
+   cp .pypirc.template .pypirc
+   chmod 600 .pypirc
+   $EDITOR .pypirc
+   ```
+   `.pypirc` is gitignored. The `check-pypirc` recipe enforces mode `0600`
+   and refuses to publish otherwise.
+
+### Publish
+
+```bash
+# Dry run / sanity: TestPyPI
+just publish-test-manual
+
+# Real release: PyPI
+just publish-manual
+```
+
+Both recipes:
+1. Run `check-pypirc` (existence + perms guard).
+2. Parse the matching token out of `.pypirc` with Python `configparser`.
+3. `rm -rf dist/` then `uv build` (clean wheel + sdist).
+4. `uv publish --token <token>` (TestPyPI uses `--publish-url
+   https://test.pypi.org/legacy/`).
+
+Tokens never appear on the command line as literals — they're read from
+`.pypirc` and passed to `uv publish` via `--token`. `uv publish` is used
+(not `twine`) for tool-stack consistency with the OIDC path.
