@@ -44,10 +44,14 @@ def test_workflow_passes_gemini_api_key(workflow: str) -> None:
 
 
 def test_gemini_models_in_known_models_registry() -> None:
-    """P24: GeminiProvider's immediate models appear in KNOWN_MODELS.
+    """Gemini built-in modes appear in KNOWN_MODELS.
 
-    The 3 Gemini built-in modes auto-derive into KNOWN_MODELS via
+    P24 introduced 3 immediate modes (gemini_quick, gemini_pro,
+    gemini_reasoning) that auto-derive into KNOWN_MODELS via
     `derive_known_models()` from BUILTIN_MODES (per P23-T09 precedent).
+    P28 (Task 10) adds 9 background Deep Research modes (gemini_*_research +
+    gemini_exploration / deep_dive / tutorial / solution / prd / tdd /
+    comparison) — these also auto-derive.
     """
     from thoth.config import BUILTIN_MODES
     from thoth.models import KNOWN_MODELS
@@ -55,13 +59,28 @@ def test_gemini_models_in_known_models_registry() -> None:
     gemini_built_ins = {
         mode for mode, cfg in BUILTIN_MODES.items() if cfg.get("provider") == "gemini"
     }
-    assert gemini_built_ins == {"gemini_quick", "gemini_pro", "gemini_reasoning"}
+    # P24 immediate modes
+    p24_immediate = {"gemini_quick", "gemini_pro", "gemini_reasoning"}
+    # P28 background DR modes (Task 10)
+    p28_background = {
+        "gemini_quick_research",
+        "gemini_exploration",
+        "gemini_deep_dive",
+        "gemini_tutorial",
+        "gemini_solution",
+        "gemini_prd",
+        "gemini_tdd",
+        "gemini_deep_research",
+        "gemini_comparison",
+    }
+    assert gemini_built_ins == p24_immediate | p28_background
 
     gemini_model_ids = {m.id for m in KNOWN_MODELS if m.provider == "gemini"}
-    # Two distinct model ids back the three modes (quick uses flash-lite;
-    # pro and reasoning share gemini-2.5-pro).
+    # P24 immediate models: quick uses flash-lite; pro/reasoning share gemini-2.5-pro.
     assert "gemini-2.5-flash-lite" in gemini_model_ids
     assert "gemini-2.5-pro" in gemini_model_ids
+    # P28 DR agent (v1 ships speed-efficiency tier only).
+    assert "deep-research-preview-04-2026" in gemini_model_ids
 
 
 def test_extended_runtime_check_supports_gemini_keys() -> None:

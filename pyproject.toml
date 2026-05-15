@@ -122,3 +122,4 @@ line-ending = "auto"
 [tool.codespell]
 skip = ".git,.venv,htmlcov,uv.lock,bun.lock,requirements.txt,archive,planning,research,node_modules"
 ignore-words-list = "thoth,perplexity,sonar,pplx,openai,hel"
+

@@ -1155,3 +1155,810 @@ def test_gemini_kind_mismatch_no_kind_in_config_no_op() -> None:
     )
     # No exception (matches OpenAI/Perplexity pattern)
     provider._validate_kind_for_model("test_mode")
+
+
+class TestMapGeminiErrorInteractionsSpecific:
+    """Task 2: _map_gemini_error catches google.genai._interactions exceptions."""
+
+    def _make_interactions_request(self):  # type: ignore[return]
+        import httpx
+
+        return httpx.Request("POST", "https://ai.googleapis.com/v1/interactions")
+
+    def test_interactions_404_produces_interaction_expired_message(self):
+        """interactions.get(bad-id) raises NotFoundError with status_code=404."""
+        import httpx
+        from google.genai._interactions import NotFoundError  # type: ignore[import-not-found]
+
+        from thoth.providers.gemini import _map_gemini_error
+
+        req = self._make_interactions_request()
+        resp = httpx.Response(404, content=b"", request=req)
+        exc = NotFoundError(
+            "Interaction not found: interactions/does-not-exist-spike",
+            response=resp,
+            body=None,
+        )
+        result = _map_gemini_error(exc, model="deep-research-preview-04-2026")
+        msg = str(result)
+        assert "interaction" in msg.lower()
+        assert "Model 'deep-research-preview-04-2026' not found" not in msg
+
+    def test_interactions_400_invalid_key_produces_api_key_error(self):
+        """interactions.create with bad key raises BadRequestError with status_code=400."""
+        import httpx
+        from google.genai._interactions import BadRequestError  # type: ignore[import-not-found]
+
+        from thoth.errors import APIKeyError, ThothError
+        from thoth.providers.gemini import _map_gemini_error
+
+        req = self._make_interactions_request()
+        resp = httpx.Response(400, content=b"", request=req)
+        exc = BadRequestError("API key not valid", response=resp, body=None)
+        result = _map_gemini_error(exc, model="deep-research-preview-04-2026")
+        assert isinstance(result, (APIKeyError, ThothError))
+        if not isinstance(result, APIKeyError):
+            # ThothError stores the URL in .suggestion, not in str() / message
+            suggestion = getattr(result, "suggestion", "") or ""
+            assert "aistudio.google.com" in suggestion
+
+    def test_interactions_500_produces_provider_error(self):
+        """interactions.{create,get,cancel} 5xx raises InternalServerError."""
+        import httpx
+        from google.genai._interactions import InternalServerError  # type: ignore[import-not-found]
+
+        from thoth.errors import ProviderError
+        from thoth.providers.gemini import _map_gemini_error
+
+        req = self._make_interactions_request()
+        resp = httpx.Response(500, content=b"", request=req)
+        exc = InternalServerError(
+            "Internal server error processing interaction",
+            response=resp,
+            body=None,
+        )
+        result = _map_gemini_error(exc, model="deep-research-preview-04-2026")
+        assert isinstance(result, ProviderError)
+        assert "server" in str(result).lower()
+
+    def test_interactions_429_produces_rate_limit_error(self):
+        """interactions.* 429 maps to APIRateLimitError."""
+        import httpx
+        from google.genai._interactions import RateLimitError  # type: ignore[import-not-found]
+
+        from thoth.errors import APIRateLimitError
+        from thoth.providers.gemini import _map_gemini_error
+
+        req = httpx.Request("POST", "https://example.com")
+        resp = httpx.Response(429, request=req)
+        exc = RateLimitError("rate limited", response=resp, body=None)
+        result = _map_gemini_error(exc, model="deep-research-preview-04-2026")
+        assert isinstance(result, APIRateLimitError)
+
+    def test_interactions_403_dr_tier_gives_pricing_hint(self):
+        """403 with tier/paid wording AND a deep-research model surfaces pricing URL."""
+        import httpx
+        from google.genai._interactions import (
+            PermissionDeniedError,  # type: ignore[import-not-found]
+        )
+
+        from thoth.errors import ProviderError
+        from thoth.providers.gemini import _map_gemini_error
+
+        req = httpx.Request("POST", "https://example.com")
+        resp = httpx.Response(403, request=req)
+        exc = PermissionDeniedError("Deep Research requires paid tier", response=resp, body=None)
+        result = _map_gemini_error(exc, model="deep-research-preview-04-2026")
+        assert isinstance(result, ProviderError)
+        assert "pricing" in str(result).lower() or "ai.google.dev" in str(result)
+
+    def test_interactions_403_non_dr_model_no_pricing_hint(self):
+        """403 on a non-DR model gives a plain permission-denied (no pricing URL)."""
+        import httpx
+        from google.genai._interactions import (
+            PermissionDeniedError,  # type: ignore[import-not-found]
+        )
+
+        from thoth.providers.gemini import _map_gemini_error
+
+        req = httpx.Request("POST", "https://example.com")
+        resp = httpx.Response(403, request=req)
+        exc = PermissionDeniedError("forbidden", response=resp, body=None)
+        result = _map_gemini_error(exc, model="gemini-2.5-flash-lite")
+        assert "permission denied" in str(result).lower()
+        assert "ai.google.dev/pricing" not in str(result)
+
+    def test_interactions_401_invalid_key_produces_api_key_error(self):
+        """401 with key-related message routes via _invalid_key_thotherror or APIKeyError."""
+        import httpx
+        from google.genai._interactions import AuthenticationError  # type: ignore[import-not-found]
+
+        from thoth.errors import APIKeyError, ThothError
+        from thoth.providers.gemini import _map_gemini_error
+
+        req = httpx.Request("POST", "https://example.com")
+        resp = httpx.Response(401, request=req)
+        exc = AuthenticationError("api key not valid", response=resp, body=None)
+        result = _map_gemini_error(exc, model="deep-research-preview-04-2026")
+        assert isinstance(result, (APIKeyError, ThothError))
+        if not isinstance(result, APIKeyError):
+            assert "aistudio.google.com" in getattr(result, "suggestion", "")
+
+    def test_interactions_401_generic_gives_api_key_error(self):
+        """401 without key-phrase routes to APIKeyError."""
+        import httpx
+        from google.genai._interactions import AuthenticationError  # type: ignore[import-not-found]
+
+        from thoth.errors import APIKeyError
+        from thoth.providers.gemini import _map_gemini_error
+
+        req = httpx.Request("POST", "https://example.com")
+        resp = httpx.Response(401, request=req)
+        exc = AuthenticationError("unauthorized", response=resp, body=None)
+        result = _map_gemini_error(exc, model="deep-research-preview-04-2026")
+        assert isinstance(result, APIKeyError)
+
+    def test_duck_type_fallback_when_isinstance_misses(self, monkeypatch):
+        """If _InteractionsAPIError isinstance check fails, duck-type still catches."""
+        from thoth.errors import ProviderError
+        from thoth.providers.gemini import _map_gemini_error
+
+        class _FakeInteractionsError(Exception):
+            status_code: int
+
+        _FakeInteractionsError.__module__ = "google.genai._interactions_renamed"
+        exc = _FakeInteractionsError("transient outage")
+        exc.status_code = 503
+        result = _map_gemini_error(exc, model="deep-research-preview-04-2026")
+        assert isinstance(result, ProviderError)
+
+
+class TestGeminiProviderRouting:
+    """Task 3: submit/check_status/get_result route on is_background_model."""
+
+    def test_submit_routes_to_immediate_for_chat_model(self, monkeypatch):
+        import asyncio
+
+        from thoth.providers.gemini import GeminiProvider
+
+        provider = GeminiProvider(api_key="dummy", config={"model": "gemini-2.5-flash-lite"})
+        called = {"immediate": False, "deep_research": False}
+
+        async def fake_immediate(prompt, mode, system_prompt, verbose):
+            called["immediate"] = True
+            return "immediate-job-id"
+
+        async def fake_dr(prompt, mode, system_prompt, verbose):
+            called["deep_research"] = True
+            return "dr-job-id"
+
+        monkeypatch.setattr(provider, "_immediate_submit", fake_immediate)
+        monkeypatch.setattr(provider, "_deep_research_submit", fake_dr)
+        result = asyncio.run(provider.submit("x", "gemini_quick", None, False))
+        assert result == "immediate-job-id"
+        assert called == {"immediate": True, "deep_research": False}
+
+    def test_submit_routes_to_dr_for_deep_research_model(self, monkeypatch):
+        import asyncio
+
+        from thoth.providers.gemini import GeminiProvider
+
+        provider = GeminiProvider(
+            api_key="dummy", config={"model": "deep-research-preview-04-2026"}
+        )
+        called = {"immediate": False, "deep_research": False}
+
+        async def fake_immediate(prompt, mode, system_prompt, verbose):
+            called["immediate"] = True
+            return "immediate-job-id"
+
+        async def fake_dr(prompt, mode, system_prompt, verbose):
+            called["deep_research"] = True
+            return "dr-job-id"
+
+        monkeypatch.setattr(provider, "_immediate_submit", fake_immediate)
+        monkeypatch.setattr(provider, "_deep_research_submit", fake_dr)
+        result = asyncio.run(provider.submit("x", "gemini_deep_research", None, False))
+        assert result == "dr-job-id"
+        assert called == {"immediate": False, "deep_research": True}
+
+
+class TestGeminiJobsSchema:
+    """Task 4: self.jobs entries have a 'kind' discriminator."""
+
+    def test_immediate_submit_stashes_kind_immediate(self):
+        import asyncio
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        from thoth.providers.gemini import GeminiProvider
+
+        provider = GeminiProvider(api_key="dummy", config={"model": "gemini-2.5-flash-lite"})
+        fake_response = MagicMock(id="fake-resp-id")
+        with patch.object(provider, "_submit_with_retry", new_callable=AsyncMock) as m:
+            m.return_value = fake_response
+            job_id = asyncio.run(provider._immediate_submit("x", "gemini_quick", None, False))
+        assert provider.jobs[job_id]["kind"] == "immediate"
+        assert "response" in provider.jobs[job_id]
+
+
+class TestGeminiDeepResearchSubmit:
+    """Task 5: _deep_research_submit calls client.aio.interactions.create correctly."""
+
+    def test_submit_calls_interactions_create_with_agent_background_store(self):
+        async def _run():
+            import asyncio  # noqa: F401
+            from unittest.mock import AsyncMock, MagicMock
+
+            from thoth.providers.gemini import GeminiProvider
+
+            provider = GeminiProvider(
+                api_key="dummy", config={"model": "deep-research-preview-04-2026"}
+            )
+            fake_create = AsyncMock(return_value=MagicMock(id="interactions/xyz-123"))
+            provider.client = MagicMock()
+            provider.client.aio.interactions.create = fake_create
+            job_id = await provider._deep_research_submit(
+                "Research X", "gemini_deep_research", None, False
+            )
+            fake_create.assert_awaited_once()
+            call_kwargs = fake_create.call_args.kwargs
+            assert call_kwargs["agent"] == "deep-research-preview-04-2026"
+            assert call_kwargs["input"] == "Research X"
+            assert call_kwargs["background"] is True
+            assert call_kwargs["store"] is True
+            assert job_id == "interactions/xyz-123"
+            assert provider.jobs[job_id]["kind"] == "deep_research"
+            assert provider.jobs[job_id]["interaction_id"] == "interactions/xyz-123"
+
+        asyncio.run(_run())
+
+    def test_submit_does_not_cache_response_body(self):
+        """DR submit returns immediately; the response body is not yet available.
+        self.jobs entry must NOT contain a 'response' key (only metadata)."""
+
+        async def _run():
+            from unittest.mock import AsyncMock, MagicMock
+
+            from thoth.providers.gemini import GeminiProvider
+
+            provider = GeminiProvider(
+                api_key="dummy", config={"model": "deep-research-preview-04-2026"}
+            )
+            provider.client = MagicMock()
+            provider.client.aio.interactions.create = AsyncMock(
+                return_value=MagicMock(id="interactions/abc")
+            )
+            job_id = await provider._deep_research_submit("x", "gemini_deep_research", None, False)
+            assert "response" not in provider.jobs[job_id]
+
+        asyncio.run(_run())
+
+
+class TestGeminiDeepResearchCheckStatus:
+    """Task 6: _deep_research_check_status polls interactions.get and maps status."""
+
+    @pytest.mark.parametrize(
+        "live_status,expected_thoth_status,expected_failure_type",
+        [
+            ("in_progress", "in_progress", None),
+            ("requires_action", "permanent_error", "requires_action"),
+            ("completed", "completed", None),
+            ("failed", "permanent_error", "permanent"),
+            ("cancelled", "cancelled", None),
+            ("incomplete", "permanent_error", "permanent"),
+        ],
+    )
+    def test_status_mapping(self, live_status, expected_thoth_status, expected_failure_type):
+        async def _run():
+            from unittest.mock import AsyncMock, MagicMock
+
+            from thoth.providers.gemini import GeminiProvider
+
+            provider = GeminiProvider(
+                api_key="dummy", config={"model": "deep-research-preview-04-2026"}
+            )
+            provider.jobs["interactions/abc"] = {
+                "kind": "deep_research",
+                "interaction_id": "interactions/abc",
+            }
+            fake_get = AsyncMock(return_value=MagicMock(status=live_status))
+            # interactions is read-only on AsyncClient — replace provider.client
+            provider.client = MagicMock()
+            provider.client.aio.interactions.get = fake_get
+            result = await provider._deep_research_check_status("interactions/abc")
+            assert result["status"] == expected_thoth_status
+            if expected_failure_type is None:
+                assert "failure_type" not in result or result["failure_type"] is None
+            else:
+                assert result["failure_type"] == expected_failure_type
+            assert result["raw_status"] == live_status
+
+        asyncio.run(_run())
+
+    def test_requires_action_error_message_explains_v1_unsupported(self):
+        async def _run():
+            from unittest.mock import AsyncMock, MagicMock
+
+            from thoth.providers.gemini import GeminiProvider
+
+            provider = GeminiProvider(
+                api_key="dummy", config={"model": "deep-research-preview-04-2026"}
+            )
+            provider.jobs["interactions/abc"] = {
+                "kind": "deep_research",
+                "interaction_id": "interactions/abc",
+            }
+            fake_get = AsyncMock(return_value=MagicMock(status="requires_action"))
+            provider.client = MagicMock()
+            provider.client.aio.interactions.get = fake_get
+            result = await provider._deep_research_check_status("interactions/abc")
+            assert "requires_action" in result["failure_type"]
+            assert "approval" in result["error"].lower() or "action" in result["error"].lower()
+
+        asyncio.run(_run())
+
+    def test_incomplete_error_message_documents_v1_limitation(self):
+        async def _run():
+            from unittest.mock import AsyncMock, MagicMock
+
+            from thoth.providers.gemini import GeminiProvider
+
+            provider = GeminiProvider(
+                api_key="dummy", config={"model": "deep-research-preview-04-2026"}
+            )
+            provider.jobs["interactions/abc"] = {
+                "kind": "deep_research",
+                "interaction_id": "interactions/abc",
+            }
+            fake_get = AsyncMock(return_value=MagicMock(status="incomplete"))
+            provider.client = MagicMock()
+            provider.client.aio.interactions.get = fake_get
+            result = await provider._deep_research_check_status("interactions/abc")
+            assert "incomplete" in result["error"].lower() or "truncated" in result["error"].lower()
+
+        asyncio.run(_run())
+
+    def test_unknown_job_id(self):
+        async def _run():
+            from thoth.providers.gemini import GeminiProvider
+
+            provider = GeminiProvider(
+                api_key="dummy", config={"model": "deep-research-preview-04-2026"}
+            )
+            result = await provider._deep_research_check_status("interactions/unknown")
+            assert result["status"] == "not_found"
+
+        asyncio.run(_run())
+
+
+class TestGeminiDeepResearchGetResult:
+    """Task 7: _deep_research_get_result with layered citation rendering."""
+
+    def test_renders_model_output_text(self):
+        async def _run():
+            from unittest.mock import MagicMock
+
+            from thoth.providers.gemini import GeminiProvider
+
+            provider = GeminiProvider(
+                api_key="dummy", config={"model": "deep-research-preview-04-2026"}
+            )
+            text_item = MagicMock(type="text", text="The three papers are...", annotations=[])
+            model_output_step = MagicMock(type="model_output", content=[text_item])
+            fake_interaction = MagicMock(status="completed", steps=[model_output_step])
+            provider.jobs["interactions/abc"] = {
+                "kind": "deep_research",
+                "interaction_id": "interactions/abc",
+                "last_interaction": fake_interaction,
+            }
+            result = await provider._deep_research_get_result("interactions/abc", False)
+            assert "The three papers are..." in result
+
+        asyncio.run(_run())
+
+    def test_extracts_annotations_from_model_output_step(self, monkeypatch):
+        async def _run():
+            from unittest.mock import MagicMock
+
+            from thoth.providers.gemini import GeminiProvider
+
+            provider = GeminiProvider(
+                api_key="dummy", config={"model": "deep-research-preview-04-2026"}
+            )
+            ann = MagicMock(
+                type="url_citation",
+                title=None,
+                url="https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZ123",
+                start_index=0,
+                end_index=10,
+            )
+            text_item = MagicMock(type="text", text="Body", annotations=[ann])
+            model_output_step = MagicMock(type="model_output", content=[text_item])
+            sources_text = (
+                "**Sources:**\n\n"
+                "- [usenix.org](https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZ123)\n"
+            )
+            sources_item = MagicMock(type="text", text=sources_text, annotations=[])
+            sources_step = MagicMock(type="model_output", content=[sources_item])
+            fake_interaction = MagicMock(
+                status="completed", steps=[model_output_step, sources_step]
+            )
+            provider.jobs["interactions/abc"] = {
+                "kind": "deep_research",
+                "interaction_id": "interactions/abc",
+                "last_interaction": fake_interaction,
+            }
+
+            async def fake_resolve(urls, **kwargs):
+                return {u: "https://www.usenix.org/paper.pdf" for u in urls}
+
+            monkeypatch.setattr("thoth.providers.gemini._resolve_dr_redirects", fake_resolve)
+
+            result = await provider._deep_research_get_result("interactions/abc", False)
+            assert "## Sources" in result
+            assert "usenix.org" in result
+            assert "https://www.usenix.org/paper.pdf" in result
+
+        asyncio.run(_run())
+
+    def test_falls_back_to_redirect_url_when_follow_fails(self, monkeypatch):
+        async def _run():
+            from unittest.mock import MagicMock
+
+            from thoth.providers.gemini import GeminiProvider
+
+            provider = GeminiProvider(
+                api_key="dummy", config={"model": "deep-research-preview-04-2026"}
+            )
+            redirect_url = "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZ123"
+            ann = MagicMock(
+                type="url_citation",
+                title=None,
+                url=redirect_url,
+                start_index=0,
+                end_index=10,
+            )
+            text_item = MagicMock(type="text", text="Body", annotations=[ann])
+            model_output_step = MagicMock(type="model_output", content=[text_item])
+            fake_interaction = MagicMock(status="completed", steps=[model_output_step])
+            provider.jobs["interactions/abc"] = {
+                "kind": "deep_research",
+                "interaction_id": "interactions/abc",
+                "last_interaction": fake_interaction,
+            }
+
+            async def fake_resolve(urls, **kwargs):
+                return {u: None for u in urls}
+
+            monkeypatch.setattr("thoth.providers.gemini._resolve_dr_redirects", fake_resolve)
+
+            result = await provider._deep_research_get_result("interactions/abc", False)
+            assert "## Sources" in result
+            assert redirect_url in result
+
+        asyncio.run(_run())
+
+    def test_no_sources_block_when_no_annotations(self):
+        async def _run():
+            from unittest.mock import MagicMock
+
+            from thoth.providers.gemini import GeminiProvider
+
+            provider = GeminiProvider(
+                api_key="dummy", config={"model": "deep-research-preview-04-2026"}
+            )
+            text_item = MagicMock(type="text", text="Body without sources", annotations=[])
+            model_output_step = MagicMock(type="model_output", content=[text_item])
+            fake_interaction = MagicMock(status="completed", steps=[model_output_step])
+            provider.jobs["interactions/abc"] = {
+                "kind": "deep_research",
+                "interaction_id": "interactions/abc",
+                "last_interaction": fake_interaction,
+            }
+            result = await provider._deep_research_get_result("interactions/abc", False)
+            assert "## Sources" not in result
+
+        asyncio.run(_run())
+
+    def test_dedupes_by_resolved_url(self, monkeypatch):
+        async def _run():
+            from unittest.mock import MagicMock
+
+            from thoth.providers.gemini import GeminiProvider
+
+            provider = GeminiProvider(
+                api_key="dummy", config={"model": "deep-research-preview-04-2026"}
+            )
+            ann1 = MagicMock(
+                type="url_citation",
+                title=None,
+                url="https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZ123",
+                start_index=0,
+                end_index=10,
+            )
+            ann2 = MagicMock(
+                type="url_citation",
+                title=None,
+                url="https://vertexaisearch.cloud.google.com/grounding-api-redirect/BXK456",
+                start_index=20,
+                end_index=30,
+            )
+            text_item = MagicMock(type="text", text="Body", annotations=[ann1, ann2])
+            model_output_step = MagicMock(type="model_output", content=[text_item])
+            fake_interaction = MagicMock(status="completed", steps=[model_output_step])
+            provider.jobs["interactions/abc"] = {
+                "kind": "deep_research",
+                "interaction_id": "interactions/abc",
+                "last_interaction": fake_interaction,
+            }
+
+            async def fake_resolve(urls, **kwargs):
+                return {u: "https://www.usenix.org/paper.pdf" for u in urls}
+
+            monkeypatch.setattr("thoth.providers.gemini._resolve_dr_redirects", fake_resolve)
+
+            result = await provider._deep_research_get_result("interactions/abc", False)
+            assert result.count("https://www.usenix.org/paper.pdf") == 1
+
+        asyncio.run(_run())
+
+    def test_dedupes_redirect_urls_before_head_follow(self, monkeypatch):
+        """Same redirect URL across many annotations should be HEAD-followed once."""
+
+        async def _run():
+            from unittest.mock import MagicMock
+
+            from thoth.providers.gemini import GeminiProvider
+
+            provider = GeminiProvider(
+                api_key="dummy", config={"model": "deep-research-preview-04-2026"}
+            )
+            same_url = "https://vertexaisearch.cloud.google.com/grounding-api-redirect/SAME"
+            anns = [
+                MagicMock(
+                    type="url_citation",
+                    title=None,
+                    url=same_url,
+                    start_index=i * 10,
+                    end_index=(i * 10) + 5,
+                )
+                for i in range(5)
+            ]
+            text_item = MagicMock(type="text", text="Body", annotations=anns)
+            model_output_step = MagicMock(type="model_output", content=[text_item])
+            fake_interaction = MagicMock(status="completed", steps=[model_output_step])
+            provider.jobs["interactions/abc"] = {
+                "kind": "deep_research",
+                "interaction_id": "interactions/abc",
+                "last_interaction": fake_interaction,
+            }
+            urls_received_by_resolver: list[list[str]] = []
+
+            async def fake_resolve(urls, **kwargs):
+                urls_received_by_resolver.append(list(urls))
+                return {u: "https://www.usenix.org/paper.pdf" for u in urls}
+
+            monkeypatch.setattr("thoth.providers.gemini._resolve_dr_redirects", fake_resolve)
+            await provider._deep_research_get_result("interactions/abc", False)
+            # Even though 5 annotations have the same URL, the resolver was called with ONE URL
+            assert len(urls_received_by_resolver) == 1
+            assert urls_received_by_resolver[0] == [same_url]
+
+        asyncio.run(_run())
+
+
+class TestGeminiReconnect:
+    """Task 9: reconnect() re-attaches DR state after process restart."""
+
+    def test_reconnect_repopulates_jobs_entry(self):
+        async def _run():
+            from unittest.mock import AsyncMock, MagicMock
+
+            from thoth.providers.gemini import GeminiProvider
+
+            provider = GeminiProvider(
+                api_key="dummy", config={"model": "deep-research-preview-04-2026"}
+            )
+            # Cold start: jobs dict empty
+            assert "interactions/abc" not in provider.jobs
+            fake_get = AsyncMock(
+                return_value=MagicMock(status="in_progress", id="interactions/abc")
+            )
+            # interactions is read-only on AsyncClient — replace provider.client entirely
+            provider.client = MagicMock()
+            provider.client.aio.interactions.get = fake_get
+            await provider.reconnect("interactions/abc")
+            fake_get.assert_awaited_once_with(id="interactions/abc")
+            assert "interactions/abc" in provider.jobs
+            assert provider.jobs["interactions/abc"]["kind"] == "deep_research"
+            assert provider.jobs["interactions/abc"]["interaction_id"] == "interactions/abc"
+            assert provider.jobs["interactions/abc"]["last_status"] == "in_progress"
+            assert provider.jobs["interactions/abc"]["last_interaction"] is not None
+
+        asyncio.run(_run())
+
+    def test_reconnect_propagates_mapped_error_on_failure(self):
+        """A 404 from interactions.get is mapped via _map_gemini_error."""
+
+        async def _run():
+            from unittest.mock import AsyncMock, MagicMock
+
+            import httpx
+            from google.genai._interactions import NotFoundError
+
+            from thoth.errors import ProviderError
+            from thoth.providers.gemini import GeminiProvider
+
+            provider = GeminiProvider(
+                api_key="dummy", config={"model": "deep-research-preview-04-2026"}
+            )
+            req = httpx.Request("GET", "https://example.com")
+            resp = httpx.Response(404, request=req)
+            exc = NotFoundError("Interaction not found", response=resp, body=None)
+            fake_get = AsyncMock(side_effect=exc)
+            provider.client = MagicMock()
+            provider.client.aio.interactions.get = fake_get
+            try:
+                await provider.reconnect("interactions/expired")
+                raise AssertionError("expected ProviderError")
+            except ProviderError as e:
+                assert "interaction" in str(e).lower()
+
+        asyncio.run(_run())
+
+
+class TestGeminiDeepResearchModes:
+    """Task 10: 9 gemini_*_research modes are in KNOWN_MODELS."""
+
+    EXPECTED = (
+        "gemini_quick_research",
+        "gemini_exploration",
+        "gemini_deep_dive",
+        "gemini_tutorial",
+        "gemini_solution",
+        "gemini_prd",
+        "gemini_tdd",
+        "gemini_deep_research",
+        "gemini_comparison",
+    )
+
+    def test_all_modes_present(self):
+        from thoth.config import BUILTIN_MODES as KNOWN_MODELS
+
+        for mode in self.EXPECTED:
+            assert mode in KNOWN_MODELS, f"Missing mode {mode!r}"
+
+    def test_all_modes_use_dr_agent_and_background_kind(self):
+        from thoth.config import BUILTIN_MODES as KNOWN_MODELS
+
+        for mode in self.EXPECTED:
+            entry = KNOWN_MODELS[mode]
+            assert entry["provider"] == "gemini"
+            assert entry["kind"] == "background"
+            assert entry["model"] == "deep-research-preview-04-2026"
+
+
+class TestGeminiCancel:
+    """Task 8: cancel() invokes interactions.cancel for DR jobs (defensive)."""
+
+    def test_cancel_calls_interactions_cancel(self):
+        async def _run():
+            from unittest.mock import AsyncMock, MagicMock
+
+            from thoth.providers.gemini import GeminiProvider
+
+            provider = GeminiProvider(
+                api_key="dummy", config={"model": "deep-research-preview-04-2026"}
+            )
+            provider.jobs["interactions/abc"] = {
+                "kind": "deep_research",
+                "interaction_id": "interactions/abc",
+            }
+            fake_cancel = AsyncMock(return_value=None)
+            provider.client = MagicMock()
+            provider.client.aio.interactions.cancel = fake_cancel
+            result = await provider.cancel("interactions/abc")
+            fake_cancel.assert_awaited_once_with(id="interactions/abc")
+            assert result == {"status": "cancelled"}
+            assert provider.jobs["interactions/abc"]["cancel_requested"] is True
+
+        asyncio.run(_run())
+
+    def test_cancel_5xx_returns_best_effort_cancelled(self):
+        """Per Task 1 spike §6 + Task 8a deferred — cancel may return 5xx.
+        Defensive impl: treat as best-effort, runtime SIGINT path still completes."""
+
+        async def _run():
+            from unittest.mock import AsyncMock, MagicMock
+
+            import httpx
+            from google.genai._interactions import InternalServerError
+
+            from thoth.providers.gemini import GeminiProvider
+
+            provider = GeminiProvider(
+                api_key="dummy", config={"model": "deep-research-preview-04-2026"}
+            )
+            provider.jobs["interactions/abc"] = {
+                "kind": "deep_research",
+                "interaction_id": "interactions/abc",
+            }
+            req = httpx.Request("POST", "https://example.com")
+            resp = httpx.Response(500, request=req)
+            exc = InternalServerError("cancel failed server-side", response=resp, body=None)
+            fake_cancel = AsyncMock(side_effect=exc)
+            provider.client = MagicMock()
+            provider.client.aio.interactions.cancel = fake_cancel
+            result = await provider.cancel("interactions/abc")
+            # Cancel reports cancelled (best-effort); runtime SIGINT path satisfied.
+            # check_status will surface actual state on next poll.
+            assert result["status"] == "cancelled"
+            assert result.get("best_effort") is True
+            assert provider.jobs["interactions/abc"]["cancel_requested"] is True
+
+        asyncio.run(_run())
+
+    def test_cancel_noop_for_immediate_jobs(self):
+        """Immediate jobs (chat completion) don't support upstream cancel."""
+
+        async def _run():
+            from unittest.mock import MagicMock
+
+            from thoth.providers.gemini import GeminiProvider
+
+            provider = GeminiProvider(api_key="dummy", config={"model": "gemini-2.5-flash-lite"})
+            provider.jobs["job-imm"] = {"kind": "immediate", "response": MagicMock()}
+            result = await provider.cancel("job-imm")
+            assert result["status"] == "cancelled"
+            # No upstream call
+
+        asyncio.run(_run())
+
+    def test_cancel_unknown_job_id_upstream_404_returns_not_found(self):
+        """cancel with upstream 404 returns not_found (truly nonexistent ID)."""
+
+        async def _run():
+            from unittest.mock import AsyncMock, MagicMock
+
+            import httpx
+            from google.genai._interactions import NotFoundError
+
+            from thoth.providers.gemini import GeminiProvider
+
+            provider = GeminiProvider(
+                api_key="dummy", config={"model": "deep-research-preview-04-2026"}
+            )
+            req = httpx.Request("POST", "https://example.com")
+            resp = httpx.Response(404, request=req)
+            exc = NotFoundError("interaction not found", response=resp, body=None)
+            fake_cancel = AsyncMock(side_effect=exc)
+            provider.client = MagicMock()
+            provider.client.aio.interactions.cancel = fake_cancel
+            result = await provider.cancel("interactions/unknown")
+            fake_cancel.assert_awaited_once_with(id="interactions/unknown")
+            assert result["status"] == "not_found"
+
+        asyncio.run(_run())
+
+    def test_cancel_unknown_dr_job_attempts_upstream(self):
+        """thoth cancel after process restart: jobs dict is empty but we still try."""
+
+        async def _run():
+            from unittest.mock import AsyncMock, MagicMock
+
+            from thoth.providers.gemini import GeminiProvider
+
+            provider = GeminiProvider(
+                api_key="dummy", config={"model": "deep-research-preview-04-2026"}
+            )
+            # No prior submit/reconnect — jobs dict empty (post-restart scenario).
+            assert "interactions/restarted" not in provider.jobs
+            fake_cancel = AsyncMock(return_value=None)
+            provider.client = MagicMock()
+            provider.client.aio.interactions.cancel = fake_cancel
+            result = await provider.cancel("interactions/restarted")
+            # The upstream call WAS attempted (not short-circuited to not_found)
+            fake_cancel.assert_awaited_once_with(id="interactions/restarted")
+            assert result["status"] == "cancelled"
+
+        asyncio.run(_run())

@@ -84,6 +84,12 @@ FRAMEWORK_KEYS: frozenset[str] = frozenset(
         "parallel",
         "stream",
         "background",
+        # P28: Gemini DR polling tunables (forward-compat schema; runtime
+        # wiring lands in v1.1 — see GeminiConfig docstring). These are
+        # framework-level, NOT native Gemini API params, so they must NOT
+        # flow into provider_request bucket.
+        "poll_interval",
+        "max_wait_minutes",
     }
 )
 

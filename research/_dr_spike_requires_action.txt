@@ -1,0 +1,17 @@
+
+--- Probe: tool_code_execution ---
+  submitted; id=v1_ChZJdk1EYXA4TV9MZi00d19hcV9DZ0FnEhZJdk1EYXA4TV9MZi00d19hcV9DZ0Fn
+    status -> 'in_progress'
+
+--- Probe: collaborative_planning ---
+  submitted; id=v1_ChdmUFVEYXRMeUpmQ3ZfdU1QeHJDYW9BdxIXZlBVRGF0THlKZkN2X3VNUHhyQ2FvQXc
+    status -> 'in_progress'
+    status -> 'completed'
+
+--- Probe: tool_file_search ---
+  submitted; id=v1_ChdrdlVEYW92WElmQ3ZfdU1QMTdDYW9BdxIXa3ZVRGFvdlhJZkN2X3VNUDE3Q2FvQXc
+    status -> 'in_progress'
+    status -> 'completed'
+
+=== SUMMARY ===
+Probes run: 3; requires_action triggered: 0
