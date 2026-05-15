@@ -43,20 +43,20 @@ def baseline() -> Callable[[str], BaselineRecord]:
 
 
 @pytest.fixture
-def run_thoth() -> Iterator[Callable[[list[str]], tuple[int, str, str]]]:
+def run_doxa() -> Iterator[Callable[[list[str]], tuple[int, str, str]]]:
     home = Path(tempfile.mkdtemp(prefix="tp16", dir="/tmp"))
 
     def _run(argv: list[str]) -> tuple[int, str, str]:
-        # cwd=str(home): immune to leaked ./thoth.config.toml in the parent's
+        # cwd=str(home): immune to leaked ./doxa.config.toml in the parent's
         # working directory (the repo root). Without this, ConfigManager's
         # relative project_config_paths would load the leaked file.
         result = subprocess.run(
-            [sys.executable, "-m", "thoth", *argv],
+            [sys.executable, "-m", "doxa_research", *argv],
             capture_output=True,
             text=True,
             timeout=30,
             cwd=str(home),
-            env={"THOTH_TEST_MODE": "1", "PATH": "/usr/bin:/bin", "HOME": str(home)},
+            env={"DOXA_TEST_MODE": "1", "PATH": "/usr/bin:/bin", "HOME": str(home)},
         )
         return (
             result.returncode,

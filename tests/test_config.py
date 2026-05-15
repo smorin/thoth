@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from thoth.__main__ import ConfigManager, get_config
+from doxa_research.__main__ import ConfigManager, get_config
 
 
 def test_get_config_returns_config_manager() -> None:

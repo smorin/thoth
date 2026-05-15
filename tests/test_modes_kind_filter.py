@@ -1,10 +1,10 @@
-"""P18 Phase D: `thoth modes --kind <immediate|background>` filter.
+"""P18 Phase D: `doxa modes --kind <immediate|background>` filter.
 
 The filter applies to both the JSON envelope path (`get_modes_list_data`) and
 the Rich-rendering CLI path. Tab-completion uses the dead-code `mode_kind`
 completer in `completion/sources.py:79` (left as P18 forward-compat by PR3).
 
-Spec §10 acceptance: `thoth modes --kind immediate` filters; tab-complete
+Spec §10 acceptance: `doxa modes --kind immediate` filters; tab-complete
 returns `["immediate", "background"]`.
 """
 
@@ -12,9 +12,9 @@ from __future__ import annotations
 
 from click.testing import CliRunner
 
-from thoth.cli import cli
-from thoth.completion.sources import mode_kind as mode_kind_completer
-from thoth.modes_cmd import get_modes_list_data
+from doxa_research.cli import cli
+from doxa_research.completion.sources import mode_kind as mode_kind_completer
+from doxa_research.modes_cmd import get_modes_list_data
 
 
 def test_get_modes_list_data_filters_immediate() -> None:
@@ -37,7 +37,7 @@ def test_get_modes_list_data_no_filter_returns_all() -> None:
 
 
 def test_modes_list_cli_with_kind_immediate() -> None:
-    """`thoth modes list --kind immediate --json` returns only immediate modes."""
+    """`doxa modes list --kind immediate --json` returns only immediate modes."""
     r = CliRunner().invoke(cli, ["modes", "list", "--kind", "immediate", "--json"])
     assert r.exit_code == 0, r.output
     import json

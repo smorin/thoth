@@ -35,7 +35,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add `thoth modes add / set / unset / rename / copy` so users can author and edit research-mode definitions from the CLI instead of hand-editing TOML, with the same `--project` / `--config PATH` / `--profile <name>` targeting that `thoth config set` already supports.
+**Goal:** Add `doxa-research modes add / set / unset / rename / copy` so users can author and edit research-mode definitions from the CLI instead of hand-editing TOML, with the same `--project` / `--config PATH` / `--profile <name>` targeting that `doxa-research config set` already supports.
 
 **Architecture:** Mirror `config_cmd._op_set/_op_unset` exactly. Add four mode-aware helpers to `ConfigDocument` (parallel to its existing `ensure_profile/remove_profile/set_profile_value/unset_profile_value` quartet). Add `_op_add/_op_set/_op_unset/_op_rename/_op_copy` to `modes_cmd.py`, sharing one targeting-flag parser. Wire each op as a Click subcommand in `cli_subcommands/modes.py`. Help epilog updates land in `help.py`'s `_ModesGroup.format_epilog`.
 
@@ -47,15 +47,15 @@
 
 | Action | Path | Responsibility |
 |---|---|---|
-| Modify | `src/thoth/config_document.py` | Add `ensure_mode`, `remove_mode`, `set_mode_value`, `unset_mode_value` (+ profile-scoped variants). Pure file mutation; no resolver logic. |
-| Modify | `src/thoth/modes_cmd.py` | Add `_op_add/_op_set/_op_unset/_op_rename/_op_copy`, a shared `_parse_target_flags` helper, and dispatch entries. |
-| Modify | `src/thoth/cli_subcommands/modes.py` | Register five new Click leaves: `add`, `set`, `unset`, `rename`, `copy`. Each uses `_PASSTHROUGH_CONTEXT` and forwards to `modes_command`. |
-| Modify | `src/thoth/help.py` | Extend `_ModesGroup.format_epilog` (around line 161) with new ops + worked examples. |
-| Create | `tests/test_modes_cmd.py` | Unit tests calling `modes_command` directly with `isolated_thoth_home`. Covers TS01–TS04, TS02b. |
-| Create | `tests/test_modes_cli_integration.py` | Subprocess tests (`subprocess.run([sys.executable, "-m", "thoth", ...])`). Covers TS06. |
+| Modify | `src/doxa_research/config_document.py` | Add `ensure_mode`, `remove_mode`, `set_mode_value`, `unset_mode_value` (+ profile-scoped variants). Pure file mutation; no resolver logic. |
+| Modify | `src/doxa_research/modes_cmd.py` | Add `_op_add/_op_set/_op_unset/_op_rename/_op_copy`, a shared `_parse_target_flags` helper, and dispatch entries. |
+| Modify | `src/doxa_research/cli_subcommands/modes.py` | Register five new Click leaves: `add`, `set`, `unset`, `rename`, `copy`. Each uses `_PASSTHROUGH_CONTEXT` and forwards to `modes_command`. |
+| Modify | `src/doxa_research/help.py` | Extend `_ModesGroup.format_epilog` (around line 161) with new ops + worked examples. |
+| Create | `tests/test_modes_cmd.py` | Unit tests calling `modes_command` directly with `isolated_doxa_home`. Covers TS01–TS04, TS02b. |
+| Create | `tests/test_modes_cli_integration.py` | Subprocess tests (`subprocess.run([sys.executable, "-m", "doxa-research", ...])`). Covers TS06. |
 | Modify | `PROJECTS.md` | Flip P12 `[ ]` → `[~]` at start, then check off rows as each task lands, then `[~]` → `[x]` at finish. |
 
-**Decomposition rationale:** `modes_cmd.py` (today: 379 lines, only `_op_list`) will roughly double. That's acceptable — the file's responsibility is single (`thoth modes` CLI). Don't preemptively split. `ConfigDocument` already has the same pattern for profiles; mode helpers mirror that.
+**Decomposition rationale:** `modes_cmd.py` (today: 379 lines, only `_op_list`) will roughly double. That's acceptable — the file's responsibility is single (`doxa-research modes` CLI). Don't preemptively split. `ConfigDocument` already has the same pattern for profiles; mode helpers mirror that.
 
 ---
 
@@ -64,15 +64,15 @@
 - [ ] **P0.1: Create a worktree for the work**
 
 ```bash
-cd /Users/stevemorin/c/thoth
-git worktree add /Users/stevemorin/c/thoth-worktrees/p12-modes-editing -b p12-modes-editing main
-cd /Users/stevemorin/c/thoth-worktrees/p12-modes-editing
+cd /Users/stevemorin/c/doxa-research
+git worktree add /Users/stevemorin/c/doxa-research-worktrees/p12-modes-editing -b p12-modes-editing main
+cd /Users/stevemorin/c/doxa-research-worktrees/p12-modes-editing
 ```
 
 - [ ] **P0.2: Verify the gate is green before starting**
 
 ```bash
-just check && uv run pytest -q && ./thoth_test -r --skip-interactive -q
+just check && uv run pytest -q && ./doxa_test -r --skip-interactive -q
 ```
 
 Expected: all green. If anything is red, stop and fix on `main` first.
@@ -91,7 +91,7 @@ git commit -m "chore(p12): start — flip [ ] to [~]"
 ## Task 1: ConfigDocument mode helpers
 
 **Files:**
-- Modify: `src/thoth/config_document.py` (insert after the existing `unset_default_profile_if` method, around line 84)
+- Modify: `src/doxa_research/config_document.py` (insert after the existing `unset_default_profile_if` method, around line 84)
 - Test: `tests/test_config_document.py` (append)
 
 **Why this first:** `_op_*` in modes_cmd will call `set_mode_value` / `unset_mode_value` / `ensure_mode` / `remove_mode`. Build them bottom-up so each later task has clean primitives.
@@ -102,7 +102,7 @@ Append to `tests/test_config_document.py`:
 
 ```python
 def test_set_mode_value_creates_top_level_modes_table(tmp_path: Path) -> None:
-    path = tmp_path / "thoth.config.toml"
+    path = tmp_path / "doxa-research.config.toml"
     doc = ConfigDocument.load(path)
     doc.set_mode_value("brief", "model", "gpt-4o-mini")
     doc.save()
@@ -112,7 +112,7 @@ def test_set_mode_value_creates_top_level_modes_table(tmp_path: Path) -> None:
 
 
 def test_set_mode_value_under_profile(tmp_path: Path) -> None:
-    path = tmp_path / "thoth.config.toml"
+    path = tmp_path / "doxa-research.config.toml"
     doc = ConfigDocument.load(path)
     doc.set_mode_value("brief", "model", "gpt-4o-mini", profile="dev")
     doc.save()
@@ -122,7 +122,7 @@ def test_set_mode_value_under_profile(tmp_path: Path) -> None:
 
 
 def test_unset_mode_value_prunes_empty_table(tmp_path: Path) -> None:
-    path = tmp_path / "thoth.config.toml"
+    path = tmp_path / "doxa-research.config.toml"
     path.write_text(
         'version = "2.0"\n[modes.brief]\nmodel = "gpt-4o-mini"\n'
     )
@@ -134,7 +134,7 @@ def test_unset_mode_value_prunes_empty_table(tmp_path: Path) -> None:
 
 
 def test_remove_mode_drops_entire_table(tmp_path: Path) -> None:
-    path = tmp_path / "thoth.config.toml"
+    path = tmp_path / "doxa-research.config.toml"
     path.write_text(
         'version = "2.0"\n[modes.brief]\nmodel = "gpt-4o-mini"\n'
     )
@@ -146,13 +146,13 @@ def test_remove_mode_drops_entire_table(tmp_path: Path) -> None:
 
 
 def test_remove_mode_returns_false_when_absent(tmp_path: Path) -> None:
-    path = tmp_path / "thoth.config.toml"
+    path = tmp_path / "doxa-research.config.toml"
     doc = ConfigDocument.load(path)
     assert doc.remove_mode("nope") is False
 
 
 def test_remove_mode_under_profile(tmp_path: Path) -> None:
-    path = tmp_path / "thoth.config.toml"
+    path = tmp_path / "doxa-research.config.toml"
     path.write_text(
         'version = "2.0"\n[profiles.dev.modes.brief]\nmodel = "x"\n'
     )
@@ -171,7 +171,7 @@ Expected: FAIL with `AttributeError: 'ConfigDocument' object has no attribute 's
 
 - [ ] **Step 3: Add the four helpers to `ConfigDocument`**
 
-Insert into `src/thoth/config_document.py` after line 83 (`unset_default_profile_if`):
+Insert into `src/doxa_research/config_document.py` after line 83 (`unset_default_profile_if`):
 
 ```python
     def ensure_mode(self, name: str, *, profile: str | None = None) -> bool:
@@ -242,7 +242,7 @@ Expected: all PASS.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add src/thoth/config_document.py tests/test_config_document.py
+git add src/doxa_research/config_document.py tests/test_config_document.py
 git commit -m "feat(config-document): add mode helpers (ensure/remove/set/unset, profile-aware)"
 ```
 
@@ -251,7 +251,7 @@ git commit -m "feat(config-document): add mode helpers (ensure/remove/set/unset,
 ## Task 2: Shared targeting-flag parser in `modes_cmd.py`
 
 **Files:**
-- Modify: `src/thoth/modes_cmd.py` (insert above `modes_command`)
+- Modify: `src/doxa_research/modes_cmd.py` (insert above `modes_command`)
 - Test: `tests/test_modes_cmd.py` (create new file)
 
 **Why this first among ops:** All five ops (`add`, `set`, `unset`, `rename`, `copy`) parse `--project`, `--config PATH`, `--profile NAME` identically. Single helper avoids drift.
@@ -261,7 +261,7 @@ git commit -m "feat(config-document): add mode helpers (ensure/remove/set/unset,
 Create `tests/test_modes_cmd.py`:
 
 ```python
-"""Tests for `thoth modes` mutation ops (P12)."""
+"""Tests for `doxa-research modes` mutation ops (P12)."""
 
 from __future__ import annotations
 
@@ -269,7 +269,7 @@ from pathlib import Path
 
 import pytest
 
-from thoth.modes_cmd import _parse_target_flags
+from doxa-research.modes_cmd import _parse_target_flags
 
 
 def test_parse_target_flags_no_flags() -> None:
@@ -316,11 +316,11 @@ def test_parse_target_flags_missing_value_raises() -> None:
 uv run pytest tests/test_modes_cmd.py -v
 ```
 
-Expected: FAIL with `ImportError: cannot import name '_parse_target_flags' from 'thoth.modes_cmd'`.
+Expected: FAIL with `ImportError: cannot import name '_parse_target_flags' from 'doxa-research.modes_cmd'`.
 
 - [ ] **Step 3: Implement `_parse_target_flags`**
 
-Add to `src/thoth/modes_cmd.py` (above `modes_command`, around line 366):
+Add to `src/doxa_research/modes_cmd.py` (above `modes_command`, around line 366):
 
 ```python
 def _parse_target_flags(
@@ -372,16 +372,16 @@ Expected: 4 PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/thoth/modes_cmd.py tests/test_modes_cmd.py
+git add src/doxa_research/modes_cmd.py tests/test_modes_cmd.py
 git commit -m "feat(modes-cmd): add shared --project/--config/--profile/--string parser"
 ```
 
 ---
 
-## Task 3: `thoth modes add`
+## Task 3: `doxa-research modes add`
 
 **Files:**
-- Modify: `src/thoth/modes_cmd.py` (add `_op_add`, register in dispatch)
+- Modify: `src/doxa_research/modes_cmd.py` (add `_op_add`, register in dispatch)
 - Test: `tests/test_modes_cmd.py` (append)
 
 - [ ] **Step 1: Write failing tests for `_op_add`**
@@ -389,11 +389,11 @@ git commit -m "feat(modes-cmd): add shared --project/--config/--profile/--string
 Append to `tests/test_modes_cmd.py`:
 
 ```python
-from thoth.modes_cmd import modes_command
-from thoth.paths import user_config_file
+from doxa-research.modes_cmd import modes_command
+from doxa-research.paths import user_config_file
 
 
-def test_add_writes_user_toml_default(isolated_thoth_home: Path) -> None:
+def test_add_writes_user_toml_default(isolated_doxa_home: Path) -> None:
     rc = modes_command(
         "add",
         ["my_brief", "--model", "gpt-4o-mini"],
@@ -406,7 +406,7 @@ def test_add_writes_user_toml_default(isolated_thoth_home: Path) -> None:
     assert 'kind = "immediate"' in text  # default
 
 
-def test_add_with_kind_background(isolated_thoth_home: Path) -> None:
+def test_add_with_kind_background(isolated_doxa_home: Path) -> None:
     rc = modes_command(
         "add",
         ["bg", "--model", "o3-deep-research", "--kind", "background"],
@@ -416,7 +416,7 @@ def test_add_with_kind_background(isolated_thoth_home: Path) -> None:
 
 
 def test_add_to_project_toml(
-    isolated_thoth_home: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    isolated_doxa_home: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.chdir(tmp_path)
     rc = modes_command(
@@ -424,12 +424,12 @@ def test_add_to_project_toml(
         ["team_review", "--model", "o1-preview", "--project"],
     )
     assert rc == 0
-    project_toml = tmp_path / "thoth.config.toml"
+    project_toml = tmp_path / "doxa-research.config.toml"
     assert project_toml.exists()
     assert "[modes.team_review]" in project_toml.read_text()
 
 
-def test_add_under_profile(isolated_thoth_home: Path) -> None:
+def test_add_under_profile(isolated_doxa_home: Path) -> None:
     rc = modes_command(
         "add",
         ["cheap", "--model", "gpt-4o-mini", "--profile", "dev"],
@@ -440,7 +440,7 @@ def test_add_under_profile(isolated_thoth_home: Path) -> None:
 
 
 def test_add_to_explicit_config_path(
-    isolated_thoth_home: Path, tmp_path: Path
+    isolated_doxa_home: Path, tmp_path: Path
 ) -> None:
     target = tmp_path / "scratch.toml"
     rc = modes_command(
@@ -452,7 +452,7 @@ def test_add_to_explicit_config_path(
 
 
 def test_add_rejects_config_and_project_together(
-    isolated_thoth_home: Path, tmp_path: Path
+    isolated_doxa_home: Path, tmp_path: Path
 ) -> None:
     rc = modes_command(
         "add",
@@ -468,7 +468,7 @@ def test_add_rejects_config_and_project_together(
     assert rc == 2
 
 
-def test_add_refuses_existing_mode(isolated_thoth_home: Path) -> None:
+def test_add_refuses_existing_mode(isolated_doxa_home: Path) -> None:
     modes_command("add", ["dup", "--model", "gpt-4o-mini"])
     rc = modes_command("add", ["dup", "--model", "gpt-4o"])
     assert rc == 2  # already exists
@@ -484,13 +484,13 @@ Expected: FAIL with "unknown modes op: add".
 
 - [ ] **Step 3: Implement `_op_add`**
 
-Add to `src/thoth/modes_cmd.py` (near `_op_list`):
+Add to `src/doxa_research/modes_cmd.py` (near `_op_list`):
 
 ```python
-from thoth._secrets import _is_secret_key  # if not already imported
-from thoth.config_cmd import _parse_value  # reuse the same coercion
-from thoth.config_write_context import ConfigTargetConflictError, ConfigWriteContext
-from thoth.config import BUILTIN_MODES
+from doxa-research._secrets import _is_secret_key  # if not already imported
+from doxa-research.config_cmd import _parse_value  # reuse the same coercion
+from doxa-research.config_write_context import ConfigTargetConflictError, ConfigWriteContext
+from doxa-research.config import BUILTIN_MODES
 
 
 def _op_add(args: list[str], *, config_path: str | None = None) -> int:
@@ -593,16 +593,16 @@ Expected: all PASS.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add src/thoth/modes_cmd.py tests/test_modes_cmd.py
-git commit -m "feat(modes-cmd): add 'thoth modes add' with --project/--config/--profile targeting"
+git add src/doxa_research/modes_cmd.py tests/test_modes_cmd.py
+git commit -m "feat(modes-cmd): add 'doxa-research modes add' with --project/--config/--profile targeting"
 ```
 
 ---
 
-## Task 4: `thoth modes set`
+## Task 4: `doxa-research modes set`
 
 **Files:**
-- Modify: `src/thoth/modes_cmd.py` (add `_op_set`, register in dispatch)
+- Modify: `src/doxa_research/modes_cmd.py` (add `_op_set`, register in dispatch)
 - Test: `tests/test_modes_cmd.py` (append)
 
 - [ ] **Step 1: Write failing tests**
@@ -610,7 +610,7 @@ git commit -m "feat(modes-cmd): add 'thoth modes add' with --project/--config/--
 Append to `tests/test_modes_cmd.py`:
 
 ```python
-def test_set_updates_existing_user_mode(isolated_thoth_home: Path) -> None:
+def test_set_updates_existing_user_mode(isolated_doxa_home: Path) -> None:
     modes_command("add", ["my_brief", "--model", "gpt-4o-mini"])
     rc = modes_command("set", ["my_brief", "temperature", "0.2"])
     assert rc == 0
@@ -618,7 +618,7 @@ def test_set_updates_existing_user_mode(isolated_thoth_home: Path) -> None:
     assert "temperature = 0.2" in text
 
 
-def test_set_creates_override_for_builtin(isolated_thoth_home: Path) -> None:
+def test_set_creates_override_for_builtin(isolated_doxa_home: Path) -> None:
     # 'default' is a builtin. Setting a key on it implicitly creates an
     # overriding [modes.default] table in user TOML.
     rc = modes_command("set", ["default", "model", "gpt-4o"])
@@ -628,7 +628,7 @@ def test_set_creates_override_for_builtin(isolated_thoth_home: Path) -> None:
     assert 'model = "gpt-4o"' in text
 
 
-def test_set_string_flag_keeps_secret_unparsed(isolated_thoth_home: Path) -> None:
+def test_set_string_flag_keeps_secret_unparsed(isolated_doxa_home: Path) -> None:
     # Without --string the value '1234' would coerce to int.
     rc = modes_command("set", ["my_brief", "label", "1234", "--string"])
     # Need to add my_brief first so the [modes.my_brief] table exists; but
@@ -639,7 +639,7 @@ def test_set_string_flag_keeps_secret_unparsed(isolated_thoth_home: Path) -> Non
     assert 'label = "1234"' in text
 
 
-def test_set_under_profile(isolated_thoth_home: Path) -> None:
+def test_set_under_profile(isolated_doxa_home: Path) -> None:
     modes_command("add", ["cheap", "--model", "gpt-4o-mini", "--profile", "dev"])
     rc = modes_command("set", ["cheap", "temperature", "0.5", "--profile", "dev"])
     assert rc == 0
@@ -649,7 +649,7 @@ def test_set_under_profile(isolated_thoth_home: Path) -> None:
 
 
 def test_set_rejects_config_and_project(
-    isolated_thoth_home: Path, tmp_path: Path
+    isolated_doxa_home: Path, tmp_path: Path
 ) -> None:
     rc = modes_command(
         "set",
@@ -668,7 +668,7 @@ Expected: FAIL with "unknown modes op: set".
 
 - [ ] **Step 3: Implement `_op_set`**
 
-Add to `src/thoth/modes_cmd.py`:
+Add to `src/doxa_research/modes_cmd.py`:
 
 ```python
 def _op_set(args: list[str], *, config_path: str | None = None) -> int:
@@ -715,16 +715,16 @@ Expected: 5 PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/thoth/modes_cmd.py tests/test_modes_cmd.py
-git commit -m "feat(modes-cmd): add 'thoth modes set' with type coercion + --string + targeting"
+git add src/doxa_research/modes_cmd.py tests/test_modes_cmd.py
+git commit -m "feat(modes-cmd): add 'doxa-research modes set' with type coercion + --string + targeting"
 ```
 
 ---
 
-## Task 5: `thoth modes unset`
+## Task 5: `doxa-research modes unset`
 
 **Files:**
-- Modify: `src/thoth/modes_cmd.py` (add `_op_unset`, register in dispatch)
+- Modify: `src/doxa_research/modes_cmd.py` (add `_op_unset`, register in dispatch)
 - Test: `tests/test_modes_cmd.py` (append)
 
 - [ ] **Step 1: Write failing tests**
@@ -732,7 +732,7 @@ git commit -m "feat(modes-cmd): add 'thoth modes set' with type coercion + --str
 Append to `tests/test_modes_cmd.py`:
 
 ```python
-def test_unset_single_key_prunes_empty_table(isolated_thoth_home: Path) -> None:
+def test_unset_single_key_prunes_empty_table(isolated_doxa_home: Path) -> None:
     modes_command("add", ["my_brief", "--model", "gpt-4o-mini"])
     modes_command("set", ["my_brief", "temperature", "0.2"])
     # Unset every key one at a time — table should disappear after the last.
@@ -745,7 +745,7 @@ def test_unset_single_key_prunes_empty_table(isolated_thoth_home: Path) -> None:
 
 
 def test_unset_no_key_removes_entire_user_table(
-    isolated_thoth_home: Path,
+    isolated_doxa_home: Path,
 ) -> None:
     modes_command("add", ["my_brief", "--model", "gpt-4o-mini"])
     rc = modes_command("unset", ["my_brief"])
@@ -754,7 +754,7 @@ def test_unset_no_key_removes_entire_user_table(
 
 
 def test_unset_no_key_drops_user_override_of_builtin(
-    isolated_thoth_home: Path,
+    isolated_doxa_home: Path,
 ) -> None:
     modes_command("set", ["default", "model", "gpt-4o"])  # creates override
     rc = modes_command("unset", ["default"])
@@ -763,7 +763,7 @@ def test_unset_no_key_drops_user_override_of_builtin(
     assert "[modes.default]" not in text
 
 
-def test_unset_under_profile(isolated_thoth_home: Path) -> None:
+def test_unset_under_profile(isolated_doxa_home: Path) -> None:
     modes_command("add", ["cheap", "--model", "gpt-4o-mini", "--profile", "dev"])
     rc = modes_command("unset", ["cheap", "--profile", "dev"])
     assert rc == 0
@@ -772,7 +772,7 @@ def test_unset_under_profile(isolated_thoth_home: Path) -> None:
 
 
 def test_unset_missing_returns_zero_with_note(
-    isolated_thoth_home: Path, capsys: pytest.CaptureFixture[str]
+    isolated_doxa_home: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     rc = modes_command("unset", ["never_existed"])
     err = capsys.readouterr().err
@@ -790,7 +790,7 @@ Expected: FAIL with "unknown modes op: unset".
 
 - [ ] **Step 3: Implement `_op_unset`**
 
-Add to `src/thoth/modes_cmd.py`:
+Add to `src/doxa_research/modes_cmd.py`:
 
 ```python
 import sys
@@ -852,16 +852,16 @@ Expected: 5 PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/thoth/modes_cmd.py tests/test_modes_cmd.py
-git commit -m "feat(modes-cmd): add 'thoth modes unset' with empty-table pruning + targeting"
+git add src/doxa_research/modes_cmd.py tests/test_modes_cmd.py
+git commit -m "feat(modes-cmd): add 'doxa-research modes unset' with empty-table pruning + targeting"
 ```
 
 ---
 
-## Task 6: `thoth modes copy`
+## Task 6: `doxa-research modes copy`
 
 **Files:**
-- Modify: `src/thoth/modes_cmd.py` (add `_op_copy`, register in dispatch)
+- Modify: `src/doxa_research/modes_cmd.py` (add `_op_copy`, register in dispatch)
 - Test: `tests/test_modes_cmd.py` (append)
 
 **Why copy before rename:** Copy is the higher-value op (fork builtin into custom). Rename is cheaper to add after copy is in place.
@@ -871,7 +871,7 @@ git commit -m "feat(modes-cmd): add 'thoth modes unset' with empty-table pruning
 Append to `tests/test_modes_cmd.py`:
 
 ```python
-def test_copy_builtin_to_user_mode(isolated_thoth_home: Path) -> None:
+def test_copy_builtin_to_user_mode(isolated_doxa_home: Path) -> None:
     rc = modes_command("copy", ["deep_research", "custom_research"])
     assert rc == 0
     text = user_config_file().read_text()
@@ -881,7 +881,7 @@ def test_copy_builtin_to_user_mode(isolated_thoth_home: Path) -> None:
     assert 'kind = "background"' in text
 
 
-def test_copy_user_mode_to_user_mode(isolated_thoth_home: Path) -> None:
+def test_copy_user_mode_to_user_mode(isolated_doxa_home: Path) -> None:
     modes_command("add", ["src", "--model", "gpt-4o-mini", "--description", "src"])
     rc = modes_command("copy", ["src", "dst"])
     assert rc == 0
@@ -890,14 +890,14 @@ def test_copy_user_mode_to_user_mode(isolated_thoth_home: Path) -> None:
     assert 'description = "src"' in text
 
 
-def test_copy_refuses_when_dst_exists(isolated_thoth_home: Path) -> None:
+def test_copy_refuses_when_dst_exists(isolated_doxa_home: Path) -> None:
     modes_command("add", ["a", "--model", "gpt-4o-mini"])
     modes_command("add", ["b", "--model", "gpt-4o-mini"])
     rc = modes_command("copy", ["a", "b"])
     assert rc == 2
 
 
-def test_copy_under_profile(isolated_thoth_home: Path) -> None:
+def test_copy_under_profile(isolated_doxa_home: Path) -> None:
     rc = modes_command(
         "copy", ["deep_research", "custom_dr", "--profile", "dev"]
     )
@@ -916,7 +916,7 @@ Expected: FAIL with "unknown modes op: copy".
 
 - [ ] **Step 3: Implement `_op_copy`**
 
-Add to `src/thoth/modes_cmd.py`:
+Add to `src/doxa_research/modes_cmd.py`:
 
 ```python
 def _op_copy(args: list[str], *, config_path: str | None = None) -> int:
@@ -989,16 +989,16 @@ Expected: 4 PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/thoth/modes_cmd.py tests/test_modes_cmd.py
-git commit -m "feat(modes-cmd): add 'thoth modes copy' (builtin or user → user/profile)"
+git add src/doxa_research/modes_cmd.py tests/test_modes_cmd.py
+git commit -m "feat(modes-cmd): add 'doxa-research modes copy' (builtin or user → user/profile)"
 ```
 
 ---
 
-## Task 7: `thoth modes rename`
+## Task 7: `doxa-research modes rename`
 
 **Files:**
-- Modify: `src/thoth/modes_cmd.py` (add `_op_rename`, register in dispatch)
+- Modify: `src/doxa_research/modes_cmd.py` (add `_op_rename`, register in dispatch)
 - Test: `tests/test_modes_cmd.py` (append)
 
 - [ ] **Step 1: Write failing tests**
@@ -1006,7 +1006,7 @@ git commit -m "feat(modes-cmd): add 'thoth modes copy' (builtin or user → user
 Append to `tests/test_modes_cmd.py`:
 
 ```python
-def test_rename_user_mode(isolated_thoth_home: Path) -> None:
+def test_rename_user_mode(isolated_doxa_home: Path) -> None:
     modes_command("add", ["old", "--model", "gpt-4o-mini"])
     rc = modes_command("rename", ["old", "new"])
     assert rc == 0
@@ -1015,24 +1015,24 @@ def test_rename_user_mode(isolated_thoth_home: Path) -> None:
     assert "[modes.old]" not in text
 
 
-def test_rename_refuses_builtin(isolated_thoth_home: Path) -> None:
+def test_rename_refuses_builtin(isolated_doxa_home: Path) -> None:
     rc = modes_command("rename", ["default", "renamed_default"])
     assert rc == 2
 
 
-def test_rename_refuses_when_src_missing(isolated_thoth_home: Path) -> None:
+def test_rename_refuses_when_src_missing(isolated_doxa_home: Path) -> None:
     rc = modes_command("rename", ["nope", "neu"])
     assert rc == 2
 
 
-def test_rename_refuses_when_dst_exists(isolated_thoth_home: Path) -> None:
+def test_rename_refuses_when_dst_exists(isolated_doxa_home: Path) -> None:
     modes_command("add", ["a", "--model", "gpt-4o-mini"])
     modes_command("add", ["b", "--model", "gpt-4o-mini"])
     rc = modes_command("rename", ["a", "b"])
     assert rc == 2
 
 
-def test_rename_under_profile(isolated_thoth_home: Path) -> None:
+def test_rename_under_profile(isolated_doxa_home: Path) -> None:
     modes_command("add", ["a", "--model", "gpt-4o-mini", "--profile", "dev"])
     rc = modes_command("rename", ["a", "b", "--profile", "dev"])
     assert rc == 0
@@ -1051,7 +1051,7 @@ Expected: FAIL with "unknown modes op: rename".
 
 - [ ] **Step 3: Implement `_op_rename`**
 
-Add to `src/thoth/modes_cmd.py`:
+Add to `src/doxa_research/modes_cmd.py`:
 
 ```python
 def _op_rename(args: list[str], *, config_path: str | None = None) -> int:
@@ -1129,8 +1129,8 @@ Expected: all PASS (Tasks 2–7's tests, ~30 cases).
 - [ ] **Step 6: Commit**
 
 ```bash
-git add src/thoth/modes_cmd.py tests/test_modes_cmd.py
-git commit -m "feat(modes-cmd): add 'thoth modes rename' (user-modes only)"
+git add src/doxa_research/modes_cmd.py tests/test_modes_cmd.py
+git commit -m "feat(modes-cmd): add 'doxa-research modes rename' (user-modes only)"
 ```
 
 ---
@@ -1138,7 +1138,7 @@ git commit -m "feat(modes-cmd): add 'thoth modes rename' (user-modes only)"
 ## Task 8: Click subcommand wiring
 
 **Files:**
-- Modify: `src/thoth/cli_subcommands/modes.py` (add 5 leaves)
+- Modify: `src/doxa_research/cli_subcommands/modes.py` (add 5 leaves)
 - Test: `tests/test_modes_cli_integration.py` (create)
 
 - [ ] **Step 1: Create the failing subprocess integration test file**
@@ -1146,7 +1146,7 @@ git commit -m "feat(modes-cmd): add 'thoth modes rename' (user-modes only)"
 Create `tests/test_modes_cli_integration.py`:
 
 ```python
-"""Subprocess integration tests for `thoth modes` add/set/unset/rename/copy."""
+"""Subprocess integration tests for `doxa-research modes` add/set/unset/rename/copy."""
 
 from __future__ import annotations
 
@@ -1157,9 +1157,9 @@ from pathlib import Path
 import pytest
 
 
-def _thoth(*args: str, cwd: Path, env: dict[str, str]) -> subprocess.CompletedProcess[str]:
+def _doxa(*args: str, cwd: Path, env: dict[str, str]) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
-        [sys.executable, "-m", "thoth", "modes", *args],
+        [sys.executable, "-m", "doxa-research", "modes", *args],
         capture_output=True,
         text=True,
         cwd=cwd,
@@ -1170,42 +1170,42 @@ def _thoth(*args: str, cwd: Path, env: dict[str, str]) -> subprocess.CompletedPr
 
 @pytest.fixture
 def cli_env(
-    isolated_thoth_home: Path, monkeypatch: pytest.MonkeyPatch
+    isolated_doxa_home: Path, monkeypatch: pytest.MonkeyPatch
 ) -> dict[str, str]:
     import os
     env = dict(os.environ)
-    env["XDG_CONFIG_HOME"] = str(isolated_thoth_home / "config")
+    env["XDG_CONFIG_HOME"] = str(isolated_doxa_home / "config")
     return env
 
 
 def test_cli_add_creates_user_toml(
-    isolated_thoth_home: Path, tmp_path: Path, cli_env: dict[str, str]
+    isolated_doxa_home: Path, tmp_path: Path, cli_env: dict[str, str]
 ) -> None:
-    res = _thoth("add", "x", "--model", "gpt-4o-mini", cwd=tmp_path, env=cli_env)
+    res = _doxa("add", "x", "--model", "gpt-4o-mini", cwd=tmp_path, env=cli_env)
     assert res.returncode == 0, res.stderr
-    user_toml = isolated_thoth_home / "config" / "thoth" / "thoth.config.toml"
+    user_toml = isolated_doxa_home / "config" / "doxa-research" / "doxa-research.config.toml"
     assert user_toml.exists()
     assert "[modes.x]" in user_toml.read_text()
 
 
 def test_cli_add_project(
-    isolated_thoth_home: Path, tmp_path: Path, cli_env: dict[str, str]
+    isolated_doxa_home: Path, tmp_path: Path, cli_env: dict[str, str]
 ) -> None:
-    res = _thoth(
+    res = _doxa(
         "add", "team", "--model", "o1-preview", "--project",
         cwd=tmp_path, env=cli_env,
     )
     assert res.returncode == 0, res.stderr
-    project_toml = tmp_path / "thoth.config.toml"
+    project_toml = tmp_path / "doxa-research.config.toml"
     assert project_toml.exists()
     assert "[modes.team]" in project_toml.read_text()
 
 
 def test_cli_add_config_path(
-    isolated_thoth_home: Path, tmp_path: Path, cli_env: dict[str, str]
+    isolated_doxa_home: Path, tmp_path: Path, cli_env: dict[str, str]
 ) -> None:
     target = tmp_path / "scratch.toml"
-    res = _thoth(
+    res = _doxa(
         "add", "s", "--model", "gpt-4o-mini", "--config", str(target),
         cwd=tmp_path, env=cli_env,
     )
@@ -1214,35 +1214,35 @@ def test_cli_add_config_path(
 
 
 def test_cli_set_then_unset_round_trip(
-    isolated_thoth_home: Path, tmp_path: Path, cli_env: dict[str, str]
+    isolated_doxa_home: Path, tmp_path: Path, cli_env: dict[str, str]
 ) -> None:
-    _thoth("add", "rt", "--model", "gpt-4o-mini", cwd=tmp_path, env=cli_env)
-    _thoth("set", "rt", "temperature", "0.2", cwd=tmp_path, env=cli_env)
-    _thoth("unset", "rt", cwd=tmp_path, env=cli_env)
-    user_toml = isolated_thoth_home / "config" / "thoth" / "thoth.config.toml"
+    _doxa("add", "rt", "--model", "gpt-4o-mini", cwd=tmp_path, env=cli_env)
+    _doxa("set", "rt", "temperature", "0.2", cwd=tmp_path, env=cli_env)
+    _doxa("unset", "rt", cwd=tmp_path, env=cli_env)
+    user_toml = isolated_doxa_home / "config" / "doxa-research" / "doxa-research.config.toml"
     assert "[modes.rt]" not in user_toml.read_text()
 
 
 def test_cli_copy_then_rename(
-    isolated_thoth_home: Path, tmp_path: Path, cli_env: dict[str, str]
+    isolated_doxa_home: Path, tmp_path: Path, cli_env: dict[str, str]
 ) -> None:
-    _thoth("copy", "deep_research", "fork", cwd=tmp_path, env=cli_env)
-    _thoth("rename", "fork", "fork2", cwd=tmp_path, env=cli_env)
-    user_toml = isolated_thoth_home / "config" / "thoth" / "thoth.config.toml"
+    _doxa("copy", "deep_research", "fork", cwd=tmp_path, env=cli_env)
+    _doxa("rename", "fork", "fork2", cwd=tmp_path, env=cli_env)
+    user_toml = isolated_doxa_home / "config" / "doxa-research" / "doxa-research.config.toml"
     text = user_toml.read_text()
     assert "[modes.fork2]" in text
     assert "[modes.fork]" not in text
 
 
 def test_cli_add_under_profile(
-    isolated_thoth_home: Path, tmp_path: Path, cli_env: dict[str, str]
+    isolated_doxa_home: Path, tmp_path: Path, cli_env: dict[str, str]
 ) -> None:
-    res = _thoth(
+    res = _doxa(
         "add", "cheap", "--model", "gpt-4o-mini", "--profile", "dev",
         cwd=tmp_path, env=cli_env,
     )
     assert res.returncode == 0, res.stderr
-    user_toml = isolated_thoth_home / "config" / "thoth" / "thoth.config.toml"
+    user_toml = isolated_doxa_home / "config" / "doxa-research" / "doxa-research.config.toml"
     assert "[profiles.dev.modes.cheap]" in user_toml.read_text()
 ```
 
@@ -1252,11 +1252,11 @@ def test_cli_add_under_profile(
 uv run pytest tests/test_modes_cli_integration.py -v
 ```
 
-Expected: FAIL with `Usage: thoth modes [OPTIONS] COMMAND [ARGS]... Error: No such command 'add'`.
+Expected: FAIL with `Usage: doxa-research modes [OPTIONS] COMMAND [ARGS]... Error: No such command 'add'`.
 
 - [ ] **Step 3: Register the five Click leaves**
 
-In `src/thoth/cli_subcommands/modes.py`, replace the trailing comment `# Future: P12 adds 'add', 'set', 'unset' leaves here.` (line 148) with:
+In `src/doxa_research/cli_subcommands/modes.py`, replace the trailing comment `# Future: P12 adds 'add', 'set', 'unset' leaves here.` (line 148) with:
 
 ```python
 def _make_mutator_leaf(op_name: str, takes_kwargs: bool = False):
@@ -1266,7 +1266,7 @@ def _make_mutator_leaf(op_name: str, takes_kwargs: bool = False):
     def _leaf(ctx: click.Context, args: tuple[str, ...]) -> None:
         validate_inherited_options(ctx, f"modes {op_name}", DEFAULT_HONOR)
         config_path = inherited_value(ctx, "config_path")
-        from thoth.modes_cmd import modes_command
+        from doxa-research.modes_cmd import modes_command
         rc = modes_command(op_name, list(args), config_path=config_path)
         sys.exit(rc)
     return _leaf
@@ -1295,7 +1295,7 @@ Expected: all PASS.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add src/thoth/cli_subcommands/modes.py tests/test_modes_cli_integration.py
+git add src/doxa_research/cli_subcommands/modes.py tests/test_modes_cli_integration.py
 git commit -m "feat(modes-cli): wire add/set/unset/rename/copy click leaves through to modes_command"
 ```
 
@@ -1304,19 +1304,19 @@ git commit -m "feat(modes-cli): wire add/set/unset/rename/copy click leaves thro
 ## Task 9: Help epilog refresh
 
 **Files:**
-- Modify: `src/thoth/help.py` (around line 161, `_ModesGroup.format_epilog`)
+- Modify: `src/doxa_research/help.py` (around line 161, `_ModesGroup.format_epilog`)
 
 - [ ] **Step 1: Read the current epilog block**
 
 ```bash
-sed -n '160,200p' src/thoth/help.py
+sed -n '160,200p' src/doxa_research/help.py
 ```
 
 Note exact text so the replacement is precise.
 
 - [ ] **Step 2: Replace the epilog with the new content**
 
-In `src/thoth/help.py`, locate the `format_epilog` block of `_ModesGroup` (line ~161). Replace its body with:
+In `src/doxa_research/help.py`, locate the `format_epilog` block of `_ModesGroup` (line ~161). Replace its body with:
 
 ```python
 def format_epilog(self, ctx: click.Context, formatter):
@@ -1324,28 +1324,28 @@ def format_epilog(self, ctx: click.Context, formatter):
     formatter.write_paragraph()
     with formatter.section("Examples"):
         formatter.write_text("List modes:")
-        formatter.write_text("  thoth modes")
-        formatter.write_text("  thoth modes list --json")
+        formatter.write_text("  doxa-research modes")
+        formatter.write_text("  doxa-research modes list --json")
         formatter.write_paragraph()
         formatter.write_text("Edit modes (P12):")
-        formatter.write_text("  thoth modes add my_brief --model gpt-4o-mini --description \"terse brief\"")
-        formatter.write_text("  thoth modes set my_brief temperature 0.2")
-        formatter.write_text("  thoth modes copy deep_research custom_research")
-        formatter.write_text("  thoth modes rename my_brief brief")
-        formatter.write_text("  thoth modes unset my_brief")
+        formatter.write_text("  doxa-research modes add my_brief --model gpt-4o-mini --description \"terse brief\"")
+        formatter.write_text("  doxa-research modes set my_brief temperature 0.2")
+        formatter.write_text("  doxa-research modes copy deep_research custom_research")
+        formatter.write_text("  doxa-research modes rename my_brief brief")
+        formatter.write_text("  doxa-research modes unset my_brief")
         formatter.write_paragraph()
-        formatter.write_text("Targeting (mirrors `thoth config set`):")
-        formatter.write_text("  --project           write to ./thoth.config.toml")
+        formatter.write_text("Targeting (mirrors `doxa-research config set`):")
+        formatter.write_text("  --project           write to ./doxa.config.toml")
         formatter.write_text("  --config PATH       write to PATH")
         formatter.write_text("  --profile NAME      write to [profiles.NAME.modes.<mode>]")
         formatter.write_paragraph()
-        formatter.write_text("Run `thoth modes` for provider, model, and kind per mode.")
+        formatter.write_text("Run `doxa-research modes` for provider, model, and kind per mode.")
 ```
 
 - [ ] **Step 3: Smoke-test the help output**
 
 ```bash
-uv run python -m thoth modes --help
+uv run python -m doxa-research modes --help
 ```
 
 Expected: the new "Edit modes (P12)" and "Targeting" blocks appear in the epilog.
@@ -1361,7 +1361,7 @@ Expected: all PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/thoth/help.py
+git add src/doxa_research/help.py
 git commit -m "docs(help): document modes add/set/unset/rename/copy + targeting flags"
 ```
 
@@ -1379,7 +1379,7 @@ uv run ruff check src/ tests/
 uv run ruff format --check src/ tests/
 uv run ty check src/
 uv run pytest -q
-./thoth_test -r --skip-interactive -q
+./doxa_test -r --skip-interactive -q
 ```
 
 Expected: every command exits 0. If any fail, fix and re-run before proceeding.
@@ -1405,11 +1405,11 @@ git commit -m "chore(p12): close P12 — mode editing CLI shipped, flip to [x]"
 
 ```bash
 git push -u origin p12-modes-editing
-gh pr create --title "feat: P12 — thoth modes add/set/unset/rename/copy with --project/--config/--profile" \
+gh pr create --title "feat: P12 — doxa-research modes add/set/unset/rename/copy with --project/--config/--profile" \
   --body "$(cat <<'EOF'
 ## Summary
 - Implements P12: CLI mode editing (add/set/unset/rename/copy)
-- Targeting flags mirror `thoth config set`: `--project`, `--config PATH`, `--profile NAME`
+- Targeting flags mirror `doxa-research config set`: `--project`, `--config PATH`, `--profile NAME`
 - Profile-scoped writes land at `[profiles.<name>.modes.<mode>]`
 - `_secrets.py` extraction was already done under P13 (P12-T05/TS05 marked `[>]`)
 
@@ -1417,8 +1417,8 @@ gh pr create --title "feat: P12 — thoth modes add/set/unset/rename/copy with -
 - [x] Unit tests in `tests/test_modes_cmd.py`
 - [x] Subprocess integration tests in `tests/test_modes_cli_integration.py`
 - [x] `tests/test_config_document.py` covers the new mode helpers
-- [x] Full gate: `just check`, `uv run pytest -q`, `./thoth_test -r --skip-interactive -q`
-- [x] Help epilog updated; smoke-tested via `thoth modes --help`
+- [x] Full gate: `just check`, `uv run pytest -q`, `./doxa_test -r --skip-interactive -q`
+- [x] Help epilog updated; smoke-tested via `doxa-research modes --help`
 EOF
 )"
 ```

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from click.testing import CliRunner
 
-from thoth.cli import cli
+from doxa_research.cli import cli
 
 
 def test_providers_models_refresh_and_no_cache_mutex():
@@ -16,7 +16,7 @@ def test_providers_models_refresh_and_no_cache_mutex():
 
 
 def test_modes_no_leaf_exits_2():
-    """Q5-A row 5: bare `thoth modes` exits 2 (no leaf default)."""
+    """Q5-A row 5: bare `doxa modes` exits 2 (no leaf default)."""
     r = CliRunner().invoke(cli, ["modes"])
     assert r.exit_code == 2, r.output
 
@@ -50,7 +50,7 @@ def test_clarify_alone_rejected():
 
 
 def test_status_no_arg_exits_2():
-    """Q5-A row 6: bare `thoth status` exits 2 (Click default for missing required arg)."""
+    """Q5-A row 6: bare `doxa status` exits 2 (Click default for missing required arg)."""
     r = CliRunner().invoke(cli, ["status"])
     assert r.exit_code == 2, r.output
 
@@ -64,6 +64,6 @@ def test_config_get_invalid_layer_exits_2():
 
 
 def test_providers_no_leaf_exits_2():
-    """Q5-A row 4: bare `thoth providers` exits 2 (no-leaf default)."""
+    """Q5-A row 4: bare `doxa providers` exits 2 (no-leaf default)."""
     r = CliRunner().invoke(cli, ["providers"])
     assert r.exit_code == 2, r.output

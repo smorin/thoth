@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from thoth.config_document import ConfigDocument
+from doxa_research.config_document import ConfigDocument
 
 
 def _doc(path: Path) -> ConfigDocument:
@@ -12,7 +12,7 @@ def _doc(path: Path) -> ConfigDocument:
 
 
 def test_ensure_mode_creates_table(tmp_path: Path) -> None:
-    p = tmp_path / "thoth.config.toml"
+    p = tmp_path / "doxa.config.toml"
     doc = _doc(p)
     assert doc.ensure_mode("brief") is True
     doc.save()
@@ -20,14 +20,14 @@ def test_ensure_mode_creates_table(tmp_path: Path) -> None:
 
 
 def test_ensure_mode_idempotent(tmp_path: Path) -> None:
-    p = tmp_path / "thoth.config.toml"
+    p = tmp_path / "doxa.config.toml"
     doc = _doc(p)
     doc.ensure_mode("brief")
     assert doc.ensure_mode("brief") is False  # second call is no-op
 
 
 def test_ensure_mode_with_profile(tmp_path: Path) -> None:
-    p = tmp_path / "thoth.config.toml"
+    p = tmp_path / "doxa.config.toml"
     doc = _doc(p)
     assert doc.ensure_mode("cheap", profile="dev") is True
     doc.save()
@@ -35,7 +35,7 @@ def test_ensure_mode_with_profile(tmp_path: Path) -> None:
 
 
 def test_set_mode_value_in_base_tier(tmp_path: Path) -> None:
-    p = tmp_path / "thoth.config.toml"
+    p = tmp_path / "doxa.config.toml"
     doc = _doc(p)
     doc.set_mode_value("brief", "model", "gpt-4o-mini")
     doc.save()
@@ -45,7 +45,7 @@ def test_set_mode_value_in_base_tier(tmp_path: Path) -> None:
 
 
 def test_set_mode_value_in_overlay_tier(tmp_path: Path) -> None:
-    p = tmp_path / "thoth.config.toml"
+    p = tmp_path / "doxa.config.toml"
     doc = _doc(p)
     doc.set_mode_value("cheap", "model", "gpt-4o-mini", profile="dev")
     doc.save()
@@ -55,7 +55,7 @@ def test_set_mode_value_in_overlay_tier(tmp_path: Path) -> None:
 
 
 def test_set_mode_value_dotted_key(tmp_path: Path) -> None:
-    p = tmp_path / "thoth.config.toml"
+    p = tmp_path / "doxa.config.toml"
     doc = _doc(p)
     doc.set_mode_value("brief", "limits.max_tokens", 1000)
     doc.save()
@@ -65,7 +65,7 @@ def test_set_mode_value_dotted_key(tmp_path: Path) -> None:
 
 
 def test_unset_mode_value_drops_key(tmp_path: Path) -> None:
-    p = tmp_path / "thoth.config.toml"
+    p = tmp_path / "doxa.config.toml"
     doc = _doc(p)
     doc.set_mode_value("brief", "model", "gpt-4o-mini")
     doc.set_mode_value("brief", "temperature", 0.2)
@@ -77,7 +77,7 @@ def test_unset_mode_value_drops_key(tmp_path: Path) -> None:
 
 
 def test_unset_mode_value_prunes_empty_table(tmp_path: Path) -> None:
-    p = tmp_path / "thoth.config.toml"
+    p = tmp_path / "doxa.config.toml"
     doc = _doc(p)
     doc.set_mode_value("brief", "model", "gpt-4o-mini")
     # Removing the only key should prune the empty [modes.brief] table.
@@ -88,14 +88,14 @@ def test_unset_mode_value_prunes_empty_table(tmp_path: Path) -> None:
 
 
 def test_unset_mode_value_idempotent_when_absent(tmp_path: Path) -> None:
-    p = tmp_path / "thoth.config.toml"
+    p = tmp_path / "doxa.config.toml"
     doc = _doc(p)
     doc.set_mode_value("brief", "model", "gpt-4o-mini")
     assert doc.unset_mode_value("brief", "missing_key") == (False, False)
 
 
 def test_unset_mode_value_in_overlay_tier(tmp_path: Path) -> None:
-    p = tmp_path / "thoth.config.toml"
+    p = tmp_path / "doxa.config.toml"
     doc = _doc(p)
     doc.set_mode_value("cheap", "model", "gpt-4o-mini", profile="dev")
     assert doc.unset_mode_value("cheap", "model", profile="dev") == (True, True)
@@ -104,7 +104,7 @@ def test_unset_mode_value_in_overlay_tier(tmp_path: Path) -> None:
 
 
 def test_remove_mode_drops_table(tmp_path: Path) -> None:
-    p = tmp_path / "thoth.config.toml"
+    p = tmp_path / "doxa.config.toml"
     doc = _doc(p)
     doc.set_mode_value("brief", "model", "gpt-4o-mini")
     doc.set_mode_value("brief", "temperature", 0.2)
@@ -114,13 +114,13 @@ def test_remove_mode_drops_table(tmp_path: Path) -> None:
 
 
 def test_remove_mode_idempotent_when_absent(tmp_path: Path) -> None:
-    p = tmp_path / "thoth.config.toml"
+    p = tmp_path / "doxa.config.toml"
     doc = _doc(p)
     assert doc.remove_mode("nonexistent") is False
 
 
 def test_remove_mode_in_overlay_tier(tmp_path: Path) -> None:
-    p = tmp_path / "thoth.config.toml"
+    p = tmp_path / "doxa.config.toml"
     doc = _doc(p)
     doc.set_mode_value("cheap", "model", "gpt-4o-mini", profile="dev")
     assert doc.remove_mode("cheap", profile="dev") is True
@@ -129,7 +129,7 @@ def test_remove_mode_in_overlay_tier(tmp_path: Path) -> None:
 
 
 def test_rename_mode_succeeds(tmp_path: Path) -> None:
-    p = tmp_path / "thoth.config.toml"
+    p = tmp_path / "doxa.config.toml"
     doc = _doc(p)
     doc.set_mode_value("old", "model", "gpt-4o-mini")
     doc.set_mode_value("old", "temperature", 0.2)
@@ -143,13 +143,13 @@ def test_rename_mode_succeeds(tmp_path: Path) -> None:
 
 
 def test_rename_mode_when_old_absent(tmp_path: Path) -> None:
-    p = tmp_path / "thoth.config.toml"
+    p = tmp_path / "doxa.config.toml"
     doc = _doc(p)
     assert doc.rename_mode("missing", "new") is False
 
 
 def test_rename_mode_when_new_already_exists(tmp_path: Path) -> None:
-    p = tmp_path / "thoth.config.toml"
+    p = tmp_path / "doxa.config.toml"
     doc = _doc(p)
     doc.set_mode_value("old", "model", "a")
     doc.set_mode_value("new", "model", "b")
@@ -159,7 +159,7 @@ def test_rename_mode_when_new_already_exists(tmp_path: Path) -> None:
 
 
 def test_rename_mode_in_overlay(tmp_path: Path) -> None:
-    p = tmp_path / "thoth.config.toml"
+    p = tmp_path / "doxa.config.toml"
     doc = _doc(p)
     doc.set_mode_value("old", "model", "x", profile="dev")
     assert doc.rename_mode("old", "new", profile="dev") is True
@@ -170,7 +170,7 @@ def test_rename_mode_in_overlay(tmp_path: Path) -> None:
 
 
 def test_copy_mode_base_to_base(tmp_path: Path) -> None:
-    p = tmp_path / "thoth.config.toml"
+    p = tmp_path / "doxa.config.toml"
     doc = _doc(p)
     doc.set_mode_value("src", "model", "gpt-4o-mini")
     doc.set_mode_value("src", "temperature", 0.2)
@@ -182,7 +182,7 @@ def test_copy_mode_base_to_base(tmp_path: Path) -> None:
 
 
 def test_copy_mode_base_to_overlay(tmp_path: Path) -> None:
-    p = tmp_path / "thoth.config.toml"
+    p = tmp_path / "doxa.config.toml"
     doc = _doc(p)
     doc.set_mode_value("src", "model", "gpt-4o-mini")
     assert doc.copy_mode("src", "dst", profile="dev") is True
@@ -193,7 +193,7 @@ def test_copy_mode_base_to_overlay(tmp_path: Path) -> None:
 
 
 def test_copy_mode_overlay_to_base(tmp_path: Path) -> None:
-    p = tmp_path / "thoth.config.toml"
+    p = tmp_path / "doxa.config.toml"
     doc = _doc(p)
     doc.set_mode_value("src", "model", "gpt-4o-mini", profile="dev")
     assert doc.copy_mode("src", "dst", from_profile="dev") is True
@@ -204,7 +204,7 @@ def test_copy_mode_overlay_to_base(tmp_path: Path) -> None:
 
 
 def test_copy_mode_overlay_to_overlay_cross_profile(tmp_path: Path) -> None:
-    p = tmp_path / "thoth.config.toml"
+    p = tmp_path / "doxa.config.toml"
     doc = _doc(p)
     doc.set_mode_value("src", "model", "gpt-4o-mini", profile="dev")
     assert doc.copy_mode("src", "dst", from_profile="dev", profile="ci") is True
@@ -215,7 +215,7 @@ def test_copy_mode_overlay_to_overlay_cross_profile(tmp_path: Path) -> None:
 
 
 def test_copy_mode_when_dst_already_exists(tmp_path: Path) -> None:
-    p = tmp_path / "thoth.config.toml"
+    p = tmp_path / "doxa.config.toml"
     doc = _doc(p)
     doc.set_mode_value("src", "model", "a")
     doc.set_mode_value("dst", "model", "b")
@@ -228,13 +228,13 @@ def test_copy_mode_when_src_absent_falls_back_to_caller_provided_data(
     """The primitive has no notion of BUILTIN_MODES; the CLI layer is
     responsible for layering builtin+override before calling. When SRC is
     truly absent in the file, the primitive returns False."""
-    p = tmp_path / "thoth.config.toml"
+    p = tmp_path / "doxa.config.toml"
     doc = _doc(p)
     assert doc.copy_mode("missing", "dst") is False
 
 
 def test_get_mode_returns_dict_when_present(tmp_path: Path) -> None:
-    p = tmp_path / "thoth.config.toml"
+    p = tmp_path / "doxa.config.toml"
     doc = _doc(p)
     doc.set_mode_value("brief", "model", "gpt-4o-mini")
     doc.set_mode_value("brief", "temperature", 0.2)
@@ -243,13 +243,13 @@ def test_get_mode_returns_dict_when_present(tmp_path: Path) -> None:
 
 
 def test_get_mode_returns_none_when_absent(tmp_path: Path) -> None:
-    p = tmp_path / "thoth.config.toml"
+    p = tmp_path / "doxa.config.toml"
     doc = _doc(p)
     assert doc.get_mode("nonexistent") is None
 
 
 def test_get_mode_in_overlay_tier(tmp_path: Path) -> None:
-    p = tmp_path / "thoth.config.toml"
+    p = tmp_path / "doxa.config.toml"
     doc = _doc(p)
     doc.set_mode_value("cheap", "model", "gpt-4o-mini", profile="dev")
     snapshot = doc.get_mode("cheap", profile="dev")
@@ -259,7 +259,7 @@ def test_get_mode_in_overlay_tier(tmp_path: Path) -> None:
 
 
 def test_get_mode_returns_independent_snapshot(tmp_path: Path) -> None:
-    p = tmp_path / "thoth.config.toml"
+    p = tmp_path / "doxa.config.toml"
     doc = _doc(p)
     doc.set_mode_value("brief", "model", "gpt-4o-mini")
     snapshot = doc.get_mode("brief")

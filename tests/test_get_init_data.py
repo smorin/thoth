@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 
-def test_get_init_data_returns_dict_with_config_path(isolated_thoth_home, monkeypatch):
-    from thoth.commands import get_init_data
+def test_get_init_data_returns_dict_with_config_path(isolated_doxa_home, monkeypatch):
+    from doxa_research.commands import get_init_data
 
     data = get_init_data(non_interactive=True, config_path=None)
     assert isinstance(data, dict)
@@ -13,11 +13,11 @@ def test_get_init_data_returns_dict_with_config_path(isolated_thoth_home, monkey
     assert isinstance(data["created"], bool)
 
 
-def test_get_init_data_does_not_branch_on_as_json(isolated_thoth_home):
+def test_get_init_data_does_not_branch_on_as_json(isolated_doxa_home):
     """spec §7.2 critical invariant — `as_json` MUST NOT appear in handler signature."""
     import inspect
 
-    from thoth.commands import get_init_data
+    from doxa_research.commands import get_init_data
 
     params = inspect.signature(get_init_data).parameters
     assert "as_json" not in params

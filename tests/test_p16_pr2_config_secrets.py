@@ -5,11 +5,11 @@ from __future__ import annotations
 import pytest
 from click.testing import CliRunner
 
-from thoth.cli import cli
+from doxa_research.cli import cli
 
 
 @pytest.fixture
-def secret_config(isolated_thoth_home, monkeypatch):
+def secret_config(isolated_doxa_home, monkeypatch):
     """Set a known secret value via env-layer override."""
     fake_key = "sk-" + "FAKE-VALUE-FOR-TESTS-ONLY"  # noqa: S105 — test fixture
     monkeypatch.setenv("OPENAI_API_KEY", fake_key)
@@ -53,14 +53,14 @@ def test_get_secret_no_flags_masks(secret_config):
 
 
 # Non-secret + --raw — still works (formatting flag)
-def test_get_non_secret_with_raw(isolated_thoth_home):
+def test_get_non_secret_with_raw(isolated_doxa_home):
     r = CliRunner().invoke(cli, ["config", "get", "general.default_mode", "--raw"])
     assert r.exit_code == 0, r.output
     assert r.output.strip() == "default"
 
 
 # Non-secret + --show-secrets — works (no-op for non-secrets)
-def test_get_non_secret_with_show_secrets(isolated_thoth_home):
+def test_get_non_secret_with_show_secrets(isolated_doxa_home):
     r = CliRunner().invoke(cli, ["config", "get", "general.default_mode", "--show-secrets"])
     assert r.exit_code == 0, r.output
     assert "default" in r.output
@@ -86,7 +86,7 @@ def test_get_secret_json_show_secrets_reveals(secret_config):
 # I3 (PR2 review-fix): `config list --raw` is rejected with a clear message.
 # `--raw` is a per-layer get-only concept; for machine-readable list output
 # the user should use `config list --json`.
-def test_list_raw_rejected_with_clear_message(isolated_thoth_home):
+def test_list_raw_rejected_with_clear_message(isolated_doxa_home):
     r = CliRunner().invoke(cli, ["config", "list", "--raw"])
     assert r.exit_code == 2, r.output
     out = r.output.lower()

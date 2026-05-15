@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import pytest
 
-from thoth.config import BUILTIN_MODES
+from doxa_research.config import BUILTIN_MODES
 
 VALID_KINDS = {"immediate", "background"}
 

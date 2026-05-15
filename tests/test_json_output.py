@@ -1,4 +1,4 @@
-"""Envelope-contract tests for `thoth.json_output`.
+"""Envelope-contract tests for `doxa_research.json_output`.
 
 Per spec §6.1 + §8.3, every `--json` command's output MUST satisfy:
 1. Output parses as JSON (json.loads doesn't raise)
@@ -20,7 +20,7 @@ import pytest
 
 
 def test_emit_json_writes_success_envelope_and_exits_zero(capsys):
-    from thoth.json_output import emit_json
+    from doxa_research.json_output import emit_json
 
     with pytest.raises(SystemExit) as excinfo:
         emit_json({"foo": 1, "bar": "baz"})
@@ -32,7 +32,7 @@ def test_emit_json_writes_success_envelope_and_exits_zero(capsys):
 
 
 def test_emit_error_writes_error_envelope_with_default_exit_code_one(capsys):
-    from thoth.json_output import emit_error
+    from doxa_research.json_output import emit_error
 
     with pytest.raises(SystemExit) as excinfo:
         emit_error("CODE", "human message", {"detail_key": 42})
@@ -51,7 +51,7 @@ def test_emit_error_writes_error_envelope_with_default_exit_code_one(capsys):
 
 
 def test_emit_error_omits_details_when_none(capsys):
-    from thoth.json_output import emit_error
+    from doxa_research.json_output import emit_error
 
     with pytest.raises(SystemExit):
         emit_error("CODE", "msg")
@@ -61,7 +61,7 @@ def test_emit_error_omits_details_when_none(capsys):
 
 
 def test_emit_error_honors_exit_code_override(capsys):
-    from thoth.json_output import emit_error
+    from doxa_research.json_output import emit_error
 
     with pytest.raises(SystemExit) as excinfo:
         emit_error("CODE", "msg", exit_code=2)
@@ -70,7 +70,7 @@ def test_emit_error_honors_exit_code_override(capsys):
 
 
 def test_emit_json_honors_exit_code_override(capsys):
-    from thoth.json_output import emit_json
+    from doxa_research.json_output import emit_json
 
     with pytest.raises(SystemExit) as excinfo:
         emit_json({"x": 1}, exit_code=130)
@@ -78,21 +78,21 @@ def test_emit_json_honors_exit_code_override(capsys):
     assert excinfo.value.code == 130
 
 
-def test_thoth_error_code_maps_known_errors():
-    from thoth.errors import (
+def test_doxa_error_code_maps_known_errors():
+    from doxa_research.errors import (
         ConfigAmbiguousError,
         ConfigNotFoundError,
         ConfigProfileError,
-        ThothError,
+        DoxaError,
     )
-    from thoth.json_output import thoth_error_code
+    from doxa_research.json_output import doxa_error_code
 
     cases = [
         (ConfigAmbiguousError("ambiguous"), "CONFIG_AMBIGUOUS"),
         (ConfigNotFoundError("missing"), "CONFIG_NOT_FOUND"),
         (ConfigProfileError("bad profile"), "CONFIG_PROFILE_ERROR"),
-        (ThothError("generic"), "THOTH_ERROR"),
+        (DoxaError("generic"), "DOXA_ERROR"),
     ]
 
     for exc, code in cases:
-        assert thoth_error_code(exc) == code
+        assert doxa_error_code(exc) == code

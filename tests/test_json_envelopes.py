@@ -2,7 +2,7 @@
 
 The JSON_COMMANDS list grows as each subcommand T06–T13 adds `--json`.
 Category H meta-test in test_ci_lint_rules.py uses an AST walker against
-src/thoth/cli_subcommands/ to assert this list stays complete.
+src/doxa_research/cli_subcommands/ to assert this list stays complete.
 """
 
 from __future__ import annotations
@@ -93,13 +93,13 @@ AMBIGUOUS_CONFIG_JSON_COMMANDS: list[tuple[str, list[str]]] = [
 
 @pytest.fixture
 def cli():
-    from thoth.cli import cli as _cli
+    from doxa_research.cli import cli as _cli
 
     return _cli
 
 
 @pytest.mark.parametrize("label,argv,exit_code", JSON_COMMANDS, ids=[c[0] for c in JSON_COMMANDS])
-def test_json_envelope_contract(label, argv, exit_code, cli, isolated_thoth_home, monkeypatch):
+def test_json_envelope_contract(label, argv, exit_code, cli, isolated_doxa_home, monkeypatch):
     # `config edit` opens $EDITOR; force a no-op editor for the parametrize row.
     if "edit" in argv:
         monkeypatch.setenv("EDITOR", "true")
@@ -107,7 +107,7 @@ def test_json_envelope_contract(label, argv, exit_code, cli, isolated_thoth_home
     # P21b profile-row seeding: rows that exercise a profile target need the
     # `fast` profile (and sometimes a key/value or persisted default) in place
     # before the target argv runs. Seed via the same runner so the isolated
-    # XDG_CONFIG_HOME from `isolated_thoth_home` stays consistent.
+    # XDG_CONFIG_HOME from `isolated_doxa_home` stays consistent.
     _PROFILE_SEED_ADD = {
         "config_profiles_show",
         "config_profiles_set",
@@ -135,9 +135,9 @@ def test_json_envelope_contract(label, argv, exit_code, cli, isolated_thoth_home
         assert seed.exit_code == 0, f"{label} seed (set-default) failed: {seed.output}"
 
     if label == "init_non_interactive":
-        # `thoth init` defaults to writing ./thoth.config.toml, so keep this
+        # `doxa init` defaults to writing ./doxa.config.toml, so keep this
         # success-contract row independent of the repository cwd.
-        with runner.isolated_filesystem(temp_dir=isolated_thoth_home):
+        with runner.isolated_filesystem(temp_dir=isolated_doxa_home):
             result = runner.invoke(cli, argv, catch_exceptions=False)
     else:
         result = runner.invoke(cli, argv, catch_exceptions=False)
@@ -156,7 +156,7 @@ def test_json_envelope_contract(label, argv, exit_code, cli, isolated_thoth_home
 
 
 def test_init_json_without_non_interactive_emits_JSON_REQUIRES_NONINTERACTIVE(
-    cli, isolated_thoth_home
+    cli, isolated_doxa_home
 ):
     runner = CliRunner()
     result = runner.invoke(cli, ["init", "--json"], catch_exceptions=False)
@@ -167,7 +167,7 @@ def test_init_json_without_non_interactive_emits_JSON_REQUIRES_NONINTERACTIVE(
     assert payload["error"]["code"] == "JSON_REQUIRES_NONINTERACTIVE"
 
 
-def test_status_json_missing_op_emits_OPERATION_NOT_FOUND(cli, isolated_thoth_home):
+def test_status_json_missing_op_emits_OPERATION_NOT_FOUND(cli, isolated_doxa_home):
     runner = CliRunner()
     result = runner.invoke(cli, ["status", "research-MISSING", "--json"], catch_exceptions=False)
 
@@ -178,7 +178,7 @@ def test_status_json_missing_op_emits_OPERATION_NOT_FOUND(cli, isolated_thoth_ho
 
 
 def test_config_edit_json_with_editor_true_emits_success_envelope(
-    cli, isolated_thoth_home, monkeypatch
+    cli, isolated_doxa_home, monkeypatch
 ):
     monkeypatch.setenv("EDITOR", "true")
     runner = CliRunner()
@@ -193,11 +193,11 @@ def test_config_edit_json_with_editor_true_emits_success_envelope(
     AMBIGUOUS_CONFIG_JSON_COMMANDS,
     ids=[c[0] for c in AMBIGUOUS_CONFIG_JSON_COMMANDS],
 )
-def test_json_commands_emit_config_ambiguous_envelope(label, argv, cli, isolated_thoth_home):
+def test_json_commands_emit_config_ambiguous_envelope(label, argv, cli, isolated_doxa_home):
     runner = CliRunner()
-    with runner.isolated_filesystem(temp_dir=isolated_thoth_home) as cwd:
-        Path(cwd, "thoth.config.toml").write_text('version = "2.0"\n')
-        Path(cwd, ".thoth.config.toml").write_text('version = "2.0"\n')
+    with runner.isolated_filesystem(temp_dir=isolated_doxa_home) as cwd:
+        Path(cwd, "doxa.config.toml").write_text('version = "2.0"\n')
+        Path(cwd, ".doxa.config.toml").write_text('version = "2.0"\n')
 
         result = runner.invoke(cli, argv, catch_exceptions=False)
 

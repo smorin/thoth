@@ -1,4 +1,4 @@
-"""Tests for `thoth modes set-default NAME` — data layer (P35)."""
+"""Tests for `doxa modes set-default NAME` — data layer (P35)."""
 
 from __future__ import annotations
 
@@ -7,32 +7,32 @@ from pathlib import Path
 
 import pytest
 
-from thoth.config_cmd import (
+from doxa_research.config_cmd import (
     get_config_profile_add_data,
     get_modes_set_default_data,
 )
-from thoth.errors import ConfigProfileError, ThothError
+from doxa_research.errors import ConfigProfileError, DoxaError
 
 
-def test_set_default_general_writes_user_config(isolated_thoth_home: Path) -> None:
+def test_set_default_general_writes_user_config(isolated_doxa_home: Path) -> None:
     out = get_modes_set_default_data("deep_research", project=False, profile=None, config_path=None)
     assert out["wrote"] is True
     assert out["default_mode"] == "deep_research"
     assert "profile" not in out
 
-    from thoth.paths import user_config_file
+    from doxa_research.paths import user_config_file
 
     data = tomllib.loads(user_config_file().read_text())
     assert data["general"]["default_mode"] == "deep_research"
 
 
-def test_set_default_general_accepts_builtin(isolated_thoth_home: Path) -> None:
+def test_set_default_general_accepts_builtin(isolated_doxa_home: Path) -> None:
     out = get_modes_set_default_data("default", project=False, profile=None, config_path=None)
     assert out["wrote"] is True
 
 
-def test_set_default_general_rejects_unknown_mode(isolated_thoth_home: Path) -> None:
-    with pytest.raises(ThothError) as excinfo:
+def test_set_default_general_rejects_unknown_mode(isolated_doxa_home: Path) -> None:
+    with pytest.raises(DoxaError) as excinfo:
         get_modes_set_default_data(
             "no-such-mode",
             project=False,
@@ -67,7 +67,7 @@ def test_set_default_to_custom_config_path(tmp_path: Path) -> None:
 # --- Profile scope: same-tier rule ---
 
 
-def test_set_default_profile_writes_profile_key(isolated_thoth_home: Path) -> None:
+def test_set_default_profile_writes_profile_key(isolated_doxa_home: Path) -> None:
     get_config_profile_add_data("work", project=False, config_path=None)
     out = get_modes_set_default_data(
         "deep_research", project=False, profile="work", config_path=None
@@ -76,14 +76,14 @@ def test_set_default_profile_writes_profile_key(isolated_thoth_home: Path) -> No
     assert out["default_mode"] == "deep_research"
     assert out["profile"] == "work"
 
-    from thoth.paths import user_config_file
+    from doxa_research.paths import user_config_file
 
     data = tomllib.loads(user_config_file().read_text())
     assert data["profiles"]["work"]["default_mode"] == "deep_research"
 
 
 def test_set_default_profile_rejects_when_profile_missing_in_target_user(
-    isolated_thoth_home: Path,
+    isolated_doxa_home: Path,
 ) -> None:
     """Same-tier rule: profile must exist in target tier (user, in this case)."""
     with pytest.raises(ConfigProfileError) as excinfo:
@@ -97,7 +97,7 @@ def test_set_default_profile_rejects_when_profile_missing_in_target_user(
 
 
 def test_set_default_profile_rejects_when_profile_only_in_other_tier(
-    isolated_thoth_home: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    isolated_doxa_home: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Profile defined only in user; writing to --project tier rejects."""
     get_config_profile_add_data("work", project=False, config_path=None)
@@ -113,7 +113,7 @@ def test_set_default_profile_rejects_when_profile_only_in_other_tier(
 
 
 def test_set_default_profile_accepts_builtin_mode_cross_tier(
-    isolated_thoth_home: Path,
+    isolated_doxa_home: Path,
 ) -> None:
     """β: mode NAME can be a builtin even in profile scope."""
     get_config_profile_add_data("work", project=False, config_path=None)
@@ -126,9 +126,9 @@ def test_set_default_profile_accepts_builtin_mode_cross_tier(
     assert out["wrote"] is True
 
 
-def test_set_default_profile_rejects_unknown_mode(isolated_thoth_home: Path) -> None:
+def test_set_default_profile_rejects_unknown_mode(isolated_doxa_home: Path) -> None:
     get_config_profile_add_data("work", project=False, config_path=None)
-    with pytest.raises(ThothError) as excinfo:
+    with pytest.raises(DoxaError) as excinfo:
         get_modes_set_default_data(
             "ghost-mode",
             project=False,
@@ -144,17 +144,17 @@ import json  # noqa: E402
 
 from click.testing import CliRunner  # noqa: E402
 
-from thoth.cli import cli  # noqa: E402
+from doxa_research.cli import cli  # noqa: E402
 
 
-def test_cli_modes_set_default_human(isolated_thoth_home: Path) -> None:
+def test_cli_modes_set_default_human(isolated_doxa_home: Path) -> None:
     runner = CliRunner()
     result = runner.invoke(cli, ["modes", "set-default", "deep_research"])
     assert result.exit_code == 0, result.output
     assert "deep_research" in result.output
 
 
-def test_cli_modes_set_default_json_envelope(isolated_thoth_home: Path) -> None:
+def test_cli_modes_set_default_json_envelope(isolated_doxa_home: Path) -> None:
     runner = CliRunner()
     result = runner.invoke(cli, ["modes", "set-default", "deep_research", "--json"])
     assert result.exit_code == 0, result.output
@@ -166,7 +166,7 @@ def test_cli_modes_set_default_json_envelope(isolated_thoth_home: Path) -> None:
     assert "path" in data
 
 
-def test_cli_modes_set_default_with_profile_json(isolated_thoth_home: Path) -> None:
+def test_cli_modes_set_default_with_profile_json(isolated_doxa_home: Path) -> None:
     runner = CliRunner()
     runner.invoke(cli, ["config", "profiles", "add", "work"])
     result = runner.invoke(
@@ -181,7 +181,7 @@ def test_cli_modes_set_default_with_profile_json(isolated_thoth_home: Path) -> N
 
 
 def test_cli_modes_set_default_accepts_inline_profile_target(
-    isolated_thoth_home: Path,
+    isolated_doxa_home: Path,
 ) -> None:
     runner = CliRunner()
     assert runner.invoke(cli, ["config", "profiles", "add", "work"]).exit_code == 0
@@ -191,14 +191,14 @@ def test_cli_modes_set_default_accepts_inline_profile_target(
     assert result.exit_code == 0, result.output
     assert "profile 'work'" in result.output
 
-    from thoth.paths import user_config_file
+    from doxa_research.paths import user_config_file
 
     data = tomllib.loads(user_config_file().read_text())
     assert data["profiles"]["work"]["default_mode"] == "deep_research"
 
 
 def test_cli_modes_set_default_accepts_inline_config_target(
-    isolated_thoth_home: Path, tmp_path: Path
+    isolated_doxa_home: Path, tmp_path: Path
 ) -> None:
     runner = CliRunner()
     custom = tmp_path / "custom.toml"
@@ -211,7 +211,7 @@ def test_cli_modes_set_default_accepts_inline_config_target(
 
 
 def test_cli_modes_set_default_accepts_project_profile_target(
-    isolated_thoth_home: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    isolated_doxa_home: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     runner = CliRunner()
     monkeypatch.chdir(tmp_path)
@@ -222,12 +222,12 @@ def test_cli_modes_set_default_accepts_project_profile_target(
     )
 
     assert result.exit_code == 0, result.output
-    data = tomllib.loads((tmp_path / "thoth.config.toml").read_text())
+    data = tomllib.loads((tmp_path / "doxa.config.toml").read_text())
     assert data["profiles"]["work"]["default_mode"] == "deep_research"
 
 
 def test_cli_modes_set_default_accepts_custom_config_profile_target(
-    isolated_thoth_home: Path, tmp_path: Path
+    isolated_doxa_home: Path, tmp_path: Path
 ) -> None:
     runner = CliRunner()
     custom = tmp_path / "custom.toml"
@@ -244,7 +244,7 @@ def test_cli_modes_set_default_accepts_custom_config_profile_target(
 
 
 def test_cli_modes_set_default_accepts_profile_specific_mode_name(
-    isolated_thoth_home: Path,
+    isolated_doxa_home: Path,
 ) -> None:
     runner = CliRunner()
     assert runner.invoke(cli, ["config", "profiles", "add", "work"]).exit_code == 0
@@ -258,13 +258,13 @@ def test_cli_modes_set_default_accepts_profile_specific_mode_name(
     result = runner.invoke(cli, ["modes", "set-default", "work_mode", "--profile", "work"])
 
     assert result.exit_code == 0, result.output
-    from thoth.paths import user_config_file
+    from doxa_research.paths import user_config_file
 
     data = tomllib.loads(user_config_file().read_text())
     assert data["profiles"]["work"]["default_mode"] == "work_mode"
 
 
-def test_cli_modes_set_default_unknown_mode_exit1(isolated_thoth_home: Path) -> None:
+def test_cli_modes_set_default_unknown_mode_exit1(isolated_doxa_home: Path) -> None:
     runner = CliRunner()
     result = runner.invoke(cli, ["modes", "set-default", "no-such-mode"])
     assert result.exit_code == 1, result.output
@@ -272,7 +272,7 @@ def test_cli_modes_set_default_unknown_mode_exit1(isolated_thoth_home: Path) -> 
 
 
 def test_cli_modes_set_default_unknown_mode_json_uses_mode_not_found(
-    isolated_thoth_home: Path,
+    isolated_doxa_home: Path,
 ) -> None:
     runner = CliRunner()
     result = runner.invoke(cli, ["modes", "set-default", "no-such-mode", "--json"])
@@ -284,7 +284,7 @@ def test_cli_modes_set_default_unknown_mode_json_uses_mode_not_found(
 
 
 def test_cli_modes_set_default_same_tier_error_suggests_specific_remediation(
-    isolated_thoth_home: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    isolated_doxa_home: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     runner = CliRunner()
     assert runner.invoke(cli, ["config", "profiles", "add", "work"]).exit_code == 0
@@ -296,12 +296,12 @@ def test_cli_modes_set_default_same_tier_error_suggests_specific_remediation(
 
     assert result.exit_code == 1, result.output
     assert "Profile 'work' not found in project config" in result.output
-    assert "thoth config profiles add work --project" in result.output
+    assert "doxa config profiles add work --project" in result.output
     assert "remove `--project`" in result.output
 
 
 def test_cli_modes_set_default_project_config_conflict_exit2(
-    isolated_thoth_home: Path, tmp_path: Path
+    isolated_doxa_home: Path, tmp_path: Path
 ) -> None:
     runner = CliRunner()
     result = runner.invoke(

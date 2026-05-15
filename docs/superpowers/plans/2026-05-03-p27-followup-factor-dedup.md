@@ -4,11 +4,11 @@
 
 **Goal:** Apply 4 bug fixes + 2 cosmetic fixes + 5 documentation comments to the OpenAI/Perplexity provider lifecycle code, and extract two small shared helpers to prevent future drift. Implements the spec at `planning/p27-followup-factor-dedup-spec.md`.
 
-**Architecture:** Two new module-level helpers (one for the duplicated invalid-key ThothError shape, one for provider-status-enum → Thoth-status-dict translation). Existing methods are refactored to call the helpers. Bug fixes land alongside the refactors so each method gets one coherent commit. Status-enum tables are declared as module-level constants per provider.
+**Architecture:** Two new module-level helpers (one for the duplicated invalid-key DoxaError shape, one for provider-status-enum → Doxa Research-status-dict translation). Existing methods are refactored to call the helpers. Bug fixes land alongside the refactors so each method gets one coherent commit. Status-enum tables are declared as module-level constants per provider.
 
 **Tech Stack:** Python 3.11, openai SDK (compatibility mode), httpx, tenacity, pytest.
 
-**Repo state:** Branch `p27-perplexity-background-deep-research` in worktree `/Users/stevemorin/c/thoth-worktrees/p27-perplexity-background-deep-research`. Currently 1213 pytest tests passing; 19 commits ahead of main. Pre-commit gate via lefthook (ruff + ty + bandit + gitleaks + codespell + ./thoth_test).
+**Repo state:** Branch `p27-perplexity-background-deep-research` in worktree `/Users/stevemorin/c/doxa-research-worktrees/p27-perplexity-background-deep-research`. Currently 1213 pytest tests passing; 19 commits ahead of main. Pre-commit gate via lefthook (ruff + ty + bandit + gitleaks + codespell + ./doxa_test).
 
 ---
 
@@ -16,21 +16,21 @@
 
 | Path | Action | Purpose |
 |---|---|---|
-| `src/thoth/providers/_status.py` | **Create** | New module with `_translate_provider_status` helper. Provider-agnostic; pure data transform. |
-| `src/thoth/providers/openai.py` | Modify | Add `_OPENAI_STATUS_TABLE` constant; refactor `OpenAIProvider.check_status` to use the helper. No behavior change. |
-| `src/thoth/providers/perplexity.py` | Modify | Add `_PERPLEXITY_STATUS_TABLE` constant; add `_invalid_key_thotherror` helper; refactor both error mappers to use it; refactor `_poll_async_job` to use status helper + apply B1 stale-cache + B2 error_class fixes; apply A1 + A2 + A4 fixes; add 5 intentional-divergence comments. |
+| `src/doxa_research/providers/_status.py` | **Create** | New module with `_translate_provider_status` helper. Provider-agnostic; pure data transform. |
+| `src/doxa_research/providers/openai.py` | Modify | Add `_OPENAI_STATUS_TABLE` constant; refactor `OpenAIProvider.check_status` to use the helper. No behavior change. |
+| `src/doxa_research/providers/perplexity.py` | Modify | Add `_PERPLEXITY_STATUS_TABLE` constant; add `_invalid_key_doxaerror` helper; refactor both error mappers to use it; refactor `_poll_async_job` to use status helper + apply B1 stale-cache + B2 error_class fixes; apply A1 + A2 + A4 fixes; add 5 intentional-divergence comments. |
 | `tests/test_provider_status_helper.py` | **Create** | Unit tests for `_translate_provider_status` (table lookup, unknown fallback, mutation safety). |
 | `tests/test_provider_perplexity_async.py` | Modify | Add 3 new tests (A1 quota body, A2 403 branch, B1 stale-cache on HTTPStatusError). |
 | `tests/test_provider_perplexity.py` | Modify | Add 1 new test (A1 sync 402 belt). Update 1 existing test if its expectation hardcoded the bare `(model: x)` formatting (A4). |
 
-No changes to: `src/thoth/providers/base.py`, `src/thoth/run.py`, `tests/test_oai_background.py`, `tests/test_openai_errors.py` (those tests must continue passing as regression check on Task 2).
+No changes to: `src/doxa_research/providers/base.py`, `src/doxa_research/run.py`, `tests/test_oai_background.py`, `tests/test_openai_errors.py` (those tests must continue passing as regression check on Task 2).
 
 ---
 
 ## Task 1: Add `_translate_provider_status` helper + tests
 
 **Files:**
-- Create: `src/thoth/providers/_status.py`
+- Create: `src/doxa_research/providers/_status.py`
 - Test: `tests/test_provider_status_helper.py`
 
 - [ ] **Step 1: Write the failing tests**
@@ -41,7 +41,7 @@ Create `tests/test_provider_status_helper.py`:
 """Tests for _translate_provider_status — the shared status-enum dispatcher.
 
 Used by both OpenAIProvider.check_status and PerplexityProvider._poll_async_job
-to translate provider-specific status literals to Thoth's internal status
+to translate provider-specific status literals to Doxa Research's internal status
 dict ({status, progress, error?}). Pure data transform; no I/O, no caching.
 """
 
@@ -51,7 +51,7 @@ from typing import Any
 
 import pytest
 
-from thoth.providers._status import _translate_provider_status
+from doxa-research.providers._status import _translate_provider_status
 
 
 def test_table_lookup_returns_template_copy() -> None:
@@ -104,18 +104,18 @@ def test_table_with_partial_template_returns_partial_dict() -> None:
 - [ ] **Step 2: Run tests to verify they fail**
 
 Run: `uv run pytest tests/test_provider_status_helper.py -v`
-Expected: 5 errors collecting (`ImportError: cannot import name '_translate_provider_status' from 'thoth.providers._status'`).
+Expected: 5 errors collecting (`ImportError: cannot import name '_translate_provider_status' from 'doxa-research.providers._status'`).
 
 - [ ] **Step 3: Create the helper module**
 
-Create `src/thoth/providers/_status.py`:
+Create `src/doxa_research/providers/_status.py`:
 
 ```python
 """Shared status-enum translation for background-lifecycle providers.
 
 Both `OpenAIProvider.check_status` and `PerplexityProvider._poll_async_job`
 translate a provider-specific status literal (e.g. `"completed"`,
-`"COMPLETED"`, `"in_progress"`) into Thoth's internal status dict
+`"COMPLETED"`, `"in_progress"`) into Doxa Research's internal status dict
 (`{"status": "completed", "progress": 1.0}` etc.). The dispatch shape
 is identical across providers; only the table differs.
 
@@ -138,10 +138,10 @@ def _translate_provider_status(
     *,
     unknown_template: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Translate a provider-specific status literal to Thoth's status dict.
+    """Translate a provider-specific status literal to Doxa Research's status dict.
 
     `status_table` maps the provider's own status enum (e.g.,
-    `"COMPLETED"`, `"in_progress"`) to a Thoth status template such as
+    `"COMPLETED"`, `"in_progress"`) to a Doxa Research status template such as
     `{"status": "completed", "progress": 1.0}`. The helper returns a
     fresh dict copy on every call so callers may mutate the result
     (e.g., to add a runtime `progress` from response.metadata or an
@@ -174,21 +174,21 @@ Expected: 5 passed.
 
 - [ ] **Step 5: Run lint + type check**
 
-Run: `uv run ruff check src/thoth/providers/_status.py tests/test_provider_status_helper.py`
+Run: `uv run ruff check src/doxa_research/providers/_status.py tests/test_provider_status_helper.py`
 Expected: `All checks passed!`
 
-Run: `uv run ty check src/thoth/providers/_status.py`
+Run: `uv run ty check src/doxa_research/providers/_status.py`
 Expected: `All checks passed!`
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add src/thoth/providers/_status.py tests/test_provider_status_helper.py
+git add src/doxa_research/providers/_status.py tests/test_provider_status_helper.py
 git commit -m "feat(p27-followup): add _translate_provider_status helper
 
 Pure-data dispatcher shared by OpenAIProvider.check_status and
 PerplexityProvider._poll_async_job. Looks up a provider's status
-literal in a per-provider table and returns a fresh Thoth status
+literal in a per-provider table and returns a fresh Doxa Research status
 dict copy that callers may mutate to add runtime fields (progress
 from metadata, error from upstream payload).
 
@@ -211,7 +211,7 @@ than base.py so the ABC stays free of lifecycle helpers."
 ## Task 2: Refactor `OpenAIProvider.check_status` to use the helper
 
 **Files:**
-- Modify: `src/thoth/providers/openai.py:271-360` (the `check_status` method)
+- Modify: `src/doxa_research/providers/openai.py:271-360` (the `check_status` method)
 - Existing tests must continue passing: `tests/test_oai_background.py` (no edits needed)
 
 - [ ] **Step 1: Verify the OpenAI background test suite passes BEFORE changes**
@@ -221,12 +221,12 @@ Expected: All tests pass (baseline).
 
 - [ ] **Step 2: Add the status table constant**
 
-In `src/thoth/providers/openai.py`, after the existing `import` block at the top (around line 30, before `def _rate_limit_error_is_quota` at line 36), add:
+In `src/doxa_research/providers/openai.py`, after the existing `import` block at the top (around line 30, before `def _rate_limit_error_is_quota` at line 36), add:
 
 ```python
-from thoth.providers._status import _translate_provider_status
+from doxa-research.providers._status import _translate_provider_status
 
-# Provider-status → Thoth-status template. Used by check_status; the in_progress
+# Provider-status → Doxa Research-status template. Used by check_status; the in_progress
 # template's progress is overridden at runtime from response.metadata; failed
 # and incomplete templates need an `error` field filled in by the caller.
 _OPENAI_STATUS_TABLE: dict[str, dict[str, Any]] = {
@@ -243,7 +243,7 @@ _OPENAI_STATUS_TABLE: dict[str, dict[str, Any]] = {
 
 - [ ] **Step 3: Refactor the if/elif chain in check_status to use the helper**
 
-In `src/thoth/providers/openai.py`, replace the block from line 292 (`if hasattr(response, "status"):`) through line 325 (the closing `else:` block ending with `return { ..., "error": "Response object has no status attribute"}`) with:
+In `src/doxa_research/providers/openai.py`, replace the block from line 292 (`if hasattr(response, "status"):`) through line 325 (the closing `else:` block ending with `return { ..., "error": "Response object has no status attribute"}`) with:
 
 ```python
             if not hasattr(response, "status"):
@@ -292,16 +292,16 @@ Expected: 1218+ passed (1213 baseline + 5 new helper tests from Task 1).
 
 - [ ] **Step 6: Run lint + type check**
 
-Run: `uv run ruff check src/thoth/providers/openai.py`
+Run: `uv run ruff check src/doxa_research/providers/openai.py`
 Expected: `All checks passed!`
 
-Run: `uv run ty check src/thoth/providers/openai.py`
+Run: `uv run ty check src/doxa_research/providers/openai.py`
 Expected: `All checks passed!` (or pre-existing ty diagnostic count from baseline; my changes must not increase it).
 
 - [ ] **Step 7: Commit**
 
 ```bash
-git add src/thoth/providers/openai.py
+git add src/doxa_research/providers/openai.py
 git commit -m "refactor(p27-followup): OpenAIProvider.check_status uses shared status helper
 
 Collapses the 7-branch if/elif chain on response.status into a single
@@ -319,7 +319,7 @@ every status branch and continues to pass."
 ## Task 3: Refactor `_poll_async_job` + apply B1 stale-cache + B2 error_class fixes
 
 **Files:**
-- Modify: `src/thoth/providers/perplexity.py:644-699` (the `_poll_async_job` method)
+- Modify: `src/doxa_research/providers/perplexity.py:644-699` (the `_poll_async_job` method)
 - Test: `tests/test_provider_perplexity_async.py` (add 1 new test for B1)
 
 - [ ] **Step 1: Add the failing test for B1 (stale-cache on HTTPStatusError)**
@@ -354,12 +354,12 @@ Expected: FAIL with `assert 'transient_error' == 'completed'`.
 
 - [ ] **Step 3: Add the status table constant**
 
-In `src/thoth/providers/perplexity.py`, near the other module-level constants (after `_INVALID_KEY_PHRASES` at line 103, before `def _rate_limit_error_is_quota` at line 106), add:
+In `src/doxa_research/providers/perplexity.py`, near the other module-level constants (after `_INVALID_KEY_PHRASES` at line 103, before `def _rate_limit_error_is_quota` at line 106), add:
 
 ```python
-from thoth.providers._status import _translate_provider_status
+from doxa-research.providers._status import _translate_provider_status
 
-# Provider-status → Thoth-status template for the async API. Caller fills in
+# Provider-status → Doxa Research-status template for the async API. Caller fills in
 # `error` for the FAILED branch from payload["error_message"]. Unknown
 # statuses fall through to the helper's default permanent_error.
 _PERPLEXITY_STATUS_TABLE: dict[str, dict[str, Any]] = {
@@ -457,16 +457,16 @@ Expected: 1219+ passed (1218 from end of Task 2 + 1 new B1 test).
 
 - [ ] **Step 8: Run lint + type check**
 
-Run: `uv run ruff check src/thoth/providers/perplexity.py tests/test_provider_perplexity_async.py`
+Run: `uv run ruff check src/doxa_research/providers/perplexity.py tests/test_provider_perplexity_async.py`
 Expected: `All checks passed!`
 
-Run: `uv run ty check src/thoth/providers/perplexity.py`
+Run: `uv run ty check src/doxa_research/providers/perplexity.py`
 Expected: same diagnostic count as baseline.
 
 - [ ] **Step 9: Commit**
 
 ```bash
-git add src/thoth/providers/perplexity.py tests/test_provider_perplexity_async.py
+git add src/doxa_research/providers/perplexity.py tests/test_provider_perplexity_async.py
 git commit -m "fix(p27-followup): _poll_async_job stale-cache fallback on 5xx + error_class
 
 Three changes in this slice:
@@ -494,24 +494,24 @@ continue to pass."
 
 ---
 
-## Task 4: Add `_invalid_key_thotherror` helper + refactor both 401 branches
+## Task 4: Add `_invalid_key_doxaerror` helper + refactor both 401 branches
 
 **Files:**
-- Modify: `src/thoth/providers/perplexity.py` (add helper near line 130; refactor `_map_perplexity_error` line 142–151 and `_map_perplexity_error_async` line 248–255)
-- Existing tests must continue passing: `tests/test_provider_perplexity_async.py::test_async_map_401_with_invalid_key_body_returns_friendly_thoth_error` and `tests/test_provider_perplexity.py` (no edits needed; helper is internal).
+- Modify: `src/doxa_research/providers/perplexity.py` (add helper near line 130; refactor `_map_perplexity_error` line 142–151 and `_map_perplexity_error_async` line 248–255)
+- Existing tests must continue passing: `tests/test_provider_perplexity_async.py::test_async_map_401_with_invalid_key_body_returns_friendly_doxa_error` and `tests/test_provider_perplexity.py` (no edits needed; helper is internal).
 
 - [ ] **Step 1: Verify the existing invalid-key tests pass**
 
-Run: `uv run pytest tests/test_provider_perplexity_async.py::test_async_map_401_with_invalid_key_body_returns_friendly_thoth_error tests/test_provider_perplexity.py -k "invalid" -v`
+Run: `uv run pytest tests/test_provider_perplexity_async.py::test_async_map_401_with_invalid_key_body_returns_friendly_doxa_error tests/test_provider_perplexity.py -k "invalid" -v`
 Expected: PASS for the 401-with-invalid-key-body test (the only one specifically for this shape).
 
 - [ ] **Step 2: Add the helper**
 
-In `src/thoth/providers/perplexity.py`, between `_rate_limit_error_is_quota` (ends ~line 129) and `_map_perplexity_error` (starts ~line 132), add:
+In `src/doxa_research/providers/perplexity.py`, between `_rate_limit_error_is_quota` (ends ~line 129) and `_map_perplexity_error` (starts ~line 132), add:
 
 ```python
-def _invalid_key_thotherror(provider: str, settings_url: str) -> ThothError:
-    """Friendly ThothError for an upstream-rejected API key.
+def _invalid_key_doxaerror(provider: str, settings_url: str) -> DoxaError:
+    """Friendly DoxaError for an upstream-rejected API key.
 
     Distinct from APIKeyError (which signals 'no key found'); this one
     signals 'a key was supplied but the upstream rejected it'. Different
@@ -520,9 +520,9 @@ def _invalid_key_thotherror(provider: str, settings_url: str) -> ThothError:
     Currently called by both `_map_perplexity_error` (sync) and
     `_map_perplexity_error_async` to keep the wording byte-identical
     across the two error-mapping paths. If a third caller emerges
-    (e.g., Gemini in P28), promote this helper to `thoth/errors.py`.
+    (e.g., Gemini in P28), promote this helper to `doxa-research/errors.py`.
     """
-    return ThothError(
+    return DoxaError(
         f"{provider} API key is invalid",
         f"Your {provider.title()} API key was rejected by the API. "
         f"Check your key at {settings_url}",
@@ -532,29 +532,29 @@ def _invalid_key_thotherror(provider: str, settings_url: str) -> ThothError:
 
 - [ ] **Step 3: Refactor `_map_perplexity_error` 401 branch to call the helper**
 
-In `src/thoth/providers/perplexity.py`, replace lines 145–151 (the `if any(phrase ...)` block inside the AuthenticationError branch) with:
+In `src/doxa_research/providers/perplexity.py`, replace lines 145–151 (the `if any(phrase ...)` block inside the AuthenticationError branch) with:
 
 ```python
         if any(phrase in combined for phrase in _INVALID_KEY_PHRASES):
-            return _invalid_key_thotherror(
+            return _invalid_key_doxaerror(
                 _PROVIDER_NAME, "https://www.perplexity.ai/settings/api"
             )
 ```
 
 - [ ] **Step 4: Refactor `_map_perplexity_error_async` 401-invalid branch to call the helper**
 
-In `src/thoth/providers/perplexity.py`, replace lines 249–255 (the `if any(phrase ...)` block inside the `if status == 401:` branch) with:
+In `src/doxa_research/providers/perplexity.py`, replace lines 249–255 (the `if any(phrase ...)` block inside the `if status == 401:` branch) with:
 
 ```python
             if any(phrase in body_lower for phrase in _INVALID_KEY_PHRASES):
-                return _invalid_key_thotherror(
+                return _invalid_key_doxaerror(
                     _PROVIDER_NAME, "https://www.perplexity.ai/settings/api"
                 )
 ```
 
 - [ ] **Step 5: Run the affected tests to verify zero regressions**
 
-Run: `uv run pytest tests/test_provider_perplexity_async.py::test_async_map_401_with_invalid_key_body_returns_friendly_thoth_error tests/test_provider_perplexity.py -q`
+Run: `uv run pytest tests/test_provider_perplexity_async.py::test_async_map_401_with_invalid_key_body_returns_friendly_doxa_error tests/test_provider_perplexity.py -q`
 Expected: same number of passes as Step 1.
 
 - [ ] **Step 6: Run the full pytest suite**
@@ -564,19 +564,19 @@ Expected: same total count as end of Task 3 (no new tests in this task; helper i
 
 - [ ] **Step 7: Run lint + type check**
 
-Run: `uv run ruff check src/thoth/providers/perplexity.py`
+Run: `uv run ruff check src/doxa_research/providers/perplexity.py`
 Expected: `All checks passed!`
 
-Run: `uv run ty check src/thoth/providers/perplexity.py`
+Run: `uv run ty check src/doxa_research/providers/perplexity.py`
 Expected: same diagnostic count as baseline.
 
 - [ ] **Step 8: Commit**
 
 ```bash
-git add src/thoth/providers/perplexity.py
-git commit -m "refactor(p27-followup): extract _invalid_key_thotherror helper
+git add src/doxa_research/providers/perplexity.py
+git commit -m "refactor(p27-followup): extract _invalid_key_doxaerror helper
 
-The byte-identical ThothError shape ('perplexity API key is invalid' +
+The byte-identical DoxaError shape ('perplexity API key is invalid' +
 'Check your key at https://www.perplexity.ai/settings/api', exit_code=2)
 appeared in both _map_perplexity_error (sync, line 146-151) and
 _map_perplexity_error_async (line 250-255). Extracted into a single
@@ -584,7 +584,7 @@ helper at module level so future remediation copy changes propagate to
 both call sites.
 
 Helper takes the provider name and settings URL as parameters so it
-can be promoted to thoth/errors.py when a third caller emerges
+can be promoted to doxa-research/errors.py when a third caller emerges
 (Gemini in P28); for now keeping it perplexity-local per the spec.
 
 No behavior change. Existing tests pass unchanged."
@@ -595,7 +595,7 @@ No behavior change. Existing tests pass unchanged."
 ## Task 5: Apply A1 (both directions) + A2 + A4 fixes with new tests
 
 **Files:**
-- Modify: `src/thoth/providers/perplexity.py` (the `_map_perplexity_error_async` body and `_map_perplexity_error` body)
+- Modify: `src/doxa_research/providers/perplexity.py` (the `_map_perplexity_error_async` body and `_map_perplexity_error` body)
 - Test: `tests/test_provider_perplexity_async.py` (add 2 new tests for A1 async + A2)
 - Test: `tests/test_provider_perplexity.py` (add 1 new test for A1 sync 402 belt; possibly update 1 existing test for A4 if it pinned the bare formatting)
 
@@ -662,8 +662,8 @@ def test_perplexity_sync_maps_402_status_code_to_api_quota_error() -> None:
     import httpx
     import openai
 
-    from thoth.errors import APIQuotaError
-    from thoth.providers.perplexity import _map_perplexity_error
+    from doxa-research.errors import APIQuotaError
+    from doxa-research.providers.perplexity import _map_perplexity_error
 
     request = httpx.Request("POST", "https://api.perplexity.ai/chat/completions")
     response = httpx.Response(status_code=402, request=request)
@@ -681,7 +681,7 @@ Expected: 3 FAILED.
 
 - [ ] **Step 5: Apply the A1 sync 402 belt fix**
 
-In `src/thoth/providers/perplexity.py`, in `_map_perplexity_error`, add a new check immediately BEFORE the existing `if isinstance(exc, openai.APIError):` line (around line 195). Insert:
+In `src/doxa_research/providers/perplexity.py`, in `_map_perplexity_error`, add a new check immediately BEFORE the existing `if isinstance(exc, openai.APIError):` line (around line 195). Insert:
 
 ```python
     # A1 belt-and-suspenders: any APIStatusError with status_code == 402
@@ -699,7 +699,7 @@ In `src/thoth/providers/perplexity.py`, in `_map_perplexity_error`, add a new ch
 
 - [ ] **Step 6: Apply the A1 async 429-with-quota-body fix**
 
-In `src/thoth/providers/perplexity.py`, locate the `if status == 429:` line in `_map_perplexity_error_async` (around line 266). Replace:
+In `src/doxa_research/providers/perplexity.py`, locate the `if status == 429:` line in `_map_perplexity_error_async` (around line 266). Replace:
 
 ```python
         if status == 429:
@@ -733,7 +733,7 @@ with:
 
 - [ ] **Step 7: Apply the A2 async 403 fix**
 
-In `src/thoth/providers/perplexity.py`, in `_map_perplexity_error_async`, add a new branch immediately AFTER `if status == 402:` block (around line 258, before `if status == 422:` at line 259). Insert:
+In `src/doxa_research/providers/perplexity.py`, in `_map_perplexity_error_async`, add a new branch immediately AFTER `if status == 402:` block (around line 258, before `if status == 422:` at line 259). Insert:
 
 ```python
         if status == 403:
@@ -749,7 +749,7 @@ In `src/thoth/providers/perplexity.py`, in `_map_perplexity_error_async`, add a 
 
 - [ ] **Step 8: Apply the A4 model-hint formatting fix (sync side)**
 
-In `src/thoth/providers/perplexity.py`, in `_map_perplexity_error`'s `BadRequestError` branch (around line 167), replace:
+In `src/doxa_research/providers/perplexity.py`, in `_map_perplexity_error`'s `BadRequestError` branch (around line 167), replace:
 
 ```python
         hint = f" (model: {model})" if model else ""
@@ -780,16 +780,16 @@ Expected: 1222+ passed (1219 from end of Task 3 + 3 new tests).
 
 - [ ] **Step 12: Run lint + type check**
 
-Run: `uv run ruff check src/thoth/providers/perplexity.py tests/test_provider_perplexity.py tests/test_provider_perplexity_async.py`
+Run: `uv run ruff check src/doxa_research/providers/perplexity.py tests/test_provider_perplexity.py tests/test_provider_perplexity_async.py`
 Expected: `All checks passed!`
 
-Run: `uv run ty check src/thoth/providers/perplexity.py`
+Run: `uv run ty check src/doxa_research/providers/perplexity.py`
 Expected: same diagnostic count as baseline.
 
 - [ ] **Step 13: Commit**
 
 ```bash
-git add src/thoth/providers/perplexity.py tests/test_provider_perplexity.py tests/test_provider_perplexity_async.py
+git add src/doxa_research/providers/perplexity.py tests/test_provider_perplexity.py tests/test_provider_perplexity_async.py
 git commit -m "fix(p27-followup): A1 quota-vs-rate-limit symmetry + A2 403 + A4 model hint
 
 Three accidental-divergence fixes between _map_perplexity_error (sync,
@@ -828,14 +828,14 @@ Three new tests pin the fixes:
 ## Task 6: Add documentation comments for A3, A5, A6, B3, B4
 
 **Files:**
-- Modify: `src/thoth/providers/perplexity.py` (4 comment additions: A3, A5, A6 lives in openai.py, B3 already added in Task 3, B4 needs adding)
-- Modify: `src/thoth/providers/openai.py` (1 comment addition: A6)
+- Modify: `src/doxa_research/providers/perplexity.py` (4 comment additions: A3, A5, A6 lives in openai.py, B3 already added in Task 3, B4 needs adding)
+- Modify: `src/doxa_research/providers/openai.py` (1 comment addition: A6)
 
 Note: B3 was already added during Task 3's refactor. Listing it here for completeness; no edit required if Task 3 was committed correctly.
 
 - [ ] **Step 1: Add A3 comment in `_map_perplexity_error_async`**
 
-In `src/thoth/providers/perplexity.py`, in `_map_perplexity_error_async`, locate the final `return ProviderError(...)` for the unknown-status fallthrough inside the HTTPStatusError branch (currently around line 274 after Task 5's edits). Add a comment immediately before it:
+In `src/doxa_research/providers/perplexity.py`, in `_map_perplexity_error_async`, locate the final `return ProviderError(...)` for the unknown-status fallthrough inside the HTTPStatusError branch (currently around line 274 after Task 5's edits). Add a comment immediately before it:
 
 ```python
         # A3 (P27 factor-dedup): no explicit 400 BadRequest branch — Perplexity's
@@ -851,7 +851,7 @@ In `src/thoth/providers/perplexity.py`, in `_map_perplexity_error_async`, locate
 
 - [ ] **Step 2: Add A5 comment above the 401 branch in `_map_perplexity_error_async`**
 
-In `src/thoth/providers/perplexity.py`, in `_map_perplexity_error_async`, immediately above `if status == 401:` (around line 248), add:
+In `src/doxa_research/providers/perplexity.py`, in `_map_perplexity_error_async`, immediately above `if status == 401:` (around line 248), add:
 
 ```python
         # A5 (P27 factor-dedup): async inspects exc.response.text only; the
@@ -863,7 +863,7 @@ In `src/thoth/providers/perplexity.py`, in `_map_perplexity_error_async`, immedi
 
 - [ ] **Step 3: Add A6 comment in `_map_openai_error`**
 
-In `src/thoth/providers/openai.py`, locate the final `return ProviderError("openai", str(exc), raw_error=raw)` after the `if isinstance(exc, openai.APIError):` branch (around line 121, the very last return in the function). Add a comment immediately before it:
+In `src/doxa_research/providers/openai.py`, locate the final `return ProviderError("openai", str(exc), raw_error=raw)` after the `if isinstance(exc, openai.APIError):` branch (around line 121, the very last return in the function). Add a comment immediately before it:
 
 ```python
     # A6 (P27 factor-dedup): intentional defense-in-depth. APIError is the
@@ -874,7 +874,7 @@ In `src/thoth/providers/openai.py`, locate the final `return ProviderError("open
 
 - [ ] **Step 4: Add B4 comment in `PerplexityProvider.check_status` dispatcher**
 
-In `src/thoth/providers/perplexity.py`, in `check_status` (around line 639), the existing dispatcher already has the `if not job_info.get("background", False):` check. Add a comment above it:
+In `src/doxa_research/providers/perplexity.py`, in `check_status` (around line 639), the existing dispatcher already has the `if not job_info.get("background", False):` check. Add a comment above it:
 
 ```python
         # B4 (P27 factor-dedup): P18 non-background shortcut — kept symmetric
@@ -888,7 +888,7 @@ In `src/thoth/providers/perplexity.py`, in `check_status` (around line 639), the
 
 - [ ] **Step 5: Verify B3 comment is present (added in Task 3)**
 
-Run: `grep -n "B3 (P27 factor-dedup\|catch-all prepends" src/thoth/providers/perplexity.py`
+Run: `grep -n "B3 (P27 factor-dedup\|catch-all prepends" src/doxa_research/providers/perplexity.py`
 Expected: at least one match showing the comment is present in the catch-all `Exception` branch of `_poll_async_job`. If missing (Task 3 was edited differently), add this comment above the relevant branch:
 
 ```python
@@ -906,16 +906,16 @@ Expected: same total count as end of Task 5 (no new tests; comment-only change).
 
 - [ ] **Step 7: Run lint + type check**
 
-Run: `uv run ruff check src/thoth/providers/perplexity.py src/thoth/providers/openai.py`
+Run: `uv run ruff check src/doxa_research/providers/perplexity.py src/doxa_research/providers/openai.py`
 Expected: `All checks passed!`
 
-Run: `uv run ty check src/thoth/providers/perplexity.py src/thoth/providers/openai.py`
+Run: `uv run ty check src/doxa_research/providers/perplexity.py src/doxa_research/providers/openai.py`
 Expected: same diagnostic count as baseline.
 
 - [ ] **Step 8: Commit**
 
 ```bash
-git add src/thoth/providers/perplexity.py src/thoth/providers/openai.py
+git add src/doxa_research/providers/perplexity.py src/doxa_research/providers/openai.py
 git commit -m "docs(p27-followup): document 5 intentional divergences from factor-dedup walk
 
 Comments-only edits marking five intentional divergences identified by
@@ -968,9 +968,9 @@ Expected: `All checks passed!` (or same diagnostic count as the pre-Task-1 basel
 Run: `uv run pytest -q`
 Expected: 1222+ passed (1213 baseline + 5 helper tests + 1 B1 test + 3 A1/A2 tests = 1222), 0 failed, 29 deselected.
 
-- [ ] **Step 5: Run thoth_test integration suite**
+- [ ] **Step 5: Run doxa_test integration suite**
 
-Run: `./thoth_test -r --skip-interactive -q`
+Run: `./doxa_test -r --skip-interactive -q`
 Expected: 75+ passed, 0 failed, 12 skipped (skipped = no API keys / extended tests; expected).
 
 - [ ] **Step 6: Confirm the git log on the branch**
@@ -995,10 +995,10 @@ Print to console (or include in PR description):
 P27 factor-dedup follow-up complete.
 - 6 task commits on top of the prior 20 P27 commits.
 - 9 new tests (5 status helper + 1 B1 + 3 A1/A2).
-- 2 helpers extracted (_translate_provider_status, _invalid_key_thotherror).
+- 2 helpers extracted (_translate_provider_status, _invalid_key_doxaerror).
 - 4 bug fixes (A1 both-directions, A2, B1, plus cosmetic A4+B2).
 - 5 intentional divergences documented (A3, A5, A6, B3, B4).
-- Full gate: ruff + ty + pytest + thoth_test all green.
+- Full gate: ruff + ty + pytest + doxa_test all green.
 ```
 
 ---
@@ -1016,7 +1016,7 @@ Each spec section maps to a task as follows:
 
 | Spec section | Task |
 |---|---|
-| Helper 1: `_invalid_key_thotherror` | Task 4 |
+| Helper 1: `_invalid_key_doxaerror` | Task 4 |
 | Helper 2: `_translate_provider_status` | Task 1 |
 | Migration: openai.py status mapper | Task 2 |
 | Migration: perplexity.py status mapper | Task 3 |

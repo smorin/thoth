@@ -1,8 +1,8 @@
-# Thoth v12 - Remaining Questions and Minor Clarifications
+# Doxa Research v12 - Remaining Questions and Minor Clarifications
 
 ## Summary
 
-After applying all recommendations from temp.v4.md to create thoth.v12.md, the PRD is now comprehensive and production-ready. Most outstanding questions have been addressed. Only a few minor clarifications remain that could be considered during implementation.
+After applying all recommendations from temp.v4.md to create doxa-research.v12.md, the PRD is now comprehensive and production-ready. Most outstanding questions have been addressed. Only a few minor clarifications remain that could be considered during implementation.
 
 ---
 
@@ -69,7 +69,7 @@ The PRD doesn't specify when old operations are removed from the checkpoint dire
 
 ### Remaining Question
 - Should there be automatic cleanup of completed operations older than N days?
-- Should `thoth list` have a `--clean` option to remove old operations?
+- Should `doxa-research list` have a `--clean` option to remove old operations?
 
 ### Recommendation
 Not critical for v1.2. Manual cleanup is sufficient initially. Could add retention policies in v1.3.

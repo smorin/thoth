@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "thoth-dev-tooling",
+      "name": "doxa-research-dev-tooling",
       "devDependencies": {
         "@commitlint/cli": "^19.5.0",
         "@commitlint/config-conventional": "^19.5.0",

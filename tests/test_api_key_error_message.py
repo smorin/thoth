@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import pytest
 
-from thoth.errors import APIKeyError
+from doxa_research.errors import APIKeyError
 
 
 def _isolate_env(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
@@ -106,7 +106,7 @@ def test_apikeyerror_legacy_config_guidance_preserved(
     """
     _isolate_env(monkeypatch, tmp_path)
     monkeypatch.setattr(
-        "thoth.config_legacy.format_legacy_config_guidance",
+        "doxa_research.config_legacy.format_legacy_config_guidance",
         lambda: "LEGACY_GUIDANCE_MARKER",
     )
     err = APIKeyError("openai")

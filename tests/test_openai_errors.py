@@ -15,13 +15,13 @@ import httpx
 import openai
 import pytest
 
-from thoth.__main__ import (
+from doxa_research.__main__ import (
     APIKeyError,
     APIQuotaError,
     APIRateLimitError,
+    DoxaError,
     OpenAIProvider,
     ProviderError,
-    ThothError,
     _map_openai_error,
 )
 
@@ -151,11 +151,11 @@ class TestMapOpenAIError:
     def test_unknown_exception_falls_through_to_provider_error(self) -> None:
         result = _map_openai_error(Exception("weird"), model="o3")
         assert isinstance(result, ProviderError)
-        assert isinstance(result, ThothError)
+        assert isinstance(result, DoxaError)
 
 
 class TestSubmitRaisesMappedErrors:
-    """End-to-end: submit() catches typed SDK errors and raises mapped ThothError."""
+    """End-to-end: submit() catches typed SDK errors and raises mapped DoxaError."""
 
     def test_authentication_error_bubbles_as_api_key_error(self) -> None:
         provider = _make_provider()
@@ -182,12 +182,12 @@ class TestVCRHappyPathDoesNotInvokeMapper:
     def test_happy_path_does_not_call_map_openai_error(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        from thoth import __main__ as thoth_main
+        from doxa_research import __main__ as doxa_main
 
         def _fail(*a, **kw):
             raise AssertionError("_map_openai_error called on happy path")
 
-        monkeypatch.setattr(thoth_main, "_map_openai_error", _fail)
+        monkeypatch.setattr(doxa_main, "_map_openai_error", _fail)
 
         provider = _make_provider()
 
@@ -202,7 +202,7 @@ class TestVCRHappyPathDoesNotInvokeMapper:
 
 def test_openai_constants_use_suffix_naming() -> None:
     """OpenAI module-level constants follow the cross-provider suffix convention."""
-    from thoth.providers import openai as op
+    from doxa_research.providers import openai as op
 
     assert hasattr(op, "_DIRECT_SDK_KEYS_OPENAI"), (
         "_DIRECT_SDK_KEYS_OPENAI must exist (introduced for cross-provider parity)"
@@ -221,7 +221,7 @@ def test_openai_sources_block_escapes_html_in_title() -> None:
     """OpenAI's ## Sources block must use md_link_title to escape HTML in titles."""
     from types import SimpleNamespace
 
-    from thoth.providers.openai import OpenAIProvider
+    from doxa_research.providers.openai import OpenAIProvider
 
     provider = OpenAIProvider(api_key="dummy", config={})
     fake_response = SimpleNamespace(
@@ -254,7 +254,7 @@ def test_openai_sources_block_blocks_javascript_scheme_in_url() -> None:
     """OpenAI's ## Sources block must use md_link_url to neutralize javascript: URLs."""
     from types import SimpleNamespace
 
-    from thoth.providers.openai import OpenAIProvider
+    from doxa_research.providers.openai import OpenAIProvider
 
     provider = OpenAIProvider(api_key="dummy", config={})
     fake_response = SimpleNamespace(
@@ -283,12 +283,12 @@ def test_openai_sources_block_blocks_javascript_scheme_in_url() -> None:
     )
 
 
-def test_openai_invalid_key_thotherror_has_exit_code_2() -> None:
-    """OpenAI's invalid-key ThothError must set exit_code=2 to match Perplexity.
+def test_openai_invalid_key_doxaerror_has_exit_code_2() -> None:
+    """OpenAI's invalid-key DoxaError must set exit_code=2 to match Perplexity.
 
-    The shared `_invalid_key_thotherror` helper sets exit_code=2 so that
+    The shared `_invalid_key_doxaerror` helper sets exit_code=2 so that
     callers can distinguish 'configured but rejected' (rotate the key) from
-    other ThothError exits. OpenAI previously drifted by leaving the default
+    other DoxaError exits. OpenAI previously drifted by leaving the default
     exit_code=1; this test pins the parity contract.
     """
     # 'Incorrect API key' phrase triggers the invalid-key (vs missing-key) branch.
@@ -299,7 +299,7 @@ def test_openai_invalid_key_thotherror_has_exit_code_2() -> None:
         body={"error": {"code": "invalid_api_key", "message": "Incorrect API key provided"}},
     )
     mapped = _map_openai_error(exc, model="gpt-4o", verbose=False)
-    assert isinstance(mapped, ThothError)
+    assert isinstance(mapped, DoxaError)
     assert not isinstance(mapped, APIKeyError), (
         "A configured-but-invalid key should not report 'not found'"
     )
@@ -393,7 +393,7 @@ def test_openai_stream_emits_text_reasoning_citation_done_in_order() -> None:
     StreamEvent(kind='reasoning'|'citation'). See
     planning/p24-openai-stream-audit.v1.md.
     """
-    from thoth.providers.base import Citation, StreamEvent
+    from doxa_research.providers.base import Citation, StreamEvent
 
     fake_events = [
         _FakeStreamEvent(type="response.created"),  # ignored
@@ -470,7 +470,7 @@ def test_openai_stream_skips_typed_non_url_annotation_even_with_url(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     """Known non-url annotation types are skipped even if they carry a URL field."""
-    caplog.set_level(logging.WARNING, logger="thoth.providers.openai")
+    caplog.set_level(logging.WARNING, logger="doxa_research.providers.openai")
     fake_events = [
         _FakeStreamEvent(
             type="response.output_text.annotation.added",
@@ -494,7 +494,7 @@ def test_openai_stream_accepts_missing_type_url_annotation_with_warning(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     """Legacy annotations with url/title but no type still render and warn."""
-    caplog.set_level(logging.WARNING, logger="thoth.providers.openai")
+    caplog.set_level(logging.WARNING, logger="doxa_research.providers.openai")
     fake_events = [
         _FakeStreamEvent(
             type="response.output_text.annotation.added",

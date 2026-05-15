@@ -9,6 +9,6 @@
 
 ## Checklist
 - [ ] `make check` passes
-- [ ] Tests pass (`./thoth_test -r`)
+- [ ] Tests pass (`./doxa_test -r`)
 - [ ] CHANGELOG.md updated (if user-facing change)
 - [ ] Conventional commit messages used

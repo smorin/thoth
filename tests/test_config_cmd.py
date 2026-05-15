@@ -1,4 +1,4 @@
-"""Tests for the `thoth config` subcommand."""
+"""Tests for the `doxa config` subcommand."""
 
 from __future__ import annotations
 
@@ -6,11 +6,11 @@ from pathlib import Path
 
 import pytest
 
-from thoth.config_cmd import config_command
+from doxa_research.config_cmd import config_command
 
 
 def test_get_returns_merged_value(
-    isolated_thoth_home: Path, capsys: pytest.CaptureFixture[str]
+    isolated_doxa_home: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     rc = config_command("get", ["general.default_mode"])
     out = capsys.readouterr().out.strip()
@@ -19,15 +19,15 @@ def test_get_returns_merged_value(
 
 
 def test_get_missing_key_exits_nonzero(
-    isolated_thoth_home: Path, capsys: pytest.CaptureFixture[str]
+    isolated_doxa_home: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     rc = config_command("get", ["nonexistent.key"])
     assert rc == 1
 
 
-def test_get_layer_defaults(isolated_thoth_home: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_get_layer_defaults(isolated_doxa_home: Path, capsys: pytest.CaptureFixture[str]) -> None:
     # Write a user override, confirm --layer defaults still returns the default.
-    user_toml = Path(isolated_thoth_home) / "config" / "thoth" / "thoth.config.toml"
+    user_toml = Path(isolated_doxa_home) / "config" / "doxa" / "doxa.config.toml"
     user_toml.parent.mkdir(parents=True, exist_ok=True)
     user_toml.write_text('version = "2.0"\n[general]\ndefault_mode = "exploration"\n')
 
@@ -38,10 +38,10 @@ def test_get_layer_defaults(isolated_thoth_home: Path, capsys: pytest.CaptureFix
 
 
 def test_get_layer_profile_returns_profile_overlay(
-    isolated_thoth_home: Path, capsys: pytest.CaptureFixture[str]
+    isolated_doxa_home: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """C9: --layer profile must return the active profile's overlay (not merged)."""
-    user_toml = Path(isolated_thoth_home) / "config" / "thoth" / "thoth.config.toml"
+    user_toml = Path(isolated_doxa_home) / "config" / "doxa" / "doxa.config.toml"
     user_toml.parent.mkdir(parents=True, exist_ok=True)
     user_toml.write_text(
         'version = "2.0"\n'
@@ -62,10 +62,10 @@ def test_get_layer_profile_returns_profile_overlay(
 
 
 def test_get_raw_includes_profile_layer(
-    isolated_thoth_home: Path, capsys: pytest.CaptureFixture[str]
+    isolated_doxa_home: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """C9: --raw must merge the profile layer (not silently omit it)."""
-    user_toml = Path(isolated_thoth_home) / "config" / "thoth" / "thoth.config.toml"
+    user_toml = Path(isolated_doxa_home) / "config" / "doxa" / "doxa.config.toml"
     user_toml.parent.mkdir(parents=True, exist_ok=True)
     user_toml.write_text(
         'version = "2.0"\n'
@@ -84,7 +84,7 @@ def test_get_raw_includes_profile_layer(
 
 
 def test_get_raw_preserves_env_template(
-    isolated_thoth_home: Path,
+    isolated_doxa_home: Path,
     capsys: pytest.CaptureFixture[str],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -95,13 +95,11 @@ def test_get_raw_preserves_env_template(
     assert out == "${OPENAI_API_KEY}"
 
 
-def test_set_writes_user_toml(
-    isolated_thoth_home: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_set_writes_user_toml(isolated_doxa_home: Path, capsys: pytest.CaptureFixture[str]) -> None:
     rc = config_command("set", ["general.default_mode", "exploration"])
     assert rc == 0
 
-    from thoth.paths import user_config_file
+    from doxa_research.paths import user_config_file
 
     path = user_config_file()
     assert path.exists()
@@ -115,31 +113,31 @@ def test_set_writes_user_toml(
 
 
 def test_set_project_writes_project_toml(
-    isolated_thoth_home: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    isolated_doxa_home: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.chdir(tmp_path)
     rc = config_command("set", ["--project", "general.default_mode", "deep_dive"])
     assert rc == 0
-    project_path = tmp_path / "thoth.config.toml"
+    project_path = tmp_path / "doxa.config.toml"
     assert project_path.exists()
     assert "deep_dive" in project_path.read_text()
 
-    from thoth.paths import user_config_file
+    from doxa_research.paths import user_config_file
 
     assert not user_config_file().exists()
 
 
-def test_set_parses_bool(isolated_thoth_home: Path) -> None:
+def test_set_parses_bool(isolated_doxa_home: Path) -> None:
     rc = config_command("set", ["execution.parallel_providers", "false"])
     assert rc == 0
     cm_rc = config_command("get", ["execution.parallel_providers"])
     assert cm_rc == 0
 
 
-def test_set_parses_int(isolated_thoth_home: Path) -> None:
+def test_set_parses_int(isolated_doxa_home: Path) -> None:
     import tomllib
 
-    from thoth.paths import user_config_file
+    from doxa_research.paths import user_config_file
 
     rc = config_command("set", ["execution.poll_interval", "15"])
     assert rc == 0
@@ -148,10 +146,10 @@ def test_set_parses_int(isolated_thoth_home: Path) -> None:
     assert data["execution"]["poll_interval"] == 15
 
 
-def test_set_string_flag_forces_string(isolated_thoth_home: Path) -> None:
+def test_set_string_flag_forces_string(isolated_doxa_home: Path) -> None:
     import tomllib
 
-    from thoth.paths import user_config_file
+    from doxa_research.paths import user_config_file
 
     rc = config_command("set", ["--string", "execution.poll_interval", "15"])
     assert rc == 0
@@ -160,10 +158,10 @@ def test_set_string_flag_forces_string(isolated_thoth_home: Path) -> None:
     assert data["execution"]["poll_interval"] == "15"
 
 
-def test_unset_removes_key(isolated_thoth_home: Path) -> None:
+def test_unset_removes_key(isolated_doxa_home: Path) -> None:
     import tomllib
 
-    from thoth.paths import user_config_file
+    from doxa_research.paths import user_config_file
 
     config_command("set", ["general.default_mode", "exploration"])
     rc = config_command("unset", ["general.default_mode"])
@@ -174,14 +172,14 @@ def test_unset_removes_key(isolated_thoth_home: Path) -> None:
 
 
 def test_unset_missing_key_is_noop(
-    isolated_thoth_home: Path, capsys: pytest.CaptureFixture[str]
+    isolated_doxa_home: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     rc = config_command("unset", ["general.default_mode"])
     assert rc == 0
 
 
 def test_unset_project_target(
-    isolated_thoth_home: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    isolated_doxa_home: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     import tomllib
 
@@ -189,11 +187,11 @@ def test_unset_project_target(
     config_command("set", ["--project", "general.default_mode", "deep_dive"])
     rc = config_command("unset", ["--project", "general.default_mode"])
     assert rc == 0
-    data = tomllib.loads((tmp_path / "thoth.config.toml").read_text())
+    data = tomllib.loads((tmp_path / "doxa.config.toml").read_text())
     assert "general" not in data
 
 
-def test_list_prints_toml(isolated_thoth_home: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_list_prints_toml(isolated_doxa_home: Path, capsys: pytest.CaptureFixture[str]) -> None:
     rc = config_command("list", [])
     out = capsys.readouterr().out
     assert rc == 0
@@ -202,7 +200,7 @@ def test_list_prints_toml(isolated_thoth_home: Path, capsys: pytest.CaptureFixtu
 
 
 def test_list_keys_emits_sorted_dotted(
-    isolated_thoth_home: Path, capsys: pytest.CaptureFixture[str]
+    isolated_doxa_home: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     rc = config_command("list", ["--keys"])
     out = capsys.readouterr().out.strip().splitlines()
@@ -212,7 +210,7 @@ def test_list_keys_emits_sorted_dotted(
 
 
 def test_list_json_is_valid_json(
-    isolated_thoth_home: Path, capsys: pytest.CaptureFixture[str]
+    isolated_doxa_home: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     import json
 
@@ -224,7 +222,7 @@ def test_list_json_is_valid_json(
 
 
 def test_list_layer_shows_one_layer(
-    isolated_thoth_home: Path, capsys: pytest.CaptureFixture[str]
+    isolated_doxa_home: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     config_command("set", ["general.default_mode", "exploration"])
     capsys.readouterr()
@@ -235,9 +233,9 @@ def test_list_layer_shows_one_layer(
 
 
 def test_path_prints_user_config_path(
-    isolated_thoth_home: Path, capsys: pytest.CaptureFixture[str]
+    isolated_doxa_home: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    from thoth.paths import user_config_file
+    from doxa_research.paths import user_config_file
 
     rc = config_command("path", [])
     out = capsys.readouterr().out.strip()
@@ -246,7 +244,7 @@ def test_path_prints_user_config_path(
 
 
 def test_path_project_prints_project_path(
-    isolated_thoth_home: Path,
+    isolated_doxa_home: Path,
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
     monkeypatch: pytest.MonkeyPatch,
@@ -255,11 +253,11 @@ def test_path_project_prints_project_path(
     rc = config_command("path", ["--project"])
     out = capsys.readouterr().out.strip()
     assert rc == 0
-    assert out == str(tmp_path / "thoth.config.toml")
+    assert out == str(tmp_path / "doxa.config.toml")
 
 
 def test_get_masks_api_key_by_default(
-    isolated_thoth_home: Path,
+    isolated_doxa_home: Path,
     capsys: pytest.CaptureFixture[str],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -271,7 +269,7 @@ def test_get_masks_api_key_by_default(
 
 
 def test_get_show_secrets_reveals(
-    isolated_thoth_home: Path,
+    isolated_doxa_home: Path,
     capsys: pytest.CaptureFixture[str],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -283,7 +281,7 @@ def test_get_show_secrets_reveals(
 
 
 def test_list_masks_api_keys_by_default(
-    isolated_thoth_home: Path,
+    isolated_doxa_home: Path,
     capsys: pytest.CaptureFixture[str],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -295,10 +293,10 @@ def test_list_masks_api_keys_by_default(
     assert "****wxyz" in out
 
 
-def test_cli_config_get_via_click(isolated_thoth_home: Path) -> None:
+def test_cli_config_get_via_click(isolated_doxa_home: Path) -> None:
     from click.testing import CliRunner
 
-    from thoth.cli import cli
+    from doxa_research.cli import cli
 
     runner = CliRunner()
     result = runner.invoke(cli, ["config", "get", "general.default_mode"])
@@ -309,7 +307,7 @@ def test_cli_config_get_via_click(isolated_thoth_home: Path) -> None:
 def test_cli_config_help_listed_in_epilog() -> None:
     from click.testing import CliRunner
 
-    from thoth.cli import cli
+    from doxa_research.cli import cli
 
     runner = CliRunner()
     result = runner.invoke(cli, ["--help"])
@@ -317,7 +315,7 @@ def test_cli_config_help_listed_in_epilog() -> None:
 
 
 def test_edit_invokes_editor_and_creates_file(
-    isolated_thoth_home: Path,
+    isolated_doxa_home: Path,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -326,7 +324,7 @@ def test_edit_invokes_editor_and_creates_file(
     stub.chmod(0o755)
     monkeypatch.setenv("EDITOR", str(stub))
 
-    from thoth.paths import user_config_file
+    from doxa_research.paths import user_config_file
 
     assert not user_config_file().exists()
 
@@ -341,14 +339,14 @@ def test_help_renders_text(capsys: pytest.CaptureFixture[str]) -> None:
     rc = config_command("help", [])
     out = capsys.readouterr().out
     assert rc == 0
-    assert "thoth config" in out
+    assert "doxa config" in out
     assert "get" in out
     assert "set" in out
     assert "unset" in out
 
 
-def test_set_preserves_existing_comments(isolated_thoth_home: Path) -> None:
-    from thoth.paths import user_config_file
+def test_set_preserves_existing_comments(isolated_doxa_home: Path) -> None:
+    from doxa_research.paths import user_config_file
 
     path = user_config_file()
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -367,8 +365,8 @@ def test_set_preserves_existing_comments(isolated_thoth_home: Path) -> None:
     assert "exploration" in content
 
 
-def test_thoth_config_list_json_subprocess(isolated_thoth_home: Path) -> None:
-    """Regression: `thoth config list --json` must pass through click to the
+def test_doxa_config_list_json_subprocess(isolated_doxa_home: Path) -> None:
+    """Regression: `doxa config list --json` must pass through click to the
     config dispatcher. Pre-P11 this was broken — click's root command rejected
     `--json` as an unknown option. P11's `ignore_unknown_options=True` fix
     repaired it but there was no end-to-end test.
@@ -379,9 +377,9 @@ def test_thoth_config_list_json_subprocess(isolated_thoth_home: Path) -> None:
     """
     import json
 
-    from tests._fixture_helpers import run_thoth
+    from tests._fixture_helpers import run_doxa
 
-    rc, out, err = run_thoth(["config", "list", "--json"])
+    rc, out, err = run_doxa(["config", "list", "--json"])
     assert rc == 0, f"stderr: {err}"
     payload = json.loads(out)
     assert isinstance(payload, dict)

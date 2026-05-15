@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from thoth.config import is_background_mode, is_background_model
+from doxa_research.config import is_background_mode, is_background_model
 
 
 def test_explicit_async_true_overrides_missing_model() -> None:

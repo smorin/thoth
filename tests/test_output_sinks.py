@@ -9,7 +9,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-from thoth.sinks import MultiSink
+from doxa_research.sinks import MultiSink
 
 
 def test_stdout_only(capsys) -> None:

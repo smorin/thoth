@@ -1,4 +1,4 @@
-"""Tests for Markdown link-safe escaping helpers in thoth.utils.
+"""Tests for Markdown link-safe escaping helpers in doxa_research.utils.
 
 Covers the security-critical ``md_link_title`` and ``md_link_url`` helpers
 that prevent arbitrary search-result content from corrupting ``[title](url)``
@@ -7,7 +7,7 @@ syntax or injecting unintended Markdown / HTML into persisted reports.
 
 from __future__ import annotations
 
-from thoth.utils import md_link_title, md_link_url
+from doxa_research.utils import md_link_title, md_link_url
 
 
 class TestMdLinkTitle:

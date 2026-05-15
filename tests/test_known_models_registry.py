@@ -1,6 +1,6 @@
 """P18 Phase A: KNOWN_MODELS is derived from BUILTIN_MODES.
 
-The registry is the single source of truth for "what models does thoth ship
+The registry is the single source of truth for "what models does doxa_research ship
 with, and what kind is each". Cross-mode kind conflicts (same (provider,
 model) declared with two different kinds across builtins) raise at import.
 
@@ -11,9 +11,9 @@ from __future__ import annotations
 
 import pytest
 
-from thoth.config import BUILTIN_MODES
-from thoth.errors import ThothError
-from thoth.models import KNOWN_MODELS, ModelSpec, derive_known_models
+from doxa_research.config import BUILTIN_MODES
+from doxa_research.errors import DoxaError
+from doxa_research.models import KNOWN_MODELS, ModelSpec, derive_known_models
 
 
 def test_modelspec_shape() -> None:
@@ -50,7 +50,7 @@ def test_derive_rejects_cross_mode_kind_conflict() -> None:
         "real_immediate": {"provider": "openai", "model": "o3", "kind": "immediate"},
         "fake_background": {"provider": "openai", "model": "o3", "kind": "background"},
     }
-    with pytest.raises(ThothError, match="Inconsistent kind"):
+    with pytest.raises(DoxaError, match="Inconsistent kind"):
         derive_known_models(bogus_modes)
 
 
@@ -66,7 +66,7 @@ def test_derive_skips_alias_stubs() -> None:
 
 
 def test_derive_raises_on_missing_required_fields() -> None:
-    """Builtin missing provider/model/kind is a thoth bug; raise loudly."""
+    """Builtin missing provider/model/kind is a doxa-research bug; raise loudly."""
     broken = {"oops": {"provider": "openai", "model": "o3"}}  # no kind
-    with pytest.raises(ThothError, match="missing"):
+    with pytest.raises(DoxaError, match="missing"):
         derive_known_models(broken)

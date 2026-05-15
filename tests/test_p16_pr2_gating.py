@@ -1,7 +1,7 @@
 """P16 PR2 — Category B: legacy-form gating tests.
 
 Each removed form must exit 2 with a Click-native error containing the
-`(use 'thoth NEW_FORM')` migration substring on stderr per Q6-PR2-C1.
+`(use 'doxa_research NEW_FORM')` migration substring on stderr per Q6-PR2-C1.
 """
 
 from __future__ import annotations
@@ -9,15 +9,15 @@ from __future__ import annotations
 import pytest
 from click.testing import CliRunner
 
-from thoth.cli import cli
+from doxa_research.cli import cli
 
 
 @pytest.mark.parametrize(
     "argv,migration_hint",
     [
         # --resume / -R global flag (removed in Task 5)
-        (["--resume", "op_x"], "thoth resume"),
-        (["-R", "op_x"], "thoth resume"),
+        (["--resume", "op_x"], "doxa resume"),
+        (["-R", "op_x"], "doxa resume"),
     ],
 )
 def test_resume_legacy_form_gated(argv, migration_hint):
@@ -32,16 +32,16 @@ def test_resume_legacy_form_gated(argv, migration_hint):
     "argv,migration_hint",
     [
         # providers `--` separator form
-        (["providers", "--", "--list"], "thoth providers list"),
-        (["providers", "--", "--models"], "thoth providers models"),
-        (["providers", "--", "--keys"], "thoth providers check"),
-        (["providers", "--", "--refresh-cache"], "thoth providers models --refresh-cache"),
-        (["providers", "--", "--no-cache"], "thoth providers models --no-cache"),
+        (["providers", "--", "--list"], "doxa providers list"),
+        (["providers", "--", "--models"], "doxa providers models"),
+        (["providers", "--", "--keys"], "doxa providers check"),
+        (["providers", "--", "--refresh-cache"], "doxa providers models --refresh-cache"),
+        (["providers", "--", "--no-cache"], "doxa providers models --no-cache"),
         # providers in-group hidden flag form (PR1.5 shim)
-        (["providers", "--list"], "thoth providers list"),
-        (["providers", "--models"], "thoth providers models"),
-        (["providers", "--keys"], "thoth providers check"),
-        (["providers", "--check"], "thoth providers check"),
+        (["providers", "--list"], "doxa providers list"),
+        (["providers", "--models"], "doxa providers models"),
+        (["providers", "--keys"], "doxa providers check"),
+        (["providers", "--check"], "doxa providers check"),
     ],
 )
 def test_providers_legacy_form_gated(argv, migration_hint):
@@ -56,11 +56,11 @@ def test_providers_legacy_form_gated(argv, migration_hint):
 @pytest.mark.parametrize(
     "argv,migration_hint",
     [
-        (["modes", "--json"], "thoth modes list --json"),
-        (["modes", "--show-secrets"], "thoth modes list --show-secrets"),
-        (["modes", "--full"], "thoth modes list --full"),
-        (["modes", "--name", "deep_research"], "thoth modes list --name"),
-        (["modes", "--source", "user"], "thoth modes list --source"),
+        (["modes", "--json"], "doxa modes list --json"),
+        (["modes", "--show-secrets"], "doxa modes list --show-secrets"),
+        (["modes", "--full"], "doxa modes list --full"),
+        (["modes", "--name", "deep_research"], "doxa modes list --name"),
+        (["modes", "--source", "user"], "doxa modes list --source"),
     ],
 )
 def test_modes_legacy_form_gated(argv, migration_hint):
@@ -71,7 +71,7 @@ def test_modes_legacy_form_gated(argv, migration_hint):
 
 
 def test_help_auth_parse_time_hijack_removed():
-    """Q5-A row 13.ii: `thoth --help auth` is no longer hijacked at parse time."""
+    """Q5-A row 13.ii: `doxa --help auth` is no longer hijacked at parse time."""
     r = CliRunner().invoke(cli, ["--help", "auth"])
     # Click natively rejects 'auth' as an unexpected positional argument,
     # OR `--help` consumes the rest and exits 0 with the group help.
@@ -82,14 +82,14 @@ def test_help_auth_parse_time_hijack_removed():
 
 
 def test_help_subcommand_topic_still_works():
-    """`thoth help status` still forwards to `thoth status --help`."""
+    """`doxa help status` still forwards to `doxa status --help`."""
     r = CliRunner().invoke(cli, ["help", "status"])
     assert r.exit_code == 0, r.output
     assert "OP_ID" in r.output or "status" in r.output.lower()
 
 
 def test_help_auth_topic_via_help_subcommand_removed():
-    """The `auth` virtual topic on `thoth help auth` is dropped per Q5-A row 13.ii."""
+    """The `auth` virtual topic on `doxa help auth` is dropped per Q5-A row 13.ii."""
     r = CliRunner().invoke(cli, ["help", "auth"])
     assert r.exit_code == 2, r.output
     combined = r.output or ""

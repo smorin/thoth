@@ -9,7 +9,7 @@ Parity policy (decided in T15):
   contracts (exit code, key substrings) without freezing the exact byte
   rendering.
 
-Skipped before parity is in scope (e.g. if THOTH_PARITY_SKIP=1 env is set
+Skipped before parity is in scope (e.g. if DOXA_PARITY_SKIP=1 env is set
 during early refactor scaffolding).
 """
 
@@ -26,20 +26,20 @@ PARITY_LABELS = [
     "providers_list",
     "config_list",
     "modes_no_args",
-    # "help_auth" removed in P16 PR2 T8 — `thoth help auth` virtual topic
+    # "help_auth" removed in P16 PR2 T8 — `doxa help auth` virtual topic
     # was dropped per Q5-A row 13.ii.
     "unknown_command",
 ]
 
 
 @pytest.mark.parametrize("label", PARITY_LABELS)
-def test_dispatch_parity(label: str, baseline, run_thoth):
+def test_dispatch_parity(label: str, baseline, run_doxa):
     """P16-TS01: post-refactor exit_code, stdout, AND stderr match baseline (line-set equality)."""
-    if os.getenv("THOTH_PARITY_SKIP") == "1":
+    if os.getenv("DOXA_PARITY_SKIP") == "1":
         pytest.skip("parity gate temporarily disabled during scaffolding")
 
     expected = baseline(label)
-    exit_code, stdout, stderr = run_thoth(expected["argv"])
+    exit_code, stdout, stderr = run_doxa(expected["argv"])
 
     assert exit_code == expected["exit_code"], (
         f"exit_code mismatch for {label}: got {exit_code}, baseline {expected['exit_code']}"
@@ -47,7 +47,7 @@ def test_dispatch_parity(label: str, baseline, run_thoth):
     # Both stdout and stderr: line-set equality (sorted set of lines).
     # Tolerates Click's terminal-width-dependent re-formatting; catches
     # added/removed lines and exit-code changes. Strict line-order checks
-    # for the --help layout live in tests/test_p16_thothgroup.py (added in T11).
+    # for the --help layout live in tests/test_p16_doxagroup.py (added in T11).
     assert sorted(stdout.splitlines()) == sorted(expected["stdout"].splitlines()), (
         f"stdout drift for {label}"
     )
@@ -56,38 +56,38 @@ def test_dispatch_parity(label: str, baseline, run_thoth):
     )
 
 
-def test_help_unknown_topic_errors_structural(run_thoth):
-    """P16-TS12: thoth help <unknown-topic> exits non-zero with a clear error."""
-    exit_code, stdout, stderr = run_thoth(["help", "nosuchtopic"])
+def test_help_unknown_topic_errors_structural(run_doxa):
+    """P16-TS12: doxa help <unknown-topic> exits non-zero with a clear error."""
+    exit_code, stdout, stderr = run_doxa(["help", "nosuchtopic"])
     assert exit_code != 0
     combined = stdout + stderr
     assert "nosuchtopic" in combined.lower() or "unknown" in combined.lower()
 
 
-def test_init_help_structural(run_thoth):
-    """P16-TS13: thoth init --help shows the init subcommand's help (not parent)."""
-    exit_code, stdout, stderr = run_thoth(["init", "--help"])
+def test_init_help_structural(run_doxa):
+    """P16-TS13: doxa init --help shows the init subcommand's help (not parent)."""
+    exit_code, stdout, stderr = run_doxa(["init", "--help"])
     assert exit_code == 0
     assert "init" in stdout.lower()
     assert "Initialize" in stdout or "initialize" in stdout
 
 
-def test_list_help_structural(run_thoth):
-    """P16-TS14: thoth list --help shows the list subcommand's help (not parent)."""
-    exit_code, stdout, stderr = run_thoth(["list", "--help"])
+def test_list_help_structural(run_doxa):
+    """P16-TS14: doxa list --help shows the list subcommand's help (not parent)."""
+    exit_code, stdout, stderr = run_doxa(["list", "--help"])
     assert exit_code == 0
     assert "list" in stdout.lower()
     assert "--all" in stdout or "operations" in stdout.lower()
 
 
-def test_providers_no_args_lists_subcommands(run_thoth):
-    """P16-TS15: thoth providers (no args) lists list/models/check subcommands.
+def test_providers_no_args_lists_subcommands(run_doxa):
+    """P16-TS15: doxa providers (no args) lists list/models/check subcommands.
 
     Click's natural behavior for a subgroup invoked without a subcommand is
     to print the usage/command listing and exit 2. We accept either 0 or 2
     here — the contract is that the subcommand list is reachable.
     """
-    exit_code, stdout, stderr = run_thoth(["providers"])
+    exit_code, stdout, stderr = run_doxa(["providers"])
     assert exit_code in (0, 2)
     combined = stdout + stderr
     # Click lists the subcommands somewhere
@@ -96,24 +96,24 @@ def test_providers_no_args_lists_subcommands(run_thoth):
     assert "check" in combined
 
 
-def test_config_no_args_errors_with_op_hint(run_thoth):
-    """P16-TS16: thoth config (no op) exits 2 with hint about required op."""
-    exit_code, stdout, stderr = run_thoth(["config"])
+def test_config_no_args_errors_with_op_hint(run_doxa):
+    """P16-TS16: doxa config (no op) exits 2 with hint about required op."""
+    exit_code, stdout, stderr = run_doxa(["config"])
     assert exit_code == 2
     combined = stdout + stderr
     assert "op" in combined.lower() or "required" in combined.lower() or "(get|set" in combined
 
 
-def test_help_init_forwards_to_subcommand(run_thoth):
-    """P16-TS17: thoth help init forwards to init's --help."""
-    exit_code, stdout, stderr = run_thoth(["help", "init"])
+def test_help_init_forwards_to_subcommand(run_doxa):
+    """P16-TS17: doxa help init forwards to init's --help."""
+    exit_code, stdout, stderr = run_doxa(["help", "init"])
     assert exit_code == 0
     assert "init" in stdout.lower()
 
 
 def test_fallback_timeout_options_are_coerced_to_float():
     """Post-prompt global options should match Click's option typing."""
-    from thoth.cli import _extract_fallback_options
+    from doxa_research.cli import _extract_fallback_options
 
     positional, parsed = _extract_fallback_options(["prompt", "--timeout", "30.0"], {})
 

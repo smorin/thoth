@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from click.testing import CliRunner
 
-from thoth.cli import cli
+from doxa_research.cli import cli
 
 
 def _stub_run_research(monkeypatch):
@@ -14,7 +14,7 @@ def _stub_run_research(monkeypatch):
         captured.update(kwargs)
         return None
 
-    monkeypatch.setattr("thoth.run.run_research", fake)
+    monkeypatch.setattr("doxa_research.run.run_research", fake)
     return captured
 
 
@@ -58,7 +58,7 @@ def test_ask_with_prompt_file(monkeypatch, tmp_path):
 
 
 def test_ask_via_group_level_flags(monkeypatch):
-    """Q3-PR2-C: `thoth --mode X ask "..."` works (group form)."""
+    """Q3-PR2-C: `doxa --mode X ask "..."` works (group form)."""
     captured = _stub_run_research(monkeypatch)
     r = CliRunner().invoke(cli, ["--mode", "deep_research", "ask", "topic"])
     assert r.exit_code == 0, r.output
@@ -90,7 +90,7 @@ def test_ask_forwards_out_and_append_to_research_runner(monkeypatch, tmp_path):
     assert captured["append"] is True
 
 
-def test_ask_out_file_writes_streamed_mock_response(isolated_thoth_home, monkeypatch, tmp_path):
+def test_ask_out_file_writes_streamed_mock_response(isolated_doxa_home, monkeypatch, tmp_path):
     monkeypatch.setenv("MOCK_API_KEY", "test")
     target = tmp_path / "p18-smoke.md"
     expected = _mock_stream("test 1")
@@ -114,7 +114,7 @@ def test_ask_out_file_writes_streamed_mock_response(isolated_thoth_home, monkeyp
     assert target.read_text() == expected
 
 
-def test_ask_out_comma_list_tees_to_stdout_and_file(isolated_thoth_home, monkeypatch, tmp_path):
+def test_ask_out_comma_list_tees_to_stdout_and_file(isolated_doxa_home, monkeypatch, tmp_path):
     monkeypatch.setenv("MOCK_API_KEY", "test")
     target = tmp_path / "p18-tee.md"
     expected = _mock_stream("test 2 teed")
@@ -138,9 +138,7 @@ def test_ask_out_comma_list_tees_to_stdout_and_file(isolated_thoth_home, monkeyp
     assert target.read_text() == expected
 
 
-def test_ask_out_repeatable_form_tees_to_stdout_and_file(
-    isolated_thoth_home, monkeypatch, tmp_path
-):
+def test_ask_out_repeatable_form_tees_to_stdout_and_file(isolated_doxa_home, monkeypatch, tmp_path):
     monkeypatch.setenv("MOCK_API_KEY", "test")
     target = tmp_path / "p18-tee2.md"
     expected = _mock_stream("test 3")
@@ -166,7 +164,7 @@ def test_ask_out_repeatable_form_tees_to_stdout_and_file(
     assert target.read_text() == expected
 
 
-def test_ask_out_append_concatenates_second_run(isolated_thoth_home, monkeypatch, tmp_path):
+def test_ask_out_append_concatenates_second_run(isolated_doxa_home, monkeypatch, tmp_path):
     monkeypatch.setenv("MOCK_API_KEY", "test")
     target = tmp_path / "p18-append.md"
     target.write_text("stale")

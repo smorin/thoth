@@ -1,7 +1,7 @@
-# Thoth v1.5 Development Milestones
+# Doxa Research v1.5 Development Milestones
 
 ## Overview
-This document tracks the implementation progress of Thoth v1.5, with checkboxes indicating the status of each task.
+This document tracks the implementation progress of Doxa Research v1.5, with checkboxes indicating the status of each task.
 
 **Legend:**
 - `[x]` Completed
@@ -16,7 +16,7 @@ This document tracks the implementation progress of Thoth v1.5, with checkboxes 
 ### Tasks
 - [x] [M1-T1] Set up Python project structure with UV script header
 - [x] [M1-T2] Implement basic Click CLI with version display
-- [x] [M1-T3] Add query parsing for quick mode (`thoth "query"`)
+- [x] [M1-T3] Add query parsing for quick mode (`doxa-research "query"`)
 - [x] [M1-T4] Create mock provider that returns static responses
 - [x] [M1-T5] Implement basic file output to current directory
 - [x] [M1-T6] Add timestamp-based filename generation
@@ -27,7 +27,7 @@ This document tracks the implementation progress of Thoth v1.5, with checkboxes 
 
 ### Deliverable
 ```bash
-$ thoth "explain DNS"
+$ doxa "explain DNS"
 ⠋ Researching...
 ✓ Research completed!
 
@@ -36,8 +36,8 @@ Files created:
 ```
 
 ### Verification
-- [x] `thoth --version` displays version
-- [x] `thoth "test query"` creates output file
+- [x] `doxa-research --version` displays version
+- [x] `doxa-research "test query"` creates output file
 - [x] Filename follows correct pattern
 - [x] Ctrl-C exits cleanly
 - [x] Help text shows quick mode prominently
@@ -52,7 +52,7 @@ Files created:
 - [x] [M2-T2] Implement TOML config file parsing
 - [x] [M2-T3] Add environment variable substitution (`${VAR}`)
 - [x] [M2-T4] Create default configuration structure
-- [x] [M2-T5] Implement config file path resolution (`~/.thoth/config.toml`)
+- [x] [M2-T5] Implement config file path resolution (`~/.doxa-research/config.toml`)
 - [x] [M2-T6] Add path expansion for file paths
 - [x] [M2-T7] Create init command skeleton
 - [x] [M2-T8] Add API key validation and masking
@@ -120,7 +120,7 @@ Mode system allowing different research workflows.
 - [x] Mode-specific prompts are used
 - [x] Unknown modes show helpful error
 - [x] Default mode passes query without system prompt
-- [x] `thoth "query"` uses default mode, not deep_research
+- [x] `doxa-research "query"` uses default mode, not deep_research
 
 ---
 
@@ -264,7 +264,7 @@ Advanced features for power users.
 - [ ] [M10-T8] Add final testing and bug fixes
 
 ### Deliverable
-Production-ready Thoth v1.5 with all features implemented and tested.
+Production-ready Doxa Research v1.5 with all features implemented and tested.
 
 ### Verification
 - [x] All error paths show helpful messages
@@ -299,7 +299,7 @@ Production-ready Thoth v1.5 with all features implemented and tested.
 
 ### Deliverable
 ```bash
-$ thoth -i
+$ doxa -i
 [dim]Enter query • Shift+Enter: new line • Enter: submit • /help: commands[/dim]
 ┌────────────────────────────────────────────────────────────────────┐
 │ > /mode deep_research                                              │
@@ -347,15 +347,15 @@ $ thoth -i
 ### Deliverable
 ```bash
 # Start interactive mode with pre-configured settings
-$ thoth -i --mode deep_research --provider openai "initial query"
+$ doxa -i --mode deep_research --provider openai "initial query"
 [Interactive mode starts with query pre-populated, mode and provider set]
 
 # Pipe query into interactive mode
-$ echo "query from stdin" | thoth -i --query-file -
+$ echo "query from stdin" | doxa-research -i --query-file -
 [Interactive mode starts with piped query]
 
 # Combined settings
-$ thoth -i --mode exploration --provider perplexity --async "test query"
+$ doxa -i --mode exploration --provider perplexity --async "test query"
 [All settings initialized from command line]
 ```
 
@@ -387,7 +387,7 @@ $ thoth -i --mode exploration --provider perplexity --async "test query"
 ### Deliverable
 ```bash
 # Bypass cache without updating it
-$ thoth providers -- --models --no-cache
+$ doxa providers -- --models --no-cache
 
 # This fetches directly from API but doesn't save to cache
 # Useful for checking current models without affecting cache
@@ -405,7 +405,7 @@ $ thoth providers -- --models --no-cache
 **Goal**: Integrate pexpect-based interactive tests into the main test framework
 
 ### Tasks
-- [x] [M31-T1] Add pexpect dependency to thoth_test requirements
+- [x] [M31-T1] Add pexpect dependency to doxa_test requirements
 - [x] [M31-T2] Create InteractiveTestRunner class for handling pexpect tests
 - [x] [M31-T3] Extend TestCase dataclass with interactive test fields
 - [x] [M31-T4] Add keyboard key constants for terminal control
@@ -418,13 +418,13 @@ $ thoth providers -- --models --no-cache
 ### Deliverable
 ```bash
 # Run only interactive mode tests
-$ ./thoth_test -r --interactive
+$ ./doxa_test -r --interactive
 
 # Run specific interactive test
-$ ./thoth_test -r --provider mock -t INT-09
+$ ./doxa_test -r --provider mock -t INT-09
 
 # Run mix of test types
-$ ./thoth_test -r --provider mock
+$ ./doxa_test -r --provider mock
 ```
 
 ### Verification
@@ -494,10 +494,10 @@ result = handler.execute(command, **params)
 
 ### Deliverable
 ```bash
-$ thoth -i
+$ doxa -i
 [Interactive mode with Shift+Tab to toggle between Edit and Clarification modes]
 
-$ thoth -i --clarify
+$ doxa -i --clarify
 [Starts directly in Clarification Mode]
 ```
 
@@ -540,18 +540,18 @@ $ thoth -i --clarify
 ### Deliverable
 ```bash
 # Single provider deep research with Gemini
-$ thoth --mode deep_research --provider gemini "explain quantum computing"
+$ doxa --mode deep_research --provider gemini "explain quantum computing"
 
 # Multi-provider research including Gemini
-$ thoth --mode deep_research "explain quantum computing"
+$ doxa --mode deep_research "explain quantum computing"
 # Runs OpenAI, Perplexity, and Gemini in parallel
 
 # Gemini-specific usage
-$ thoth providers -- --models --provider gemini
+$ doxa providers -- --models --provider gemini
 ```
 
 ### Verification
-- [ ] `thoth --provider gemini "test query"` submits and retrieves research
+- [ ] `doxa-research --provider gemini "test query"` submits and retrieves research
 - [ ] Gemini provider polls Interactions API correctly
 - [ ] Citations are extracted and included in output
 - [ ] Invalid/missing GEMINI_API_KEY shows helpful error

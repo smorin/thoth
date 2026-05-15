@@ -1,7 +1,7 @@
 from click.testing import CliRunner
 
-from thoth.cli import cli
-from thoth.help import render_auth_help
+from doxa_research.cli import cli
+from doxa_research.help import render_auth_help
 
 
 def test_help_auth_lists_env_first():

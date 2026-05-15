@@ -9,14 +9,14 @@
 ## Prerequisites
 
 ```bash
-# Ensure you're in the thoth project directory
-cd /path/to/thoth
+# Ensure you're in the doxa-research project directory
+cd /path/to/doxa-research
 
 # Source API key (needed for provider tests only)
 source openai.env
 
-# Verify thoth is executable
-./thoth --version
+# Verify doxa-research is executable
+./doxa --version
 ```
 
 ---
@@ -29,7 +29,7 @@ Run a synchronous research operation with the mock provider and verify it transi
 
 ```bash
 # Run a synchronous mock research
-./thoth "test lifecycle manual" --provider mock -v
+./doxa "test lifecycle manual" --provider mock -v
 ```
 
 **Expected Result**:
@@ -50,20 +50,20 @@ rm -f *_mock_*test-lifecycle-manual*.md
 
 ```bash
 # Run with --async flag
-./thoth "test async manual" --async --provider mock
+./doxa "test async manual" --async --provider mock
 ```
 
 **Expected Result**:
 - Output: `✓ Research submitted`
 - Output contains `Operation ID: research-YYYYMMDD-HHMMSS-<uuid>`
-- Output contains `Check status: thoth status research-...`
+- Output contains `Check status: doxa-research status research-...`
 - Returns immediately (< 1 second)
 - Exit code: 0
 
 **Save the Operation ID** for use in later tests:
 ```bash
 # Capture the operation ID
-OP_ID=$(./thoth "test async capture" --async --provider mock 2>&1 | grep "Operation ID:" | awk '{print $NF}')
+OP_ID=$(./doxa "test async capture" --async --provider mock 2>&1 | grep "Operation ID:" | awk '{print $NF}')
 echo "Captured Operation ID: $OP_ID"
 ```
 
@@ -71,7 +71,7 @@ echo "Captured Operation ID: $OP_ID"
 
 ```bash
 # Check the async operation status (should be "queued" since async doesn't execute)
-./thoth status $OP_ID
+./doxa status $OP_ID
 ```
 
 **Expected Result**:
@@ -85,14 +85,14 @@ echo "Captured Operation ID: $OP_ID"
 
 ```bash
 # Run synchronous operation
-./thoth "test completed state" --provider mock -v
+./doxa "test completed state" --provider mock -v
 
 # Get the operation ID from the most recent checkpoint
-COMPLETED_ID=$(ls -t ~/.config/thoth/checkpoints/*.json | head -1 | xargs basename .json)
+COMPLETED_ID=$(ls -t ~/.config/doxa-research/checkpoints/*.json | head -1 | xargs basename .json)
 echo "Completed Operation ID: $COMPLETED_ID"
 
 # Check its status
-./thoth status $COMPLETED_ID
+./doxa status $COMPLETED_ID
 ```
 
 **Expected Result**:
@@ -112,15 +112,15 @@ rm -f *_mock_*test-completed-state*.md
 
 ### Test B-1: Checkpoint Survives Process Exit
 
-This verifies that checkpoint data persists across separate thoth invocations.
+This verifies that checkpoint data persists across separate doxa-research invocations.
 
 ```bash
 # Step 1: Create an operation (async so it stays in queued state)
-./thoth "checkpoint persistence test" --async --provider mock
+./doxa "checkpoint persistence test" --async --provider mock
 # Note the Operation ID displayed
 
 # Step 2: In a NEW invocation, check the status
-./thoth status <OPERATION_ID_FROM_STEP_1>
+./doxa status <OPERATION_ID_FROM_STEP_1>
 ```
 
 **Expected Result**:
@@ -133,14 +133,14 @@ This verifies that checkpoint data persists across separate thoth invocations.
 
 ```bash
 # Verify checkpoint files exist in the expected directory
-ls -la ~/.config/thoth/checkpoints/
+ls -la ~/.config/doxa-research/checkpoints/
 
 # Inspect a checkpoint file
-cat ~/.config/thoth/checkpoints/$(ls ~/.config/thoth/checkpoints/ | head -1)
+cat ~/.config/doxa-research/checkpoints/$(ls ~/.config/doxa-research/checkpoints/ | head -1)
 ```
 
 **Expected Result**:
-- Checkpoint directory exists at `~/.config/thoth/checkpoints/`
+- Checkpoint directory exists at `~/.config/doxa-research/checkpoints/`
 - Files are named `<operation-id>.json`
 - JSON content contains: id, prompt, mode, status, created_at, updated_at, providers, output_paths
 
@@ -148,10 +148,10 @@ cat ~/.config/thoth/checkpoints/$(ls ~/.config/thoth/checkpoints/ | head -1)
 
 ```bash
 # Run a research operation and check that no partial files exist
-./thoth "atomic write test" --provider mock
+./doxa "atomic write test" --provider mock
 
 # Check for temp files (should be none)
-ls ~/.config/thoth/checkpoints/*.tmp 2>/dev/null
+ls ~/.config/doxa-research/checkpoints/*.tmp 2>/dev/null
 echo "Temp files found: $?"
 ```
 
@@ -171,11 +171,11 @@ rm -f *_mock_*atomic-write-test*.md
 
 ```bash
 # Step 1: Create a corrupted checkpoint file
-mkdir -p ~/.config/thoth/checkpoints
-echo "{this is not valid json!!!" > ~/.config/thoth/checkpoints/test-corrupt-manual.json
+mkdir -p ~/.config/doxa-research/checkpoints
+echo "{this is not valid json!!!" > ~/.config/doxa-research/checkpoints/test-corrupt-manual.json
 
 # Step 2: Try to load it
-./thoth status test-corrupt-manual
+./doxa status test-corrupt-manual
 ```
 
 **Expected Result**:
@@ -187,7 +187,7 @@ echo "{this is not valid json!!!" > ~/.config/thoth/checkpoints/test-corrupt-man
 
 ```bash
 # Verify corrupted file was cleaned up
-ls ~/.config/thoth/checkpoints/test-corrupt-manual.json 2>/dev/null
+ls ~/.config/doxa-research/checkpoints/test-corrupt-manual.json 2>/dev/null
 echo "File exists: $?"
 # Expected: "File exists: 2" (file not found)
 ```
@@ -196,7 +196,7 @@ echo "File exists: $?"
 
 ```bash
 # Try to get status of a non-existent operation
-./thoth status nonexistent-operation-12345
+./doxa status nonexistent-operation-12345
 ```
 
 **Expected Result**:
@@ -207,10 +207,10 @@ echo "File exists: $?"
 
 ```bash
 # Create an empty checkpoint file
-echo "" > ~/.config/thoth/checkpoints/test-empty-manual.json
+echo "" > ~/.config/doxa-research/checkpoints/test-empty-manual.json
 
 # Try to load it
-./thoth status test-empty-manual
+./doxa status test-empty-manual
 ```
 
 **Expected Result**:
@@ -220,7 +220,7 @@ echo "" > ~/.config/thoth/checkpoints/test-empty-manual.json
 
 ```bash
 # Clean up
-rm -f ~/.config/thoth/checkpoints/test-empty-manual.json
+rm -f ~/.config/doxa-research/checkpoints/test-empty-manual.json
 ```
 
 ---
@@ -230,7 +230,7 @@ rm -f ~/.config/thoth/checkpoints/test-empty-manual.json
 ### Test D-1: Status Without Operation ID Shows Error
 
 ```bash
-./thoth status
+./doxa status
 ```
 
 **Expected Result**:
@@ -241,13 +241,13 @@ rm -f ~/.config/thoth/checkpoints/test-empty-manual.json
 
 ```bash
 # Create a completed operation first
-./thoth "detailed status test" --provider mock
+./doxa "detailed status test" --provider mock
 
 # Get the most recent operation ID
-RECENT_ID=$(ls -t ~/.config/thoth/checkpoints/*.json | head -1 | xargs basename | sed 's/.json//')
+RECENT_ID=$(ls -t ~/.config/doxa-research/checkpoints/*.json | head -1 | xargs basename | sed 's/.json//')
 
 # Show status
-./thoth status $RECENT_ID
+./doxa status $RECENT_ID
 ```
 
 **Expected Result**:
@@ -273,12 +273,12 @@ rm -f *_mock_*detailed-status-test*.md
 
 ```bash
 # Create a few operations to populate the list
-./thoth "list test one" --async --provider mock
-./thoth "list test two" --async --provider mock
-./thoth "list test three" --provider mock
+./doxa "list test one" --async --provider mock
+./doxa "list test two" --async --provider mock
+./doxa "list test three" --provider mock
 
 # List recent operations
-./thoth list
+./doxa list
 ```
 
 **Expected Result**:
@@ -295,7 +295,7 @@ rm -f *_mock_*list-test-three*.md
 ### Test E-2: List With --all Flag
 
 ```bash
-./thoth list --all
+./doxa list --all
 ```
 
 **Expected Result**:
@@ -306,7 +306,7 @@ rm -f *_mock_*list-test-three*.md
 ### Test E-3: List Shows Correct Status Values
 
 ```bash
-./thoth list
+./doxa list
 ```
 
 **Expected Result**:
@@ -321,7 +321,7 @@ rm -f *_mock_*list-test-three*.md
 ### Test F-1: Invalid Provider Triggers Error
 
 ```bash
-./thoth "test invalid provider" --provider nonexistent
+./doxa "test invalid provider" --provider nonexistent
 ```
 
 **Expected Result**:
@@ -333,11 +333,11 @@ rm -f *_mock_*list-test-three*.md
 
 ```bash
 # Start a long-running operation and cancel it
-./thoth "very long detailed research on quantum computing" --provider mock &
-THOTH_PID=$!
+./doxa "very long detailed research on quantum computing" --provider mock &
+DOXA_PID=$!
 sleep 1
-kill -INT $THOTH_PID
-wait $THOTH_PID 2>/dev/null
+kill -INT $DOXA_PID
+wait $DOXA_PID 2>/dev/null
 ```
 
 **Expected Result**:
@@ -354,7 +354,7 @@ Create checkpoint files for each valid state and verify they display correctly:
 
 ```bash
 for STATE in queued running completed failed cancelled; do
-  cat > ~/.config/thoth/checkpoints/test-state-${STATE}.json << EOF
+  cat > ~/.config/doxa-research/checkpoints/test-state-${STATE}.json << EOF
 {
   "id": "test-state-${STATE}",
   "prompt": "state test ${STATE}",
@@ -371,7 +371,7 @@ for STATE in queued running completed failed cancelled; do
 }
 EOF
   echo "--- Status for state: ${STATE} ---"
-  ./thoth status test-state-${STATE}
+  ./doxa status test-state-${STATE}
   echo ""
 done
 ```
@@ -384,7 +384,7 @@ done
 ```bash
 # Clean up
 for STATE in queued running completed failed cancelled; do
-  rm -f ~/.config/thoth/checkpoints/test-state-${STATE}.json
+  rm -f ~/.config/doxa-research/checkpoints/test-state-${STATE}.json
 done
 ```
 
@@ -396,13 +396,13 @@ After all tests are complete, clean up test artifacts:
 
 ```bash
 # Remove test checkpoint files
-rm -f ~/.config/thoth/checkpoints/test-*.json
+rm -f ~/.config/doxa-research/checkpoints/test-*.json
 
 # Remove any test output files
 rm -f *_mock_*.md
 
 # List remaining checkpoints to verify cleanup
-ls ~/.config/thoth/checkpoints/
+ls ~/.config/doxa-research/checkpoints/
 ```
 
 ---

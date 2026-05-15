@@ -16,31 +16,31 @@ executable plan.
 
 | File | Implementation | Change |
 |---|---|---|
-| `src/thoth/providers/openai.py` | `_map_openai_error` | Patched — A6 documented as intentional |
-| `src/thoth/providers/perplexity.py` | `_map_perplexity_error` (sync) | Patched — A1 belt-and-suspenders, calls new shared helper |
-| `src/thoth/providers/perplexity.py` | `_map_perplexity_error_async` | Patched — A1 + A2 + A4 fixes, calls new shared helper |
-| `src/thoth/providers/openai.py` | `OpenAIProvider.check_status` | Refactored to call new shared status-table helper |
-| `src/thoth/providers/perplexity.py` | `_poll_async_job` | Patched — B1 stale-cache fallback + B2 error_class, refactored to call shared helper |
+| `src/doxa_research/providers/openai.py` | `_map_openai_error` | Patched — A6 documented as intentional |
+| `src/doxa_research/providers/perplexity.py` | `_map_perplexity_error` (sync) | Patched — A1 belt-and-suspenders, calls new shared helper |
+| `src/doxa_research/providers/perplexity.py` | `_map_perplexity_error_async` | Patched — A1 + A2 + A4 fixes, calls new shared helper |
+| `src/doxa_research/providers/openai.py` | `OpenAIProvider.check_status` | Refactored to call new shared status-table helper |
+| `src/doxa_research/providers/perplexity.py` | `_poll_async_job` | Patched — B1 stale-cache fallback + B2 error_class, refactored to call shared helper |
 
 Two new module-level helpers:
-- `_invalid_key_thotherror(provider, settings_url)` (in `perplexity.py` initially; could promote to `errors.py` if a third caller emerges)
-- `_translate_provider_status(provider_status, status_table)` (new module — likely `src/thoth/providers/_status.py` or appended to `base.py`)
+- `_invalid_key_doxaerror(provider, settings_url)` (in `perplexity.py` initially; could promote to `errors.py` if a third caller emerges)
+- `_translate_provider_status(provider_status, status_table)` (new module — likely `src/doxa_research/providers/_status.py` or appended to `base.py`)
 
 ---
 
 ## Unified design
 
-### Helper 1 — `_invalid_key_thotherror(provider, settings_url)`
+### Helper 1 — `_invalid_key_doxaerror(provider, settings_url)`
 
 ```python
-def _invalid_key_thotherror(provider: str, settings_url: str) -> ThothError:
-    """Friendly ThothError for an upstream-rejected API key.
+def _invalid_key_doxaerror(provider: str, settings_url: str) -> DoxaError:
+    """Friendly DoxaError for an upstream-rejected API key.
 
     Distinct from APIKeyError (which signals 'no key found'); this one
     signals 'a key was supplied but the upstream rejected it'. Different
     user actions (rotate vs. set), different exit_code semantics.
     """
-    return ThothError(
+    return DoxaError(
         f"{provider} API key is invalid",
         f"Your {provider.title()} API key was rejected by the API. "
         f"Check your key at {settings_url}",
@@ -54,8 +54,8 @@ key at <url>" wording is the canonical shape; both Perplexity mappers
 call the same helper.
 
 **Migration:**
-- `_map_perplexity_error` line 145–151: replace inline `ThothError(...)`
-  construction with `_invalid_key_thotherror("perplexity", "https://www.perplexity.ai/settings/api")`.
+- `_map_perplexity_error` line 145–151: replace inline `DoxaError(...)`
+  construction with `_invalid_key_doxaerror("perplexity", "https://www.perplexity.ai/settings/api")`.
 - `_map_perplexity_error_async` 401-with-invalid-body branch: same
   replacement.
 - OpenAI's `_map_openai_error` 401-incorrect-key branch is similar in
@@ -73,10 +73,10 @@ def _translate_provider_status(
     *,
     unknown_template: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Translate a provider-specific status literal to Thoth's status dict.
+    """Translate a provider-specific status literal to Doxa Research's status dict.
 
     `status_table` maps the provider's own status enum (e.g.,
-    'COMPLETED', 'in_progress') to a Thoth status template
+    'COMPLETED', 'in_progress') to a Doxa Research status template
     ({"status": "completed", "progress": 1.0}). Unknown statuses fall
     through to `unknown_template`, defaulting to a permanent_error with
     the unrecognized literal in the message.
@@ -288,7 +288,7 @@ Already has a TODO marker in OpenAI; mirror it in Perplexity's
   hardcoded `0.5` when actual progress is available. Mitigation: add a
   unit test per provider that the in_progress branch produces
   metadata-driven progress when supplied.
-- **The `_invalid_key_thotherror` helper** lives in `perplexity.py`
+- **The `_invalid_key_doxaerror` helper** lives in `perplexity.py`
   initially. If a third caller emerges later (Gemini in P28?), it
   should be promoted to `errors.py`. Note this in the helper docstring.
 
@@ -304,7 +304,7 @@ Already has a TODO marker in OpenAI; mirror it in Perplexity's
    `tests/test_openai_errors.py`) — should be zero regressions.
 3. **Refactor _poll_async_job** to use the helper. Apply B1 stale-cache
    fix and B2 error_class fix in the same edit. Run TS02 tests.
-4. **Add `_invalid_key_thotherror` helper** in `perplexity.py`. Refactor
+4. **Add `_invalid_key_doxaerror` helper** in `perplexity.py`. Refactor
    both `_map_perplexity_error` and `_map_perplexity_error_async` 401
    branches to call it. Run T04 tests.
 5. **Apply A1 (both directions), A2, A4** in `_map_perplexity_error_async`
@@ -312,7 +312,7 @@ Already has a TODO marker in OpenAI; mirror it in Perplexity's
 6. **Apply documentation comments** for A3, A5, A6, B3, B4. Pure
    comments — no test changes.
 7. **Run full pre-commit gate** (lefthook = ruff + ty + bandit + gitleaks
-   + codespell + ./thoth_test). Verify 1213+ pytest tests still pass.
+   + codespell + ./doxa_test). Verify 1213+ pytest tests still pass.
 
 Each step is a separate commit. Suggested commit-message conventions
 match P27's existing style (`refactor(p27-followup): ...`,
@@ -326,7 +326,7 @@ match P27's existing style (`refactor(p27-followup): ...`,
   Belongs in P29 (architecture review of background providers) once
   Gemini's P28 background provider lands and a third concrete
   implementation reveals the right abstraction shape.
-- **Promoting `_invalid_key_thotherror` to `errors.py`.** Wait for the
+- **Promoting `_invalid_key_doxaerror` to `errors.py`.** Wait for the
   third caller (Gemini) before committing to the API.
 - **Unifying the timeout / connect-error string literals** between the
   three mappers. Currently byte-identical by coincidence; could become

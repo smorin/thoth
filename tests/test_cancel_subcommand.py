@@ -1,4 +1,4 @@
-"""P18 Phase G: `thoth cancel <op-id>` subcommand.
+"""P18 Phase G: `doxa cancel <op-id>` subcommand.
 
 Verifies the user-facing flow: load operation, call provider.cancel(),
 update checkpoint to cancelled status, exit 0.
@@ -11,12 +11,12 @@ from pathlib import Path
 
 import pytest
 
-from tests._fixture_helpers import run_thoth
-from thoth.cli import cli
+from doxa_research.cli import cli
+from tests._fixture_helpers import run_doxa
 
 
 def test_cancel_subcommand_registered() -> None:
-    """`thoth cancel --help` returns 0 with usage text — the command is wired."""
+    """`doxa cancel --help` returns 0 with usage text — the command is wired."""
     from click.testing import CliRunner
 
     r = CliRunner().invoke(cli, ["cancel", "--help"])
@@ -32,7 +32,7 @@ def test_cancel_missing_operation_exits_6() -> None:
 
 
 def test_cancel_existing_operation_marks_cancelled(
-    isolated_thoth_home: Path,
+    isolated_doxa_home: Path,
     checkpoint_dir: Path,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -41,7 +41,7 @@ def test_cancel_existing_operation_marks_cancelled(
     monkeypatch.chdir(tmp_path)
 
     # Submit a deep_research run async so it stays in the running state.
-    exit_code, stdout, stderr = run_thoth(
+    exit_code, stdout, stderr = run_doxa(
         ["--mode", "deep_research", "cancel-test prompt", "--provider", "mock", "--async"],
     )
     assert exit_code == 0, f"submit failed: {stdout=!r} {stderr=!r}"
@@ -54,7 +54,7 @@ def test_cancel_existing_operation_marks_cancelled(
     assert op_id, f"could not parse op id: {stdout!r}"
 
     # Cancel
-    cancel_code, cancel_stdout, cancel_stderr = run_thoth(["cancel", op_id])
+    cancel_code, cancel_stdout, cancel_stderr = run_doxa(["cancel", op_id])
     assert cancel_code == 0, f"cancel exit={cancel_code} {cancel_stdout=!r} {cancel_stderr=!r}"
 
     # Checkpoint reflects cancelled status
@@ -65,7 +65,7 @@ def test_cancel_existing_operation_marks_cancelled(
 
 
 def test_cancel_already_completed_operation_is_idempotent(
-    isolated_thoth_home: Path,
+    isolated_doxa_home: Path,
     checkpoint_dir: Path,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -74,10 +74,10 @@ def test_cancel_already_completed_operation_is_idempotent(
     monkeypatch.chdir(tmp_path)
 
     # Run a default mock op to completion (immediate kind, sync).
-    # THOTH_POLL_INTERVAL keeps the default polling loop fast under mock.
-    exit_code, stdout, stderr = run_thoth(
+    # DOXA_POLL_INTERVAL keeps the default polling loop fast under mock.
+    exit_code, stdout, stderr = run_doxa(
         ["completed-test", "--provider", "mock"],
-        env_overrides={"THOTH_POLL_INTERVAL": "0.1"},
+        env_overrides={"DOXA_POLL_INTERVAL": "0.1"},
     )
     assert exit_code == 0
 
@@ -86,5 +86,5 @@ def test_cancel_already_completed_operation_is_idempotent(
     assert checkpoints, f"no checkpoint created: {list(checkpoint_dir.iterdir())}"
     op_id = checkpoints[-1].stem
 
-    cancel_code, _, _ = run_thoth(["cancel", op_id])
+    cancel_code, _, _ = run_doxa(["cancel", op_id])
     assert cancel_code == 0

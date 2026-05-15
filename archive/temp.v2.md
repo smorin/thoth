@@ -1,4 +1,4 @@
-# Thoth v9 PRD Review - Logical Consistency Analysis
+# Doxa Research v9 PRD Review - Logical Consistency Analysis
 
 ## 1. F-03: @-syntax for File References
 
@@ -33,7 +33,7 @@ The `@/path` and `@-` syntax for referencing external files is **NOT** a widely 
 ## 2. F-13 & F-23: Filename Format Issues
 
 ### Current Issues:
-- F-13: `YYYY-MM-DD_HHMMSS_<mode>-<slug>.md` 
+- F-13: `YYYY-MM-DD_HHMMSS_<mode>-<slug>.md`
 - F-23: Says "Generate combined report" but should be removed
 - Missing provider in filename for multi-provider results
 
@@ -107,8 +107,8 @@ Examples show incorrect filenames:
 **Recommendation: UPDATE examples**
 ```bash
 # Ad-hoc mode - saves to current directory
-thoth deep_research "impact of quantum computing"
-# Creates: 
+doxa deep_research "impact of quantum computing"
+# Creates:
 #   ./2024-08-03_143022_deep_research_openai_impact-quantum.md
 #   ./2024-08-03_143022_deep_research_perplexity_impact-quantum.md
 ```

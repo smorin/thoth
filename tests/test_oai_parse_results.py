@@ -1,4 +1,4 @@
-"""OpenAI result-parsing tests — migrated from thoth_test OAI-PARSE-01…08."""
+"""OpenAI result-parsing tests — migrated from doxa_test OAI-PARSE-01…08."""
 
 from __future__ import annotations
 
@@ -10,13 +10,13 @@ from typing import Any
 
 import pytest
 
+from doxa_research.providers.openai import OpenAIProvider
 from tests._fixture_helpers import make_mock_openai_result_response
-from thoth.providers.openai import OpenAIProvider
 
 
 @pytest.fixture(autouse=True)
-def _isolate_config(isolated_thoth_home: Path) -> Path:
-    return isolated_thoth_home
+def _isolate_config(isolated_doxa_home: Path) -> Path:
+    return isolated_doxa_home
 
 
 def test_sources_section_present_when_annotations_exist() -> None:
@@ -197,7 +197,7 @@ def test_get_result_skips_typed_non_url_annotation_even_with_url(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     """Known non-url annotation types are skipped and logged."""
-    caplog.set_level(logging.WARNING, logger="thoth.providers.openai")
+    caplog.set_level(logging.WARNING, logger="doxa_research.providers.openai")
     provider = OpenAIProvider(api_key="dummy")
     response = _response_with_annotations(
         [
@@ -223,7 +223,7 @@ def test_get_result_accepts_missing_type_url_annotation_with_warning(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     """Legacy annotations with url/title but no type still render and warn."""
-    caplog.set_level(logging.WARNING, logger="thoth.providers.openai")
+    caplog.set_level(logging.WARNING, logger="doxa_research.providers.openai")
     provider = OpenAIProvider(api_key="dummy")
     response = _response_with_annotations(
         [{"url": "https://legacy.example", "title": "Legacy Source"}]

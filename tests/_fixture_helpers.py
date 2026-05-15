@@ -1,6 +1,6 @@
 """Shared builders for the migrated fixture tests.
 
-Ported (not imported) from `thoth_test`, to avoid pulling in the custom runner's
+Ported (not imported) from `doxa_test`, to avoid pulling in the custom runner's
 module-level `_ensure_test_config_home()` + `atexit.register(shutil.rmtree, ...)`
 side effects.
 """
@@ -17,19 +17,19 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
-THOTH_BIN = str(Path(__file__).resolve().parent.parent / "thoth")
+DOXA_BIN = str(Path(__file__).resolve().parent.parent / "doxa")
 
 
-def run_thoth(
+def run_doxa(
     args: list[str],
     env_overrides: dict[str, str] | None = None,
     timeout: int = 30,
     cwd: str | Path | None = None,
 ) -> tuple[int, str, str]:
-    """Run the thoth CLI in a subprocess and return (exit_code, stdout, stderr).
+    """Run the doxa_research CLI in a subprocess and return (exit_code, stdout, stderr).
 
     Inherits `os.environ` so `monkeypatch.setenv("XDG_CONFIG_HOME", ...)` from
-    the `isolated_thoth_home` fixture propagates into the subprocess.
+    the `isolated_doxa_home` fixture propagates into the subprocess.
     """
     cmd_env = os.environ.copy()
     if env_overrides:
@@ -37,12 +37,12 @@ def run_thoth(
     cmd_env.setdefault("MOCK_API_KEY", f"mock-key-{uuid4().hex[:16]}")
     cmd_env["COLUMNS"] = "200"
     # Pin UV cache to the real user cache dir — without this, uv treats the
-    # per-test XDG_CACHE_HOME (from isolated_thoth_home) as its own cache and
+    # per-test XDG_CACHE_HOME (from isolated_doxa_home) as its own cache and
     # re-downloads all packages per subprocess, blowing past test timeouts.
     cmd_env.setdefault("UV_CACHE_DIR", str(Path.home() / ".cache" / "uv"))
 
     result = subprocess.run(
-        [THOTH_BIN, *args],
+        [DOXA_BIN, *args],
         env=cmd_env,
         capture_output=True,
         text=True,
@@ -61,8 +61,8 @@ def extract_operation_id(output: str) -> str:
 
 
 def extract_resume_id(output: str) -> str:
-    """Extract an operation ID from a 'thoth resume <id>' hint."""
-    match = re.search(r"thoth resume\s+(research-\d{8}-\d{6}-[a-f0-9]{16})", output)
+    """Extract an operation ID from a 'doxa resume <id>' hint."""
+    match = re.search(r"doxa resume\s+(research-\d{8}-\d{6}-[a-f0-9]{16})", output)
     if not match:
         raise AssertionError(f"resume hint not found in output: {output!r}")
     return match.group(1)

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from thoth._secrets import _is_secret_key, _mask_secret, _mask_tree
+from doxa_research._secrets import _is_secret_key, _mask_secret, _mask_tree
 
 
 def test_mask_secret_preserves_last_four() -> None:

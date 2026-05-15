@@ -3,9 +3,9 @@
 Covers two surfaces:
 
   1. ``available_providers(config, cli_api_keys=None)`` in
-     ``thoth.providers`` — non-raising sibling of ``resolve_api_key`` that
+     ``doxa_research.providers`` — non-raising sibling of ``resolve_api_key`` that
      returns the list of providers whose keys resolve.
-  2. ``_select_providers(...)`` in ``thoth.run`` — the extracted
+  2. ``_select_providers(...)`` in ``doxa_research.run`` — the extracted
      provider-selection helper that implements the precedence chain
      (explicit ``--provider`` > mode pin > ``general.default_provider``
      > first available > legacy ``["openai"]`` fallback).
@@ -17,7 +17,7 @@ from typing import Any
 
 import pytest
 
-from thoth.config import ConfigManager
+from doxa_research.config import ConfigManager
 
 
 def _make_config(
@@ -53,7 +53,7 @@ def _scrub_provider_env(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_available_providers_returns_only_those_with_resolvable_keys(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from thoth.providers import available_providers
+    from doxa_research.providers import available_providers
 
     _scrub_provider_env(monkeypatch)
     monkeypatch.setenv("OPENAI_API_KEY", "sk-real")
@@ -65,7 +65,7 @@ def test_available_providers_returns_only_those_with_resolvable_keys(
 def test_available_providers_returns_empty_when_no_keys(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from thoth.providers import available_providers
+    from doxa_research.providers import available_providers
 
     _scrub_provider_env(monkeypatch)
     config = _make_config()
@@ -76,7 +76,7 @@ def test_available_providers_returns_empty_when_no_keys(
 def test_available_providers_honors_dict_iteration_order(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from thoth.providers import available_providers
+    from doxa_research.providers import available_providers
 
     _scrub_provider_env(monkeypatch)
     monkeypatch.setenv("OPENAI_API_KEY", "sk-real")
@@ -91,7 +91,7 @@ def test_available_providers_honors_dict_iteration_order(
 def test_available_providers_picks_up_config_file_keys(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from thoth.providers import available_providers
+    from doxa_research.providers import available_providers
 
     _scrub_provider_env(monkeypatch)
     config = _make_config(providers={"perplexity": {"api_key": "pplx-real"}})
@@ -102,7 +102,7 @@ def test_available_providers_picks_up_config_file_keys(
 def test_available_providers_picks_up_cli_keys(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from thoth.providers import available_providers
+    from doxa_research.providers import available_providers
 
     _scrub_provider_env(monkeypatch)
     config = _make_config()
@@ -113,7 +113,7 @@ def test_available_providers_picks_up_cli_keys(
 def test_available_providers_does_not_raise_on_missing(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from thoth.providers import available_providers
+    from doxa_research.providers import available_providers
 
     _scrub_provider_env(monkeypatch)
     config = _make_config()
@@ -131,7 +131,7 @@ def test_available_providers_does_not_raise_on_missing(
 def test_select_providers_picks_openai_when_only_openai_has_key(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from thoth.run import _select_providers
+    from doxa_research.run import _select_providers
 
     _scrub_provider_env(monkeypatch)
     monkeypatch.setenv("OPENAI_API_KEY", "sk-real")
@@ -149,7 +149,7 @@ def test_select_providers_picks_openai_when_only_openai_has_key(
 def test_select_providers_picks_perplexity_when_only_perplexity_has_key(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from thoth.run import _select_providers
+    from doxa_research.run import _select_providers
 
     _scrub_provider_env(monkeypatch)
     monkeypatch.setenv("PERPLEXITY_API_KEY", "pplx-real")
@@ -167,7 +167,7 @@ def test_select_providers_picks_perplexity_when_only_perplexity_has_key(
 def test_select_providers_respects_general_default_provider_config(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from thoth.run import _select_providers
+    from doxa_research.run import _select_providers
 
     _scrub_provider_env(monkeypatch)
     monkeypatch.setenv("OPENAI_API_KEY", "sk-real")
@@ -186,7 +186,7 @@ def test_select_providers_respects_general_default_provider_config(
 def test_select_providers_general_default_ignored_if_unresolvable(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from thoth.run import _select_providers
+    from doxa_research.run import _select_providers
 
     _scrub_provider_env(monkeypatch)
     monkeypatch.setenv("OPENAI_API_KEY", "sk-real")
@@ -209,7 +209,7 @@ def test_select_providers_zero_keys_returns_legacy_openai_fallback(
     """When nothing resolves, return ``["openai"]`` so create_provider
     raises L2's enhanced APIKeyError with full multi-provider enumeration.
     """
-    from thoth.run import _select_providers
+    from doxa_research.run import _select_providers
 
     _scrub_provider_env(monkeypatch)
     config = _make_config()
@@ -226,7 +226,7 @@ def test_select_providers_zero_keys_returns_legacy_openai_fallback(
 def test_select_providers_explicit_provider_flag_always_wins(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from thoth.run import _select_providers
+    from doxa_research.run import _select_providers
 
     _scrub_provider_env(monkeypatch)
     monkeypatch.setenv("OPENAI_API_KEY", "sk-real")
@@ -247,7 +247,7 @@ def test_select_providers_mode_provider_pin_wins_over_default(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A mode pinning a single provider wins over general.default_provider."""
-    from thoth.run import _select_providers
+    from doxa_research.run import _select_providers
 
     _scrub_provider_env(monkeypatch)
     monkeypatch.setenv("OPENAI_API_KEY", "sk-real")
@@ -267,7 +267,7 @@ def test_select_providers_mode_providers_list_preserved(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Modes pinning a providers list still get that list."""
-    from thoth.run import _select_providers
+    from doxa_research.run import _select_providers
 
     _scrub_provider_env(monkeypatch)
     monkeypatch.setenv("OPENAI_API_KEY", "sk-real")
@@ -288,7 +288,7 @@ def test_select_providers_thinking_mode_legacy_default(
     """The 'thinking' branch keeps the legacy ``mode_config.get('provider', 'openai')``
     behavior (existing pre-L3 contract).
     """
-    from thoth.run import _select_providers
+    from doxa_research.run import _select_providers
 
     _scrub_provider_env(monkeypatch)
     monkeypatch.setenv("PERPLEXITY_API_KEY", "pplx-real")
@@ -309,7 +309,7 @@ def test_select_providers_picks_up_cli_keys(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A CLI-supplied key counts toward availability."""
-    from thoth.run import _select_providers
+    from doxa_research.run import _select_providers
 
     _scrub_provider_env(monkeypatch)
     config = _make_config()

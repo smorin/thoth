@@ -3,9 +3,9 @@
 **References**
 - **Trunk:** [PROJECTS.md](../PROJECTS.md)
 - **Predecessor:** P23 (`projects/P23-perplexity-immediate-sync.md`) - implements Perplexity synchronous immediate calls without depending on cassette replay.
-- **Related:** `thoth_vcr.md`
+- **Related:** `doxa_vcr.md`
 - **Related:** `tests/test_vcr_openai.py`
-- **Related:** `thoth_test_cassettes/`
+- **Related:** `doxa_test_cassettes/`
 
 **Status:** `[ ]` Scoped, not started.
 
@@ -28,7 +28,7 @@
 ### Tests & Tasks
 
 - [ ] [P38-TS01] Design cassette replay assertions for Perplexity sync happy path: submit/get_result output, source extraction, no live network, and stable sanitized cassette data.
-- [ ] [P38-T01] Add `thoth_test_cassettes/perplexity/sync-happy-path.yaml` after the sanitized cassette is available.
+- [ ] [P38-T01] Add `doxa_test_cassettes/perplexity/sync-happy-path.yaml` after the sanitized cassette is available.
 - [ ] [P38-T02] Add `tests/test_vcr_perplexity_sync.py` using the existing shared VCR fixture.
 - [ ] [P38-T03] Wire any needed `just test-vcr` or docs updates if the existing VCR command does not pick up the new file.
 - [ ] [P38-T04] Run VCR tests and update this project/trunk status.

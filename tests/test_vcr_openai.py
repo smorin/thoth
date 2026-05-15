@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 
-from tests.conftest import CASSETTE_DIR, thoth_vcr
+from tests.conftest import CASSETTE_DIR, doxa_vcr
 
 OPENAI_CASSETTE = str(CASSETTE_DIR / "openai" / "happy-path.yaml")
 
@@ -27,7 +27,7 @@ def _run(coro):
 
 def _make_provider():
     """Create an OpenAIProvider configured for deep-research cassette replay."""
-    from thoth.__main__ import OpenAIProvider
+    from doxa_research.__main__ import OpenAIProvider
 
     return OpenAIProvider(
         api_key="sk-replay-dummy",
@@ -38,21 +38,21 @@ def _make_provider():
 class TestOpenAISubmit:
     """Replay the happy-path cassette through OpenAIProvider.submit()."""
 
-    @thoth_vcr.use_cassette(OPENAI_CASSETTE)
+    @doxa_vcr.use_cassette(OPENAI_CASSETTE)
     def test_submit_returns_response_id(self):
         """submit() should return a response ID starting with 'resp_'."""
         provider = _make_provider()
         job_id = _run(provider.submit(prompt=CASSETTE_PROMPT, mode="deep-research"))
         assert job_id.startswith("resp_"), f"unexpected job_id: {job_id}"
 
-    @thoth_vcr.use_cassette(OPENAI_CASSETTE)
+    @doxa_vcr.use_cassette(OPENAI_CASSETTE)
     def test_submit_returns_expected_id(self):
         """submit() should return the exact ID from the cassette."""
         provider = _make_provider()
         job_id = _run(provider.submit(prompt=CASSETTE_PROMPT, mode="deep-research"))
         assert job_id == CASSETTE_RESPONSE_ID
 
-    @thoth_vcr.use_cassette(OPENAI_CASSETTE)
+    @doxa_vcr.use_cassette(OPENAI_CASSETTE)
     def test_submit_stores_job_info(self):
         """submit() should populate self.jobs with the job ID."""
         provider = _make_provider()
@@ -64,7 +64,7 @@ class TestOpenAISubmit:
 class TestOpenAIPolling:
     """Replay the full polling sequence to completion."""
 
-    @thoth_vcr.use_cassette(OPENAI_CASSETTE)
+    @doxa_vcr.use_cassette(OPENAI_CASSETTE)
     def test_first_status_is_in_progress_or_queued(self):
         """First check_status() after submit should be queued or in_progress."""
         provider = _make_provider()
@@ -72,7 +72,7 @@ class TestOpenAIPolling:
         status = _run(provider.check_status(job_id))
         assert status["status"] in ("queued", "running"), f"unexpected: {status}"
 
-    @thoth_vcr.use_cassette(OPENAI_CASSETTE)
+    @doxa_vcr.use_cassette(OPENAI_CASSETTE)
     def test_poll_to_completed(self):
         """Polling check_status() through the cassette should reach 'completed'."""
         provider = _make_provider()
@@ -92,7 +92,7 @@ class TestOpenAIPolling:
 class TestOpenAIResult:
     """Verify get_result() returns substantial research output."""
 
-    @thoth_vcr.use_cassette(OPENAI_CASSETTE)
+    @doxa_vcr.use_cassette(OPENAI_CASSETTE)
     def test_get_result_returns_text(self):
         """After polling to completed, get_result() should return research text."""
         provider = _make_provider()
@@ -113,7 +113,7 @@ class TestOpenAIResult:
         result = _run(provider.get_result(job_id))
         assert len(result) > 100, f"expected substantial output, got {len(result)} chars"
 
-    @thoth_vcr.use_cassette(OPENAI_CASSETTE)
+    @doxa_vcr.use_cassette(OPENAI_CASSETTE)
     def test_get_result_contains_research_content(self):
         """Result text should contain domain-relevant content from the cassette."""
         provider = _make_provider()

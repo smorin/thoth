@@ -14,7 +14,7 @@ from typing import Any, cast
 
 import pytest
 
-from thoth.providers.perplexity import PerplexityProvider
+from doxa_research.providers.perplexity import PerplexityProvider
 
 
 def _stub_response(content: str = "Test answer", search_results=None) -> Any:
@@ -46,7 +46,7 @@ def _stub_client(captured: dict[str, Any], response: Any = None) -> Any:
 
 def test_perplexity_quick_builtin_mode_present() -> None:
     """TS02: BUILTIN_MODES['perplexity_quick'] -> sonar/immediate/low/full."""
-    from thoth.config import BUILTIN_MODES
+    from doxa_research.config import BUILTIN_MODES
 
     mode = BUILTIN_MODES.get("perplexity_quick")
     assert mode is not None
@@ -60,7 +60,7 @@ def test_perplexity_quick_builtin_mode_present() -> None:
 
 def test_perplexity_pro_builtin_mode_present() -> None:
     """TS02: BUILTIN_MODES['perplexity_pro'] -> sonar-pro/immediate/high/full."""
-    from thoth.config import BUILTIN_MODES
+    from doxa_research.config import BUILTIN_MODES
 
     mode = BUILTIN_MODES.get("perplexity_pro")
     assert mode is not None
@@ -74,7 +74,7 @@ def test_perplexity_pro_builtin_mode_present() -> None:
 
 def test_perplexity_reasoning_builtin_mode_present() -> None:
     """TS02: BUILTIN_MODES['perplexity_reasoning'] -> sonar-reasoning-pro/medium/concise."""
-    from thoth.config import BUILTIN_MODES
+    from doxa_research.config import BUILTIN_MODES
 
     mode = BUILTIN_MODES.get("perplexity_reasoning")
     assert mode is not None
@@ -94,7 +94,7 @@ def test_perplexity_deep_research_builtin_mode_present() -> None:
     required so the runner routes to the polling lifecycle, not the immediate
     `chat.completions` path that P23's other modes use.
     """
-    from thoth.config import BUILTIN_MODES
+    from doxa_research.config import BUILTIN_MODES
 
     mode = BUILTIN_MODES.get("perplexity_deep_research")
     assert mode is not None, "expected built-in mode 'perplexity_deep_research'"
@@ -313,7 +313,7 @@ def _make_openai_exc(cls_name: str, status: int = 400, body: Any = None) -> Base
 
 
 @pytest.mark.parametrize(
-    ("exc_cls", "expected_thoth"),
+    ("exc_cls", "expected_doxa"),
     [
         ("AuthenticationError", "APIKeyError"),
         ("RateLimitError", "APIRateLimitError"),
@@ -325,22 +325,22 @@ def _make_openai_exc(cls_name: str, status: int = 400, body: Any = None) -> Base
         ("APIError", "ProviderError"),
     ],
 )
-def test_map_perplexity_error_table(exc_cls: str, expected_thoth: str) -> None:
-    """TS03: each OpenAI-SDK exception maps to the expected ThothError subclass."""
-    from thoth import errors as thoth_errors
-    from thoth.providers.perplexity import _map_perplexity_error
+def test_map_perplexity_error_table(exc_cls: str, expected_doxa: str) -> None:
+    """TS03: each OpenAI-SDK exception maps to the expected DoxaError subclass."""
+    from doxa_research import errors as doxa_errors
+    from doxa_research.providers.perplexity import _map_perplexity_error
 
     exc = _make_openai_exc(exc_cls)
     mapped = _map_perplexity_error(exc, model="sonar")
-    expected_cls = getattr(thoth_errors, expected_thoth)
+    expected_cls = getattr(doxa_errors, expected_doxa)
     assert isinstance(mapped, expected_cls), (
-        f"{exc_cls} should map to {expected_thoth}, got {type(mapped).__name__}"
+        f"{exc_cls} should map to {expected_doxa}, got {type(mapped).__name__}"
     )
 
 
 def test_map_perplexity_error_uses_perplexity_provider_name() -> None:
     """TS03: error message includes 'perplexity' (provider name)."""
-    from thoth.providers.perplexity import _map_perplexity_error
+    from doxa_research.providers.perplexity import _map_perplexity_error
 
     exc = _make_openai_exc("AuthenticationError")
     mapped = _map_perplexity_error(exc, model="sonar")
@@ -348,10 +348,10 @@ def test_map_perplexity_error_uses_perplexity_provider_name() -> None:
 
 
 def test_map_perplexity_error_invalid_key_distinguished_from_missing() -> None:
-    """TS03: AuthenticationError with 'invalid api key' body maps to ThothError with
+    """TS03: AuthenticationError with 'invalid api key' body maps to DoxaError with
     'invalid' message (not the misleading 'not found' message for absent keys)."""
-    from thoth.errors import APIKeyError, ThothError
-    from thoth.providers.perplexity import _map_perplexity_error
+    from doxa_research.errors import APIKeyError, DoxaError
+    from doxa_research.providers.perplexity import _map_perplexity_error
 
     exc = _make_openai_exc(
         "AuthenticationError",
@@ -359,8 +359,8 @@ def test_map_perplexity_error_invalid_key_distinguished_from_missing() -> None:
         body={"error": {"message": "Invalid API key provided"}},
     )
     mapped = _map_perplexity_error(exc, model="sonar")
-    # Must be a ThothError but NOT the missing-key APIKeyError subclass
-    assert isinstance(mapped, ThothError)
+    # Must be a DoxaError but NOT the missing-key APIKeyError subclass
+    assert isinstance(mapped, DoxaError)
     assert not isinstance(mapped, APIKeyError), (
         "A configured-but-invalid key should not report 'not found'"
     )
@@ -371,8 +371,8 @@ def test_map_perplexity_error_invalid_key_distinguished_from_missing() -> None:
 
 def test_map_perplexity_error_invalid_key_incorrect_phrase() -> None:
     """TS03: 'incorrect api key' phrase also triggers the invalid-key branch."""
-    from thoth.errors import APIKeyError, ThothError
-    from thoth.providers.perplexity import _map_perplexity_error
+    from doxa_research.errors import APIKeyError, DoxaError
+    from doxa_research.providers.perplexity import _map_perplexity_error
 
     exc = _make_openai_exc(
         "AuthenticationError",
@@ -380,15 +380,15 @@ def test_map_perplexity_error_invalid_key_incorrect_phrase() -> None:
         body={"error": {"message": "Incorrect API key provided"}},
     )
     mapped = _map_perplexity_error(exc, model="sonar")
-    assert isinstance(mapped, ThothError)
+    assert isinstance(mapped, DoxaError)
     assert not isinstance(mapped, APIKeyError)
     assert mapped.exit_code == 2
 
 
 def test_map_perplexity_error_absent_key_still_maps_to_api_key_error() -> None:
     """TS03: AuthenticationError with no body (absent key) still maps to APIKeyError."""
-    from thoth.errors import APIKeyError
-    from thoth.providers.perplexity import _map_perplexity_error
+    from doxa_research.errors import APIKeyError
+    from doxa_research.providers.perplexity import _map_perplexity_error
 
     # Default _make_openai_exc has generic message, no 'invalid api key' phrase
     exc = _make_openai_exc("AuthenticationError")
@@ -398,8 +398,8 @@ def test_map_perplexity_error_absent_key_still_maps_to_api_key_error() -> None:
 
 def test_map_perplexity_error_falls_back_for_unknown_exception() -> None:
     """TS03: an unrelated exception still maps to a ProviderError (no crash)."""
-    from thoth.errors import ProviderError
-    from thoth.providers.perplexity import _map_perplexity_error
+    from doxa_research.errors import ProviderError
+    from doxa_research.providers.perplexity import _map_perplexity_error
 
     mapped = _map_perplexity_error(RuntimeError("unrelated"), model="sonar")
     assert isinstance(mapped, ProviderError)
@@ -407,8 +407,8 @@ def test_map_perplexity_error_falls_back_for_unknown_exception() -> None:
 
 def test_map_perplexity_rate_limit_quota_message_maps_to_quota() -> None:
     """P23-RS04: quota/credit exhaustion remains APIQuotaError, distinct from rate limit."""
-    from thoth.errors import APIQuotaError
-    from thoth.providers.perplexity import _map_perplexity_error
+    from doxa_research.errors import APIQuotaError
+    from doxa_research.providers.perplexity import _map_perplexity_error
 
     exc = _make_openai_exc(
         "RateLimitError",
@@ -462,7 +462,7 @@ def test_perplexity_submit_does_not_retry_authentication_error() -> None:
             chat=types.SimpleNamespace(completions=types.SimpleNamespace(create=fake_create))
         ),
     )
-    from thoth.errors import APIKeyError
+    from doxa_research.errors import APIKeyError
 
     with pytest.raises(APIKeyError):
         asyncio.run(provider.submit("hi", mode="perplexity_quick"))
@@ -718,7 +718,7 @@ def test_perplexity_stream_passes_stream_mode_concise_default() -> None:
 
 def test_perplexity_stream_maps_iteration_errors() -> None:
     """P23-RS05: SDK errors raised mid-stream map through Perplexity taxonomy."""
-    from thoth.errors import APIRateLimitError
+    from doxa_research.errors import APIRateLimitError
 
     captured: dict[str, Any] = {}
 
@@ -747,7 +747,7 @@ def test_perplexity_stream_maps_iteration_errors() -> None:
 
 def test_perplexity_rejects_sonar_deep_research_on_immediate() -> None:
     """TS07: model='sonar-deep-research' + kind='immediate' raises before any HTTP call."""
-    from thoth.errors import ModeKindMismatchError
+    from doxa_research.errors import ModeKindMismatchError
 
     captured: dict[str, Any] = {}
 
@@ -773,7 +773,7 @@ def test_perplexity_rejects_sonar_deep_research_on_immediate() -> None:
 
 def test_perplexity_rejects_sonar_deep_research_on_stream() -> None:
     """TS07: stream() also raises before opening the HTTP request."""
-    from thoth.errors import ModeKindMismatchError
+    from doxa_research.errors import ModeKindMismatchError
 
     captured: dict[str, Any] = {}
 
@@ -830,7 +830,7 @@ def test_perplexity_allows_plain_models_on_immediate() -> None:
 @pytest.mark.parametrize("bad_model", ["sonar", "sonar-pro", "sonar-reasoning-pro"])
 def test_perplexity_rejects_background_on_non_deep_research(bad_model: str) -> None:
     """P27-TS06: kind='background' on a non-DR model raises before any HTTP call."""
-    from thoth.errors import ModeKindMismatchError
+    from doxa_research.errors import ModeKindMismatchError
 
     provider = PerplexityProvider(
         api_key="pplx-test", config={"model": bad_model, "kind": "background"}
@@ -882,7 +882,7 @@ def test_perplexity_provider_description_drops_not_implemented() -> None:
     """
     from pathlib import Path
 
-    src_root = Path(__file__).resolve().parent.parent / "src" / "thoth"
+    src_root = Path(__file__).resolve().parent.parent / "src" / "doxa_research"
     for filename in ("commands.py", "interactive.py"):
         text = (src_root / filename).read_text()
         # Find perplexity-description lines and verify none say "(not implemented)".
@@ -907,8 +907,8 @@ def test_perplexity_sync_maps_402_status_code_to_api_quota_error() -> None:
     import httpx
     import openai
 
-    from thoth.errors import APIQuotaError
-    from thoth.providers.perplexity import _map_perplexity_error
+    from doxa_research.errors import APIQuotaError
+    from doxa_research.providers.perplexity import _map_perplexity_error
 
     request = httpx.Request("POST", "https://api.perplexity.ai/chat/completions")
     response = httpx.Response(status_code=402, request=request)
@@ -921,7 +921,7 @@ def test_perplexity_sync_maps_402_status_code_to_api_quota_error() -> None:
 
 def test_perplexity_constants_use_suffix_naming() -> None:
     """Perplexity module-level constants follow the cross-provider suffix convention."""
-    from thoth.providers import perplexity as pp
+    from doxa_research.providers import perplexity as pp
 
     assert hasattr(pp, "_DIRECT_SDK_KEYS_PERPLEXITY"), (
         "_DIRECT_SDK_KEYS_PERPLEXITY must exist (renamed from bare _DIRECT_SDK_KEYS)"
@@ -936,7 +936,7 @@ def test_perplexity_constants_use_suffix_naming() -> None:
 
 def test_perplexity_bare_constant_names_removed() -> None:
     """Bare unsuffixed names must NOT exist after the rename."""
-    from thoth.providers import perplexity as pp
+    from doxa_research.providers import perplexity as pp
 
     assert not hasattr(pp, "_DIRECT_SDK_KEYS"), "bare _DIRECT_SDK_KEYS leaked through rename"
     assert not hasattr(pp, "_PROVIDER_NAME"), "bare _PROVIDER_NAME leaked through rename"
@@ -949,8 +949,8 @@ def test_perplexity_not_found_error_maps_with_model_hint() -> None:
     Perplexity model-id typos produce a clear, actionable error instead of
     falling through to the generic APIError catch-all.
     """
-    from thoth.errors import ProviderError
-    from thoth.providers.perplexity import _map_perplexity_error
+    from doxa_research.errors import ProviderError
+    from doxa_research.providers.perplexity import _map_perplexity_error
 
     exc = _make_openai_exc(
         "NotFoundError",
@@ -991,8 +991,8 @@ def _bad_request_with_message(message: str, body: Any = None) -> BaseException:
 
 def test_perplexity_unsupported_parameter_regex_extraction() -> None:
     """BadRequestError with 'Unsupported parameter X' surfaces the parameter name."""
-    from thoth.errors import ProviderError
-    from thoth.providers.perplexity import _map_perplexity_error
+    from doxa_research.errors import ProviderError
+    from doxa_research.providers.perplexity import _map_perplexity_error
 
     exc = _bad_request_with_message(
         "Unsupported parameter 'frequency_penalty' for sonar-pro.",
@@ -1012,8 +1012,8 @@ def test_perplexity_unsupported_parameter_regex_extraction() -> None:
 
 def test_perplexity_bad_request_without_unsupported_parameter_falls_through() -> None:
     """BadRequestError without an 'unsupported parameter' marker keeps generic message."""
-    from thoth.errors import ProviderError
-    from thoth.providers.perplexity import _map_perplexity_error
+    from doxa_research.errors import ProviderError
+    from doxa_research.providers.perplexity import _map_perplexity_error
 
     exc = _bad_request_with_message(
         "Some other 400 error",
@@ -1031,7 +1031,7 @@ def test_perplexity_empty_content_debug_print(capsys) -> None:
     import asyncio
     from types import SimpleNamespace
 
-    from thoth.providers.perplexity import PerplexityProvider
+    from doxa_research.providers.perplexity import PerplexityProvider
 
     provider = PerplexityProvider(api_key="dummy", config={})
     fake_response = SimpleNamespace(
@@ -1056,7 +1056,7 @@ def test_perplexity_empty_content_no_debug_when_verbose_false(capsys) -> None:
     import asyncio
     from types import SimpleNamespace
 
-    from thoth.providers.perplexity import PerplexityProvider
+    from doxa_research.providers.perplexity import PerplexityProvider
 
     provider = PerplexityProvider(api_key="dummy", config={})
     fake_response = SimpleNamespace(

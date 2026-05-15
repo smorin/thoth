@@ -291,6 +291,61 @@ wheels = [
 ]
 
 [[package]]
+name = "doxa-research"
+version = "3.0.0"
+source = { editable = "." }
+dependencies = [
+    { name = "aiofiles" },
+    { name = "click" },
+    { name = "google-genai" },
+    { name = "httpx" },
+    { name = "openai" },
+    { name = "prompt-toolkit" },
+    { name = "pydantic" },
+    { name = "python-dateutil" },
+    { name = "rich" },
+    { name = "tenacity" },
+    { name = "thothspinner" },
+    { name = "tomlkit" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "pexpect" },
+    { name = "pytest" },
+    { name = "pytest-xdist" },
+    { name = "ruff" },
+    { name = "ty" },
+    { name = "vcrpy" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "aiofiles", specifier = ">=25.1.0" },
+    { name = "click", specifier = ">=8.3.3" },
+    { name = "google-genai", specifier = ">=1.74.0" },
+    { name = "httpx", specifier = ">=0.27.0" },
+    { name = "openai", specifier = ">=2.32.0" },
+    { name = "prompt-toolkit", specifier = ">=3.0" },
+    { name = "pydantic", specifier = ">=2.12.5,<3" },
+    { name = "python-dateutil", specifier = ">=2.8" },
+    { name = "rich", specifier = ">=13.7" },
+    { name = "tenacity", specifier = ">=8.0" },
+    { name = "thothspinner", specifier = ">=1.2.6" },
+    { name = "tomlkit", specifier = ">=0.13" },
+]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "pexpect", specifier = ">=4.8" },
+    { name = "pytest", specifier = ">=8.0" },
+    { name = "pytest-xdist", specifier = ">=3.5" },
+    { name = "ruff", specifier = ">=0.9" },
+    { name = "ty", specifier = ">=0.0.32" },
+    { name = "vcrpy", specifier = ">=8.1.1" },
+]
+
+[[package]]
 name = "execnet"
 version = "2.1.2"
 source = { registry = "https://pypi.org/simple" }
@@ -949,61 +1004,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/19/89/bec5709fb759f9c784bbcb30b2e3497df3f901691d13c2b864dbf6694a17/textual-8.2.4.tar.gz", hash = "sha256:d4e2b2ddd7157191d00b228592b7c739ea080b7d792fd410f23ca75f05ea76c4", size = 1848933, upload-time = "2026-04-19T04:20:45.845Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/5c/32/02932f0d597cdbb34e34bf24266ff0f2cf292ccb3aafc37dd9efcb0cc416/textual-8.2.4-py3-none-any.whl", hash = "sha256:a83bd3f0cc7125ca203845af753f9d6b6be030025ecd1b05cc75ebe645b9c4ba", size = 724390, upload-time = "2026-04-19T04:20:49.968Z" },
-]
-
-[[package]]
-name = "thoth"
-version = "2.5.0"
-source = { editable = "." }
-dependencies = [
-    { name = "aiofiles" },
-    { name = "click" },
-    { name = "google-genai" },
-    { name = "httpx" },
-    { name = "openai" },
-    { name = "prompt-toolkit" },
-    { name = "pydantic" },
-    { name = "python-dateutil" },
-    { name = "rich" },
-    { name = "tenacity" },
-    { name = "thothspinner" },
-    { name = "tomlkit" },
-]
-
-[package.dev-dependencies]
-dev = [
-    { name = "pexpect" },
-    { name = "pytest" },
-    { name = "pytest-xdist" },
-    { name = "ruff" },
-    { name = "ty" },
-    { name = "vcrpy" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "aiofiles", specifier = ">=25.1.0" },
-    { name = "click", specifier = ">=8.3.3" },
-    { name = "google-genai", specifier = ">=1.74.0" },
-    { name = "httpx", specifier = ">=0.27.0" },
-    { name = "openai", specifier = ">=2.32.0" },
-    { name = "prompt-toolkit", specifier = ">=3.0" },
-    { name = "pydantic", specifier = ">=2.12.5,<3" },
-    { name = "python-dateutil", specifier = ">=2.8" },
-    { name = "rich", specifier = ">=13.7" },
-    { name = "tenacity", specifier = ">=8.0" },
-    { name = "thothspinner", specifier = ">=1.2.6" },
-    { name = "tomlkit", specifier = ">=0.13" },
-]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "pexpect", specifier = ">=4.8" },
-    { name = "pytest", specifier = ">=8.0" },
-    { name = "pytest-xdist", specifier = ">=3.5" },
-    { name = "ruff", specifier = ">=0.9" },
-    { name = "ty", specifier = ">=0.0.32" },
-    { name = "vcrpy", specifier = ">=8.1.1" },
 ]
 
 [[package]]

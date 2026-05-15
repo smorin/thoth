@@ -21,7 +21,7 @@ from unittest.mock import AsyncMock, MagicMock
 def test_provider_temperature_reaches_request_builder(monkeypatch) -> None:
     """`[providers.openai] temperature = 0.2` for a non-`o*` model must
     appear in the request_params passed to `client.responses.create`."""
-    from thoth.providers.openai import OpenAIProvider
+    from doxa_research.providers.openai import OpenAIProvider
 
     captured: dict[str, Any] = {}
 
@@ -57,10 +57,10 @@ def test_provider_temperature_reaches_request_builder(monkeypatch) -> None:
 def test_profile_overlay_system_prompt_reaches_submit(monkeypatch, tmp_path) -> None:
     """A profile-overlaid `[profiles.fast.modes.thinking] system_prompt = "..."`
     must reach `OpenAIProvider.submit`'s `system_prompt` argument."""
-    from thoth.config import ConfigManager
-    from thoth.providers.openai import OpenAIProvider
+    from doxa_research.config import ConfigManager
+    from doxa_research.providers.openai import OpenAIProvider
 
-    cfg = tmp_path / "thoth.config.toml"
+    cfg = tmp_path / "doxa.config.toml"
     cfg.write_text(
         "\n".join(
             [

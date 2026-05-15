@@ -1,5 +1,5 @@
 {
-  "name": "Thoth",
+  "name": "Doxa Research",
   "image": "mcr.microsoft.com/devcontainers/python:3.11-bookworm",
   "postCreateCommand": "curl -LsSf https://astral.sh/uv/install.sh | sh && . $HOME/.local/bin/env && uv sync && uvx lefthook install",
   "customizations": {

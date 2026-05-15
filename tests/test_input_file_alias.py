@@ -16,7 +16,7 @@ from pathlib import Path
 
 from click.testing import CliRunner
 
-from thoth.cli import cli
+from doxa_research.cli import cli
 
 
 def _stub_run_research(monkeypatch) -> dict:
@@ -27,11 +27,11 @@ def _stub_run_research(monkeypatch) -> dict:
         captured.update(kwargs)
         return 0
 
-    monkeypatch.setattr("thoth.run.run_research", fake_run)
+    monkeypatch.setattr("doxa_research.run.run_research", fake_run)
     return captured
 
 
-# --- Root form: thoth --input-file PATH MODE ---------------------------------
+# --- Root form: doxa --input-file PATH MODE ---------------------------------
 
 
 def test_input_file_root_reads_contents_as_prompt(tmp_path: Path, monkeypatch):
@@ -86,7 +86,7 @@ def test_input_file_root_pick_model_counts_as_prompt_source(tmp_path: Path, monk
         picked["called"] = True
         return "gpt-4o-mini"
 
-    monkeypatch.setattr("thoth.interactive_picker.pick_model", fake_pick)
+    monkeypatch.setattr("doxa_research.interactive_picker.pick_model", fake_pick)
     f = tmp_path / "p.txt"
     f.write_text("prompt for model picker")
 
@@ -157,7 +157,7 @@ def test_input_file_root_mutex_with_positional(tmp_path: Path, monkeypatch):
     assert r.exit_code != 0
 
 
-# --- ask subcommand form: thoth ask --input-file PATH ------------------------
+# --- ask subcommand form: doxa ask --input-file PATH ------------------------
 
 
 def test_input_file_ask_reads_contents_as_prompt(tmp_path: Path, monkeypatch):

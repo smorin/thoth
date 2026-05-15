@@ -6,14 +6,14 @@
 
 ## Goal
 
-Replace the placeholder line in `init_command()` (`src/thoth/commands.py:217`,
+Replace the placeholder line in `init_command()` (`src/doxa_research/commands.py:217`,
 "Interactive setup wizard not yet implemented") with a real wizard that
-collects the minimum information needed to make `thoth` usable on a fresh
+collects the minimum information needed to make `doxa-research` usable on a fresh
 machine: which providers the user has, where their API keys live, and which
 default mode they want.
 
-The non-interactive path (`thoth init --non-interactive`,
-`thoth init --json --non-interactive`) is unchanged. The wizard runs only
+The non-interactive path (`doxa-research init --non-interactive`,
+`doxa-research init --json --non-interactive`) is unchanged. The wizard runs only
 when `init` is invoked without `--non-interactive` and without `--json`.
 
 ## Scope
@@ -34,7 +34,7 @@ Out of scope (explicit, not deferred-by-omission):
 
 - API-key validation (no `/v1/models` call). May land later as
   `--validate-keys`.
-- Auto-trigger from `thoth research` on missing config.
+- Auto-trigger from `doxa-research research` on missing config.
 - Provider-registry-driven dynamic provider list. The list is statically
   declared and grows with explicit edits.
 - Profile picker (`general.default_profile`).
@@ -42,11 +42,11 @@ Out of scope (explicit, not deferred-by-omission):
   named above.
 - Arrow-key TUI (`questionary` / `inquirerpy`). Numbered list + `rich.prompt`
   is the agreed UX.
-- Modifying `thoth_test` unless an integration test demands it.
+- Modifying `doxa_test` unless an integration test demands it.
 
 ## Architecture and boundaries
 
-A new module `src/thoth/init_wizard.py` owns all interactive prompting.
+A new module `src/doxa_research/init_wizard.py` owns all interactive prompting.
 `init_command()` (in `commands.py`) becomes the dispatcher: it resolves the
 target path, decides interactive vs non-interactive vs JSON, and either calls
 `init_wizard.run(...)` or the existing static-starter path.
@@ -80,12 +80,12 @@ disk and leaves only one write site to worry about.
 
 | File | Role |
 |---|---|
-| `src/thoth/init_wizard.py` | New. `WizardAnswers` dataclass, `run()` entry, all prompts, the numbered-list helper, the review-and-confirm loop. |
-| `src/thoth/commands.py` | Modified. `init_command` learns the dispatch. Add `_apply_wizard_answers(doc, answers)` to merge into a `tomlkit` doc (used by both fresh-doc and `--force` round-trip). |
-| `src/thoth/cli_subcommands/init.py` | Unchanged. Existing flag set already covers what the wizard needs. |
+| `src/doxa_research/init_wizard.py` | New. `WizardAnswers` dataclass, `run()` entry, all prompts, the numbered-list helper, the review-and-confirm loop. |
+| `src/doxa_research/commands.py` | Modified. `init_command` learns the dispatch. Add `_apply_wizard_answers(doc, answers)` to merge into a `tomlkit` doc (used by both fresh-doc and `--force` round-trip). |
+| `src/doxa_research/cli_subcommands/init.py` | Unchanged. Existing flag set already covers what the wizard needs. |
 | `tests/test_init_wizard.py` | New. Drives `run()` with a stubbed prompt fn; covers all branches. |
 | `tests/test_init_command_dispatch.py` | New (or extends existing init test file). Covers the dispatcher (non-interactive vs interactive vs `--json`), `--force` round-trip, file-write site. |
-| `thoth_test` integration script | One new case driving the wizard through scripted stdin against the real binary. |
+| `doxa_test` integration script | One new case driving the wizard through scripted stdin against the real binary. |
 
 ### Data shape
 
@@ -151,9 +151,9 @@ class WizardAnswers:
   `init_wizard.run()`, prints `"Init cancelled."`, raises `click.Abort()`
   (Click's standard cancel; produces exit code 1, same as today's `^C`).
 - **Empty / malformed input on a numbered list**: re-prompts up to three
-  times, then aborts with a `ThothError("invalid selection")`, consistent
+  times, then aborts with a `DoxaError("invalid selection")`, consistent
   with today's CLI errors.
-- **TOML round-trip fails on existing file** (corrupt): `ThothError("Cannot
+- **TOML round-trip fails on existing file** (corrupt): `DoxaError("Cannot
   parse existing config at <path>: <reason>. Pass --non-interactive to
   overwrite with defaults, or fix the file.")`. Note: `--force` is already
   set on the path that triggers round-trip, so the message points at the
@@ -181,7 +181,7 @@ is what makes P31-TS01 tractable.
 ```python
 def test_wizard_happy_path_openai_only(tmp_path):
     answers = init_wizard.run(
-        target=tmp_path / "thoth.config.toml",
+        target=tmp_path / "doxa-research.config.toml",
         prefill=None,
         prompt_fn=ScriptedPrompts([
             "1",                 # provider select: openai
@@ -207,25 +207,25 @@ def test_wizard_happy_path_openai_only(tmp_path):
 | TS01-f | Review screen `n` → no file written, exit 0. |
 | TS01-g | Review screen `e` → re-prompts, second-pass answers are the ones written. |
 | TS01-h | `KeyboardInterrupt` at provider prompt → `click.Abort`. |
-| TS01-i | Malformed numbered input retries three times then `ThothError`. |
+| TS01-i | Malformed numbered input retries three times then `DoxaError`. |
 | TS01-j | Pre-fill from existing TOML: `default_mode=deep_research` shows as default. |
 | TS01-k | `_apply_wizard_answers` preserves unknown sections (`[paths]`, `[execution]`, `[output]`, `[profiles]`). |
 | TS01-l | `--non-interactive` does NOT call `init_wizard.run()` (dispatcher test). |
 | TS01-m | `--json --non-interactive` produces existing JSON envelope (regression). |
 
-Plus one `thoth_test` integration case driving the wizard through scripted
+Plus one `doxa_test` integration case driving the wizard through scripted
 stdin against the real binary, to catch any regression where the wizard
 breaks on real terminal I/O. The unit tests cover logic; this catches
 integration drift.
 
 ## Defaults adopted (no further questions asked)
 
-- Non-interactive path is unchanged. `thoth init --non-interactive` and
-  `thoth init --json --non-interactive` continue to write today's static
+- Non-interactive path is unchanged. `doxa-research init --non-interactive` and
+  `doxa-research init --json --non-interactive` continue to write today's static
   starter doc; the wizard never runs in those paths.
-- Auto-trigger on missing config from `thoth research` is out of scope.
+- Auto-trigger on missing config from `doxa-research research` is out of scope.
 - TOML round-trip on existing file (`--force`) uses `tomlkit` like
-  `thoth config set` does (P10). The wizard touches only its four fields;
+  `doxa-research config set` does (P10). The wizard touches only its four fields;
   unknown sections are preserved verbatim.
 - Mock provider stays out of the wizard's provider list.
-- Exit codes unchanged: 0 success, 1 generic `ThothError`, 2 usage error.
+- Exit codes unchanged: 0 success, 1 generic `DoxaError`, 2 usage error.

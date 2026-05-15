@@ -37,19 +37,19 @@ decide explicitly what stays divergent."**
 
 ## §2 Evidence — What Is Already Shared
 
-### 2.1 `src/thoth/providers/_helpers.py` (current)
+### 2.1 `src/doxa_research/providers/_helpers.py` (current)
 
 | Symbol | Role | Used by |
 |--------|------|---------|
 | `_extract_unsupported_param` | Parse offending param name from BadRequestError body | OpenAI, Perplexity (Gemini opts out — different SDK body shape) |
-| `_invalid_key_thotherror` | Brand-correct `ThothError` for upstream-rejected key | All three providers |
+| `_invalid_key_doxaerror` | Brand-correct `DoxaError` for upstream-rejected key | All three providers |
 | `render_sources_block` | Deduped Markdown sources block from `Citation` iterable | All three providers |
 | `debug_print_empty_response` | Verbose empty-response debug ladder | All three providers |
 
 Reference-count in providers: OpenAI=8, Perplexity=11, Gemini=10 call sites
 into `_helpers`.
 
-### 2.2 `src/thoth/providers/_status.py`
+### 2.2 `src/doxa_research/providers/_status.py`
 
 - `_translate_provider_status(provider_status, status_table, *, unknown_template)`
 - Per its own docstring: "the pure-data part of that translation. It does NOT
@@ -57,7 +57,7 @@ into `_helpers`.
 - Born from the **P27 factor-dedup spec**. The pattern of "one shared pure
   helper module per behavior family" is repo precedent.
 
-### 2.3 `src/thoth/providers/parameter_config.py` (319 LOC)
+### 2.3 `src/doxa_research/providers/parameter_config.py` (319 LOC)
 
 - Centralizes parameter-namespace resolution across `[modes.X.openai]`,
   `[modes.X.perplexity]`, `[modes.X.gemini]`, `[providers.NAME]`,
@@ -67,7 +67,7 @@ into `_helpers`.
 - This module is the de-facto **shared parameter spine** for all three
   immediate providers.
 
-### 2.4 `src/thoth/providers/base.py` (144 LOC)
+### 2.4 `src/doxa_research/providers/base.py` (144 LOC)
 
 - `Citation`, `StreamEvent` dataclasses (shared).
 - `ResearchProvider` ABC with default `NotImplementedError` overrides for
@@ -303,7 +303,7 @@ leaky-abstraction trap.
 truth, not a duplication smell. Trying to unify creates a worse
 abstraction than three honest mappers. (c) is tempting but the
 OpenAI/Perplexity overlap is mostly already factored through
-`_extract_unsupported_param` and `_invalid_key_thotherror` — the
+`_extract_unsupported_param` and `_invalid_key_doxaerror` — the
 remaining divergence is intentional (404 vs 422 status handling,
 different rate-limit headers).
 

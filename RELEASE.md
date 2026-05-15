@@ -1,6 +1,6 @@
 # Release Guide
 
-Thoth releases are automated by **release-please** (version bumps + changelog + tag + GitHub Release) and **publish.yml** (TestPyPI → PyPI via OIDC trusted publishing). Humans author conventional commits; everything downstream is automatic.
+Doxa Research releases are automated by **release-please** (version bumps + changelog + tag + GitHub Release) and **publish.yml** (TestPyPI → PyPI via OIDC trusted publishing). Humans author conventional commits; everything downstream is automatic.
 
 ## Table of Contents
 
@@ -62,7 +62,7 @@ Thoth releases are automated by **release-please** (version bumps + changelog + 
 | File | Purpose |
 |------|---------|
 | `pyproject.toml` | Project metadata + version (bumped by release-please) |
-| `src/thoth/__init__.py` | Package `__version__` (bumped by release-please via `x-release-please-version`) |
+| `src/doxa_research/__init__.py` | Package `__version__` (bumped by release-please via `x-release-please-version`) |
 | `.release-please-manifest.json` | release-please's authoritative version per package |
 | `release-please-config.json` | release-please behavior + changelog sections |
 | `commitlint.config.mjs` | Allowed commit types / header length |
@@ -102,7 +102,7 @@ make env-check   # checks uv, python3, just, bun
 
 ## Versioning
 
-Thoth uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
+Doxa Research uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 
 Versions are bumped **automatically** by release-please from conventional-commit types since the last release:
 
@@ -112,7 +112,7 @@ Versions are bumped **automatically** by release-please from conventional-commit
 | `feat:` | `MINOR` |
 | `fix:`, `perf:`, `refactor:`, `chore:`, `docs:`, `ci:`, `test:`, etc. | `PATCH` |
 
-You do **not** edit `pyproject.toml` or `src/thoth/__init__.py` version fields directly. release-please updates them in the Release PR.
+You do **not** edit `pyproject.toml` or `src/doxa_research/__init__.py` version fields directly. release-please updates them in the Release PR.
 
 **Version surfaces (maintained by release-please):**
 
@@ -123,11 +123,11 @@ version = "2.5.0"
 ```
 
 ```python
-# src/thoth/__init__.py — Python __version__
+# src/doxa_research/__init__.py — Python __version__
 __version__ = "2.5.0"  # x-release-please-version
 ```
 
-The CLI reads `THOTH_VERSION` from `src/thoth/config.py`, which re-exports `__version__` — so there is one source of truth.
+The CLI reads `DOXA_VERSION` from `src/doxa_research/config.py`, which re-exports `__version__` — so there is one source of truth.
 
 Git tags follow `v{version}` (e.g., `v2.5.0`). release-please creates the tag on Release PR merge; the tag push triggers `publish.yml`.
 
@@ -164,7 +164,7 @@ The local `commit-msg` hook rejects malformed messages before they land. CI's `c
 `release-please.yml` runs on every push to `main`. It opens (or updates) a single PR titled something like **`chore(main): release 2.6.0`**. Its diff shows:
 
 - `pyproject.toml` version bumped
-- `src/thoth/__init__.py` `__version__` bumped
+- `src/doxa_research/__init__.py` `__version__` bumped
 - `.release-please-manifest.json` version bumped
 - `CHANGELOG.md` — new section for the incoming version, grouped by commit type
 
@@ -182,18 +182,18 @@ On merge, release-please:
 The tag push triggers `publish.yml`:
 
 1. **Build** — `dist/*.whl` and `dist/*.tar.gz`
-2. **Publish to TestPyPI** — [test.pypi.org](https://test.pypi.org/project/thoth/)
-3. **Publish to PyPI** — [pypi.org/project/thoth/](https://pypi.org/project/thoth/)
+2. **Publish to TestPyPI** — [test.pypi.org](https://test.pypi.org/project/doxa-research/)
+3. **Publish to PyPI** — [pypi.org/project/doxa-research/](https://pypi.org/project/doxa-research/)
 
 Each publish job requires approval if the environment has reviewers configured.
 
 ### 5. Verify the release
 
 ```bash
-uvx thoth==2.6.0 --version
+uvx doxa-research==2.6.0 --version
 # or
-pip install thoth==2.6.0
-thoth --version
+pip install doxa-research==2.6.0
+doxa --version
 ```
 
 ---
@@ -208,11 +208,11 @@ Triggered on every push to `main` and every pull request targeting `main`.
 push/PR to main
     │
     ├── lint (ubuntu-latest)
-    │       uv run ruff format --check src/thoth/
-    │       uv run ruff check src/thoth/
+    │       uv run ruff format --check src/doxa_research/
+    │       uv run ruff check src/doxa_research/
     │
     ├── typecheck (ubuntu-latest)
-    │       uv run ty check src/thoth/
+    │       uv run ty check src/doxa_research/
     │
     ├── yamllint (ubuntu-latest)
     │       uvx yamllint -c .yamllint .
@@ -221,8 +221,8 @@ push/PR to main
     │       actionlint
     │
     └── test (matrix: macOS + Ubuntu × Python 3.11, 3.12, 3.13)
-            chmod +x thoth thoth_test
-            ./thoth_test -r --provider mock
+            chmod +x doxa-research doxa_test
+            ./doxa_test -r --provider mock
 ```
 
 Jobs run in parallel. The `test` matrix runs 6 combinations (2 OS × 3 Python versions). Typecheck is a required check — failures block the pipeline.
@@ -255,7 +255,7 @@ Jobs are sequential: `build → publish-testpypi → publish-pypi`. A failure at
 
 ## OIDC Trusted Publishing Setup
 
-Thoth uses [PyPI Trusted Publishing](https://docs.pypi.org/trusted-publishers/) via OpenID Connect (OIDC). No API tokens are stored as GitHub secrets — GitHub Actions mints a short-lived OIDC token that PyPI accepts directly.
+Doxa Research uses [PyPI Trusted Publishing](https://docs.pypi.org/trusted-publishers/) via OpenID Connect (OIDC). No API tokens are stored as GitHub secrets — GitHub Actions mints a short-lived OIDC token that PyPI accepts directly.
 
 ### How It Works
 
@@ -272,9 +272,9 @@ You must register the GitHub Actions workflow as a trusted publisher on both PyP
 
 | Field | Value |
 |-------|-------|
-| PyPI Project Name | `thoth` |
+| PyPI Project Name | `doxa-research` |
 | Owner | `smorin` |
-| Repository name | `thoth` |
+| Repository name | `doxa-research` |
 | Workflow filename | `publish.yml` |
 | Environment name | `testpypi` |
 
@@ -282,15 +282,15 @@ You must register the GitHub Actions workflow as a trusted publisher on both PyP
 
 | Field | Value |
 |-------|-------|
-| PyPI Project Name | `thoth` |
+| PyPI Project Name | `doxa-research` |
 | Owner | `smorin` |
-| Repository name | `thoth` |
+| Repository name | `doxa-research` |
 | Workflow filename | `publish.yml` |
 | Environment name | `pypi` |
 
 ### GitHub Environments
 
-Two GitHub environments must exist in the repository settings ([Settings → Environments](https://github.com/smorin/thoth/settings/environments)):
+Two GitHub environments must exist in the repository settings ([Settings → Environments](https://github.com/smorin/doxa-research/settings/environments)):
 
 - **`testpypi`** — used by the `publish-testpypi` job
 - **`pypi`** — used by the `publish-pypi` job
@@ -311,8 +311,8 @@ Go to [GitHub → Settings → Developer settings → GitHub Apps → New GitHub
 
 | Field | Value |
 |-------|-------|
-| App name | `thoth-release-please` (any unique name is fine) |
-| Homepage URL | `https://github.com/smorin/thoth` |
+| App name | `doxa-research-release-please` (any unique name is fine) |
+| Homepage URL | `https://github.com/smorin/doxa-research` |
 | Webhook | Deselect **Active** (no webhook needed) |
 | Repository permissions → Contents | **Read and write** |
 | Repository permissions → Pull requests | **Read and write** |
@@ -326,11 +326,11 @@ On the App's settings page, scroll to **Private keys** and click **Generate a pr
 
 ### Step 3: Install the App on the repo
 
-On the App's settings page, click **Install App** → pick the account/org → **Only select repositories** → choose `thoth` → **Install**.
+On the App's settings page, click **Install App** → pick the account/org → **Only select repositories** → choose `doxa-research` → **Install**.
 
 ### Step 4: Add the App ID and private key to the repo
 
-Go to [Settings → Secrets and variables → Actions](https://github.com/smorin/thoth/settings/secrets/actions):
+Go to [Settings → Secrets and variables → Actions](https://github.com/smorin/doxa-research/settings/secrets/actions):
 
 - **Variable** `RELEASE_PLEASE_APP_ID` — the numeric App ID shown on the App's settings page (not the Client ID).
 - **Secret** `RELEASE_PLEASE_APP_PRIVATE_KEY` — the full contents of the `.pem` file, including the `-----BEGIN ... PRIVATE KEY-----` / `-----END ... PRIVATE KEY-----` lines.
@@ -354,8 +354,8 @@ These commands are available for testing builds or publishing manually (e.g., fr
 ```bash
 # Build wheel + source distribution
 just build
-# Output: dist/thoth-2.6.0-py3-none-any.whl
-#         dist/thoth-2.6.0.tar.gz
+# Output: dist/doxa-research-2.6.0-py3-none-any.whl
+#         dist/doxa-research-2.6.0.tar.gz
 
 # Publish to TestPyPI (for validation)
 UV_PUBLISH_TOKEN=<your-testpypi-token> just publish-test
@@ -389,7 +389,7 @@ The OIDC trusted publisher is not configured, or the environment name / workflow
 
 1. The workflow file is named `publish.yml` (not `publish.yaml`)
 2. The environment in the workflow job matches the environment registered on PyPI (`pypi` / `testpypi`)
-3. The repository owner (`smorin`) and name (`thoth`) match exactly
+3. The repository owner (`smorin`) and name (`doxa-research`) match exactly
 
 ### Publish fails: `400 File already exists`
 
@@ -405,7 +405,7 @@ If the `pypi` GitHub environment has required reviewers configured, you must app
 
 ### Version on PyPI doesn't match `pyproject.toml`
 
-The build is stamped with whatever version is in `pyproject.toml` at the time `uv build` runs. release-please keeps `pyproject.toml` and `src/thoth/__init__.py` in sync — if they're out of sync, suspect a hand-edit that bypassed the Release PR.
+The build is stamped with whatever version is in `pyproject.toml` at the time `uv build` runs. release-please keeps `pyproject.toml` and `src/doxa_research/__init__.py` in sync — if they're out of sync, suspect a hand-edit that bypassed the Release PR.
 
 ### Release PR does not appear after landing a `feat:`/`fix:` commit
 

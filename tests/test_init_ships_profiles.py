@@ -1,6 +1,6 @@
-"""P21-T10: `thoth init` ships example profiles users can customize.
+"""P21-T10: `doxa init` ships example profiles users can customize.
 
-The generated `~/.config/thoth/thoth.config.toml` should contain:
+The generated `~/.config/doxa_research/doxa.config.toml` should contain:
   - daily          — thinking + default project for daily notes
   - quick          — thinking (immediate)
   - openai_deep    — single-provider deep_research
@@ -16,23 +16,23 @@ from pathlib import Path
 import pytest
 from click.testing import CliRunner
 
-from thoth.commands import CommandHandler
-from thoth.config import ConfigManager
-from thoth.config_profiles import resolve_prompt_prefix
+from doxa_research.commands import CommandHandler
+from doxa_research.config import ConfigManager
+from doxa_research.config_profiles import resolve_prompt_prefix
 
 
 @pytest.fixture(autouse=True)
 def _reset_config_path(monkeypatch: pytest.MonkeyPatch) -> None:
     """Keep CLI --config tests from leaking into later tests."""
-    from thoth import config as thoth_config
+    from doxa_research import config as doxa_config
 
-    monkeypatch.setattr(thoth_config, "_config_path", None)
+    monkeypatch.setattr(doxa_config, "_config_path", None)
 
 
 @pytest.fixture
-def init_run(isolated_thoth_home: Path) -> Path:
+def init_run(isolated_doxa_home: Path) -> Path:
     """Run init_command against the isolated XDG config dir, return config path."""
-    from thoth.paths import user_config_file
+    from doxa_research.paths import user_config_file
 
     handler = CommandHandler(ConfigManager())
     handler.init_command(non_interactive=True)
@@ -107,7 +107,7 @@ def test_build_profile_section_preserves_sibling_subsections() -> None:
     P33: body is now a nested dict; sibling sections are naturally separate keys
     under the same parent dict (e.g. `{"modes": {"deep_research": {...}, "thinking": {...}}}`).
     """
-    from thoth.commands import _build_profile_section
+    from doxa_research.commands import _build_profile_section
 
     body = {
         "modes": {
@@ -129,10 +129,10 @@ def test_build_profile_section_preserves_sibling_subsections() -> None:
 
 
 def test_cli_init_custom_config_path_writes_starter_profiles(
-    isolated_thoth_home: Path,
+    isolated_doxa_home: Path,
     tmp_path: Path,
 ) -> None:
-    from thoth.cli import cli
+    from doxa_research.cli import cli
 
     target = tmp_path / "custom-cfg.toml"
     result = CliRunner().invoke(cli, ["--config", str(target), "init", "--non-interactive"])
@@ -145,12 +145,12 @@ def test_cli_init_custom_config_path_writes_starter_profiles(
 
 
 def test_cli_init_json_non_interactive_writes_starter_profiles(
-    isolated_thoth_home: Path,
+    isolated_doxa_home: Path,
     tmp_path: Path,
 ) -> None:
     import json
 
-    from thoth.cli import cli
+    from doxa_research.cli import cli
 
     target = tmp_path / "json-cfg.toml"
     result = CliRunner().invoke(

@@ -3,7 +3,7 @@
 This file is written in the RED phase of TDD. The symbols it imports
 (`detect_legacy_paths`, `ConfigAmbiguousError`, `ConfigNotFoundError`,
 `_format_config_not_found`) do not yet exist; the renamed `user_config_file()`
-still returns the legacy path; and `thoth init` lacks `--user`/`--hidden`/
+still returns the legacy path; and `doxa init` lacks `--user`/`--hidden`/
 `--force` flags. All tests in this file are expected to fail at import time
 or at assertion time until Tasks 2-4 of P21c land.
 
@@ -11,7 +11,7 @@ Coverage:
 - A1-A5  user-tier loading
 - B1-B8  project-tier loading
 - C1-C3  legacy detection helper contract
-- D1-D14 `thoth init` flag combinations
+- D1-D14 `doxa init` flag combinations
 - E1-E3  source-tree string-sweep regression guards
 """
 
@@ -24,18 +24,18 @@ from pathlib import Path
 import pytest
 from click.testing import CliRunner
 
-from thoth.cli import cli
-from thoth.cli_subcommands.init import init as init_cmd
-from thoth.config import (
+from doxa_research.cli import cli
+from doxa_research.cli_subcommands.init import init as init_cmd
+from doxa_research.config import (
     ConfigManager,
     _format_config_not_found,
     detect_legacy_paths,
 )
-from thoth.errors import (
+from doxa_research.errors import (
     ConfigAmbiguousError,
     ConfigNotFoundError,
 )
-from thoth.paths import user_config_dir, user_config_file
+from doxa_research.paths import user_config_dir, user_config_file
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SRC_DIR = REPO_ROOT / "src"
@@ -60,9 +60,9 @@ def isolated_xdg(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     return tmp_path
 
 
-def _xdg_thoth_dir(isolated_xdg_root: Path) -> Path:
-    """`$XDG_CONFIG_HOME/thoth/` for the test."""
-    d = isolated_xdg_root / "xdg" / "thoth"
+def _xdg_doxa_dir(isolated_xdg_root: Path) -> Path:
+    """`$XDG_CONFIG_HOME/doxa_research/` for the test."""
+    d = isolated_xdg_root / "xdg" / "doxa"
     d.mkdir(parents=True, exist_ok=True)
     return d
 
@@ -80,9 +80,9 @@ _MIN_CONFIG_TOML = 'version = "2.0"\n'
 
 
 def test_a1_user_canonical_loads(isolated_xdg: Path) -> None:
-    """A1: canonical user file at $XDG_CONFIG_HOME/thoth/thoth.config.toml loads."""
-    user_dir = _xdg_thoth_dir(isolated_xdg)
-    canonical = user_dir / "thoth.config.toml"
+    """A1: canonical user file at $XDG_CONFIG_HOME/doxa_research/doxa.config.toml loads."""
+    user_dir = _xdg_doxa_dir(isolated_xdg)
+    canonical = user_dir / "doxa.config.toml"
     canonical.write_text(_MIN_CONFIG_TOML + '[general]\ndefault_mode = "thinking"\n')
 
     cm = ConfigManager()
@@ -94,14 +94,14 @@ def test_a1_user_canonical_loads(isolated_xdg: Path) -> None:
 
 def test_a2_only_legacy_user_file_treated_as_missing(isolated_xdg: Path) -> None:
     """A2: legacy `config.toml` is not loaded; user_config_path points at canonical."""
-    user_dir = _xdg_thoth_dir(isolated_xdg)
+    user_dir = _xdg_doxa_dir(isolated_xdg)
     legacy = user_dir / "config.toml"
     legacy.write_text(_MIN_CONFIG_TOML + '[general]\ndefault_mode = "thinking"\n')
 
     cm = ConfigManager()
     cm.load_all_layers({})
 
-    canonical = user_dir / "thoth.config.toml"
+    canonical = user_dir / "doxa.config.toml"
     assert cm.user_config_path == canonical
     assert not canonical.exists()
     # Legacy must not have been loaded — value should fall back to default.
@@ -110,8 +110,8 @@ def test_a2_only_legacy_user_file_treated_as_missing(isolated_xdg: Path) -> None
 
 def test_a3_canonical_wins_silently_over_legacy(isolated_xdg: Path) -> None:
     """A3: both canonical and legacy user files exist — canonical loads, legacy ignored."""
-    user_dir = _xdg_thoth_dir(isolated_xdg)
-    canonical = user_dir / "thoth.config.toml"
+    user_dir = _xdg_doxa_dir(isolated_xdg)
+    canonical = user_dir / "doxa.config.toml"
     canonical.write_text(_MIN_CONFIG_TOML + '[general]\ndefault_mode = "thinking"\n')
     legacy = user_dir / "config.toml"
     legacy.write_text(_MIN_CONFIG_TOML + '[general]\ndefault_mode = "exploration"\n')
@@ -131,15 +131,15 @@ def test_a4_no_config_anywhere_formatter_lists_canonical_paths(
     assert isinstance(err, ConfigNotFoundError)
     msg = str(err)
     assert str(user_config_file()) in msg
-    assert "./thoth.config.toml" in msg
-    assert "./.thoth.config.toml" in msg
+    assert "./doxa.config.toml" in msg
+    assert "./.doxa.config.toml" in msg
 
 
 def test_a5_legacy_user_present_message_names_legacy_and_rename_target(
     isolated_xdg: Path,
 ) -> None:
     """A5: legacy `config.toml` on disk → message names it and the rename target."""
-    user_dir = _xdg_thoth_dir(isolated_xdg)
+    user_dir = _xdg_doxa_dir(isolated_xdg)
     legacy = user_dir / "config.toml"
     legacy.write_text(_MIN_CONFIG_TOML)
 
@@ -147,7 +147,7 @@ def test_a5_legacy_user_present_message_names_legacy_and_rename_target(
     msg = str(err)
     assert str(legacy) in msg
     # Rename guidance should mention the canonical filename target.
-    assert "thoth.config.toml" in msg
+    assert "doxa.config.toml" in msg
 
 
 # ---------------------------------------------------------------------------
@@ -156,9 +156,9 @@ def test_a5_legacy_user_present_message_names_legacy_and_rename_target(
 
 
 def test_b1_only_visible_project_file_loads(isolated_xdg: Path) -> None:
-    """B1: only `./thoth.config.toml` exists → loads it."""
+    """B1: only `./doxa.config.toml` exists → loads it."""
     project = _project_dir(isolated_xdg)
-    canonical = project / "thoth.config.toml"
+    canonical = project / "doxa.config.toml"
     canonical.write_text(_MIN_CONFIG_TOML + '[general]\ndefault_mode = "thinking"\n')
 
     cm = ConfigManager()
@@ -170,9 +170,9 @@ def test_b1_only_visible_project_file_loads(isolated_xdg: Path) -> None:
 
 
 def test_b2_only_hidden_project_file_loads(isolated_xdg: Path) -> None:
-    """B2: only `./.thoth.config.toml` exists → loads it."""
+    """B2: only `./.doxa.config.toml` exists → loads it."""
     project = _project_dir(isolated_xdg)
-    hidden = project / ".thoth.config.toml"
+    hidden = project / ".doxa.config.toml"
     hidden.write_text(_MIN_CONFIG_TOML + '[general]\ndefault_mode = "exploration"\n')
 
     cm = ConfigManager()
@@ -186,8 +186,8 @@ def test_b2_only_hidden_project_file_loads(isolated_xdg: Path) -> None:
 def test_b3_both_project_files_raises_ambiguity(isolated_xdg: Path) -> None:
     """B3: both project files present → ConfigAmbiguousError naming both, no precedence."""
     project = _project_dir(isolated_xdg)
-    visible = project / "thoth.config.toml"
-    hidden = project / ".thoth.config.toml"
+    visible = project / "doxa.config.toml"
+    hidden = project / ".doxa.config.toml"
     visible.write_text(_MIN_CONFIG_TOML)
     hidden.write_text(_MIN_CONFIG_TOML)
 
@@ -196,8 +196,8 @@ def test_b3_both_project_files_raises_ambiguity(isolated_xdg: Path) -> None:
         cm.load_all_layers({})
 
     msg = str(excinfo.value)
-    assert "thoth.config.toml" in msg
-    assert ".thoth.config.toml" in msg
+    assert "doxa.config.toml" in msg
+    assert ".doxa.config.toml" in msg
     # Direct user to delete one — no precedence.
     assert "delete" in msg.lower()
 
@@ -215,13 +215,13 @@ def test_b9_config_json_ambiguous_project_config_emits_error_envelope(
     argv: list[str],
 ) -> None:
     """B9: JSON config commands wrap project config ambiguity in JSON."""
-    from thoth import config as thoth_config
+    from doxa_research import config as doxa_config
 
-    monkeypatch.setattr(thoth_config, "_config_path", None)
+    monkeypatch.setattr(doxa_config, "_config_path", None)
     runner = CliRunner()
     with runner.isolated_filesystem(temp_dir=tmp_path):
-        Path("thoth.config.toml").write_text(_MIN_CONFIG_TOML + "# visible\n")
-        Path(".thoth.config.toml").write_text(_MIN_CONFIG_TOML + "# hidden\n")
+        Path("doxa.config.toml").write_text(_MIN_CONFIG_TOML + "# visible\n")
+        Path(".doxa.config.toml").write_text(_MIN_CONFIG_TOML + "# hidden\n")
 
         result = runner.invoke(cli, argv, env=_xdg_env(tmp_path))
 
@@ -230,8 +230,8 @@ def test_b9_config_json_ambiguous_project_config_emits_error_envelope(
     payload = json.loads(result.output)
     assert payload["status"] == "error"
     assert payload["error"]["code"] == "CONFIG_AMBIGUOUS"
-    assert "thoth.config.toml" in payload["error"]["message"]
-    assert ".thoth.config.toml" in payload["error"]["message"]
+    assert "doxa.config.toml" in payload["error"]["message"]
+    assert ".doxa.config.toml" in payload["error"]["message"]
     assert "Delete one" in payload["error"]["message"]
 
 
@@ -240,22 +240,22 @@ def test_b10_runtime_api_key_error_mentions_legacy_project_config(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """B10: runtime missing-key guidance names ignored legacy project config."""
-    from thoth import config as thoth_config
+    from doxa_research import config as doxa_config
 
-    monkeypatch.setattr(thoth_config, "_config_path", None)
+    monkeypatch.setattr(doxa_config, "_config_path", None)
     monkeypatch.setenv("XDG_STATE_HOME", str(isolated_xdg / "state"))
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     project = _project_dir(isolated_xdg)
-    legacy = project / "thoth.toml"
+    legacy = project / "doxa_research.toml"
     legacy.write_text('version = "2.0"\n[providers.openai]\napi_key = "sk-legacy"\n')
 
     result = CliRunner().invoke(cli, ["test", "legacy", "prompt"])
 
     assert result.exit_code == 1
     assert "openai API key not found" in result.output
-    assert "Detected legacy file: thoth.toml" in result.output
+    assert "Detected legacy file: doxa_research.toml" in result.output
     assert "These filenames are no longer read" in result.output
-    assert "Rename to thoth.config.toml" in result.output
+    assert "Rename to doxa.config.toml" in result.output
 
 
 def test_b4_neither_project_file_optional(isolated_xdg: Path) -> None:
@@ -265,10 +265,10 @@ def test_b4_neither_project_file_optional(isolated_xdg: Path) -> None:
     assert cm.project_config_path is None
 
 
-def test_b5_only_legacy_thoth_toml_treated_as_missing(isolated_xdg: Path) -> None:
-    """B5: legacy `./thoth.toml` is NOT loaded as project config."""
+def test_b5_only_legacy_doxa_toml_treated_as_missing(isolated_xdg: Path) -> None:
+    """B5: legacy `./doxa_research.toml` is NOT loaded as project config."""
     project = _project_dir(isolated_xdg)
-    legacy = project / "thoth.toml"
+    legacy = project / "doxa_research.toml"
     legacy.write_text(_MIN_CONFIG_TOML + '[general]\ndefault_mode = "thinking"\n')
 
     cm = ConfigManager()
@@ -278,10 +278,10 @@ def test_b5_only_legacy_thoth_toml_treated_as_missing(isolated_xdg: Path) -> Non
     assert cm.get("general.default_mode") == "default"
 
 
-def test_b6_only_legacy_dot_thoth_dir_treated_as_missing(isolated_xdg: Path) -> None:
-    """B6: legacy `./.thoth/config.toml` is NOT loaded."""
+def test_b6_only_legacy_dot_doxa_dir_treated_as_missing(isolated_xdg: Path) -> None:
+    """B6: legacy `./.doxa_research/config.toml` is NOT loaded."""
     project = _project_dir(isolated_xdg)
-    legacy_dir = project / ".thoth"
+    legacy_dir = project / ".doxa_research"
     legacy_dir.mkdir()
     legacy = legacy_dir / "config.toml"
     legacy.write_text(_MIN_CONFIG_TOML + '[general]\ndefault_mode = "thinking"\n')
@@ -293,34 +293,34 @@ def test_b6_only_legacy_dot_thoth_dir_treated_as_missing(isolated_xdg: Path) -> 
     assert cm.get("general.default_mode") == "default"
 
 
-def test_b7_legacy_thoth_toml_named_in_not_found_message(isolated_xdg: Path) -> None:
-    """B7: ConfigNotFoundError suggestion names legacy `./thoth.toml` + rename target."""
+def test_b7_legacy_doxa_toml_named_in_not_found_message(isolated_xdg: Path) -> None:
+    """B7: ConfigNotFoundError suggestion names legacy `./doxa_research.toml` + rename target."""
     project = _project_dir(isolated_xdg)
-    legacy = project / "thoth.toml"
+    legacy = project / "doxa_research.toml"
     legacy.write_text(_MIN_CONFIG_TOML)
 
     err = _format_config_not_found()
     msg = str(err)
     # Legacy file must appear (path may be absolute or relative).
-    assert "thoth.toml" in msg
+    assert "doxa_research.toml" in msg
     # Rename target should be referenced.
-    assert "thoth.config.toml" in msg
+    assert "doxa.config.toml" in msg
 
 
-def test_b8_legacy_dot_thoth_config_named_in_not_found_message(
+def test_b8_legacy_dot_doxa_config_named_in_not_found_message(
     isolated_xdg: Path,
 ) -> None:
-    """B8: ConfigNotFoundError suggestion names legacy `./.thoth/config.toml`."""
+    """B8: ConfigNotFoundError suggestion names legacy `./.doxa_research/config.toml`."""
     project = _project_dir(isolated_xdg)
-    legacy_dir = project / ".thoth"
+    legacy_dir = project / ".doxa_research"
     legacy_dir.mkdir()
     legacy = legacy_dir / "config.toml"
     legacy.write_text(_MIN_CONFIG_TOML)
 
     err = _format_config_not_found()
     msg = str(err)
-    assert ".thoth/config.toml" in msg or str(legacy) in msg
-    assert "thoth.config.toml" in msg
+    assert ".doxa_research/config.toml" in msg or str(legacy) in msg
+    assert "doxa.config.toml" in msg
 
 
 # ---------------------------------------------------------------------------
@@ -333,16 +333,16 @@ def test_c1_detect_legacy_paths_returns_only_existing(isolated_xdg: Path) -> Non
     # No legacy files yet.
     assert detect_legacy_paths() == []
 
-    user_dir = _xdg_thoth_dir(isolated_xdg)
+    user_dir = _xdg_doxa_dir(isolated_xdg)
     project = _project_dir(isolated_xdg)
 
     legacy_user = user_dir / "config.toml"
     legacy_user.write_text(_MIN_CONFIG_TOML)
 
-    legacy_project = project / "thoth.toml"
+    legacy_project = project / "doxa_research.toml"
     legacy_project.write_text(_MIN_CONFIG_TOML)
 
-    legacy_dot_dir = project / ".thoth"
+    legacy_dot_dir = project / ".doxa_research"
     legacy_dot_dir.mkdir()
     legacy_dot = legacy_dot_dir / "config.toml"
     legacy_dot.write_text(_MIN_CONFIG_TOML)
@@ -353,17 +353,17 @@ def test_c1_detect_legacy_paths_returns_only_existing(isolated_xdg: Path) -> Non
     assert legacy_project.resolve() in found_resolved
     assert legacy_dot.resolve() in found_resolved
     # Pure function: no canonical files were created as a side effect.
-    assert not (user_dir / "thoth.config.toml").exists()
-    assert not (project / "thoth.config.toml").exists()
-    assert not (project / ".thoth.config.toml").exists()
+    assert not (user_dir / "doxa.config.toml").exists()
+    assert not (project / "doxa.config.toml").exists()
+    assert not (project / ".doxa.config.toml").exists()
 
 
 def test_c2_successful_load_does_not_call_legacy_detector(
     isolated_xdg: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """C2: regression guard — happy-path load must not invoke detect_legacy_paths."""
-    user_dir = _xdg_thoth_dir(isolated_xdg)
-    canonical = user_dir / "thoth.config.toml"
+    user_dir = _xdg_doxa_dir(isolated_xdg)
+    canonical = user_dir / "doxa.config.toml"
     canonical.write_text(_MIN_CONFIG_TOML + '[general]\ndefault_mode = "thinking"\n')
 
     calls = {"n": 0}
@@ -372,7 +372,7 @@ def test_c2_successful_load_does_not_call_legacy_detector(
         calls["n"] += 1
         return []
 
-    import thoth.config as cfg_mod
+    import doxa_research.config as cfg_mod
 
     monkeypatch.setattr(cfg_mod, "detect_legacy_paths", spy, raising=True)
 
@@ -395,7 +395,7 @@ def test_c3_not_found_formatter_calls_detector_exactly_once(
         calls["n"] += 1
         return []
 
-    import thoth.config as cfg_mod
+    import doxa_research.config as cfg_mod
 
     monkeypatch.setattr(cfg_mod, "detect_legacy_paths", spy, raising=True)
 
@@ -405,7 +405,7 @@ def test_c3_not_found_formatter_calls_detector_exactly_once(
 
 
 # ---------------------------------------------------------------------------
-# D. `thoth init` flag combinations
+# D. `doxa init` flag combinations
 # ---------------------------------------------------------------------------
 
 
@@ -415,53 +415,53 @@ def _xdg_env(tmp: Path) -> dict[str, str]:
 
 
 def test_d1_default_writes_visible_project_file(tmp_path: Path) -> None:
-    """D1: `thoth init` with no flags writes ./thoth.config.toml."""
+    """D1: `doxa init` with no flags writes ./doxa.config.toml."""
     runner = CliRunner()
     with runner.isolated_filesystem(temp_dir=tmp_path):
         result = runner.invoke(init_cmd, ["--non-interactive"], env=_xdg_env(tmp_path))
         assert result.exit_code == 0, result.output
-        assert Path("thoth.config.toml").exists()
-        assert not Path(".thoth.config.toml").exists()
+        assert Path("doxa.config.toml").exists()
+        assert not Path(".doxa.config.toml").exists()
 
 
 def test_d2_hidden_writes_dotfile_project(tmp_path: Path) -> None:
-    """D2: `thoth init --hidden` writes ./.thoth.config.toml."""
+    """D2: `doxa init --hidden` writes ./.doxa.config.toml."""
     runner = CliRunner()
     with runner.isolated_filesystem(temp_dir=tmp_path):
         result = runner.invoke(init_cmd, ["--hidden", "--non-interactive"], env=_xdg_env(tmp_path))
         assert result.exit_code == 0, result.output
-        assert Path(".thoth.config.toml").exists()
-        assert not Path("thoth.config.toml").exists()
+        assert Path(".doxa.config.toml").exists()
+        assert not Path("doxa.config.toml").exists()
 
 
 def test_d3_user_writes_xdg_canonical(tmp_path: Path) -> None:
-    """D3: `thoth init --user` writes $XDG_CONFIG_HOME/thoth/thoth.config.toml."""
+    """D3: `doxa init --user` writes $XDG_CONFIG_HOME/doxa_research/doxa.config.toml."""
     runner = CliRunner()
     with runner.isolated_filesystem(temp_dir=tmp_path):
         result = runner.invoke(init_cmd, ["--user", "--non-interactive"], env=_xdg_env(tmp_path))
         assert result.exit_code == 0, result.output
-        target = tmp_path / "xdg" / "thoth" / "thoth.config.toml"
+        target = tmp_path / "xdg" / "doxa" / "doxa.config.toml"
         assert target.exists(), f"expected {target} to exist; output:\n{result.output}"
 
 
 def test_d12_user_init_ignores_project_config_ambiguity(tmp_path: Path) -> None:
-    """D12: `thoth init --user` writes XDG config even if project configs conflict."""
+    """D12: `doxa init --user` writes XDG config even if project configs conflict."""
     runner = CliRunner()
     with runner.isolated_filesystem(temp_dir=tmp_path):
-        Path("thoth.config.toml").write_text(_MIN_CONFIG_TOML + "# visible\n")
-        Path(".thoth.config.toml").write_text(_MIN_CONFIG_TOML + "# hidden\n")
+        Path("doxa.config.toml").write_text(_MIN_CONFIG_TOML + "# visible\n")
+        Path(".doxa.config.toml").write_text(_MIN_CONFIG_TOML + "# hidden\n")
 
         result = runner.invoke(init_cmd, ["--user", "--non-interactive"], env=_xdg_env(tmp_path))
 
         assert result.exit_code == 0, result.output
-        target = tmp_path / "xdg" / "thoth" / "thoth.config.toml"
+        target = tmp_path / "xdg" / "doxa" / "doxa.config.toml"
         assert target.exists(), f"expected {target} to exist; output:\n{result.output}"
-        assert "visible" in Path("thoth.config.toml").read_text()
-        assert "hidden" in Path(".thoth.config.toml").read_text()
+        assert "visible" in Path("doxa.config.toml").read_text()
+        assert "hidden" in Path(".doxa.config.toml").read_text()
 
 
 def test_d4_user_and_hidden_mutually_exclusive(tmp_path: Path) -> None:
-    """D4: `thoth init --user --hidden` is rejected at the Click layer."""
+    """D4: `doxa init --user --hidden` is rejected at the Click layer."""
     runner = CliRunner()
     with runner.isolated_filesystem(temp_dir=tmp_path):
         result = runner.invoke(init_cmd, ["--user", "--hidden"], env=_xdg_env(tmp_path))
@@ -472,32 +472,32 @@ def test_d4_user_and_hidden_mutually_exclusive(tmp_path: Path) -> None:
 
 
 def test_d5_no_force_refuses_overwrite(tmp_path: Path) -> None:
-    """D5: `thoth init` refuses to overwrite an existing ./thoth.config.toml."""
+    """D5: `doxa init` refuses to overwrite an existing ./doxa.config.toml."""
     runner = CliRunner()
     with runner.isolated_filesystem(temp_dir=tmp_path):
-        Path("thoth.config.toml").write_text(_MIN_CONFIG_TOML + "# preexisting\n")
+        Path("doxa.config.toml").write_text(_MIN_CONFIG_TOML + "# preexisting\n")
         result = runner.invoke(init_cmd, [], env=_xdg_env(tmp_path))
         assert result.exit_code != 0
         # Original content preserved.
-        assert "preexisting" in Path("thoth.config.toml").read_text()
+        assert "preexisting" in Path("doxa.config.toml").read_text()
 
 
 def test_d6_force_overwrites_visible_project_file(tmp_path: Path) -> None:
-    """D6: `thoth init --force` overwrites an existing ./thoth.config.toml."""
+    """D6: `doxa init --force` overwrites an existing ./doxa.config.toml."""
     runner = CliRunner()
     with runner.isolated_filesystem(temp_dir=tmp_path):
-        Path("thoth.config.toml").write_text(_MIN_CONFIG_TOML + "# preexisting\n")
+        Path("doxa.config.toml").write_text(_MIN_CONFIG_TOML + "# preexisting\n")
         result = runner.invoke(init_cmd, ["--force", "--non-interactive"], env=_xdg_env(tmp_path))
         assert result.exit_code == 0, result.output
         # Pre-existing content was replaced.
-        assert "preexisting" not in Path("thoth.config.toml").read_text()
+        assert "preexisting" not in Path("doxa.config.toml").read_text()
 
 
 def test_d7_user_no_force_refuses_overwrite(tmp_path: Path) -> None:
-    """D7: `thoth init --user` refuses to overwrite the existing user file."""
+    """D7: `doxa init --user` refuses to overwrite the existing user file."""
     runner = CliRunner()
     with runner.isolated_filesystem(temp_dir=tmp_path):
-        target = tmp_path / "xdg" / "thoth" / "thoth.config.toml"
+        target = tmp_path / "xdg" / "doxa" / "doxa.config.toml"
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(_MIN_CONFIG_TOML + "# preexisting\n")
 
@@ -507,10 +507,10 @@ def test_d7_user_no_force_refuses_overwrite(tmp_path: Path) -> None:
 
 
 def test_d8_user_force_overwrites(tmp_path: Path) -> None:
-    """D8: `thoth init --user --force` overwrites the existing user file."""
+    """D8: `doxa init --user --force` overwrites the existing user file."""
     runner = CliRunner()
     with runner.isolated_filesystem(temp_dir=tmp_path):
-        target = tmp_path / "xdg" / "thoth" / "thoth.config.toml"
+        target = tmp_path / "xdg" / "doxa" / "doxa.config.toml"
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(_MIN_CONFIG_TOML + "# preexisting\n")
 
@@ -522,34 +522,34 @@ def test_d8_user_force_overwrites(tmp_path: Path) -> None:
 
 
 def test_d9_hidden_writes_alongside_existing_visible(tmp_path: Path) -> None:
-    """D9: `thoth init --hidden` writes the dotfile even if visible exists.
+    """D9: `doxa init --hidden` writes the dotfile even if visible exists.
 
     `init` does not pre-detect the resulting B3 ambiguity; the next load surfaces it.
     """
     runner = CliRunner()
     with runner.isolated_filesystem(temp_dir=tmp_path):
-        Path("thoth.config.toml").write_text(_MIN_CONFIG_TOML + "# preexisting\n")
+        Path("doxa.config.toml").write_text(_MIN_CONFIG_TOML + "# preexisting\n")
         result = runner.invoke(init_cmd, ["--hidden", "--non-interactive"], env=_xdg_env(tmp_path))
         assert result.exit_code == 0, result.output
-        assert Path(".thoth.config.toml").exists()
+        assert Path(".doxa.config.toml").exists()
         # Visible file untouched.
-        assert "preexisting" in Path("thoth.config.toml").read_text()
+        assert "preexisting" in Path("doxa.config.toml").read_text()
 
 
 def test_d10_hidden_force_overwrites_existing_dotfile(tmp_path: Path) -> None:
-    """D10: `thoth init --hidden --force` overwrites ./.thoth.config.toml."""
+    """D10: `doxa init --hidden --force` overwrites ./.doxa.config.toml."""
     runner = CliRunner()
     with runner.isolated_filesystem(temp_dir=tmp_path):
-        Path(".thoth.config.toml").write_text(_MIN_CONFIG_TOML + "# preexisting\n")
+        Path(".doxa.config.toml").write_text(_MIN_CONFIG_TOML + "# preexisting\n")
         result = runner.invoke(
             init_cmd, ["--hidden", "--force", "--non-interactive"], env=_xdg_env(tmp_path)
         )
         assert result.exit_code == 0, result.output
-        assert "preexisting" not in Path(".thoth.config.toml").read_text()
+        assert "preexisting" not in Path(".doxa.config.toml").read_text()
 
 
 def test_d11_json_envelope_reflects_target(tmp_path: Path) -> None:
-    """D11: `thoth init --json --non-interactive --user` reports the user-tier path."""
+    """D11: `doxa init --json --non-interactive --user` reports the user-tier path."""
     import json as _json
 
     runner = CliRunner()
@@ -561,7 +561,7 @@ def test_d11_json_envelope_reflects_target(tmp_path: Path) -> None:
         )
         assert result.exit_code == 0, result.output
         payload = _json.loads(result.output)
-        target = tmp_path / "xdg" / "thoth" / "thoth.config.toml"
+        target = tmp_path / "xdg" / "doxa" / "doxa.config.toml"
         assert Path(payload["data"]["config_path"]).resolve() == target.resolve()
 
 
@@ -573,7 +573,7 @@ def test_d13_json_no_force_refuses_overwrite_with_error_envelope(
 
     runner = CliRunner()
     with runner.isolated_filesystem(temp_dir=tmp_path):
-        Path("thoth.config.toml").write_text(_MIN_CONFIG_TOML + "# preexisting\n")
+        Path("doxa.config.toml").write_text(_MIN_CONFIG_TOML + "# preexisting\n")
 
         result = runner.invoke(
             init_cmd,
@@ -585,10 +585,10 @@ def test_d13_json_no_force_refuses_overwrite_with_error_envelope(
         assert result.exception is not None
         payload = _json.loads(result.output)
         assert payload["status"] == "error"
-        assert payload["error"]["code"] == "THOTH_ERROR"
+        assert payload["error"]["code"] == "DOXA_ERROR"
         assert "refusing to overwrite existing" in payload["error"]["message"]
         assert "Pass --force" in payload["error"]["message"]
-        assert "preexisting" in Path("thoth.config.toml").read_text()
+        assert "preexisting" in Path("doxa.config.toml").read_text()
 
 
 def test_d14_json_force_overwrites_existing_project_file(tmp_path: Path) -> None:
@@ -597,7 +597,7 @@ def test_d14_json_force_overwrites_existing_project_file(tmp_path: Path) -> None
 
     runner = CliRunner()
     with runner.isolated_filesystem(temp_dir=tmp_path):
-        Path("thoth.config.toml").write_text(_MIN_CONFIG_TOML + "# preexisting\n")
+        Path("doxa.config.toml").write_text(_MIN_CONFIG_TOML + "# preexisting\n")
 
         result = runner.invoke(
             init_cmd,
@@ -609,8 +609,8 @@ def test_d14_json_force_overwrites_existing_project_file(tmp_path: Path) -> None
         payload = _json.loads(result.output)
         assert payload["status"] == "ok"
         assert payload["data"]["created"] is False
-        assert Path(payload["data"]["config_path"]).resolve() == Path("thoth.config.toml").resolve()
-        assert "preexisting" not in Path("thoth.config.toml").read_text()
+        assert Path(payload["data"]["config_path"]).resolve() == Path("doxa.config.toml").resolve()
+        assert "preexisting" not in Path("doxa.config.toml").read_text()
 
 
 # ---------------------------------------------------------------------------
@@ -657,8 +657,8 @@ def _format_hits(hits: list[tuple[Path, int, str]]) -> str:
 
 def test_e1_no_bare_config_toml_in_src_or_tests() -> None:
     """E1: bare `config.toml` literal must not appear outside the legacy detector."""
-    # Match `config.toml` not preceded by `thoth.` (so `thoth.config.toml` is OK).
-    pattern = re.compile(r"(?<!thoth\.)(?<!\.)config\.toml")
+    # Match `config.toml` not preceded by `doxa_research.` (so `doxa.config.toml` is OK).
+    pattern = re.compile(r"(?<!doxa_research\.)(?<!\.)config\.toml")
     hits = _scan_for(pattern)
     assert not hits, (
         "Bare 'config.toml' references found outside the legacy detector / allowlist:\n"
@@ -666,23 +666,23 @@ def test_e1_no_bare_config_toml_in_src_or_tests() -> None:
     )
 
 
-def test_e2_no_legacy_thoth_toml_in_src_or_tests() -> None:
-    """E2: legacy `thoth.toml` literal must not appear outside the legacy detector."""
-    # Match `thoth.toml` NOT immediately preceded by `.config` (so `thoth.config.toml` is OK).
-    pattern = re.compile(r"(?<!\.config\.)thoth\.toml")
+def test_e2_no_legacy_doxa_toml_in_src_or_tests() -> None:
+    """E2: legacy `doxa_research.toml` literal must not appear outside the legacy detector."""
+    # Match `doxa_research.toml` NOT immediately preceded by `.config` (so `doxa.config.toml` is OK).
+    pattern = re.compile(r"(?<!\.config\.)doxa_research\.toml")
     hits = _scan_for(pattern)
     assert not hits, (
-        "Legacy 'thoth.toml' references found outside the legacy detector / allowlist:\n"
+        "Legacy 'doxa_research.toml' references found outside the legacy detector / allowlist:\n"
         + _format_hits(hits)
     )
 
 
-def test_e3_no_dot_thoth_config_dir_in_src_or_tests() -> None:
-    """E3: legacy `.thoth/config` directory form must not appear outside the legacy detector."""
-    pattern = re.compile(r"\.thoth/config")
+def test_e3_no_dot_doxa_config_dir_in_src_or_tests() -> None:
+    """E3: legacy `.doxa_research/config` directory form must not appear outside the legacy detector."""
+    pattern = re.compile(r"\.doxa_research/config")
     hits = _scan_for(pattern)
     assert not hits, (
-        "Legacy '.thoth/config' references found outside the legacy detector / allowlist:\n"
+        "Legacy '.doxa_research/config' references found outside the legacy detector / allowlist:\n"
         + _format_hits(hits)
     )
 

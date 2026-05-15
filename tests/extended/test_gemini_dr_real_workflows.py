@@ -26,7 +26,7 @@ from tests.extended.conftest import (
     assert_no_secret_leaked,
     checkpoint_path,
     payload,
-    run_thoth,
+    run_doxa,
     wait_for_provider_job_id,
 )
 
@@ -55,7 +55,7 @@ def _submit_gemini_background_json(
     if extra_args:
         args.extend(extra_args)
 
-    result, elapsed = run_thoth(args, env, timeout=120)
+    result, elapsed = run_doxa(args, env, timeout=120)
 
     assert result.returncode == 0, result.stderr + result.stdout
     assert result.stdout.lstrip().startswith("{")
@@ -99,7 +99,7 @@ def test_ext_gem_bg_submit_async_persists_job_id(
     assert providers["gemini"].get("status") in GEMINI_BACKGROUND_STATUSES
     assert providers["gemini"].get("job_id") == job_id
 
-    resume_result, resume_elapsed = run_thoth(
+    resume_result, resume_elapsed = run_doxa(
         ["resume", operation_id, "--async", "--json"], env, timeout=120
     )
     assert resume_result.returncode == 0, resume_result.stderr + resume_result.stdout
@@ -123,7 +123,7 @@ def test_ext_gem_bg_submit_async_persists_job_id(
 def test_ext_gem_bg_cancel_synthetic_id_produces_useful_status(
     live_gemini_env: tuple[dict[str, str], Path],
 ) -> None:
-    """EXT-GEM-BG-CANCEL: thoth cancel on a synthetic ID surfaces a useful status.
+    """EXT-GEM-BG-CANCEL: doxa cancel on a synthetic ID surfaces a useful status.
 
     cancel() IS implemented for Gemini DR (P28). This test uses a synthetic local
     checkpoint with a fake job_id to exercise the cancel path without submitting a
@@ -171,7 +171,7 @@ def test_ext_gem_bg_cancel_synthetic_id_produces_useful_status(
         encoding="utf-8",
     )
 
-    cancel_result, cancel_elapsed = run_thoth(["cancel", operation_id, "--json"], env, timeout=45)
+    cancel_result, cancel_elapsed = run_doxa(["cancel", operation_id, "--json"], env, timeout=45)
     assert cancel_result.returncode == 0, cancel_result.stderr + cancel_result.stdout
     assert cancel_elapsed < 45
     assert_no_secret_leaked(cancel_result, env)
@@ -214,7 +214,7 @@ def test_ext_gem_bg_invalid_key_useful_error(
     env, _ = live_gemini_env
     bad_env = env.copy()
     bad_env["GEMINI_API_KEY"] = "invalid-key-live-test"
-    result, _elapsed = run_thoth(
+    result, _elapsed = run_doxa(
         [
             "ask",
             "hi",
@@ -239,16 +239,16 @@ def test_ext_gem_bg_blocking_resume_complete_lifecycle(
 ) -> None:
     """EXT-GEM-BG-LIFECYCLE: full async submit -> resume -> complete cycle.
 
-    Gated by THOTH_EXTENDED_SLOW=1. Submits a Gemini Deep Research job,
-    then calls `thoth resume <op_id>` which exercises GeminiProvider.reconnect()
+    Gated by DOXA_EXTENDED_SLOW=1. Submits a Gemini Deep Research job,
+    then calls `doxa resume <op_id>` which exercises GeminiProvider.reconnect()
     + the runner's polling loop until COMPLETED. Verifies the output file
     contains the answer.
 
     Cost: one Gemini Deep Research background job. Typical completion time is
-    a few minutes. Set THOTH_EXTENDED_SLOW=1 to opt in.
+    a few minutes. Set DOXA_EXTENDED_SLOW=1 to opt in.
     """
-    if os.environ.get("THOTH_EXTENDED_SLOW") != "1":
-        pytest.skip("set THOTH_EXTENDED_SLOW=1 to run the completion lifecycle test")
+    if os.environ.get("DOXA_EXTENDED_SLOW") != "1":
+        pytest.skip("set DOXA_EXTENDED_SLOW=1 to run the completion lifecycle test")
 
     env, state_root = live_gemini_env
     operation_id, _result, _elapsed = _submit_gemini_background_json(
@@ -259,7 +259,7 @@ def test_ext_gem_bg_blocking_resume_complete_lifecycle(
         ),
     )
 
-    resume_result, _resume_elapsed = run_thoth(
+    resume_result, _resume_elapsed = run_doxa(
         ["resume", operation_id, "--quiet"],
         env,
         timeout=1500,

@@ -1,6 +1,6 @@
 from click.testing import CliRunner
 
-from thoth.cli import cli
+from doxa_research.cli import cli
 
 
 def test_pick_model_rejected_on_deep_research():
@@ -28,7 +28,7 @@ def test_pick_model_quick_mode_uses_picker(monkeypatch):
         picked["called"] = True
         return "gpt-4o-mini"
 
-    monkeypatch.setattr("thoth.interactive_picker.pick_model", fake_pick)
+    monkeypatch.setattr("doxa_research.interactive_picker.pick_model", fake_pick)
 
     captured = {}
 
@@ -36,7 +36,7 @@ def test_pick_model_quick_mode_uses_picker(monkeypatch):
         captured.update(kwargs)
         return 0
 
-    monkeypatch.setattr("thoth.run.run_research", fake_run)
+    monkeypatch.setattr("doxa_research.run.run_research", fake_run)
 
     r = CliRunner().invoke(cli, ["--pick-model", "default", "hello world"])
     assert r.exit_code == 0
@@ -51,7 +51,7 @@ def test_pick_model_rejected_with_resume(monkeypatch):
         picked["called"] = True
         return "gpt-4o-mini"
 
-    monkeypatch.setattr("thoth.interactive_picker.pick_model", fake_pick)
+    monkeypatch.setattr("doxa_research.interactive_picker.pick_model", fake_pick)
     r = CliRunner().invoke(cli, ["--pick-model", "resume", "op_test_123"])
     assert r.exit_code != 0
     assert "only applies to research runs" in r.output
@@ -65,7 +65,7 @@ def test_pick_model_rejected_with_interactive(monkeypatch):
         picked["called"] = True
         return "gpt-4o-mini"
 
-    monkeypatch.setattr("thoth.interactive_picker.pick_model", fake_pick)
+    monkeypatch.setattr("doxa_research.interactive_picker.pick_model", fake_pick)
     r = CliRunner().invoke(cli, ["--pick-model", "-i"])
     assert r.exit_code != 0
     assert "only applies to research runs" in r.output
@@ -79,7 +79,7 @@ def test_pick_model_rejected_with_command(monkeypatch):
         picked["called"] = True
         return "gpt-4o-mini"
 
-    monkeypatch.setattr("thoth.interactive_picker.pick_model", fake_pick)
+    monkeypatch.setattr("doxa_research.interactive_picker.pick_model", fake_pick)
     r = CliRunner().invoke(cli, ["--pick-model", "providers", "list"])
     assert r.exit_code != 0
     assert "only applies to research runs" in r.output
@@ -93,7 +93,7 @@ def test_pick_model_rejected_without_prompt(monkeypatch):
         picked["called"] = True
         return "gpt-4o-mini"
 
-    monkeypatch.setattr("thoth.interactive_picker.pick_model", fake_pick)
+    monkeypatch.setattr("doxa_research.interactive_picker.pick_model", fake_pick)
     r = CliRunner().invoke(cli, ["--pick-model"])
     assert r.exit_code != 0
     assert picked["called"] is False
@@ -109,7 +109,7 @@ def test_pick_model_error_does_not_say_mode_none(monkeypatch):
         picked["called"] = True
         return "gpt-4o-mini"
 
-    monkeypatch.setattr("thoth.interactive_picker.pick_model", fake_pick)
+    monkeypatch.setattr("doxa_research.interactive_picker.pick_model", fake_pick)
 
     for argv in (
         ["--pick-model"],

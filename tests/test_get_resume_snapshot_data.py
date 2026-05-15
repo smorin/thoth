@@ -29,14 +29,14 @@ def _write_checkpoint(checkpoint_dir: Path, op, **overrides) -> None:
     (checkpoint_dir / f"{op.id}.json").write_text(json.dumps(payload))
 
 
-def test_get_resume_snapshot_data_returns_none_for_missing_op(isolated_thoth_home, checkpoint_dir):
-    from thoth.run import get_resume_snapshot_data
+def test_get_resume_snapshot_data_returns_none_for_missing_op(isolated_doxa_home, checkpoint_dir):
+    from doxa_research.run import get_resume_snapshot_data
 
     assert get_resume_snapshot_data("not-real") is None
 
 
 def test_snapshot_running_op_returns_status_running(checkpoint_dir):
-    from thoth.run import get_resume_snapshot_data
+    from doxa_research.run import get_resume_snapshot_data
 
     op = make_operation("research-20260427-000000-aaaaaaaaaaaaaaaa", status="running")
     _write_checkpoint(checkpoint_dir, op)
@@ -49,7 +49,7 @@ def test_snapshot_running_op_returns_status_running(checkpoint_dir):
 
 def test_snapshot_recoverable_failure_maps_failed_with_transient(checkpoint_dir):
     """spec §8.5 mapping: status=failed + failure_type!=permanent → recoverable_failure."""
-    from thoth.run import get_resume_snapshot_data
+    from doxa_research.run import get_resume_snapshot_data
 
     op = make_operation(
         "research-20260427-000000-aaaaaaaaaaaaaaaa",
@@ -70,7 +70,7 @@ def test_snapshot_recoverable_failure_maps_failed_with_transient(checkpoint_dir)
 
 
 def test_snapshot_failed_permanent_keeps_failed_status(checkpoint_dir):
-    from thoth.run import get_resume_snapshot_data
+    from doxa_research.run import get_resume_snapshot_data
 
     op = make_operation("research-20260427-000000-aaaaaaaaaaaaaaaa", status="failed")
     _write_checkpoint(
@@ -87,6 +87,6 @@ def test_snapshot_failed_permanent_keeps_failed_status(checkpoint_dir):
 
 
 def test_signature_excludes_as_json():
-    from thoth.run import get_resume_snapshot_data
+    from doxa_research.run import get_resume_snapshot_data
 
     assert "as_json" not in inspect.signature(get_resume_snapshot_data).parameters

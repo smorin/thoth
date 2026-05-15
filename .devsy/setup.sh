@@ -23,7 +23,7 @@ pip install -r requirements.txt
 
 # Make scripts executable
 echo "🔐 Making scripts executable..."
-chmod +x thoth thoth_test 2>/dev/null || true
+chmod +x doxa doxa_test 2>/dev/null || true
 
 # Run basic checks
 echo "✔️  Running basic checks..."

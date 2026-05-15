@@ -1,4 +1,4 @@
-title = "thoth gitleaks config"
+title = "doxa-research gitleaks config"
 
 # Extend the upstream default rules; add allowlists below for documented false positives.
 [extend]

@@ -1,4 +1,4 @@
-"""Build-tooling contract tests — migrated from thoth_test P07-M4-01/02.
+"""Build-tooling contract tests — migrated from doxa_test P07-M4-01/02.
 
 Runs `make -n` and `just --dry-run` to pin the expected targets without
 actually executing the underlying commands.
@@ -41,14 +41,14 @@ def test_make_workflow_targets_removed_and_just_check_is_quality() -> None:
 
     expectations = {
         "check": [
-            "uv run ruff check src/thoth/ --fix",
-            "uv run ty check src/thoth/",
+            "uv run ruff check src/doxa_research/ --fix",
+            "uv run ty check src/doxa_research/",
         ],
         "check-all": [
-            "uv run ruff check src/thoth/ --fix",
-            "uv run ty check src/thoth/",
-            "uv tool run ruff check thoth_test",
-            "uv tool run ty check thoth_test",
+            "uv run ruff check src/doxa_research/ --fix",
+            "uv run ty check src/doxa_research/",
+            "uv tool run ruff check doxa_test",
+            "uv tool run ty check doxa_test",
         ],
     }
     for target, patterns in expectations.items():

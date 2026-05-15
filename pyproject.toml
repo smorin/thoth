@@ -1,6 +1,6 @@
 [project]
-name = "thoth"
-version = "2.5.0"
+name = "doxa-research"
+version = "3.0.0"
 description = "AI-Powered Research Assistant — orchestrates parallel LLM providers for comprehensive research reports"
 readme = "README.md"
 license = "AGPL-3.0-or-later"
@@ -43,17 +43,21 @@ dependencies = [
 ]
 
 [project.scripts]
-thoth = "thoth.__main__:main"
+doxa = "doxa_research.__main__:main"
+doxa-research = "doxa_research.__main__:main"
 
 [project.urls]
-Homepage = "https://github.com/smorin/thoth"
-Repository = "https://github.com/smorin/thoth"
-Changelog = "https://github.com/smorin/thoth/blob/main/CHANGELOG.md"
-"Bug Tracker" = "https://github.com/smorin/thoth/issues"
+Homepage = "https://github.com/smorin/doxa-research"
+Repository = "https://github.com/smorin/doxa-research"
+Changelog = "https://github.com/smorin/doxa-research/blob/main/CHANGELOG.md"
+"Bug Tracker" = "https://github.com/smorin/doxa-research/issues"
 
 [build-system]
 requires = ["uv_build>=0.6,<0.12"]
 build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = "doxa_research"
 
 [dependency-groups]
 dev = [
@@ -71,7 +75,7 @@ testpaths = ["tests"]
 #   - `extended`: model-kind drift watch (P18 Phase I); nightly via
 #     .github/workflows/extended.yml. Run with `just test-extended`.
 #   - `extended_slow`: opt-in provider completion lifecycle checks; run
-#     manually with THOTH_EXTENDED_SLOW=1.
+#     manually with DOXA_EXTENDED_SLOW=1.
 #   - `live_api`: workflow regression suite (P20); weekly via
 #     .github/workflows/live-api.yml. Run with `just test-live-api`.
 markers = [
@@ -121,5 +125,5 @@ line-ending = "auto"
 # automatically by invoking `uvx codespell` with no flag overrides.
 [tool.codespell]
 skip = ".git,.venv,htmlcov,uv.lock,bun.lock,requirements.txt,archive,planning,research,node_modules"
-ignore-words-list = "thoth,perplexity,sonar,pplx,openai,hel"
+ignore-words-list = "doxa,perplexity,sonar,pplx,openai,hel"
 

@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import io
 
-from thoth.progress import should_show_spinner
+from doxa_research.progress import should_show_spinner
 
 
 class _FakeTTY(io.StringIO):

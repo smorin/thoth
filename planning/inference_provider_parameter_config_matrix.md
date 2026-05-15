@@ -4,7 +4,7 @@ Sidecar: [inference_provider_parameter_config_inconsistencies.md](inference_prov
 
 ## Overview
 
-This document is the desired-state contract for Thoth's inference provider parameter configuration. It defines the canonical layers, merge behavior, provider-neutral parameter names, provider-specific translations, and final SDK request shapes. It is not a status report; current gaps, partial behavior, migration work, and undecided policy questions live in the sidecar.
+This document is the desired-state contract for Doxa Research's inference provider parameter configuration. It defines the canonical layers, merge behavior, provider-neutral parameter names, provider-specific translations, and final SDK request shapes. It is not a status report; current gaps, partial behavior, migration work, and undecided policy questions live in the sidecar.
 
 Mental model:
 
@@ -45,7 +45,7 @@ Allowed in `[providers.defaults]` and `[profiles.NAME.providers.defaults]` (L2/L
 |---|---|---|---|---|---|
 | `timeout` | client | OpenAI, Perplexity, Gemini | client timeout | `client.timeout` | Shared client/runtime control. |
 | `model` | common request | OpenAI, Perplexity, Gemini | `model` | `common_request.model` | Lower precedence than mode and runtime model selection. |
-| `kind` | routing | OpenAI, Perplexity, Gemini | Thoth routing; OpenAI `background` | `routing.kind` | Selects immediate/background semantics, not arbitrary provider passthrough. |
+| `kind` | routing | OpenAI, Perplexity, Gemini | Doxa Research routing; OpenAI `background` | `routing.kind` | Selects immediate/background semantics, not arbitrary provider passthrough. |
 | `temperature` | common request | OpenAI, Perplexity, Gemini | provider-specific request key | `common_request.temperature` | Adapter omits for unsupported OpenAI reasoning models. |
 | `top_p` | common request | OpenAI, Perplexity, Gemini | provider-specific request key | `common_request.top_p` | Supported where provider accepts it. |
 | `max_output_tokens` | common request | OpenAI, Perplexity, Gemini | OpenAI/Gemini `max_output_tokens`, Perplexity `max_tokens` | `common_request.max_output_tokens` | Canonical internal token-budget key. |
@@ -63,7 +63,7 @@ Allowed in `[providers.NAME]` and `[profiles.NAME.providers.PROVIDER]` (L3/L5).
 | `base_url` | client | OpenAI, Perplexity | client base URL | `client.base_url` | Provider endpoint override. |
 | `organization` | client | OpenAI | client organization | `client.organization` | OpenAI organization/project-scoping control. |
 | `model` | common request | OpenAI, Perplexity, Gemini | `model` | `common_request.model` | Provider default model before mode/runtime overrides. |
-| `kind` | routing | OpenAI, Perplexity, Gemini | Thoth routing; OpenAI `background` | `routing.kind` | Provider default execution kind before mode/runtime overrides. |
+| `kind` | routing | OpenAI, Perplexity, Gemini | Doxa Research routing; OpenAI `background` | `routing.kind` | Provider default execution kind before mode/runtime overrides. |
 | `temperature` | common request | OpenAI, Perplexity, Gemini | provider-specific request key | `common_request.temperature` | Shared inference default. |
 | `top_p` | common request | OpenAI, Perplexity, Gemini | provider-specific request key | `common_request.top_p` | Shared nucleus-sampling default. |
 | `max_output_tokens` | common request | OpenAI, Perplexity, Gemini | OpenAI/Gemini `max_output_tokens`, Perplexity `max_tokens` | `common_request.max_output_tokens` | Canonical token-budget default. |
@@ -90,7 +90,7 @@ Allowed as fixed generic keys in `[modes.NAME]` and `[profiles.PROFILE.modes.NAM
 | Internal key | Category | Providers | Provider key path | Normalized section | Notes |
 |---|---|---|---|---|---|
 | `model` | common request | OpenAI, Perplexity, Gemini | `model` | `common_request.model` | Common mode model. |
-| `kind` | routing | OpenAI, Perplexity, Gemini | Thoth routing; OpenAI `background` | `routing.kind` | Common mode execution kind. |
+| `kind` | routing | OpenAI, Perplexity, Gemini | Doxa Research routing; OpenAI `background` | `routing.kind` | Common mode execution kind. |
 | `temperature` | common request | OpenAI, Perplexity, Gemini | provider-specific request key | `common_request.temperature` | Fixed common set, not arbitrary passthrough. |
 | `top_p` | common request | OpenAI, Perplexity, Gemini | provider-specific request key | `common_request.top_p` | Fixed common set, not arbitrary passthrough. |
 | `max_output_tokens` | common request | OpenAI, Perplexity, Gemini | OpenAI/Gemini `max_output_tokens`, Perplexity `max_tokens` | `common_request.max_output_tokens` | Canonical internal key. |
@@ -105,7 +105,7 @@ Allowed in `[modes.NAME.PROVIDER]` and `[profiles.PROFILE.modes.NAME.PROVIDER]` 
 | Internal key | Category | Providers | Provider key path | Normalized section | Notes |
 |---|---|---|---|---|---|
 | `model` | provider request | OpenAI, Perplexity, Gemini | `model` | `provider_request.model` | Overrides mode common model for this provider namespace. |
-| `kind` | routing | OpenAI, Perplexity, Gemini | Thoth routing; OpenAI `background` | `routing.kind` | Provider-specific mode kind. |
+| `kind` | routing | OpenAI, Perplexity, Gemini | Doxa Research routing; OpenAI `background` | `routing.kind` | Provider-specific mode kind. |
 | `temperature` | common request | OpenAI, Perplexity, Gemini | provider-specific request key | `common_request.temperature` | Provider namespace wins over mode common. |
 | `top_p` | common request | OpenAI, Perplexity, Gemini | provider-specific request key | `common_request.top_p` | Provider namespace wins over mode common. |
 | `max_output_tokens` | common request | OpenAI, Perplexity, Gemini | OpenAI/Gemini `max_output_tokens`, Perplexity `max_tokens` | `common_request.max_output_tokens` | Provider namespace wins over mode common. |
@@ -137,7 +137,7 @@ defaults -> user -> project -> profile -> env -> cli
 Active profile selection is:
 
 ```text
---profile -> THOTH_PROFILE -> general.default_profile
+--profile -> DOXA_PROFILE -> general.default_profile
 ```
 
 Provider construction follows one shared path:
@@ -165,9 +165,9 @@ Provider-specific exceptions are allowed only when named in the parameter matrix
 
 ### Example A - Minimal Provider Defaults
 
-Layers involved: L0, L2, and L3. No mode parameter layer participates. This is a provider-normalization example, not a runnable `thoth ask` example; runnable CLI execution also performs mode resolution and provider selection.
+Layers involved: L0, L2, and L3. No mode parameter layer participates. This is a provider-normalization example, not a runnable `doxa-research ask` example; runnable CLI execution also performs mode resolution and provider selection.
 
-User config, `~/.config/thoth/thoth.config.toml`:
+User config, `~/.config/doxa-research/doxa-research.config.toml`:
 
 ```toml
 version = "2.0"
@@ -249,7 +249,7 @@ Final normalized provider request:
 
 Layers involved: L0, L3, L6, and L7. The common `temperature` can be translated for any provider that supports it; Gemini-specific thinking and tools live under the Gemini namespace.
 
-User config, `~/.config/thoth/thoth.config.toml`:
+User config, `~/.config/doxa-research/doxa-research.config.toml`:
 
 ```toml
 version = "2.0"
@@ -258,7 +258,7 @@ version = "2.0"
 api_key = "${GEMINI_API_KEY}"
 ```
 
-Project config, `./thoth.config.toml`:
+Project config, `./doxa.config.toml`:
 
 ```toml
 version = "2.0"
@@ -283,7 +283,7 @@ No profile config:
 Command line:
 
 ```bash
-thoth ask --mode fast_gemini "Summarize the Python packaging changes."
+doxa ask --mode fast_gemini "Summarize the Python packaging changes."
 ```
 
 Trace:
@@ -335,7 +335,7 @@ Final normalized provider request:
 
 Layers involved: L0, L2, L3, L4, L5, L6, L7, L8, L9, and L10. The active profile overrides shared provider defaults, overrides the root Perplexity API key, adjusts common mode params, adds provider-specific search controls, and the CLI overrides the model.
 
-User config, `~/.config/thoth/thoth.config.toml`:
+User config, `~/.config/doxa-research/doxa-research.config.toml`:
 
 ```toml
 version = "2.0"
@@ -363,7 +363,7 @@ search_domain_filter = ["docs.perplexity.ai", "platform.openai.com"]
 search_context_size = "high"
 ```
 
-Project config, `./thoth.config.toml`:
+Project config, `./doxa.config.toml`:
 
 ```toml
 version = "2.0"
@@ -404,7 +404,7 @@ search_context_size = "high"
 Command line:
 
 ```bash
-thoth --profile work ask --mode focused_research --provider perplexity --model sonar-pro "Compare current SDK parameter names."
+doxa --profile work ask --mode focused_research --provider perplexity --model sonar-pro "Compare current SDK parameter names."
 ```
 
 Trace:
@@ -461,7 +461,7 @@ Final normalized provider request:
 
 ## Parameter Matrix
 
-This table is Thoth's desired internal parameter surface. It is not a raw dump of every vendor option. Provider columns contain the native request key path the adapter should emit. `-` means unsupported by that provider surface. Key paths use the Python SDK shape when Thoth uses an SDK; REST-only names are called out in notes.
+This table is Doxa Research's desired internal parameter surface. It is not a raw dump of every vendor option. Provider columns contain the native request key path the adapter should emit. `-` means unsupported by that provider surface. Key paths use the Python SDK shape when Doxa Research uses an SDK; REST-only names are called out in notes.
 
 Canonical provider surfaces for this matrix:
 
@@ -474,7 +474,7 @@ Canonical provider surfaces for this matrix:
 | Internal parameter | OpenAI key path | Perplexity key path | Gemini key path | Notes |
 |---|---|---|---|---|
 | `model` | `model` | `model`; `request.model` | `model` | Gemini `model` is a Python SDK kwarg and REST path parameter (`models/{model}`), not `GenerateContentConfig`. Perplexity `request.model` is the async wrapper path. Runtime `--model` overrides before adapter translation. |
-| `prompt` | `input` | `messages` | `contents` | Thoth builds this from user prompt plus file/context inputs. |
+| `prompt` | `input` | `messages` | `contents` | Doxa Research builds this from user prompt plus file/context inputs. |
 | `system_prompt` | `instructions` | `messages[].role`; `request.messages[].role` | `config.system_instruction` | OpenAI `instructions` is the desired canonical encoding; current code emits an equivalent developer-role input message. Perplexity `request.*` paths are async wrapper paths. Gemini REST spelling is `systemInstruction` / `system_instruction` depending client surface. |
 | `temperature` | `temperature` | `temperature`; `request.temperature` | `config.temperature` | Perplexity `request.*` paths are async wrapper paths. Adapter omits for OpenAI models that reject it. |
 | `top_p` | `top_p` | `top_p`; `request.top_p` | `config.top_p` | Perplexity `request.*` paths are async wrapper paths. Common all-provider/default candidate. |
@@ -509,7 +509,7 @@ Canonical provider surfaces for this matrix:
 | `return_images` | - | `return_images` | - | Perplexity-only. |
 | `return_related_questions` | - | `return_related_questions` | - | Perplexity-only. |
 | `enable_search_classifier` | - | `enable_search_classifier` | - | Perplexity-only. |
-| `disable_search` | - | `disable_search` | - | Perplexity-only; inverse of Thoth `web_search`. |
+| `disable_search` | - | `disable_search` | - | Perplexity-only; inverse of Doxa Research `web_search`. |
 | `safety_settings` | - | - | `config.safety_settings`; `safetySettings` | Gemini Python SDK sets this through config; second spelling is REST JSON. |
 | `logprobs` | `include`; output `logprobs` | - | `config.response_logprobs` | OpenAI uses include/output fields; Gemini also needs `config.logprobs` for top count. |
 | `top_logprobs` | `top_logprobs` | - | `config.logprobs` | OpenAI and Gemini range is provider-defined. |
@@ -532,12 +532,12 @@ These are not generic inference payload keys. They are included here because the
 |---|---|---|---|---|
 | `api_key` | `api_key`; `Authorization` | `api_key`; `Authorization` | `api_key`; `x-goog-api-key` | Resolved by CLI, env, then config. |
 | `timeout` | `timeout` | `timeout` | `timeout` | Client/runtime control, not model payload. |
-| `provider` | - | - | - | Thoth routing control. |
-| `providers` | - | - | - | Thoth multi-provider routing control. |
-| `kind` | `background` | - | - | Thoth routing control; OpenAI also has a `background` request key. Perplexity/Gemini use endpoint or mode selection rather than a `kind` key. |
+| `provider` | - | - | - | Doxa Research routing control. |
+| `providers` | - | - | - | Doxa Research multi-provider routing control. |
+| `kind` | `background` | - | - | Doxa Research routing control; OpenAI also has a `background` request key. Perplexity/Gemini use endpoint or mode selection rather than a `kind` key. |
 | `background` | `background` | `/v1/async/sonar` endpoint | background endpoint/agent when supported | OpenAI has a request key; Perplexity uses a different endpoint. |
 | `stream` | `responses.stream()` | `stream` | `models.generate_content_stream()` | Runtime execution control. Only Perplexity Sonar exposes it as a request key. |
-| `system_prompt` | see request table | see request table | see request table | Listed here because it is assembled by Thoth, not blindly forwarded. |
+| `system_prompt` | see request table | see request table | see request table | Listed here because it is assembled by Doxa Research, not blindly forwarded. |
 
 ## Per-Parameter Detail
 
@@ -583,7 +583,7 @@ Number of candidate responses. Gemini maps this to `candidate_count`. Other prov
 
 ### `stream`
 
-Thoth run-control parameter. It chooses streaming vs one-shot execution and may map to a provider SDK streaming call or `stream=true` depending provider path.
+Doxa Research run-control parameter. It chooses streaming vs one-shot execution and may map to a provider SDK streaming call or `stream=true` depending provider path.
 
 ### `response_format`
 

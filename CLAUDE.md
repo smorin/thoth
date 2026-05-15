@@ -5,7 +5,7 @@
 ## Fast Iteration Loop
 
 The pre-commit hook runs ruff + ty + bandit + gitleaks + codespell + the full
-`./thoth_test` integration suite (~60s) on every staged `.py` change. During
+`./doxa_test` integration suite (~60s) on every staged `.py` change. During
 rapid iteration, **do not commit between edits just to trigger checks** —
 run targeted tools directly and commit once when it's actually done.
 
@@ -16,7 +16,7 @@ Pick the narrowest feedback that can detect your change's problem, then widen:
 1. **Inner (1-5s)** — rerun the ONE test you're iterating on:
    - Pytest single test: `uv run pytest tests/test_foo.py::test_bar -x -v`
    - Pytest keyword: `uv run pytest tests/ -k "cancelled" -x`
-   - thoth_test by ID: `./thoth_test -r -t M8T-03 -v`
+   - doxa_test by ID: `./doxa_test -r -t M8T-03 -v`
      (`-t` does substring match on test_id and description)
 2. **Module (5-20s)** — rerun the file: `uv run pytest tests/test_foo.py -v`
 3. **Lint/type only (~5s)** — `just check` (skips tests entirely)
@@ -28,47 +28,47 @@ Pick the narrowest feedback that can detect your change's problem, then widen:
 Both runners print IDs on failure:
 
 - **pytest** prints `tests/test_foo.py::test_bar FAILED` — copy the `::`-path.
-- **thoth_test** prints a "Failed Test Details" block with `Test M8T-03:` headers
+- **doxa_test** prints a "Failed Test Details" block with `Test M8T-03:` headers
   and a "To rerun failed tests:" hint at the end of the run.
 
-When a pre-commit hook fails on `./thoth_test`, use quiet mode to get just
+When a pre-commit hook fails on `./doxa_test`, use quiet mode to get just
 the fenced failure blocks (no 64-row noise table):
 
 ```bash
-./thoth_test -r --provider mock --skip-interactive -q
+./doxa_test -r --provider mock --skip-interactive -q
 ```
 
 To rerun only what just failed:
 
 ```bash
-./thoth_test -r --last-failed -q
+./doxa_test -r --last-failed -q
 ```
 
 To pick a specific test by exact ID:
 
 ```bash
-./thoth_test -r --id M8T-03 -v
+./doxa_test -r --id M8T-03 -v
 ```
 
 ### Discovering tests without running them
 
-- TSV list: `./thoth_test --list`
-- JSON list: `./thoth_test --list-json`
-- Preview a filter: `./thoth_test --list --provider mock`
-- Machine-readable run report is always at `.thoth_test_cache/last_run.json`
+- TSV list: `./doxa_test --list`
+- JSON list: `./doxa_test --list-json`
+- Preview a filter: `./doxa_test --list --provider mock`
+- Machine-readable run report is always at `.doxa_test_cache/last_run.json`
   (schema_version 1). Use `--report-json PATH` to also write a copy elsewhere.
 
 ### Flaky-test retry policy
 
-Network-dependent thoth_test cases (invalid/missing API-key variants) can
+Network-dependent doxa_test cases (invalid/missing API-key variants) can
 time out at 10s on slow connections and report `exit code -1`. If a single
 such test fails on first run, rerun JUST that one:
 
 ```bash
-./thoth_test -r -t M8T-03
+./doxa_test -r -t M8T-03
 ```
 
-For flaky network tests, prefer `./thoth_test -r --last-failed -q` over
+For flaky network tests, prefer `./doxa_test -r --last-failed -q` over
 re-running the full suite.
 
 Two consecutive failures of the same test = real bug. One failure = noise.
@@ -112,7 +112,7 @@ uv run ruff check src/ tests/
 uv run ruff format --check src/ tests/
 uv run ty check src/
 uv run pytest -q
-./thoth_test -r --skip-interactive -q
+./doxa_test -r --skip-interactive -q
 ```
 
 …or equivalently, do a normal `git commit` (no `LEFTHOOK=0`) which
@@ -123,7 +123,7 @@ runs all of the above via lefthook.
 This is the one-shot gate to run right before committing — NOT between edits.
 For iteration, see "Fast Iteration Loop" above.
 
-1. **Main Executable Verification** (thoth):
+1. **Main Executable Verification** (doxa-research):
    ```bash
    make env-check  # Verify bootstrap dependencies are installed
    just fix        # Auto-fix any issues found
@@ -132,10 +132,10 @@ For iteration, see "Fast Iteration Loop" above.
 
 2. **Run Tests**:
    ```bash
-   ./thoth_test -r  # Run the test suite to ensure functionality
+   ./doxa_test -r  # Run the test suite to ensure functionality
    ```
 
-3. **Test Suite Verification** (thoth_test):
+3. **Test Suite Verification** (doxa_test):
    ```bash
    just test-fix        # Auto-fix any issues in test suite
    just test-lint       # Run lint on test suite
@@ -154,7 +154,7 @@ For iteration, see "Fast Iteration Loop" above.
 
 When a test fails:
 
-1. **Copy the test ID** from the failure output (both pytest and thoth_test
+1. **Copy the test ID** from the failure output (both pytest and doxa_test
    print them).
 2. **Rerun ONLY that test** via the inner-loop command above. Do NOT rerun
    the full suite.
@@ -164,7 +164,7 @@ When a test fails:
 6. **Only then** run the full gate once before committing.
 
 Do not re-run the 8-step verification (`make env-check` → `just fix` →
-`just check` → `./thoth_test` → `just test-fix` → `just test-lint` →
+`just check` → `./doxa_test` → `just test-fix` → `just test-lint` →
 `just test-typecheck`) between edits. That's ~90s per cycle. Run it once
 at the end.
 
@@ -199,20 +199,20 @@ Tests (weekly)"`.
 
 ### Versioning Format
 Planning documents follow this versioning format:
-- **PRD Documents**: `thoth.prd.vXX.md` (e.g., `thoth.prd.v22.md`)
-- **Plan Documents**: `thoth.plan.vX.md` (e.g., `thoth.plan.v5.md`)
+- **PRD Documents**: `doxa-research.prd.vXX.md` (e.g., `doxa-research.prd.v22.md`)
+- **Plan Documents**: `doxa-research.plan.vX.md` (e.g., `doxa-research.plan.v5.md`)
 - **Other Documents**: `[name].vX.md` (e.g., `temp.v5.md`)
 
 ### Version Detection and Incrementing
 1. **Finding Latest Version**:
    - List files in `planning/` directory
-   - Use regex pattern: `thoth\.(prd\.)?v([0-9]+)\.md`
+   - Use regex pattern: `doxa-research\.(prd\.)?v([0-9]+)\.md`
    - Extract version numbers and find the highest
 
 2. **Creating New Version**:
    - Increment the highest version number by 1
-   - For PRDs: `thoth.prd.v[N+1].md`
-   - For Plans: `thoth.plan.v[N+1].md`
+   - For PRDs: `doxa-research.prd.v[N+1].md`
+   - For Plans: `doxa-research.plan.v[N+1].md`
 
 ### Archiving Process
 When creating a new version:
@@ -220,12 +220,12 @@ When creating a new version:
 2. After completing updates to the new version:
    - Move the old version to `archive/` directory using git commands:
    ```bash
-   git mv planning/thoth.prd.v22.md archive/
-   git mv planning/thoth.plan.v5.md archive/
+   git mv planning/doxa-research.prd.v22.md archive/
+   git mv planning/doxa-research.plan.v5.md archive/
    ```
 3. Commit both the move and the new file:
    ```bash
-   git add planning/thoth.prd.v23.md
+   git add planning/doxa-research.prd.v23.md
    git commit -m "Archive v22 PRD and create v23 PRD"
    ```
 
@@ -244,7 +244,7 @@ When creating a new version:
 changes — release-please treats those as `MAJOR` bumps.
 
 **Releases are automated by release-please.** Do not hand-edit
-`pyproject.toml`, `src/thoth/__init__.py`, `CHANGELOG.md`, or
+`pyproject.toml`, `src/doxa_research/__init__.py`, `CHANGELOG.md`, or
 `.release-please-manifest.json` versions. Land conventional commits on
 `main`; `release-please.yml` opens a Release PR; merging it tags `vX.Y.Z`
 and triggers `publish.yml` (TestPyPI → PyPI). See `RELEASE.md`.

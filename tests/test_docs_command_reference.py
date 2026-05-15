@@ -20,7 +20,7 @@ def _section(text: str, heading: str) -> str:
 
 
 def test_readme_main_command_reference_lists_all_registered_top_level_commands() -> None:
-    from thoth.cli import cli
+    from doxa_research.cli import cli
 
     text = README.read_text(encoding="utf-8")
     section = _section(text, "### Main Commands")

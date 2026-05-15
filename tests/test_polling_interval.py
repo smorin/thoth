@@ -1,8 +1,8 @@
-"""Polling-interval scheduler tests — migrated from thoth_test BUG-03-01/02.
+"""Polling-interval scheduler tests — migrated from doxa_test BUG-03-01/02.
 
 These tests exercise the jitter/poll-interval math inside
-`thoth.run._execute_research` by stubbing `thoth.run.asyncio` (for
-`get_running_loop`/`sleep`) and `thoth.run.random` (for `uniform`) via
+`doxa_research.run._execute_research` by stubbing `doxa_research.run.asyncio` (for
+`get_running_loop`/`sleep`) and `doxa_research.run.random` (for `uniform`) via
 `monkeypatch.setattr`, which is reversible and xdist-safe.
 """
 
@@ -16,8 +16,8 @@ from typing import Any, cast
 
 import pytest
 
+from doxa_research.__main__ import OperationStatus, _execute_research
 from tests._fixture_helpers import FakeLoop, MockSeqProvider
-from thoth.__main__ import OperationStatus, _execute_research
 
 
 async def _noop_save(op: object) -> None:
@@ -76,9 +76,9 @@ def test_negative_jitter_does_not_truncate_two_second_interval(
     """BUG-03-01: Negative jitter must not truncate a 2s interval down to a 1s poll."""
     fake_loop = FakeLoop()
     provider = MockSeqProvider(fake_loop)
-    monkeypatch.setattr("thoth.run.asyncio", _build_asyncio_stub(fake_loop))
+    monkeypatch.setattr("doxa_research.run.asyncio", _build_asyncio_stub(fake_loop))
     monkeypatch.setattr(
-        "thoth.run.random",
+        "doxa_research.run.random",
         types.SimpleNamespace(uniform=lambda _a, _b: -0.10),
     )
 
@@ -94,9 +94,9 @@ def test_sub_second_poll_interval_is_honored(monkeypatch: pytest.MonkeyPatch) ->
     """BUG-03-02: Sub-second poll intervals must be honored instead of rounding up to 1s."""
     fake_loop = FakeLoop()
     provider = MockSeqProvider(fake_loop)
-    monkeypatch.setattr("thoth.run.asyncio", _build_asyncio_stub(fake_loop))
+    monkeypatch.setattr("doxa_research.run.asyncio", _build_asyncio_stub(fake_loop))
     monkeypatch.setattr(
-        "thoth.run.random",
+        "doxa_research.run.random",
         types.SimpleNamespace(uniform=lambda _a, _b: 0.0),
     )
 

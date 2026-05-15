@@ -22,9 +22,9 @@ jobs:
           python-version: "3.11"
           enable-cache: true
       - name: ruff format check
-        run: uv run ruff format --check src/thoth/
+        run: uv run ruff format --check src/doxa_research/
       - name: ruff lint
-        run: uv run ruff check src/thoth/
+        run: uv run ruff check src/doxa_research/
 
   typecheck:
     name: Typecheck
@@ -36,7 +36,7 @@ jobs:
           python-version: "3.11"
           enable-cache: true
       - name: ty check
-        run: uv run ty check src/thoth/
+        run: uv run ty check src/doxa_research/
 
   hygiene:
     name: Hygiene (yamllint, codespell, bandit, files)
@@ -112,4 +112,4 @@ jobs:
       - name: Run tests (mock provider only)
         env:
           MOCK_API_KEY: ci-test-key
-        run: ./thoth_test -r --provider mock --skip-interactive -j auto
+        run: ./doxa_test -r --provider mock --skip-interactive -j auto

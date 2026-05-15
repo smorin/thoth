@@ -1,6 +1,6 @@
 # JSON output (`--json`) — envelope contract
 
-Every data/action admin command in thoth supports `--json` for scripted
+Every data/action admin command in doxa-research supports `--json` for scripted
 consumption. The output is a single JSON object on stdout; the exit code
 indicates success (0) or failure (non-zero).
 
@@ -158,7 +158,7 @@ return an operation ID without blocking.
 `recoverable_failure` is an envelope-data state mapped from on-disk
 `status="failed"` + `failure_type` not equal to `"permanent"`. The
 COMMAND succeeded (`status:"ok"`); `data.status` describes the
-operation. To advance/retry, run `thoth resume OP_ID` WITHOUT `--json`.
+operation. To advance/retry, run `doxa-research resume OP_ID` WITHOUT `--json`.
 
 **`cancel OP_ID --json`:**
 
@@ -187,12 +187,12 @@ Tests assert these complete within 5 seconds.
 
 The completion `--install` writes a fenced block:
 
-    # >>> thoth completion >>>
-    eval "$(_THOTH_COMPLETE=bash_source thoth)"
-    # <<< thoth completion <<<
+    # >>> doxa-research completion >>>
+    eval "$(_DOXA_COMPLETE=bash_source doxa-research)"
+    # <<< doxa-research completion <<<
 
 Remove with one sed invocation:
 
-    sed -i '/# >>> thoth completion >>>/,/# <<< thoth completion <<</d' ~/.bashrc
+    sed -i '/# >>> doxa-research completion >>>/,/# <<< doxa-research completion <<</d' ~/.bashrc
 
 A real `--uninstall` flag is a future PR.

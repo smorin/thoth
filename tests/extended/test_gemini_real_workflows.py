@@ -20,7 +20,7 @@ import pytest
 
 from tests.extended.conftest import (
     assert_no_secret_leaked,
-    run_thoth,
+    run_doxa,
 )
 
 pytestmark = [pytest.mark.live_api, pytest.mark.provider_gemini]
@@ -31,7 +31,7 @@ def test_ext_gem_imm_quick_mode_emits_grounded_answer(
 ) -> None:
     """Live: --provider gemini --mode gemini_quick can produce grounded text + sources."""
     env, _ = live_gemini_env
-    result, elapsed = run_thoth(
+    result, elapsed = run_doxa(
         [
             "ask",
             "Use Google Search and cite sources: what is the current Gemini API documentation page about grounding with Google Search?",
@@ -58,7 +58,7 @@ def test_ext_gem_imm_explicit_model_passthrough(
 ) -> None:
     """Live: --provider gemini --model gemini-2.5-flash-lite runs without local validation."""
     env, _ = live_gemini_env
-    result, elapsed = run_thoth(
+    result, elapsed = run_doxa(
         [
             "ask",
             "Reply in one short sentence.",
@@ -81,7 +81,7 @@ def test_ext_gem_imm_reasoning_mode_emits_reasoning_section(
 ) -> None:
     """Live: --mode gemini_reasoning surfaces a ## Reasoning section."""
     env, _ = live_gemini_env
-    result, elapsed = run_thoth(
+    result, elapsed = run_doxa(
         [
             "ask",
             "Reply in one short sentence about why the sky is blue.",
@@ -127,7 +127,7 @@ def test_ext_gem_imm_api_key_flag_accepted(
         "--provider",
         "gemini",
     ]
-    result, _elapsed = run_thoth(args, env, timeout=120)
+    result, _elapsed = run_doxa(args, env, timeout=120)
 
     assert result.returncode == 0, result.stderr + result.stdout
     assert_no_secret_leaked(result, env)
@@ -142,7 +142,7 @@ def test_ext_gem_imm_tee_writes_stdout_and_file(
     env, _ = live_gemini_env
     target = tmp_path / "gemini-stream-tee.md"
 
-    result, elapsed = run_thoth(
+    result, elapsed = run_doxa(
         [
             "ask",
             "Reply in one short sentence confirming live tee works.",

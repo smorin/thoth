@@ -16,7 +16,7 @@ NON_BLOCKING_TIMEOUT_SECONDS = 10.0
 
 @pytest.fixture
 def cli():
-    from thoth.cli import cli as _cli
+    from doxa_research.cli import cli as _cli
 
     return _cli
 
@@ -66,7 +66,7 @@ def test_resume_json_uses_snapshot_path_without_polling(cli, checkpoint_dir, mon
     def fail_resume_operation(*_args, **_kwargs):
         raise AssertionError("resume --json must not call resume_operation")
 
-    monkeypatch.setattr("thoth.run.resume_operation", fail_resume_operation)
+    monkeypatch.setattr("doxa_research.run.resume_operation", fail_resume_operation)
 
     result = CliRunner().invoke(cli, ["resume", op.id, "--json"], catch_exceptions=False)
 
@@ -95,9 +95,9 @@ def test_resume_json_recoverable_failure_returns_status_ok(cli, checkpoint_dir):
     assert payload["data"]["status"] == "recoverable_failure"
 
 
-def test_ask_json_background_mode_returns_within_10s(cli, isolated_thoth_home, monkeypatch):
+def test_ask_json_background_mode_returns_within_10s(cli, isolated_doxa_home, monkeypatch):
     """ask --json in background mode auto-asyncs and returns op-id envelope."""
-    monkeypatch.setenv("THOTH_TEST_MODE", "1")
+    monkeypatch.setenv("DOXA_TEST_MODE", "1")
 
     runner = CliRunner()
     start = time.monotonic()

@@ -1,7 +1,7 @@
 # Plan ↔ PRD Inconsistency Audit
 
-**Plan audited:** `planning/thoth.plan.v7.md` (P07 – Fix Async Submission, Perplexity Readiness, Interactive Status, Verification Workflow)
-**PRD audited:** `planning/thoth.prd.v24.md` (Thoth v2.5 / target v2.6, Document Version 26.0)
+**Plan audited:** `planning/doxa-research.plan.v7.md` (P07 – Fix Async Submission, Perplexity Readiness, Interactive Status, Verification Workflow)
+**PRD audited:** `planning/doxa-research.prd.v24.md` (Doxa Research v2.5 / target v2.6, Document Version 26.0)
 **Audit date:** 2026-04-16
 
 Each inconsistency lists:
@@ -14,11 +14,11 @@ Each inconsistency lists:
 
 ## INC-001: Perplexity Availability – "Ready" vs "Not Implemented"
 
-**Plan ref** – `thoth.plan.v7.md` lines 13, 39–57:
+**Plan ref** – `doxa-research.plan.v7.md` lines 13, 39–57:
 - Non-goal: "Implementing the full Perplexity provider."
 - M2 explicitly treats Perplexity as **not implemented**; requires `providers -- --list` to stop showing Perplexity as `✓ Ready`, and a direct `--provider perplexity` call to raise a clear unsupported error.
 
-**PRD ref** – `thoth.prd.v24.md`:
+**PRD ref** – `doxa-research.prd.v24.md`:
 - Line 108 (Core Value Propositions): "Multi-provider intelligence: Automatic parallel execution of OpenAI and Perplexity"
 - Line 133–134, 1388: Default multi-provider execution uses OpenAI + Perplexity
 - Lines 362–368 (F-93–F-99): seven "Must" Perplexity functional requirements
@@ -37,10 +37,10 @@ Each inconsistency lists:
 
 ## INC-002: Default Providers Copy vs. Single-Provider Reality
 
-**Plan ref** – `thoth.plan.v7.md` line 13 (non-goal) and M2 acceptance (lines 53–56):
-- After the fix, Perplexity is not usable; by implication, the default `thoth "prompt"` path cannot dual-run OpenAI + Perplexity.
+**Plan ref** – `doxa-research.plan.v7.md` line 13 (non-goal) and M2 acceptance (lines 53–56):
+- After the fix, Perplexity is not usable; by implication, the default `doxa-research "prompt"` path cannot dual-run OpenAI + Perplexity.
 
-**PRD ref** – `thoth.prd.v24.md`:
+**PRD ref** – `doxa-research.prd.v24.md`:
 - Line 103: "just give it a prompt and get comprehensive research results"
 - Line 108: "Automatic parallel execution of OpenAI and Perplexity"
 - Line 225 (F-15): "Dual-provider execution for deep_research mode by default"
@@ -59,11 +59,11 @@ Each inconsistency lists:
 
 ## INC-003: `make check` Semantics – Env Check vs. Lint/Typecheck
 
-**Plan ref** – `thoth.plan.v7.md` lines 88–92, 94–98:
+**Plan ref** – `doxa-research.plan.v7.md` lines 88–92, 94–98:
 - Adds/redefines `make check` so it runs the documented main-executable lint/typecheck.
 - Line 92: suggests moving current dependency check to `make env-check`.
 
-**PRD ref** – `thoth.prd.v24.md` line 451 (F-152):
+**PRD ref** – `doxa-research.prd.v24.md` line 451 (F-152):
 - "Separate Makefile targets for main executable (lint, format, typecheck, check, fix)" – marked ✓ Implemented.
 
 **Project CLAUDE.md** (external, project-level instructions shown in system context):
@@ -84,18 +84,18 @@ Each inconsistency lists:
 
 ## INC-004: Verification Workflow Commands – Plan vs. CLAUDE.md
 
-**Plan ref** – `thoth.plan.v7.md` lines 144–151 (Verification Plan):
-- `make check` → `make fix` → `./thoth_test -r` → `make test-check` → `make test-fix` → re-run.
+**Plan ref** – `doxa-research.plan.v7.md` lines 144–151 (Verification Plan):
+- `make check` → `make fix` → `./doxa_test -r` → `make test-check` → `make test-fix` → re-run.
 
 **Project CLAUDE.md** (Code Quality Assurance Workflow):
-- `make env-check` → `just fix` → `just check` → `./thoth_test` → `just test-fix` → `just test-lint` → `just test-typecheck`.
+- `make env-check` → `just fix` → `just check` → `./doxa_test` → `just test-fix` → `just test-lint` → `just test-typecheck`.
 
-**PRD ref** – `thoth.prd.v24.md` F-152–F-154 (lines 451–453) only list required targets, no workflow ordering.
+**PRD ref** – `doxa-research.prd.v24.md` F-152–F-154 (lines 451–453) only list required targets, no workflow ordering.
 
 **Reason:** Plan's verification recipe calls `make`-wrapped quality commands; CLAUDE.md uses `just` directly. Using `make` as a thin wrapper around `just` adds an indirection that hides the real tooling and invites drift.
 
 **Resolution options:**
-1. Remove every documented use of `make` as a thin wrapper. Rewrite plan §"Verification Plan" to call `just` directly, mirroring CLAUDE.md: `make env-check` → `just fix` → `just check` → `./thoth_test -r` → `just test-fix` → `just test-lint` → `just test-typecheck`. Delete plan M4 Makefile-target work except for confirming `env-check` behavior.
+1. Remove every documented use of `make` as a thin wrapper. Rewrite plan §"Verification Plan" to call `just` directly, mirroring CLAUDE.md: `make env-check` → `just fix` → `just check` → `./doxa_test -r` → `just test-fix` → `just test-lint` → `just test-typecheck`. Delete plan M4 Makefile-target work except for confirming `env-check` behavior.
 2. Keep `make` wrappers and update CLAUDE.md to use them.
 
 **Recommendation:** Option 1.
@@ -106,10 +106,10 @@ Each inconsistency lists:
 
 ## INC-005: Plan Missing Venv & `-all` Makefile Targets Promised in PRD
 
-**Plan ref** – `thoth.plan.v7.md` lines 88–89:
+**Plan ref** – `doxa-research.plan.v7.md` lines 88–89:
 - Lists only `check`, `fix`, `test-check`, `test-fix` for M4.
 
-**PRD ref** – `thoth.prd.v24.md`:
+**PRD ref** – `doxa-research.prd.v24.md`:
 - Line 453 (F-154): "Combined Makefile targets for full codebase (lint-all, format-all, check-all, fix-all)" – Must, ✓ Implemented
 - Lines 459–463 (F-160–F-163): `venv`, `venv-install`, `venv-sync`, `venv-clean` – Must, ✓ Implemented
 - Lines 464–465 (F-164–F-165): UV export integration, process substitution – Must, ✓ Implemented
@@ -128,11 +128,11 @@ Each inconsistency lists:
 
 ## INC-006: Plan Uses No Test IDs; PRD Demands Formal Test IDs
 
-**Plan ref** – `thoth.plan.v7.md`:
+**Plan ref** – `doxa-research.plan.v7.md`:
 - Test Design sections (lines 19–22, 41–45, 62–66, 82–85) describe regression tests in prose only.
 - Task Breakdown (lines 115–133) uses Task A/B/C/D, not PRD-style IDs.
 
-**PRD ref** – `thoth.prd.v24.md`:
+**PRD ref** – `doxa-research.prd.v24.md`:
 - Every functional requirement line carries a Test ID (e.g., lines 211–236: T-MODE-01, T-CLI-01, …, T-ASYNC-04, T-PROV-13, T-INT-13).
 - Relevant defect-adjacent IDs: F-10/T-ASYNC-04 (async), F-15/T-PROV-01 (Perplexity dual-provider), F-67/T-ASYNC-06 (lifecycle), F-113/T-PROV-13 (providers --list), F-141/T-INT-13 (`/status`), F-152..F-154 (Makefile – currently no Test IDs).
 
@@ -150,15 +150,15 @@ Each inconsistency lists:
 
 ## INC-007: Async Success Output Wording Not Defined in Either Doc
 
-**Plan ref** – `thoth.plan.v7.md` line 35:
+**Plan ref** – `doxa-research.plan.v7.md` line 35:
 - "No false-positive 'Research submitted' output on submission failure."
 - Acceptance (line 33): "prints an operation ID only after a provider job exists."
 
-**PRD ref** – `thoth.prd.v24.md` lines 622–625 (§10.2 Advanced Mode Examples):
+**PRD ref** – `doxa-research.prd.v24.md` lines 622–625 (§10.2 Advanced Mode Examples):
 ```
 Research submitted
 Operation ID: research-20240803-143022-a1b2c3d4e5f6g7h8
-Check later with: thoth status ...
+Check later with: doxa-research status ...
 ```
 
 **Reason:** The PRD shows "Research submitted" as success output but does not *require* that exact string as a contract; the plan relies on "Research submitted" semantics without elevating it to an F-ID. A future reworded message could silently re-introduce the very regression the plan is trying to prevent.
@@ -169,17 +169,17 @@ Check later with: thoth status ...
 
 **Recommendation:** Option 1.
 
-**Final Decision:** Option 1 – add PRD F-176 ("Async submission prints `Research submitted` + `Operation ID: <id>` + `Check later with: thoth status <id>` only after a provider job has been successfully created") and test ID `T-ASYNC-08`. Reference `T-ASYNC-08` from plan M1 / `[P07-TS01]`.
+**Final Decision:** Option 1 – add PRD F-176 ("Async submission prints `Research submitted` + `Operation ID: <id>` + `Check later with: doxa-research status <id>` only after a provider job has been successfully created") and test ID `T-ASYNC-08`. Reference `T-ASYNC-08` from plan M1 / `[P07-TS01]`.
 
 ---
 
 ## INC-008: Interactive `/status` Scope – "Last Operation" vs. Arbitrary Operation
 
-**Plan ref** – `thoth.plan.v7.md` lines 60–76:
+**Plan ref** – `doxa-research.plan.v7.md` lines 60–76:
 - M3 scopes `/status` to the **last** submitted interactive operation (`slash_registry.last_operation_id`).
 - Acceptance (line 74): "After an interactive submission, `/status` reports the last operation instead of always saying none exists."
 
-**PRD ref** – `thoth.prd.v24.md`:
+**PRD ref** – `doxa-research.prd.v24.md`:
 - Line 430 (F-141): "Implement `/status` command to check operation status"
 - Line 534 (§10.1): `/status     Check operation status`
 
@@ -191,7 +191,7 @@ Check later with: thoth status ...
 
 **Recommendation:** Option 2.
 
-**Final Decision:** Option 2 – `/status` takes an optional operation ID. Default behavior (no argument) shows the last operation submitted in the current interactive session; with an ID it delegates to the same code path as the top-level `thoth status <ID>` command. Update PRD F-141, §10.1 Interactive Mode Commands list, and plan M3 Acceptance Criteria. Add test cases `[P07-TS05]` (default) and `[P07-TS06]` (with ID).
+**Final Decision:** Option 2 – `/status` takes an optional operation ID. Default behavior (no argument) shows the last operation submitted in the current interactive session; with an ID it delegates to the same code path as the top-level `doxa-research status <ID>` command. Update PRD F-141, §10.1 Interactive Mode Commands list, and plan M3 Acceptance Criteria. Add test cases `[P07-TS05]` (default) and `[P07-TS06]` (with ID).
 
 ---
 
@@ -199,7 +199,7 @@ Check later with: thoth status ...
 
 **Plan ref** – n/a.
 
-**PRD ref** – `thoth.prd.v24.md` lines 1, 12, 15.
+**PRD ref** – `doxa-research.prd.v24.md` lines 1, 12, 15.
 
 **Reason:** File name (v24), product version (v2.5), target release (v2.6), Document Version (26.0) are four different numbers.
 
@@ -209,11 +209,11 @@ Check later with: thoth status ...
 
 ## INC-010: Test Command Examples (reference case from prompt)
 
-**Plan ref** – `thoth.plan.v7.md` Task A–D and Test Design sections (lines 19–22, 41–45, 62–66, 82–85):
+**Plan ref** – `doxa-research.plan.v7.md` Task A–D and Test Design sections (lines 19–22, 41–45, 62–66, 82–85):
 - Uses prose test names only.
 
-**PRD ref** – `thoth.prd.v24.md` lines 211–236, 262–288, etc.:
-- Uses formal `T-*` IDs; examples use natural language like `thoth "test query" --provider mock`.
+**PRD ref** – `doxa-research.prd.v24.md` lines 211–236, 262–288, etc.:
+- Uses formal `T-*` IDs; examples use natural language like `doxa-research "test query" --provider mock`.
 
 **Reason:** Plan uses prose descriptions; PRD uses formal test IDs. Matches the example supplied in the audit prompt.
 

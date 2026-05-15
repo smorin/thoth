@@ -1,4 +1,4 @@
-# Thoth v6 PRD Analysis
+# Doxa Research v6 PRD Analysis
 
 ## Section 1: Document Control
 ✓ Consistent with v0.6 target release and date
@@ -44,8 +44,8 @@
 
 ### Issues Found:
 1. **Conflicting async flags**: Both `--async/-A` and `--no-wait` are mentioned as the same thing
-2. **Inconsistent invocation patterns**: 
-   - `thoth -A <mode> -q "Query..."` suggests mode after -A
+2. **Inconsistent invocation patterns**:
+   - `doxa-research -A <mode> -q "Query..."` suggests mode after -A
    - But options matrix shows -A as a flag only
 3. **Missing from options matrix**: `init` and `status` commands shown in patterns but not in matrix
 4. **--research-id vs --resume**: Shows as aliases but could be clearer
@@ -53,7 +53,7 @@
 
 ## Section 11: Interactive Modes
 ✓ Clear wizard flows
-⚠️ `thoth init` saves to `~/.thoth/config.toml` but section 14 shows separate config files
+⚠️ `doxa-research init` saves to `~/.doxa-research/config.toml` but section 14 shows separate config files
 ⚠️ Inconsistency: "config.toml" vs separate files (models.toml, modes.toml, defaults.toml)
 
 ## Section 12: Exit Codes
@@ -73,10 +73,10 @@
 ## Section 14: Configuration Files
 
 ### Issues:
-1. **File organization confusion**: 
+1. **File organization confusion**:
    - Section 11 mentions single `config.toml`
    - This section shows three separate files
-2. **Missing fields**: 
+2. **Missing fields**:
    - API key configuration not shown
    - Provider-specific settings incomplete
 3. **Path inconsistency**: `output_dir = "~/research"` might not expand properly

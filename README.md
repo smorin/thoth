@@ -1,11 +1,11 @@
-# Thoth - AI-Powered Research Assistant
+# Doxa Research - AI-Powered Research Assistant
 
-[![PyPI version](https://img.shields.io/pypi/v/thoth.svg)](https://pypi.org/project/thoth/)
+[![PyPI version](https://img.shields.io/pypi/v/doxa-research.svg)](https://pypi.org/project/doxa-research/)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
-[![CI](https://github.com/smorin/thoth/actions/workflows/ci.yml/badge.svg)](https://github.com/smorin/thoth/actions/workflows/ci.yml)
+[![CI](https://github.com/smorin/doxa-research/actions/workflows/ci.yml/badge.svg)](https://github.com/smorin/doxa-research/actions/workflows/ci.yml)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](LICENSE)
 
-Thoth is a command-line tool that automates deep technical research using multiple LLM providers. It orchestrates parallel execution of OpenAI's Deep Research API and Perplexity's research models to deliver comprehensive, multi-perspective research reports.
+Doxa Research is a command-line tool that automates deep technical research using multiple LLM providers. It orchestrates parallel execution of OpenAI's Deep Research API and Perplexity's research models to deliver comprehensive, multi-perspective research reports.
 
 ## Features
 
@@ -19,7 +19,9 @@ Thoth is a command-line tool that automates deep technical research using multip
 - **Mode chaining**: Seamless workflow from clarification through exploration to deep research
 - **Rich metadata**: Output files include model information and exact prompts sent to LLMs
 
-Origin of the name: Thoth (also spelled Tehuti) is the god of wisdom, writing, hieroglyphs, science, magic, art, and judgment. He is often depicted as a man with the head of an ibis or a baboon, animals sacred to him. Thoth is also associated with the moon and is considered the scribe of the gods.
+**Origin of the name:** *Doxa* (Greek: δόξα) means "opinion", "belief", or "received wisdom" in ancient Greek philosophy. Doxa Research synthesizes multiple AI perspectives — OpenAI, Perplexity, Gemini — to surface consensus and divergence across views, in the spirit of dialectical inquiry.
+
+> **Renamed in 3.0.0:** This project was previously released as `thoth` (versions ≤ 2.5.0 on PyPI). The CLI command (`thoth` → `doxa`), Python module (`thoth` → `doxa_research`), PyPI distribution (`thoth` → `doxa-research`), environment variables (`THOTH_*` → `DOXA_*`), and config directory (`~/.config/thoth/` → `~/.config/doxa/`) have all changed. Existing users must migrate manually — there is no automatic config migration. See [CHANGELOG.md](CHANGELOG.md) for the full migration guide.
 
 ## Prerequisites
 
@@ -34,27 +36,27 @@ Origin of the name: Thoth (also spelled Tehuti) is the god of wisdom, writing, h
 
 ```bash
 # Install and run with uvx (no setup required)
-uvx thoth
+uvx doxa-research
 
 # Or install permanently with uv
-uv tool install thoth
+uv tool install doxa-research
 
 # Or with pip
-pip install thoth
+pip install doxa-research
 ```
 
 ### From source
 
 ```bash
 # Clone the repository
-git clone https://github.com/smorin/thoth.git
-cd thoth
+git clone https://github.com/smorin/doxa-research.git
+cd doxa-research
 
 # Install in editable mode
 uv sync
 
 # Or run directly without installing
-./thoth --help
+./doxa --help
 ```
 
 ## Authentication
@@ -67,7 +69,7 @@ Authentication — recommended order:
    export PERPLEXITY_API_KEY=pplx-...
    ```
 
-2. **Config file** (persistent, per-machine): `~/.config/thoth/thoth.config.toml`
+2. **Config file** (persistent, per-machine): `~/.config/doxa-research/doxa-research.config.toml`
    ```toml
    [providers.openai]
    api_key = "sk-..."
@@ -75,16 +77,16 @@ Authentication — recommended order:
 
 3. **CLI flags** (last resort — exposes keys in shell history; not recommended):
    ```bash
-   thoth --api-key-openai sk-... deep_research "..."
+   doxa-research --api-key-openai sk-... deep_research "..."
    ```
 
-For related command help, run `thoth config --help`.
+For related command help, run `doxa-research config --help`.
 
 ## Quick Start
 
 1. **Initialize configuration:**
    ```bash
-   thoth init
+   doxa-research init
    ```
 
 2. **Set API keys:**
@@ -96,12 +98,12 @@ For related command help, run `thoth config --help`.
 
 3. **Check provider configuration:**
    ```bash
-   thoth providers list
+   doxa-research providers list
    ```
 
 4. **Run your first research:**
    ```bash
-   thoth "impact of quantum computing on cryptography"
+   doxa-research "impact of quantum computing on cryptography"
    ```
 
 ## Usage
@@ -109,60 +111,60 @@ For related command help, run `thoth config --help`.
 ### Basic Research
 ```bash
 # Quick research (uses default mode)
-thoth "your research prompt"
+doxa "your research prompt"
 
 # Run research with a specific mode
-thoth deep_research "your research prompt"
-thoth clarification "ambiguous topic needing clarity"
-thoth exploration "broad topic to explore"
-thoth thinking "quick analysis task"
-thoth openai_reasoning "grounded OpenAI reasoning task"
+doxa deep_research "your research prompt"
+doxa clarification "ambiguous topic needing clarity"
+doxa exploration "broad topic to explore"
+doxa thinking "quick analysis task"
+doxa openai_reasoning "grounded OpenAI reasoning task"
 
 # Use specific provider
-thoth "explain quantum computing" --provider openai
-thoth deep_research "AI safety" --provider openai --timeout 120
+doxa "explain quantum computing" --provider openai
+doxa deep_research "AI safety" --provider openai --timeout 120
 ```
 
 ### Project-Based Research
 ```bash
 # Save outputs to a project directory
-thoth deep_research "quantum algorithms" --project quantum_research
+doxa deep_research "quantum algorithms" --project quantum_research
 ```
 
 ### Mode Chaining
 ```bash
 # Start with clarification
-thoth clarification "quantum computing security"
+doxa clarification "quantum computing security"
 
 # Then explore with auto-input from previous mode
-thoth exploration --auto
+doxa exploration --auto
 
 # Finally, deep research with all context
-thoth deep_research --auto
+doxa deep_research --auto
 ```
 
 ### Provider-Specific API Keys
 ```bash
 # Use specific API key for a provider
-thoth "prompt" --api-key-openai "sk-..." --provider openai
+doxa "prompt" --api-key-openai "sk-..." --provider openai
 
 # Multiple provider keys for multi-provider modes
-thoth deep_research "prompt" --api-key-openai "sk-..." --api-key-perplexity "pplx-..."
+doxa deep_research "prompt" --api-key-openai "sk-..." --api-key-perplexity "pplx-..."
 
 # Testing with mock provider
-thoth "test prompt" --api-key-mock "test-key" --provider mock
+doxa "test prompt" --api-key-mock "test-key" --provider mock
 ```
 
 ### Output Control
 ```bash
 # Generate combined report from multiple providers
-thoth "prompt" --combined
+doxa "prompt" --combined
 
 # Disable metadata headers and prompt section
-thoth "prompt" --no-metadata
+doxa "prompt" --no-metadata
 
 # Quiet mode for minimal output
-thoth "prompt" --quiet
+doxa "prompt" --quiet
 ```
 
 ### Streaming output for immediate modes (P18, v3.1.0+)
@@ -175,17 +177,17 @@ resume hint, and no default result file. Use `--out` to redirect or tee:
 
 ```bash
 # Stream to stdout (default)
-thoth ask "what is X" --mode thinking
+doxa ask "what is X" --mode thinking
 
 # Write to a file (truncate)
-thoth ask "what is X" --mode thinking --out answer.md
-thoth --out answer.md --provider mock "what is X"
+doxa ask "what is X" --mode thinking --out answer.md
+doxa --out answer.md --provider mock "what is X"
 
 # Tee to stdout AND a file
-thoth ask "what is X" --mode thinking --out -,answer.md
+doxa ask "what is X" --mode thinking --out -,answer.md
 
 # Append instead of truncating
-thoth ask "what is X" --mode thinking --out answer.md --append
+doxa ask "what is X" --mode thinking --out answer.md --append
 ```
 
 `openai_reasoning` is the built-in OpenAI immediate mode for grounded answers:
@@ -215,14 +217,14 @@ persistent output. `--out` is currently immediate-only.
 
 ```bash
 # Cancel an in-flight background operation by ID
-thoth cancel a1b2c3d4-...
+doxa cancel a1b2c3d4-...
 
 # Returns exit 6 if the operation isn't found; 0 otherwise.
 # JSON envelope available:
-thoth cancel a1b2c3d4-... --json
+doxa cancel a1b2c3d4-... --json
 ```
 
-`thoth cancel` calls the provider's upstream cancel endpoint where
+`doxa-research cancel` calls the provider's upstream cancel endpoint where
 supported (OpenAI Responses API), then marks the local checkpoint as
 cancelled. Providers without upstream cancel (e.g., Perplexity at the
 time of writing) have the local checkpoint marked cancelled but the
@@ -232,16 +234,16 @@ upstream job runs to completion.
 
 Each mode is declared as `kind = "immediate"` (synchronous, streaming)
 or `kind = "background"` (async, polling-loop). User-defined modes in
-`~/.config/thoth/thoth.config.toml` should declare `kind` explicitly; missing
+`~/.config/doxa-research/doxa-research.config.toml` should declare `kind` explicitly; missing
 `kind` warns once and falls back to a substring heuristic on the model
 name.
 
 ```bash
 # Show only immediate-kind modes
-thoth modes --kind immediate
+doxa modes --kind immediate
 
 # Show only background-kind modes
-thoth modes --kind background
+doxa modes --kind background
 ```
 
 A misconfigured mode (e.g., declared `immediate` but using a
@@ -252,21 +254,21 @@ provider.
 ### Interactive Mode
 ```bash
 # Enter interactive prompt mode with enhanced UI
-thoth -i
+doxa -i
 # or
-thoth --interactive
+doxa --interactive
 
 # Interactive mode with specific provider
-thoth -i --provider openai --api-key-openai "sk-..."
+doxa -i --provider openai --api-key-openai "sk-..."
 
 # Start with pre-configured settings and initial prompt
-thoth -i --mode deep_research --provider openai "initial prompt text"
+doxa -i --mode deep_research --provider openai "initial prompt text"
 
 # Pipe prompt into interactive mode
-echo "prompt from stdin" | thoth -i --prompt-file -
+echo "prompt from stdin" | doxa-research -i --prompt-file -
 
 # Combined settings - all CLI arguments initialize the session
-thoth -i --mode exploration --provider perplexity --async "test prompt"
+doxa -i --mode exploration --provider perplexity --async "test prompt"
 ```
 
 Interactive mode features:
@@ -295,44 +297,44 @@ Interactive mode features:
 ### Async Operations
 ```bash
 # Submit research and exit immediately
-thoth deep_research "long research topic" --async
+doxa deep_research "long research topic" --async
 # Output: Operation ID: research-20240803-143022-a1b2c3d4e5f6g7h8
 
 # Check status later
-thoth status research-20240803-143022-a1b2c3d4e5f6g7h8
+doxa status research-20240803-143022-a1b2c3d4e5f6g7h8
 
 # Resume operation
-thoth resume research-20240803-143022-a1b2c3d4e5f6g7h8
+doxa resume research-20240803-143022-a1b2c3d4e5f6g7h8
 ```
 
 ### Provider Management
 ```bash
 # List available providers and their status
-thoth providers list
+doxa providers list
 
 # Show API key configuration
-thoth providers check
+doxa providers check
 
 # List available models from all providers
-thoth providers models
+doxa providers models
 
 # List models from specific provider
-thoth providers models --provider openai
-thoth providers models -P perplexity
+doxa providers models --provider openai
+doxa providers models -P perplexity
 ```
 
 ### List Operations
 ```bash
 # List active operations
-thoth list
+doxa list
 
 # List all operations
-thoth list --all
+doxa list --all
 ```
 
 ## Configuration
 
-Configuration file is stored at `~/.config/thoth/thoth.config.toml`. Key settings:
+Configuration file is stored at `~/.config/doxa-research/doxa-research.config.toml`. Key settings:
 
 - `default_project`: Default project name for outputs
 - `default_mode`: Default research mode
@@ -355,13 +357,13 @@ default_mode = "deep_research"
 default_mode = "thinking"
 ```
 
-Selection precedence is `--profile` → `THOTH_PROFILE` → `general.default_profile` → no profile.
+Selection precedence is `--profile` → `DOXA_PROFILE` → `general.default_profile` → no profile.
 
-`thoth config get general.default_profile` reflects the **persisted pointer** in the file. `--profile` and `THOTH_PROFILE` are read-only runtime inputs — they never write back to `general.default_profile`. With persisted `general.default_profile = "fast"`, running `thoth --profile bar config get general.default_profile` returns `"fast"`; the runtime active selection is `bar`.
+`doxa-research config get general.default_profile` reflects the **persisted pointer** in the file. `--profile` and `DOXA_PROFILE` are read-only runtime inputs — they never write back to `general.default_profile`. With persisted `general.default_profile = "fast"`, running `doxa-research --profile bar config get general.default_profile` returns `"fast"`; the runtime active selection is `bar`.
 
-Profile CLI management is available through `thoth config profiles ...`.
-Manual editing of `~/.config/thoth/thoth.config.toml` (or project-scoped
-`./thoth.config.toml` / `./.thoth.config.toml`) still works when you need to
+Profile CLI management is available through `doxa-research config profiles ...`.
+Manual editing of `~/.config/doxa-research/doxa-research.config.toml` (or project-scoped
+`./doxa.config.toml` / `./.doxa-research.config.toml`) still works when you need to
 make larger structural changes.
 
 #### Managing profiles from the CLI
@@ -369,31 +371,31 @@ make larger structural changes.
 The same profile from the hand-edit example above can be created end-to-end with:
 
 ```bash
-thoth config profiles add fast
-thoth config profiles set fast general.default_mode thinking
-thoth config profiles set-default fast    # persists general.default_profile = "fast"
-thoth config profiles current             # shows fast (from general.default_profile)
-thoth config profiles list                # lists all profiles, marks active
-thoth config profiles list --show-shadowed  # also shows user profiles shadowed by project profiles
-thoth config profiles show fast --json    # full profile contents
-thoth config profiles unset fast general.default_mode  # remove a single key
-thoth config profiles remove fast         # delete the entire profile
-thoth config profiles unset-default       # clear the persisted pointer
+doxa config profiles add fast
+doxa config profiles set fast general.default_mode thinking
+doxa config profiles set-default fast    # persists general.default_profile = "fast"
+doxa config profiles current             # shows fast (from general.default_profile)
+doxa config profiles list                # lists all profiles, marks active
+doxa config profiles list --show-shadowed  # also shows user profiles shadowed by project profiles
+doxa config profiles show fast --json    # full profile contents
+doxa config profiles unset fast general.default_mode  # remove a single key
+doxa config profiles remove fast         # delete the entire profile
+doxa config profiles unset-default       # clear the persisted pointer
 ```
 
 `--profile` is honored only by `list` and `current`. `show NAME` and mutator commands reject `--profile` because the profile they inspect or operate on is the positional argument.
 
-### Migrating from earlier Thoth versions
+### Migrating from earlier Doxa Research versions
 
-Thoth previously read three different filenames depending on location. Starting with vX.Y.0, the canonical name is `thoth.config.toml` everywhere:
+Doxa Research previously read three different filenames depending on location. Starting with vX.Y.0, the canonical name is `doxa-research.config.toml` everywhere:
 
 | Old | New |
 |---|---|
-| `~/.config/thoth/config.toml` | `~/.config/thoth/thoth.config.toml` |
-| `./thoth.toml` | `./thoth.config.toml` *or* `./.thoth.config.toml` |
-| `./.thoth/config.toml` | `./.thoth.config.toml` *or* `./thoth.config.toml` |
+| `~/.config/doxa-research/config.toml` | `~/.config/doxa-research/doxa-research.config.toml` |
+| `./doxa.toml` | `./doxa.config.toml` *or* `./.doxa-research.config.toml` |
+| `./.doxa-research/config.toml` | `./.doxa-research.config.toml` *or* `./doxa.config.toml` |
 
-The old filenames are no longer read. Rename them with `mv`. If both `./thoth.config.toml` and `./.thoth.config.toml` exist in the same project, config-loading commands refuse to start until one is deleted. `thoth init --user` is a user-tier write and still creates or repairs `~/.config/thoth/thoth.config.toml` from that directory.
+The old filenames are no longer read. Rename them with `mv`. If both `./doxa.config.toml` and `./.doxa-research.config.toml` exist in the same project, config-loading commands refuse to start until one is deleted. `doxa-research init --user` is a user-tier write and still creates or repairs `~/.config/doxa-research/doxa-research.config.toml` from that directory.
 
 #### Change the default mode for a profile
 
@@ -404,7 +406,7 @@ default_project = "daily-notes"
 ```
 
 ```bash
-thoth --profile daily "summarize today's notes"
+doxa --profile daily "summarize today's notes"
 ```
 
 #### Run all available deep-research providers
@@ -419,7 +421,7 @@ parallel = true
 ```
 
 ```bash
-thoth --profile all_deep "compare vector databases"
+doxa --profile all_deep "compare vector databases"
 ```
 
 > **Gemini support.** The `gemini` provider supports immediate grounded modes such as `gemini_quick`, `gemini_pro`, and `gemini_reasoning`, plus nine background deep-research modes (`gemini_quick_research`, `gemini_exploration`, `gemini_deep_dive`, `gemini_tutorial`, `gemini_solution`, `gemini_prd`, `gemini_tdd`, `gemini_deep_research`, `gemini_comparison`) added in P28.
@@ -436,7 +438,7 @@ parallel = false
 ```
 
 ```bash
-thoth --profile openai_deep "research model routing"
+doxa --profile openai_deep "research model routing"
 ```
 
 #### Use an immediate default mode
@@ -447,7 +449,7 @@ default_mode = "thinking"
 ```
 
 ```bash
-thoth --profile quick "give me the short version"
+doxa --profile quick "give me the short version"
 ```
 
 #### Reserve an interactive default profile
@@ -494,7 +496,7 @@ Resolution outcomes:
 | `deep` | `default` | `Be thorough. Cite primary sources where possible.` (profiles.deep) |
 | `deep` | `deep_research` | `Be thorough. Cite primary sources. Include counter-arguments.` (profiles.deep.modes.deep_research) |
 
-`thoth init` ships these profiles pre-populated in your config (`~/.config/thoth/thoth.config.toml`): `daily`, `quick`, `openai_deep`, `all_deep`, `interactive`, and `deep_research` — the last one demonstrates the `prompt_prefix` hierarchy end-to-end. Edit or delete them as you like.
+`doxa-research init` ships these profiles pre-populated in your config (`~/.config/doxa-research/doxa-research.config.toml`): `daily`, `quick`, `openai_deep`, `all_deep`, `interactive`, and `deep_research` — the last one demonstrates the `prompt_prefix` hierarchy end-to-end. Edit or delete them as you like.
 
 ## Provider Configuration
 
@@ -508,7 +510,7 @@ Configure your OpenAI API key using one of these methods (in order of precedence
 
 1. **Command-line flag** (highest priority):
    ```bash
-   thoth "prompt" --api-key-openai "sk-..." --provider openai
+   doxa-research "prompt" --api-key-openai "sk-..." --provider openai
    ```
 
 2. **Environment variable**:
@@ -516,7 +518,7 @@ Configure your OpenAI API key using one of these methods (in order of precedence
    export OPENAI_API_KEY="sk-..."
    ```
 
-3. **Configuration file** (`~/.config/thoth/thoth.config.toml`):
+3. **Configuration file** (`~/.config/doxa-research/doxa-research.config.toml`):
    ```toml
    [providers.openai]
    api_key = "${OPENAI_API_KEY}"  # Reference env var
@@ -526,7 +528,7 @@ Configure your OpenAI API key using one of these methods (in order of precedence
 
 #### Configuration Options
 
-All OpenAI settings can be configured in `~/.config/thoth/thoth.config.toml`:
+All OpenAI settings can be configured in `~/.config/doxa-research/doxa-research.config.toml`:
 
 ```toml
 [providers.openai]
@@ -549,10 +551,10 @@ Override configuration via command-line:
 
 ```bash
 # Set custom timeout
-thoth "prompt" --provider openai --timeout 60.0
+doxa "prompt" --provider openai --timeout 60.0
 
 # Verbose mode shows configuration
-thoth "prompt" --provider openai -v
+doxa "prompt" --provider openai -v
 ```
 
 #### Performance Tuning
@@ -701,16 +703,16 @@ For all development, quality, test, build, and release workflows, use `just`:
 
 ```bash
 just --list              # Show all available tasks
-just check               # Run code-quality checks for src/thoth/
-just lint                # Lint src/thoth/
-just typecheck           # Type-check src/thoth/
-just fix                 # Auto-fix and format src/thoth/
-just test-lint           # Lint thoth_test
-just test-typecheck      # Type-check thoth_test
-just test-fix            # Auto-fix and format thoth_test
-just check-all           # Check src/thoth/ and thoth_test
-just fix-all             # Fix and format src/thoth/ and thoth_test
-just test                # Run ./thoth_test -r
+just check               # Run code-quality checks for src/doxa_research/
+just lint                # Lint src/doxa_research/
+just typecheck           # Type-check src/doxa_research/
+just fix                 # Auto-fix and format src/doxa_research/
+just test-lint           # Lint doxa_test
+just test-typecheck      # Type-check doxa_test
+just test-fix            # Auto-fix and format doxa_test
+just check-all           # Check src/doxa_research/ and doxa_test
+just fix-all             # Fix and format src/doxa_research/ and doxa_test
+just test                # Run ./doxa_test -r
 just test-skip-interactive  # Run tests skipping interactive coverage
 just test-vcr            # Run cassette-backed pytest coverage
 just update-snapshots    # Regenerate pytest snapshot files
@@ -725,27 +727,27 @@ just publish             # Publish to PyPI
 
 ```bash
 # Quick manual smoke check of the CLI itself (not the regression suite)
-./thoth "test prompt" --provider mock
+./doxa "test prompt" --provider mock
 ```
 
-Use `thoth_test` for the actual regression suite. It mixes provider-agnostic CLI tests, mock-provider runs, interactive `pexpect` coverage, and provider-specific tests that only run when the needed API keys are present.
+Use `doxa_test` for the actual regression suite. It mixes provider-agnostic CLI tests, mock-provider runs, interactive `pexpect` coverage, and provider-specific tests that only run when the needed API keys are present.
 
 | Command | What it runs | When to use it |
 |------|---------|---------|
-| `just test` | Full `thoth_test` suite (`./thoth_test -r`) | Local full validation before merging |
-| `./thoth_test -r` | All available tests for the current environment | Default comprehensive test run |
+| `just test` | Full `doxa_test` suite (`./doxa_test -r`) | Local full validation before merging |
+| `./doxa_test -r` | All available tests for the current environment | Default comprehensive test run |
 | `just test-skip-interactive` | Mock + provider-agnostic tests, skipping interactive `pexpect` cases | Fast CI-safe pass or non-TTY environments |
-| `./thoth_test -r --interactive` | Interactive-only `pexpect` tests (`INT-*`) | Debugging terminal UI and interactive mode |
-| `./thoth_test -r --provider mock` | Provider-agnostic tests plus mock-provider coverage | Fastest broad regression run with no real API keys |
-| `./thoth_test -r --provider openai` | Provider-agnostic tests plus OpenAI-specific cases | Validating OpenAI integration with a real key |
-| `./thoth_test -r --provider gemini` | Provider-agnostic tests plus Gemini-specific smoke cases | Validating Gemini runner wiring with a real key |
-| `./thoth_test -r --all-providers` | Every provider test the suite knows about | Full provider matrix validation |
+| `./doxa_test -r --interactive` | Interactive-only `pexpect` tests (`INT-*`) | Debugging terminal UI and interactive mode |
+| `./doxa_test -r --provider mock` | Provider-agnostic tests plus mock-provider coverage | Fastest broad regression run with no real API keys |
+| `./doxa_test -r --provider openai` | Provider-agnostic tests plus OpenAI-specific cases | Validating OpenAI integration with a real key |
+| `./doxa_test -r --provider gemini` | Provider-agnostic tests plus Gemini-specific smoke cases | Validating Gemini runner wiring with a real key |
+| `./doxa_test -r --all-providers` | Every provider test the suite knows about | Full provider matrix validation |
 | `just test-extended` | Real-API provider contract tests (`pytest -m "extended and not extended_slow"`) | Nightly job; manual when investigating provider-API changes |
 | `just test-extended-openai` / `just test-extended-perplexity` / `just test-extended-gemini` | Provider-scoped extended tests | Debugging one provider without running the full live contract matrix |
 | `just test-live-api` | Real-API CLI workflow regression suite (`pytest -m "live_api and not extended_slow"`) | Weekly job (Sat 7pm PDT); manual when verifying user-visible streaming/file/secret behavior |
 | `just test-live-api-openai` / `just test-live-api-perplexity` / `just test-live-api-gemini` | Provider-scoped live workflow tests | Debugging one provider's live CLI workflows |
 
-`thoth_test -r` behaves like this:
+`doxa_test -r` behaves like this:
 - Always runs provider-agnostic tests.
 - Always runs mock-provider tests because the suite auto-generates a mock key.
 - Runs interactive tests unless you pass `--skip-interactive`.
@@ -755,30 +757,30 @@ Useful commands:
 
 ```bash
 # Full suite with whatever providers are available in your environment
-./thoth_test -r
+./doxa_test -r
 
 # Run tests skipping interactive (pexpect) tests — fast, CI-safe
-./thoth_test -r --provider mock --skip-interactive
+./doxa_test -r --provider mock --skip-interactive
 # or equivalently
 just test-skip-interactive
 
 # Run interactive tests only
-./thoth_test -r --interactive
+./doxa_test -r --interactive
 
 # Run the broad no-API-key path most contributors use
-./thoth_test -r --provider mock
+./doxa_test -r --provider mock
 
 # Run OpenAI provider tests (requires API key)
-./thoth_test -r --provider openai -t M8T
+./doxa_test -r --provider openai -t M8T
 
 # Run all provider tests
-./thoth_test -r --all-providers
+./doxa_test -r --all-providers
 
 # Run specific test pattern
-./thoth_test -r -t "async" -v
+./doxa_test -r -t "async" -v
 
 # Save stdout/stderr and metadata for each test under test_outputs/
-./thoth_test -r --provider mock --save-output
+./doxa_test -r --provider mock --save-output
 ```
 
 ### Real Provider Extended Tests
@@ -797,8 +799,8 @@ The current required live scenarios are:
 | `EXT-OAI-IMM-STREAM-TEE` | Immediate OpenAI streaming writes the same live text to stdout and an `--out` file | Completes immediately |
 | `EXT-OAI-BG-JSON-AUTO-ASYNC` | Background `ask --json` auto-submits asynchronously without explicit `--async` | Cancels in cleanup |
 | `EXT-OAI-BG-JSON-EXPLICIT-ASYNC` | Background `ask --async --json` returns the expected submit envelope | Cancels in cleanup |
-| `EXT-OAI-BG-CANCEL-CMD` | `thoth cancel <op-id> --json` cancels a live OpenAI background job through the user-facing CLI | Cancels in test |
-| `EXT-OAI-BG-ASYNC-BLOCKING-RESUME-COMPLETE` | Full lifecycle: async submit, blocking `resume`, completed checkpoint, and output file metadata | Runs to completion; opt-in with `THOTH_EXTENDED_SLOW=1` |
+| `EXT-OAI-BG-CANCEL-CMD` | `doxa-research cancel <op-id> --json` cancels a live OpenAI background job through the user-facing CLI | Cancels in test |
+| `EXT-OAI-BG-ASYNC-BLOCKING-RESUME-COMPLETE` | Full lifecycle: async submit, blocking `resume`, completed checkpoint, and output file metadata | Runs to completion; opt-in with `DOXA_EXTENDED_SLOW=1` |
 
 To run the fast live provider extended set manually:
 
@@ -820,7 +822,7 @@ uv run pytest -m "extended and not extended_slow" tests/extended -v
 To run only the slow full lifecycle tests:
 
 ```bash
-THOTH_EXTENDED_SLOW=1 uv run pytest \
+DOXA_EXTENDED_SLOW=1 uv run pytest \
   -m "extended and extended_slow" \
   tests/extended \
   -v
@@ -837,7 +839,7 @@ Verification workflow used in this repo:
 make env-check
 just fix
 just check
-./thoth_test -r
+./doxa_test -r
 just test-lint
 just test-typecheck
 just test-fix
@@ -851,14 +853,14 @@ just test-typecheck
 - `PERPLEXITY_API_KEY`: Perplexity API key
 - `GEMINI_API_KEY`: Gemini API key
 - `MOCK_API_KEY`: Mock provider API key (for testing)
-- `THOTH_DEBUG`: Enable debug output (set to 1)
+- `DOXA_DEBUG`: Enable debug output (set to 1)
 
 ### API Key Precedence
 
 API keys are resolved in the following order (highest to lowest priority):
 1. Command-line arguments (`--api-key-openai`, `--api-key-perplexity`, `--api-key-gemini`, `--api-key-mock`)
 2. Environment variables (`OPENAI_API_KEY`, `PERPLEXITY_API_KEY`, `GEMINI_API_KEY`, `MOCK_API_KEY`)
-3. Configuration file (`~/.config/thoth/thoth.config.toml`)
+3. Configuration file (`~/.config/doxa-research/doxa-research.config.toml`)
 
 ## Exit Codes
 
@@ -883,27 +885,27 @@ API keys are resolved in the following order (highest to lowest priority):
 
 | Command | Description | Example |
 |---------|-------------|---------|
-| (default) | Run research with prompt | `thoth "your research prompt"` |
-| ask | Run research with an explicit subcommand | `thoth ask "your research prompt"` |
-| resume | Resume a checkpointed operation | `thoth resume research-20240803-143022-xxx` |
-| cancel | Cancel an in-flight background operation | `thoth cancel research-20240803-143022-xxx` |
-| init | Setup wizard for API keys | `thoth init` |
-| status | Show operation details | `thoth status research-20240803-143022-xxx` |
-| list | Show recent operations | `thoth list` |
-| config | Inspect and edit configuration | `thoth config get general.default_mode` |
-| modes | List research modes | `thoth modes list` |
-| providers | Manage providers and models | `thoth providers list` |
-| completion | Generate shell completion scripts | `thoth completion zsh` |
-| help | Show help information | `thoth help [COMMAND]` |
+| (default) | Run research with prompt | `doxa-research "your research prompt"` |
+| ask | Run research with an explicit subcommand | `doxa-research ask "your research prompt"` |
+| resume | Resume a checkpointed operation | `doxa-research resume research-20240803-143022-xxx` |
+| cancel | Cancel an in-flight background operation | `doxa-research cancel research-20240803-143022-xxx` |
+| init | Setup wizard for API keys | `doxa-research init` |
+| status | Show operation details | `doxa-research status research-20240803-143022-xxx` |
+| list | Show recent operations | `doxa-research list` |
+| config | Inspect and edit configuration | `doxa-research config get general.default_mode` |
+| modes | List research modes | `doxa-research modes list` |
+| providers | Manage providers and models | `doxa-research providers list` |
+| completion | Generate shell completion scripts | `doxa-research completion zsh` |
+| help | Show help information | `doxa-research help [COMMAND]` |
 
 ### Providers Subcommands
 
 | Subcommand | Description | Example |
 |------------|-------------|---------|
-| list | Show available providers and status | `thoth providers list` |
-| models | List models from providers | `thoth providers models` |
-| check | Show API key configuration | `thoth providers check` |
-| --provider, -P | Filter by specific provider | `thoth providers models -P openai` |
+| list | Show available providers and status | `doxa-research providers list` |
+| models | List models from providers | `doxa-research providers models` |
+| check | Show API key configuration | `doxa-research providers check` |
+| --provider, -P | Filter by specific provider | `doxa-research providers models -P openai` |
 
 ## Version History
 
@@ -914,19 +916,19 @@ See [CHANGELOG.md](CHANGELOG.md) for the full version history.
 Generate an `eval`-able script:
 
 ```bash
-eval "$(thoth completion bash)"   # or: zsh, fish
+eval "$(doxa-research completion bash)"   # or: zsh, fish
 ```
 
 Persistent install (writes a fenced block to your shell's rc file):
 
 ```bash
-thoth completion bash --install         # interactive: detect + prompt before overwrite
-thoth completion bash --install --force # CI-friendly: write/overwrite silently
-thoth completion bash --install --manual # print block + instructions; never write
+doxa completion bash --install         # interactive: detect + prompt before overwrite
+doxa completion bash --install --force # CI-friendly: write/overwrite silently
+doxa completion bash --install --manual # print block + instructions; never write
 ```
 
-After install, `thoth resume <TAB>`, `thoth status <TAB>`, `thoth config get <TAB>`,
-`thoth modes list --name <TAB>`, and `thoth providers list --provider <TAB>` complete
+After install, `doxa-research resume <TAB>`, `doxa-research status <TAB>`, `doxa-research config get <TAB>`,
+`doxa-research modes list --name <TAB>`, and `doxa-research providers list --provider <TAB>` complete
 with live data.
 
 ## JSON output
@@ -934,10 +936,10 @@ with live data.
 Every data/action admin command supports `--json`:
 
 ```bash
-thoth status OP_ID --json | jq '.data.status'
-thoth cancel OP_ID --json | jq '.data.status'
-thoth providers list --json | jq '.data.providers[].name'
-thoth list --json | jq '.data.operations[]'
+doxa status OP_ID --json | jq '.data.status'
+doxa cancel OP_ID --json | jq '.data.status'
+doxa providers list --json | jq '.data.providers[].name'
+doxa list --json | jq '.data.operations[]'
 ```
 
 See `docs/json-output.md` for the envelope contract and per-command schemas.
@@ -946,7 +948,7 @@ See `docs/json-output.md` for the envelope contract and per-command schemas.
 
 [GNU Affero General Public License v3.0 or later](LICENSE) (AGPL-3.0-or-later).
 
-In short: you may use, modify, and redistribute thoth, but if you offer a
+In short: you may use, modify, and redistribute doxa-research, but if you offer a
 modified version as a network service to others (a SaaS), you must also
 make your full modified source code available to those users. See the
 [GNU AGPL FAQ](https://www.gnu.org/licenses/why-affero-gpl.html) for the

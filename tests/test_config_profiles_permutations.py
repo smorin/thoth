@@ -17,8 +17,8 @@ from pathlib import Path
 
 import pytest
 
-from thoth.config import ConfigManager
-from thoth.config_profiles import assemble_prompt_with_prefix, resolve_prompt_prefix
+from doxa_research.config import ConfigManager
+from doxa_research.config_profiles import assemble_prompt_with_prefix, resolve_prompt_prefix
 
 
 def _write(path: Path, text: str) -> None:
@@ -32,8 +32,8 @@ def _write(path: Path, text: str) -> None:
 
 
 @pytest.fixture
-def two_profile_user_config(isolated_thoth_home: Path) -> Path:
-    from thoth.paths import user_config_file
+def two_profile_user_config(isolated_doxa_home: Path) -> Path:
+    from doxa_research.paths import user_config_file
 
     body = """version = "2.0"
 [general]
@@ -70,13 +70,13 @@ def test_selection_source_axis(
     expected_name: str | None,
     expected_source: str,
 ) -> None:
-    monkeypatch.delenv("THOTH_PROFILE", raising=False)
+    monkeypatch.delenv("DOXA_PROFILE", raising=False)
 
     if source == "env":
-        monkeypatch.setenv("THOTH_PROFILE", "deep")
+        monkeypatch.setenv("DOXA_PROFILE", "deep")
     elif source == "config-pointer":
         # Append general.default_profile = "fast" to the existing config.
-        from thoth.paths import user_config_file
+        from doxa_research.paths import user_config_file
 
         existing = user_config_file().read_text()
         # Insert into [general] (already has default_mode); append a new key.
@@ -147,7 +147,7 @@ prompt_prefix = "PROJECT_PREFIX"
     ],
 )
 def test_tier_axis(
-    isolated_thoth_home: Path,
+    isolated_doxa_home: Path,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     tier: str,
@@ -156,13 +156,13 @@ def test_tier_axis(
     expected_default_mode: str,
     expected_prefix: str,
 ) -> None:
-    from thoth.paths import user_config_file
+    from doxa_research.paths import user_config_file
 
-    monkeypatch.delenv("THOTH_PROFILE", raising=False)
+    monkeypatch.delenv("DOXA_PROFILE", raising=False)
     monkeypatch.chdir(tmp_path)
     _write(user_config_file(), user_block)
     if project_block is not None:
-        _write(tmp_path / "thoth.config.toml", project_block)
+        _write(tmp_path / "doxa.config.toml", project_block)
 
     cm = ConfigManager()
     cm.load_all_layers({"_profile": "shared"})
@@ -209,12 +209,12 @@ prompt_prefix = "PROFILE_ALPHA_DEEP"
     ],
 )
 def test_prefix_hierarchy_per_mode(
-    isolated_thoth_home: Path,
+    isolated_doxa_home: Path,
     active_profile: str | None,
     mode: str,
     expected: str,
 ) -> None:
-    from thoth.paths import user_config_file
+    from doxa_research.paths import user_config_file
 
     _write(user_config_file(), _HIERARCHY_CONFIG)
     cm = ConfigManager()
@@ -291,13 +291,13 @@ prompt_prefix = "Be thorough. Cite primary sources. Include counter-arguments."
     ],
 )
 def test_shipped_examples_assemble_correctly(
-    isolated_thoth_home: Path,
+    isolated_doxa_home: Path,
     profile: str,
     mode: str,
     expected_default_mode: str,
     expected_assembled: str,
 ) -> None:
-    from thoth.paths import user_config_file
+    from doxa_research.paths import user_config_file
 
     _write(user_config_file(), _INIT_EXAMPLE_CONFIG)
     cm = ConfigManager()
@@ -311,9 +311,9 @@ def test_shipped_examples_assemble_correctly(
 # ---------------------------------------------------------------------------
 
 
-def test_no_profile_active_ignores_profile_levels(isolated_thoth_home: Path) -> None:
+def test_no_profile_active_ignores_profile_levels(isolated_doxa_home: Path) -> None:
     """When no profile is active, prefix from profile-only config returns None."""
-    from thoth.paths import user_config_file
+    from doxa_research.paths import user_config_file
 
     _write(
         user_config_file(),

@@ -1,6 +1,6 @@
 """OpenAI background-job status & polling-loop tests.
 
-Migrated from `thoth_test` fixture tests OAI-BG-01…14.
+Migrated from `doxa_test` fixture tests OAI-BG-01…14.
 
 - 01…08: `OpenAIProvider.check_status()` on various response shapes.
 - 09…14: `_execute_research()` polling loop against provider-state-machine variants.
@@ -16,17 +16,17 @@ from typing import Any, cast
 
 import pytest
 
+from doxa_research.__main__ import OperationStatus, _execute_research
+from doxa_research.providers.openai import OpenAIProvider
 from tests._fixture_helpers import (
     make_mock_openai_client,
     make_mock_openai_response,
 )
-from thoth.__main__ import OperationStatus, _execute_research
-from thoth.providers.openai import OpenAIProvider
 
 
 @pytest.fixture(autouse=True)
-def _isolate_config(isolated_thoth_home: Path) -> Path:
-    return isolated_thoth_home
+def _isolate_config(isolated_doxa_home: Path) -> Path:
+    return isolated_doxa_home
 
 
 # ----- check_status() variants (OAI-BG-01…08) -----------------------------

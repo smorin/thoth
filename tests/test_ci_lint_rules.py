@@ -8,15 +8,15 @@ from pathlib import Path
 import pytest
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
-_CLI_SUBCOMMANDS_DIR = _REPO_ROOT / "src" / "thoth" / "cli_subcommands"
+_CLI_SUBCOMMANDS_DIR = _REPO_ROOT / "src" / "doxa_research" / "cli_subcommands"
 
 
 @pytest.mark.parametrize(
     "handler_path",
     [
-        "src/thoth/commands.py",
-        "src/thoth/config_cmd.py",
-        "src/thoth/modes_cmd.py",
+        "src/doxa_research/commands.py",
+        "src/doxa_research/config_cmd.py",
+        "src/doxa_research/modes_cmd.py",
     ],
 )
 def test_handler_modules_do_not_reference_as_json(handler_path):
@@ -110,8 +110,8 @@ def _discover_json_commands() -> set[tuple[str, ...]]:
 
 
 def _json_test_command_paths() -> set[tuple[str, ...]]:
+    from doxa_research.cli import cli
     from tests.test_json_envelopes import JSON_COMMANDS
-    from thoth.cli import cli
 
     paths: set[tuple[str, ...]] = set()
 

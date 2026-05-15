@@ -6,7 +6,7 @@ from pathlib import Path
 
 from click.testing import CliRunner
 
-from thoth.cli import cli
+from doxa_research.cli import cli
 
 
 def _make_dummy_run(monkeypatch):
@@ -17,7 +17,7 @@ def _make_dummy_run(monkeypatch):
         captured.update(kwargs)
         return 0
 
-    monkeypatch.setattr("thoth.run.run_research", fake_run)
+    monkeypatch.setattr("doxa_research.run.run_research", fake_run)
     return captured
 
 
@@ -63,7 +63,7 @@ def test_prompt_max_bytes_config_override(tmp_path: Path, monkeypatch):
     """User can shrink the cap via [execution].prompt_max_bytes in config."""
     _make_dummy_run(monkeypatch)
 
-    cfg = tmp_path / "thoth.config.toml"
+    cfg = tmp_path / "doxa.config.toml"
     cfg.write_text('version = "2.0"\n[execution]\nprompt_max_bytes = 50\n')
     long_file = tmp_path / "long.txt"
     long_file.write_text("x" * 100)

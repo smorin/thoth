@@ -2,11 +2,11 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Drive every default config value — `thoth init`'s starter document, `ConfigSchema.get_defaults()`, and the per-provider configuration surface — from a single Pydantic v2 schema. Eliminate duplication between runtime defaults and the init template, and gain typechecker + warn-only diagnostic coverage for every key the project ships.
+**Goal:** Drive every default config value — `doxa-research init`'s starter document, `ConfigSchema.get_defaults()`, and the per-provider configuration surface — from a single Pydantic v2 schema. Eliminate duplication between runtime defaults and the init template, and gain typechecker + warn-only diagnostic coverage for every key the project ships.
 
-**Architecture:** A new `src/thoth/config_schema.py` module owns the typed schema (`ThothConfig` for runtime defaults; `ConfigOverlay`/`ProfileConfig`/`ModeConfig`/`UserConfigFile` for user-supplied shapes; `ProviderConfigBase` + per-provider subclasses for forward-looking provider fields). A new `src/thoth/_starter_data.py` holds the 6 starter profiles as seed data. The existing `src/thoth/commands.py:_build_starter_*()` writers become thin wrappers that walk the schema for in-starter fields and read structural prose from a writer-owned `WRITER_COMMENTS` table. Validation is **advisory, not enforced**: warn-only at runtime via `ConfigManager.validation_reports`, strict-mode in tests, with an `[experimental]` carve-out and a `--no-validate` CLI flag threaded as loader metadata.
+**Architecture:** A new `src/doxa_research/config_schema.py` module owns the typed schema (`DoxaConfig` for runtime defaults; `ConfigOverlay`/`ProfileConfig`/`ModeConfig`/`UserConfigFile` for user-supplied shapes; `ProviderConfigBase` + per-provider subclasses for forward-looking provider fields). A new `src/doxa_research/_starter_data.py` holds the 6 starter profiles as seed data. The existing `src/doxa_research/commands.py:_build_starter_*()` writers become thin wrappers that walk the schema for in-starter fields and read structural prose from a writer-owned `WRITER_COMMENTS` table. Validation is **advisory, not enforced**: warn-only at runtime via `ConfigManager.validation_reports`, strict-mode in tests, with an `[experimental]` carve-out and a `--no-validate` CLI flag threaded as loader metadata.
 
-**Tech Stack:** Python 3.11+, `pydantic>=2.12.5,<3` (already a transitive dep, promoted to direct), `tomlkit>=0.13`, `click>=8.3.3`, `pytest>=8.0`, existing thoth runtime.
+**Tech Stack:** Python 3.11+, `pydantic>=2.12.5,<3` (already a transitive dep, promoted to direct), `tomlkit>=0.13`, `click>=8.3.3`, `pytest>=8.0`, existing doxa-research runtime.
 
 **Spec:** `projects/P33-schema-driven-config-defaults.md` (committed in `824a757` + `3053942`). Read it first — every task here references concrete decisions and TS/T IDs from that file.
 
@@ -17,12 +17,12 @@
 | Action | Path | Responsibility |
 |---|---|---|
 | Modify | `pyproject.toml` | Add `pydantic>=2.12.5,<3` to `[project.dependencies]` |
-| Create | `src/thoth/config_schema.py` | Pydantic models, `StarterField`, `make_partial`, `ConfigSchema` façade, `ValidationReport`/`ValidationWarning`, `_ROOT_SCHEMA`, `_no_validate` module global |
-| Create | `src/thoth/_starter_data.py` | `STARTER_PROFILES` seed list (6 profiles, content frozen verbatim from today's `_build_starter_profiles()`) |
-| Modify | `src/thoth/config.py:221-280` | `ConfigSchema.get_defaults()` body becomes `_ROOT_SCHEMA.model_dump(mode="python")` — signature unchanged |
-| Modify | `src/thoth/config.py:283-371` | Add `ConfigManager.validation_reports: dict[str, ValidationReport]`; replace `_validate_config()` with per-layer warn-only validation; honor `_no_validate` |
-| Modify | `src/thoth/commands.py:70-159` | Refactor `_build_starter_profiles()` and `_build_starter_document()` to use schema metadata + writer-owned `WRITER_COMMENTS` table, sourcing profile content from `STARTER_PROFILES` |
-| Modify | `src/thoth/cli.py` | Add `--no-validate` global flag mirroring `--config`/`_apply_config_path()` pattern; thread as `config_schema._no_validate = True` |
+| Create | `src/doxa_research/config_schema.py` | Pydantic models, `StarterField`, `make_partial`, `ConfigSchema` façade, `ValidationReport`/`ValidationWarning`, `_ROOT_SCHEMA`, `_no_validate` module global |
+| Create | `src/doxa_research/_starter_data.py` | `STARTER_PROFILES` seed list (6 profiles, content frozen verbatim from today's `_build_starter_profiles()`) |
+| Modify | `src/doxa_research/config.py:221-280` | `ConfigSchema.get_defaults()` body becomes `_ROOT_SCHEMA.model_dump(mode="python")` — signature unchanged |
+| Modify | `src/doxa_research/config.py:283-371` | Add `ConfigManager.validation_reports: dict[str, ValidationReport]`; replace `_validate_config()` with per-layer warn-only validation; honor `_no_validate` |
+| Modify | `src/doxa_research/commands.py:70-159` | Refactor `_build_starter_profiles()` and `_build_starter_document()` to use schema metadata + writer-owned `WRITER_COMMENTS` table, sourcing profile content from `STARTER_PROFILES` |
+| Modify | `src/doxa_research/cli.py` | Add `--no-validate` global flag mirroring `--config`/`_apply_config_path()` pattern; thread as `config_schema._no_validate = True` |
 | Create | `tests/test_p33_pydantic_dep.py` | TS00 — pyproject + uv.lock dependency metadata |
 | Create | `tests/test_config_schema.py` | TS01 (smoke), TS02 (coverage), TS03 (partial regression), TS07 (provider fields), TS08 (mode/profile prompt surface) |
 | Create | `tests/test_config_validate.py` | TS05 (warn-only `prompy_prefix`), TS06 (`[experimental]` carve-out) |
@@ -92,7 +92,7 @@ def test_pydantic_resolves_to_v2() -> None:
 - [ ] **Step 2: Run test to verify it fails**
 
 ```bash
-cd /Users/stevemorin/c/thoth-worktrees/p33-schema-driven-config-defaults
+cd /Users/stevemorin/c/doxa-research-worktrees/p33-schema-driven-config-defaults
 uv run pytest tests/test_p33_pydantic_dep.py -v
 ```
 
@@ -123,12 +123,12 @@ git commit -m "feat(deps): promote pydantic to a direct dependency (P33-T00, TS0
 
 ---
 
-### Task 2: Define `ThothConfig` and per-section sub-models (P33-T01, TS01 + TS02 default-paths)
+### Task 2: Define `DoxaConfig` and per-section sub-models (P33-T01, TS01 + TS02 default-paths)
 
-This is the largest single task. It establishes the schema module and the `ThothConfig` model whose `model_dump()` reproduces today's `ConfigSchema.get_defaults()` byte-for-byte.
+This is the largest single task. It establishes the schema module and the `DoxaConfig` model whose `model_dump()` reproduces today's `ConfigSchema.get_defaults()` byte-for-byte.
 
 **Files:**
-- Create: `src/thoth/config_schema.py`
+- Create: `src/doxa_research/config_schema.py`
 - Create: `tests/test_config_schema.py`
 
 - [ ] **Step 1: Write TS01 (smoke) and TS02 default-paths**
@@ -169,16 +169,16 @@ def _walk_leaves(d: dict[str, Any], prefix: tuple[str, ...] = ()) -> list[tuple[
 
 # ---------- TS01: smoke ----------
 
-def test_thoth_config_constructs_with_no_overrides() -> None:
-    from thoth.config_schema import ThothConfig
+def test_doxa_config_constructs_with_no_overrides() -> None:
+    from doxa-research.config_schema import DoxaConfig
 
-    cfg = ThothConfig()
+    cfg = DoxaConfig()
     assert cfg.version == "2.0"
 
 
 def test_get_defaults_equals_root_schema_dump() -> None:
-    from thoth.config import ConfigSchema
-    from thoth.config_schema import _ROOT_SCHEMA
+    from doxa-research.config import ConfigSchema
+    from doxa-research.config_schema import _ROOT_SCHEMA
 
     assert ConfigSchema.get_defaults() == _ROOT_SCHEMA.model_dump(mode="python")
 
@@ -186,33 +186,33 @@ def test_get_defaults_equals_root_schema_dump() -> None:
 # ---------- TS02: coverage (default paths only at this stage) ----------
 
 def test_every_default_path_resolves_to_a_field() -> None:
-    """Every leaf path in get_defaults() must resolve to a ThothConfig field.
+    """Every leaf path in get_defaults() must resolve to a DoxaConfig field.
 
     This is the test that catches the `prompy_prefix` typo class.
     """
-    from thoth.config import ConfigSchema
-    from thoth.config_schema import ThothConfig, resolve_path
+    from doxa-research.config import ConfigSchema
+    from doxa-research.config_schema import DoxaConfig, resolve_path
 
     defaults = ConfigSchema.get_defaults()
     for path in _walk_leaves(defaults):
         # `resolve_path` returns a (model, field_name) tuple or raises
         # KeyError if the path doesn't reach a declared field.
-        resolve_path(ThothConfig, path)
+        resolve_path(DoxaConfig, path)
 ```
 
-- [ ] **Step 2: Create `src/thoth/config_schema.py` skeleton**
+- [ ] **Step 2: Create `src/doxa_research/config_schema.py` skeleton**
 
 Create the file with imports and section docstrings only (so subsequent steps add code in known locations):
 
 ```python
-"""P33: schema for thoth.config.toml.
+"""P33: schema for doxa-research.config.toml.
 
 Single source of truth for runtime defaults, init starter content, and
 warn-only diagnostic validation.
 
 Three layers cooperate (P33):
   1. Schema (this module): types, defaults, per-field metadata, validation.
-  2. Seed data (`_starter_data.py`): example profiles shown by `thoth init`.
+  2. Seed data (`_starter_data.py`): example profiles shown by `doxa-research init`.
   3. Writer (`commands.py`): tomlkit emitter; reads schema metadata for inline
      comments and the in-starter set.
 
@@ -228,11 +228,11 @@ from typing import Any, Literal, get_args, get_origin
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, create_model
 
 # Imported lazily where needed to avoid a top-level circular dep with
-# `thoth.paths`.
+# `doxa-research.paths`.
 
 # ---------------------------------------------------------------------------
 # Module globals (set by the CLI `--no-validate` flag; mirrors the
-# `_config_path` pattern in src/thoth/config.py:49).
+# `_config_path` pattern in src/doxa_research/config.py:49).
 # ---------------------------------------------------------------------------
 
 _no_validate: bool = False
@@ -244,7 +244,7 @@ _no_validate: bool = False
 
 
 def StarterField(default: Any = ..., *, default_factory: Any = None, **kwargs: Any) -> Any:
-    """Pydantic Field that ships in the `thoth init` starter document.
+    """Pydantic Field that ships in the `doxa-research init` starter document.
 
     Forces an explicit `in_starter=True` flag in `json_schema_extra` so the
     starter writer (P33-T05) can iterate fields and emit only the in-starter
@@ -359,12 +359,12 @@ def resolve_path(model: type[BaseModel], path: tuple[str, ...]) -> tuple[type[Ba
 # Singleton root model — set at module-import time
 # ---------------------------------------------------------------------------
 
-_ROOT_SCHEMA: "ThothConfig | None" = None  # set at end of this module
+_ROOT_SCHEMA: "DoxaConfig | None" = None  # set at end of this module
 ```
 
 - [ ] **Step 3: Add per-section sub-models with default values byte-identical to `get_defaults()`**
 
-In `src/thoth/config_schema.py`, replace the `# Per-section sub-models — runtime defaults` placeholder block with:
+In `src/doxa_research/config_schema.py`, replace the `# Per-section sub-models — runtime defaults` placeholder block with:
 
 ```python
 class GeneralConfig(BaseModel):
@@ -382,8 +382,8 @@ class PathsConfig(BaseModel):
 
 
 def _checkpoint_dir_default() -> str:
-    # Imported here to avoid top-of-module circular imports with thoth.paths.
-    from thoth.paths import user_checkpoints_dir
+    # Imported here to avoid top-of-module circular imports with doxa-research.paths.
+    from doxa-research.paths import user_checkpoints_dir
 
     return str(user_checkpoints_dir())
 
@@ -395,7 +395,7 @@ class ExecutionConfig(BaseModel):
     parallel_providers: bool = StarterField(True)
     retry_attempts: int = StarterField(3)
     # Advanced fields — Field(...), NOT StarterField — deliberately omitted
-    # from `thoth init` per the P33 starter-subset contract.
+    # from `doxa-research init` per the P33 starter-subset contract.
     max_transient_errors: int = Field(5)
     auto_input: bool = StarterField(True)
     prompt_max_bytes: int = Field(1024 * 1024)
@@ -411,9 +411,9 @@ class OutputConfig(BaseModel):
 
 
 class ClarificationCLIConfig(BaseModel):
-    """Settings for the CLI clarification flow (`thoth ask --clarify`).
+    """Settings for the CLI clarification flow (`doxa-research ask --clarify`).
 
-    NOT shipped in `thoth init` (no StarterField anywhere). The defaults
+    NOT shipped in `doxa-research init` (no StarterField anywhere). The defaults
     match today's `get_defaults()['clarification']['cli']` byte-for-byte.
     """
 
@@ -479,19 +479,19 @@ class ModeConfig(BaseModel):
     description: str | None = None
 ```
 
-- [ ] **Step 4: Add the top-level `ThothConfig` model and singleton wiring**
+- [ ] **Step 4: Add the top-level `DoxaConfig` model and singleton wiring**
 
-In `src/thoth/config_schema.py`, replace the `# Top-level model` and `# Singleton root model` placeholders:
+In `src/doxa_research/config_schema.py`, replace the `# Top-level model` and `# Singleton root model` placeholders:
 
 ```python
 # At the end of the "Top-level model" section:
 
-class ThothConfig(BaseModel):
+class DoxaConfig(BaseModel):
     """Runtime defaults — what `ConfigSchema.get_defaults()` emits.
 
     Every field present here corresponds to a key in the historical
     `get_defaults()` dict. Adding a new key here adds a new default; it
-    does not automatically appear in the `thoth init` starter doc unless
+    does not automatically appear in the `doxa-research init` starter doc unless
     declared with `StarterField(...)`.
     """
 
@@ -516,13 +516,13 @@ And at the bottom of the file, replace the singleton placeholder:
 
 ```python
 # Built once at import time. Tests assert this dump equals get_defaults().
-_ROOT_SCHEMA = ThothConfig()
+_ROOT_SCHEMA = DoxaConfig()
 ```
 
 - [ ] **Step 5: Run TS01 to verify the smoke and dump-equality tests pass**
 
 ```bash
-uv run pytest tests/test_config_schema.py::test_thoth_config_constructs_with_no_overrides tests/test_config_schema.py::test_get_defaults_equals_root_schema_dump -v
+uv run pytest tests/test_config_schema.py::test_doxa_config_constructs_with_no_overrides tests/test_config_schema.py::test_get_defaults_equals_root_schema_dump -v
 ```
 
 Expected: smoke test PASSES. The `test_get_defaults_equals_root_schema_dump` test FAILS — `get_defaults()` still returns the legacy hand-coded dict, which differs from `_ROOT_SCHEMA.model_dump()` only on the `providers` shape (legacy returns `{"openai": {"api_key": ...}}`, schema returns the same shape). If they actually match byte-identically already, the test passes — that's even better. Either way, do not modify `get_defaults()` body yet — that is Task 6.
@@ -531,8 +531,8 @@ If the test fails, capture the diff for Task 6 by running:
 
 ```bash
 uv run python -c "
-from thoth.config import ConfigSchema
-from thoth.config_schema import _ROOT_SCHEMA
+from doxa-research.config import ConfigSchema
+from doxa-research.config_schema import _ROOT_SCHEMA
 import json
 legacy = ConfigSchema.get_defaults()
 new = _ROOT_SCHEMA.model_dump(mode='python')
@@ -561,8 +561,8 @@ If a path fails to resolve, the schema is missing a field. Add the field with th
 - [ ] **Step 7: Commit**
 
 ```bash
-git add src/thoth/config_schema.py tests/test_config_schema.py
-git commit -m "feat(config): introduce config_schema.py with ThothConfig models (P33-T01, TS01/TS02)"
+git add src/doxa_research/config_schema.py tests/test_config_schema.py
+git commit -m "feat(config): introduce config_schema.py with DoxaConfig models (P33-T01, TS01/TS02)"
 ```
 
 ---
@@ -572,7 +572,7 @@ git commit -m "feat(config): introduce config_schema.py with ThothConfig models 
 This task adds the auto-derived partial helper, the user-only overlay shape (which permits P21 fields like `general.default_profile`), and the document-level `UserConfigFile` schema.
 
 **Files:**
-- Modify: `src/thoth/config_schema.py`
+- Modify: `src/doxa_research/config_schema.py`
 - Modify: `tests/test_config_schema.py`
 
 - [ ] **Step 1: Write TS03 (partial regression) and TS08 (mode/profile prompt surface)**
@@ -584,29 +584,29 @@ Append to `tests/test_config_schema.py`:
 
 
 def test_make_partial_keeps_field_set() -> None:
-    """make_partial(ThothConfig) must produce a model with the same field
-    set as ThothConfig, all marked optional with `None` defaults."""
-    from thoth.config_schema import PartialThothConfig, ThothConfig
+    """make_partial(DoxaConfig) must produce a model with the same field
+    set as DoxaConfig, all marked optional with `None` defaults."""
+    from doxa-research.config_schema import PartialDoxaConfig, DoxaConfig
 
-    src_fields = set(ThothConfig.model_fields.keys())
-    partial_fields = set(PartialThothConfig.model_fields.keys())
+    src_fields = set(DoxaConfig.model_fields.keys())
+    partial_fields = set(PartialDoxaConfig.model_fields.keys())
     assert src_fields == partial_fields, (
-        f"PartialThothConfig field set drifted from ThothConfig: "
+        f"PartialDoxaConfig field set drifted from DoxaConfig: "
         f"missing {src_fields - partial_fields}, extra {partial_fields - src_fields}"
     )
 
-    for name, finfo in PartialThothConfig.model_fields.items():
+    for name, finfo in PartialDoxaConfig.model_fields.items():
         # Each field must have a `None` default, signalling "unset = ok"
         assert finfo.default is None or finfo.default_factory is not None, (
-            f"PartialThothConfig.{name} should default to None or a factory; "
+            f"PartialDoxaConfig.{name} should default to None or a factory; "
             f"got {finfo.default!r}"
         )
 
 
 def test_make_partial_constructs_empty() -> None:
-    from thoth.config_schema import PartialThothConfig
+    from doxa-research.config_schema import PartialDoxaConfig
 
-    PartialThothConfig()  # must not raise
+    PartialDoxaConfig()  # must not raise
 
 
 # ---------- TS02: overlay-path coverage ----------
@@ -615,7 +615,7 @@ def test_make_partial_constructs_empty() -> None:
 def test_user_only_overlay_paths_resolve() -> None:
     """Valid P21 user-only fields must resolve through ConfigOverlay /
     ProfileConfig, even though they are NOT part of get_defaults()."""
-    from thoth.config_schema import ConfigOverlay, ProfileConfig, resolve_path
+    from doxa-research.config_schema import ConfigOverlay, ProfileConfig, resolve_path
 
     # general.default_profile and general.prompt_prefix are P21 user-only
     # overlay fields — not emitted by get_defaults() but valid in user TOML.
@@ -634,13 +634,13 @@ def test_user_only_overlay_paths_resolve() -> None:
 
 
 def test_mode_table_with_prompts_validates() -> None:
-    from thoth.config_schema import ModeConfig
+    from doxa-research.config_schema import ModeConfig
 
     ModeConfig(system_prompt="Be precise", prompt_prefix="Cite sources")
 
 
 def test_profile_with_root_and_nested_prompts_validates() -> None:
-    from thoth.config_schema import ProfileConfig
+    from doxa-research.config_schema import ProfileConfig
 
     profile = ProfileConfig(
         prompt_prefix="Be thorough",
@@ -651,7 +651,7 @@ def test_profile_with_root_and_nested_prompts_validates() -> None:
 
 
 def test_user_file_with_full_p21_shape_validates() -> None:
-    from thoth.config_schema import UserConfigFile
+    from doxa-research.config_schema import UserConfigFile
 
     doc = {
         "general": {
@@ -673,7 +673,7 @@ def test_user_file_with_full_p21_shape_validates() -> None:
 def test_typo_at_each_overlay_level_raises_in_strict() -> None:
     from pydantic import ValidationError
 
-    from thoth.config_schema import ProfileConfig, UserConfigFile
+    from doxa-research.config_schema import ProfileConfig, UserConfigFile
 
     # Top-level [general] typo
     with pytest.raises(ValidationError):
@@ -696,11 +696,11 @@ def test_typo_at_each_overlay_level_raises_in_strict() -> None:
 uv run pytest tests/test_config_schema.py -v -k "make_partial or overlay_paths_resolve or with_prompts_validates or with_root_and_nested or with_full_p21 or typo_at_each"
 ```
 
-Expected: import errors / FAILS — `PartialThothConfig`, `ConfigOverlay`, `ProfileConfig`, `UserConfigFile` don't exist yet.
+Expected: import errors / FAILS — `PartialDoxaConfig`, `ConfigOverlay`, `ProfileConfig`, `UserConfigFile` don't exist yet.
 
 - [ ] **Step 3: Add `make_partial` helper**
 
-In `src/thoth/config_schema.py`, in the "Overlay / partial / user-file shapes" section, add:
+In `src/doxa_research/config_schema.py`, in the "Overlay / partial / user-file shapes" section, add:
 
 ```python
 def make_partial(model: type[BaseModel], *, suffix: str = "Partial") -> type[BaseModel]:
@@ -733,14 +733,14 @@ def make_partial(model: type[BaseModel], *, suffix: str = "Partial") -> type[Bas
     )
 
 
-PartialThothConfig: type[BaseModel] = make_partial(ThothConfig)
+PartialDoxaConfig: type[BaseModel] = make_partial(DoxaConfig)
 """Mechanically-derived runtime partial — used for CLI/profile-overlay
 internals and as the alignment baseline for TS03."""
 ```
 
 - [ ] **Step 4: Add `GeneralOverlay` for P21 user-only fields**
 
-In `src/thoth/config_schema.py`, in the "Overlay / partial / user-file shapes" section (after `make_partial`):
+In `src/doxa_research/config_schema.py`, in the "Overlay / partial / user-file shapes" section (after `make_partial`):
 
 ```python
 class GeneralOverlay(BaseModel):
@@ -763,7 +763,7 @@ Now add a regression test in `tests/test_config_schema.py` to catch drift betwee
 
 ```python
 def test_general_overlay_mirrors_general_config_fields() -> None:
-    from thoth.config_schema import GeneralConfig, GeneralOverlay
+    from doxa-research.config_schema import GeneralConfig, GeneralOverlay
 
     runtime = set(GeneralConfig.model_fields.keys())
     overlay = set(GeneralOverlay.model_fields.keys())
@@ -783,13 +783,13 @@ def test_general_overlay_mirrors_general_config_fields() -> None:
 
 - [ ] **Step 5: Add `ConfigOverlay`, `ProfileConfig`, `UserConfigFile`**
 
-In `src/thoth/config_schema.py`, after `GeneralOverlay`, add:
+In `src/doxa_research/config_schema.py`, after `GeneralOverlay`, add:
 
 ```python
 class ConfigOverlay(BaseModel):
     """A user/profile/cli config layer.
 
-    Every runtime-default field is optional (mirror of `make_partial(ThothConfig)`)
+    Every runtime-default field is optional (mirror of `make_partial(DoxaConfig)`)
     and `general` is replaced by `GeneralOverlay` so P21 user-only fields are
     accepted.
     """
@@ -815,7 +815,7 @@ class ProfileConfig(ConfigOverlay):
 
 
 class UserConfigFile(ConfigOverlay):
-    """Top-level shape of an actual `thoth.config.toml` on disk.
+    """Top-level shape of an actual `doxa-research.config.toml` on disk.
 
     `ConfigOverlay` fields plus a `profiles` super-table (validated by
     `ProfileConfig`) and an `experimental` carve-out (the only field that
@@ -841,7 +841,7 @@ If `test_user_only_overlay_paths_resolve` fails on `ConfigOverlay → modes → 
 - [ ] **Step 7: Commit**
 
 ```bash
-git add src/thoth/config_schema.py tests/test_config_schema.py
+git add src/doxa_research/config_schema.py tests/test_config_schema.py
 git commit -m "feat(config): add make_partial, ConfigOverlay, ProfileConfig, UserConfigFile (P33-T02, TS03/TS08)"
 ```
 
@@ -850,7 +850,7 @@ git commit -m "feat(config): add make_partial, ConfigOverlay, ProfileConfig, Use
 ### Task 4: Add `ProviderConfigBase` + per-provider configs (P33-T06, TS07)
 
 **Files:**
-- Modify: `src/thoth/config_schema.py`
+- Modify: `src/doxa_research/config_schema.py`
 - Modify: `tests/test_config_schema.py`
 
 - [ ] **Step 1: Write TS07 (provider-specific schema fields)**
@@ -862,13 +862,13 @@ Append to `tests/test_config_schema.py`:
 
 
 def test_openai_provider_temperature_validates() -> None:
-    from thoth.config_schema import OpenAIConfig
+    from doxa-research.config_schema import OpenAIConfig
 
     OpenAIConfig(api_key="${OPENAI_API_KEY}", temperature=0.7)
 
 
 def test_perplexity_provider_search_context_size_validates() -> None:
-    from thoth.config_schema import PerplexityConfig
+    from doxa-research.config_schema import PerplexityConfig
 
     PerplexityConfig(api_key="${PERPLEXITY_API_KEY}", search_context_size="high")
 
@@ -876,7 +876,7 @@ def test_perplexity_provider_search_context_size_validates() -> None:
 def test_unknown_openai_field_rejected() -> None:
     from pydantic import ValidationError
 
-    from thoth.config_schema import OpenAIConfig
+    from doxa-research.config_schema import OpenAIConfig
 
     with pytest.raises(ValidationError) as exc:
         OpenAIConfig(api_key="${OPENAI_API_KEY}", bogus=1)
@@ -886,7 +886,7 @@ def test_unknown_openai_field_rejected() -> None:
 def test_perplexity_rejects_openai_specific_fields() -> None:
     from pydantic import ValidationError
 
-    from thoth.config_schema import PerplexityConfig
+    from doxa-research.config_schema import PerplexityConfig
 
     # `organization` is OpenAI-specific; Perplexity must reject it.
     with pytest.raises(ValidationError) as exc:
@@ -895,7 +895,7 @@ def test_perplexity_rejects_openai_specific_fields() -> None:
 
 
 def test_providers_config_holds_typed_subsections() -> None:
-    from thoth.config_schema import ProvidersConfig
+    from doxa-research.config_schema import ProvidersConfig
 
     p = ProvidersConfig()
     assert p.openai.api_key == "${OPENAI_API_KEY}"
@@ -912,7 +912,7 @@ Expected: import errors — `OpenAIConfig`, `PerplexityConfig`, `ProvidersConfig
 
 - [ ] **Step 3: Add provider config classes**
 
-In `src/thoth/config_schema.py`, in the "Provider configs" section (between per-section sub-models and `ThothConfig`), add:
+In `src/doxa_research/config_schema.py`, in the "Provider configs" section (between per-section sub-models and `DoxaConfig`), add:
 
 ```python
 class ProviderConfigBase(BaseModel):
@@ -920,7 +920,7 @@ class ProviderConfigBase(BaseModel):
 
     Renamed from `ProviderBase` per P33 review remediation #7 to avoid
     confusion with the runtime `ResearchProvider` class in
-    `src/thoth/providers/base.py`.
+    `src/doxa_research/providers/base.py`.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -967,9 +967,9 @@ class ProvidersConfig(BaseModel):
     # Gemini intentionally NOT in starter doc — P28 not landed yet.
 ```
 
-- [ ] **Step 4: Replace the `providers` placeholder on `ThothConfig`**
+- [ ] **Step 4: Replace the `providers` placeholder on `DoxaConfig`**
 
-In `src/thoth/config_schema.py`, find the `ThothConfig` class and replace the placeholder `providers: dict[str, dict[str, Any]] = Field(...)` with:
+In `src/doxa_research/config_schema.py`, find the `DoxaConfig` class and replace the placeholder `providers: dict[str, dict[str, Any]] = Field(...)` with:
 
 ```python
     providers: ProvidersConfig = Field(default_factory=ProvidersConfig)
@@ -997,8 +997,8 @@ Expected: all PASS. Note that `test_get_defaults_equals_root_schema_dump` still 
 
 ```bash
 uv run python -c "
-from thoth.config import ConfigSchema
-from thoth.config_schema import _ROOT_SCHEMA
+from doxa-research.config import ConfigSchema
+from doxa-research.config_schema import _ROOT_SCHEMA
 legacy = ConfigSchema.get_defaults()
 new = _ROOT_SCHEMA.model_dump(mode='python')
 diff = {k: (legacy.get(k), new.get(k)) for k in set(legacy)|set(new) if legacy.get(k) != new.get(k)}
@@ -1016,7 +1016,7 @@ If the schema dump emits `"model": null, "temperature": null, ...` keys that leg
 **Decision: use `exclude_none=True`.** Add a constant:
 
 ```python
-_ROOT_SCHEMA = ThothConfig()
+_ROOT_SCHEMA = DoxaConfig()
 _ROOT_DEFAULTS_DICT = _ROOT_SCHEMA.model_dump(mode="python", exclude_none=True)
 ```
 
@@ -1024,8 +1024,8 @@ _ROOT_DEFAULTS_DICT = _ROOT_SCHEMA.model_dump(mode="python", exclude_none=True)
 
 ```python
 def test_get_defaults_equals_root_schema_dump() -> None:
-    from thoth.config import ConfigSchema
-    from thoth.config_schema import _ROOT_DEFAULTS_DICT
+    from doxa-research.config import ConfigSchema
+    from doxa-research.config_schema import _ROOT_DEFAULTS_DICT
 
     assert ConfigSchema.get_defaults() == _ROOT_DEFAULTS_DICT
 ```
@@ -1033,7 +1033,7 @@ def test_get_defaults_equals_root_schema_dump() -> None:
 - [ ] **Step 7: Commit**
 
 ```bash
-git add src/thoth/config_schema.py tests/test_config_schema.py
+git add src/doxa_research/config_schema.py tests/test_config_schema.py
 git commit -m "feat(config): add ProviderConfigBase, OpenAIConfig, PerplexityConfig, GeminiConfig (P33-T06, TS07)"
 ```
 
@@ -1042,8 +1042,8 @@ git commit -m "feat(config): add ProviderConfigBase, OpenAIConfig, PerplexityCon
 ### Task 5: Add `ValidationReport`, `ConfigSchema.validate()`, and the `--no-validate` flag (P33-T03, TS05 + TS06)
 
 **Files:**
-- Modify: `src/thoth/config_schema.py`
-- Modify: `src/thoth/cli.py`
+- Modify: `src/doxa_research/config_schema.py`
+- Modify: `src/doxa_research/cli.py`
 - Create: `tests/test_config_validate.py`
 
 - [ ] **Step 1: Write TS05 (warn-only) and TS06 (`[experimental]` carve-out)**
@@ -1066,7 +1066,7 @@ import pytest
 
 
 def test_prompy_prefix_typo_produces_one_warning_no_raise() -> None:
-    from thoth.config_schema import ConfigSchema
+    from doxa-research.config_schema import ConfigSchema
 
     data = {"general": {"prompy_prefix": "x"}}
     report = ConfigSchema.validate(data, layer="user")
@@ -1077,14 +1077,14 @@ def test_prompy_prefix_typo_produces_one_warning_no_raise() -> None:
 
 
 def test_validate_does_not_raise_on_unknown_field() -> None:
-    from thoth.config_schema import ConfigSchema
+    from doxa-research.config_schema import ConfigSchema
 
     # The whole point: validation reports, never raises.
     ConfigSchema.validate({"general": {"prompy_prefix": "x"}}, layer="user")
 
 
 def test_no_validate_global_suppresses_warnings() -> None:
-    from thoth import config_schema as cs
+    from doxa-research import config_schema as cs
 
     cs._no_validate = True
     try:
@@ -1099,7 +1099,7 @@ def test_no_validate_global_suppresses_warnings() -> None:
 def test_strict_mode_raises_on_unknown_field() -> None:
     from pydantic import ValidationError
 
-    from thoth.config_schema import ConfigSchema
+    from doxa-research.config_schema import ConfigSchema
 
     with pytest.raises(ValidationError):
         ConfigSchema.validate(
@@ -1111,7 +1111,7 @@ def test_strict_mode_raises_on_unknown_field() -> None:
 
 
 def test_experimental_table_accepts_arbitrary_keys() -> None:
-    from thoth.config_schema import ConfigSchema
+    from doxa-research.config_schema import ConfigSchema
 
     data = {
         "experimental": {
@@ -1125,7 +1125,7 @@ def test_experimental_table_accepts_arbitrary_keys() -> None:
 
 
 def test_experimental_in_strict_mode_also_accepts() -> None:
-    from thoth.config_schema import ConfigSchema
+    from doxa-research.config_schema import ConfigSchema
 
     # Strict mode doesn't tighten the [experimental] carve-out.
     ConfigSchema.validate(
@@ -1143,7 +1143,7 @@ Expected: all FAIL — `ConfigSchema.validate` doesn't exist yet.
 
 - [ ] **Step 3: Add `ValidationWarning`, `ValidationReport`, and `ConfigSchema.validate()`**
 
-In `src/thoth/config_schema.py`, in the "Validation report types" section, add:
+In `src/doxa_research/config_schema.py`, in the "Validation report types" section, add:
 
 ```python
 @dataclass(frozen=True)
@@ -1190,25 +1190,25 @@ class ConfigSchema:
         """Return the default configuration dict.
 
         After P33-T04, the body of `ConfigSchema.get_defaults()` in
-        `src/thoth/config.py` proxies here.
+        `src/doxa_research/config.py` proxies here.
         """
         return _ROOT_DEFAULTS_DICT
 
     @staticmethod
     def model() -> type[BaseModel]:
         """Return the typed runtime model class."""
-        return ThothConfig
+        return DoxaConfig
 
     @staticmethod
     def starter_keys() -> set[tuple[str, ...]]:
-        """Return the set of leaf paths that ship in `thoth init`.
+        """Return the set of leaf paths that ship in `doxa-research init`.
 
         Walks every model field and yields paths whose
         `json_schema_extra["in_starter"]` is truthy. Used by the writer
         and by the round-trip test.
         """
         result: set[tuple[str, ...]] = set()
-        _collect_starter_paths(ThothConfig, prefix=(), out=result)
+        _collect_starter_paths(DoxaConfig, prefix=(), out=result)
         return result
 
     @staticmethod
@@ -1226,7 +1226,7 @@ class ConfigSchema:
           profile overlay).
         - `layer="cli"` / `layer="env"` validates against `ConfigOverlay`
           (no `[profiles]` allowed at this layer).
-        - `layer="defaults"` validates against `ThothConfig` (full defaults).
+        - `layer="defaults"` validates against `DoxaConfig` (full defaults).
 
         With `strict=True`, raises `pydantic.ValidationError` on the first
         error. With `strict=False` (default), collects all errors as
@@ -1258,7 +1258,7 @@ def _layer_to_model(layer: str) -> type[BaseModel]:
     if layer == "cli" or layer == "env":
         return ConfigOverlay
     if layer == "defaults":
-        return ThothConfig
+        return DoxaConfig
     raise ValueError(f"unknown validation layer {layer!r}")
 
 
@@ -1304,13 +1304,13 @@ Expected: all PASS.
 
 - [ ] **Step 5: Wire the `--no-validate` flag into the CLI**
 
-In `src/thoth/cli.py`, find the `_apply_config_path` helper (around line 93) and add a sibling helper:
+In `src/doxa_research/cli.py`, find the `_apply_config_path` helper (around line 93) and add a sibling helper:
 
 ```python
 def _apply_no_validate(no_validate: bool) -> None:
     """Mirror of `_apply_config_path` for the `--no-validate` flag.
 
-    Sets the module-global `_no_validate` in `thoth.config_schema` so that
+    Sets the module-global `_no_validate` in `doxa-research.config_schema` so that
     `ConfigSchema.validate()` short-circuits to an empty report. This is
     *loader metadata*, NOT a config root key — it is never threaded into
     `cli_args` and `ConfigManager.load_all_layers` rejects it as a config
@@ -1318,12 +1318,12 @@ def _apply_no_validate(no_validate: bool) -> None:
     `config.py:306`.
     """
     if no_validate:
-        from thoth import config_schema as _thoth_config_schema
+        from doxa-research import config_schema as _doxa_config_schema
 
-        _thoth_config_schema._no_validate = True
+        _doxa_config_schema._no_validate = True
 ```
 
-Find the top-level `cli` group (search for `def cli(` in `src/thoth/cli.py`). Add a `--no-validate` Click option to its decorator stack and a corresponding parameter to its signature. Mirror the pattern used for `config_path`:
+Find the top-level `cli` group (search for `def cli(` in `src/doxa_research/cli.py`). Add a `--no-validate` Click option to its decorator stack and a corresponding parameter to its signature. Mirror the pattern used for `config_path`:
 
 ```python
 @click.option(
@@ -1347,7 +1347,7 @@ def cli(
     # ... rest unchanged ...
 ```
 
-> **Implementation note for the engineer:** if `cli.py`'s decorator stack is built from `_RESEARCH_OPTIONS` rather than inline `@click.option` calls, append `(("--no-validate",), {"is_flag": True, "default": False, "help": "..."})` to the `_RESEARCH_OPTIONS` list in `src/thoth/cli_subcommands/_options.py:25`. The flag will then appear on every command that uses `_research_options` — that's intentional, since validation is per-command.
+> **Implementation note for the engineer:** if `cli.py`'s decorator stack is built from `_RESEARCH_OPTIONS` rather than inline `@click.option` calls, append `(("--no-validate",), {"is_flag": True, "default": False, "help": "..."})` to the `_RESEARCH_OPTIONS` list in `src/doxa_research/cli_subcommands/_options.py:25`. The flag will then appear on every command that uses `_research_options` — that's intentional, since validation is per-command.
 
 - [ ] **Step 6: Add a CLI integration test for `--no-validate`**
 
@@ -1358,10 +1358,10 @@ Append to `tests/test_config_validate.py`:
 
 
 def test_no_validate_flag_suppresses_runtime_warnings(tmp_path) -> None:
-    """`thoth --no-validate ...` must not surface warnings for config typos."""
+    """`doxa-research --no-validate ...` must not surface warnings for config typos."""
     import subprocess
 
-    cfg = tmp_path / "thoth.config.toml"
+    cfg = tmp_path / "doxa-research.config.toml"
     cfg.write_text(
         '\n'.join(
             [
@@ -1374,9 +1374,9 @@ def test_no_validate_flag_suppresses_runtime_warnings(tmp_path) -> None:
 
     # Invoke the CLI with --no-validate; assert no "prompy_prefix" warning
     # appears on stdout/stderr. (`--config` is the only mechanism for picking
-    # an alternate config file; there is no `THOTH_CONFIG` env var.)
+    # an alternate config file; there is no `DOXA_CONFIG` env var.)
     result = subprocess.run(
-        ["uv", "run", "thoth", "--no-validate", "--config", str(cfg), "status"],
+        ["uv", "run", "doxa-research", "--no-validate", "--config", str(cfg), "status"],
         capture_output=True,
         text=True,
     )
@@ -1390,7 +1390,7 @@ def test_validate_flag_omitted_surfaces_warning(tmp_path) -> None:
     """Without --no-validate, the same typo should warn on stdout."""
     import subprocess
 
-    cfg = tmp_path / "thoth.config.toml"
+    cfg = tmp_path / "doxa-research.config.toml"
     cfg.write_text(
         '\n'.join(
             [
@@ -1402,7 +1402,7 @@ def test_validate_flag_omitted_surfaces_warning(tmp_path) -> None:
     )
 
     result = subprocess.run(
-        ["uv", "run", "thoth", "--config", str(cfg), "status"],
+        ["uv", "run", "doxa-research", "--config", str(cfg), "status"],
         capture_output=True,
         text=True,
     )
@@ -1424,7 +1424,7 @@ Expected: TS05/TS06 PASS; the `--no-validate` CLI test passes (suppresses); the 
 - [ ] **Step 8: Commit**
 
 ```bash
-git add src/thoth/config_schema.py src/thoth/cli.py src/thoth/cli_subcommands/_options.py tests/test_config_validate.py
+git add src/doxa_research/config_schema.py src/doxa_research/cli.py src/doxa_research/cli_subcommands/_options.py tests/test_config_validate.py
 git commit -m "feat(config): add ValidationReport, ConfigSchema.validate(), --no-validate flag (P33-T03, TS05/TS06)"
 ```
 
@@ -1435,14 +1435,14 @@ git commit -m "feat(config): add ValidationReport, ConfigSchema.validate(), --no
 This is a single-statement change; the test surface is what verifies it.
 
 **Files:**
-- Modify: `src/thoth/config.py:225-280`
+- Modify: `src/doxa_research/config.py:225-280`
 
 - [ ] **Step 1: Snapshot the current `get_defaults()` output**
 
 ```bash
 uv run python -c "
 import json
-from thoth.config import ConfigSchema
+from doxa-research.config import ConfigSchema
 print(json.dumps(ConfigSchema.get_defaults(), indent=2, default=str))
 " > /tmp/p33_legacy_defaults.json
 wc -l /tmp/p33_legacy_defaults.json
@@ -1452,7 +1452,7 @@ Expected: a non-empty JSON file with the legacy defaults dict. Keep this file as
 
 - [ ] **Step 2: Replace the `get_defaults()` body**
 
-In `src/thoth/config.py`, find the `ConfigSchema` class around line 221 and replace the entire `get_defaults` method body with:
+In `src/doxa_research/config.py`, find the `ConfigSchema` class around line 221 and replace the entire `get_defaults` method body with:
 
 ```python
 class ConfigSchema:
@@ -1462,10 +1462,10 @@ class ConfigSchema:
     def get_defaults() -> dict[str, Any]:
         """Return default configuration.
 
-        P33: derived from the typed schema in `thoth.config_schema`. Signature
+        P33: derived from the typed schema in `doxa-research.config_schema`. Signature
         unchanged from pre-P33 callers' perspective.
         """
-        from thoth.config_schema import _ROOT_DEFAULTS_DICT
+        from doxa-research.config_schema import _ROOT_DEFAULTS_DICT
 
         # Defensive copy so callers can mutate freely without poisoning the
         # singleton. This matches the pre-P33 contract: get_defaults() always
@@ -1481,7 +1481,7 @@ Delete the entire literal-dict body that was there before. The class becomes a t
 ```bash
 uv run python -c "
 import json
-from thoth.config import ConfigSchema
+from doxa-research.config import ConfigSchema
 new = ConfigSchema.get_defaults()
 old = json.load(open('/tmp/p33_legacy_defaults.json'))
 def normalize(d):
@@ -1516,10 +1516,10 @@ uv run pytest -q
 
 Expected: all green (excluding `extended` and `live_api` markers, which are gated). Pay particular attention to `test_config*.py` — these have the highest chance of catching a defaults-shape regression.
 
-- [ ] **Step 6: Run thoth_test integration suite**
+- [ ] **Step 6: Run doxa_test integration suite**
 
 ```bash
-./thoth_test -r --skip-interactive -q
+./doxa_test -r --skip-interactive -q
 ```
 
 Expected: 76 passed, 1 skipped, 0 failed (or matching baseline).
@@ -1527,7 +1527,7 @@ Expected: 76 passed, 1 skipped, 0 failed (or matching baseline).
 - [ ] **Step 7: Commit**
 
 ```bash
-git add src/thoth/config.py
+git add src/doxa_research/config.py
 git commit -m "refactor(config): derive ConfigSchema.get_defaults() from typed schema (P33-T04)"
 ```
 
@@ -1536,8 +1536,8 @@ git commit -m "refactor(config): derive ConfigSchema.get_defaults() from typed s
 ### Task 7: Extract `STARTER_PROFILES` and refactor `_build_starter_*()` (P33-T05, TS04)
 
 **Files:**
-- Create: `src/thoth/_starter_data.py`
-- Modify: `src/thoth/commands.py:36-159`
+- Create: `src/doxa_research/_starter_data.py`
+- Modify: `src/doxa_research/commands.py:36-159`
 - Create: `tests/test_config_starter_round_trip.py`
 
 - [ ] **Step 1: Write TS04 (round-trip test)**
@@ -1561,10 +1561,10 @@ import tomlkit
 
 
 def test_starter_doc_round_trips() -> None:
-    from thoth.commands import _build_starter_document
-    from thoth.config import ConfigSchema
-    from thoth.config_schema import ConfigSchema as CSNew  # public façade
-    from thoth._starter_data import STARTER_PROFILES
+    from doxa-research.commands import _build_starter_document
+    from doxa-research.config import ConfigSchema
+    from doxa-research.config_schema import ConfigSchema as CSNew  # public façade
+    from doxa-research._starter_data import STARTER_PROFILES
 
     doc = _build_starter_document()
     rendered = tomlkit.dumps(doc)
@@ -1613,7 +1613,7 @@ def test_starter_doc_round_trips() -> None:
     assert report.warnings == [], f"unexpected warnings: {report.warnings}"
 
     # ---- L1: section markers ----
-    assert "# Thoth Configuration File" in rendered
+    assert "# Doxa Research Configuration File" in rendered
     assert "[profiles]" in rendered
     assert "[profiles.daily]" in rendered
 ```
@@ -1628,10 +1628,10 @@ Expected: import error — `_starter_data` doesn't exist yet.
 
 - [ ] **Step 3: Create the `_starter_data.py` module**
 
-Create `src/thoth/_starter_data.py`:
+Create `src/doxa_research/_starter_data.py`:
 
 ```python
-"""P33: seed data for `thoth init` starter content.
+"""P33: seed data for `doxa-research init` starter content.
 
 Frozen verbatim from pre-P33 `_build_starter_profiles()`. Reviewing the
 *selection* of profiles is deferred to P37; this module owns the *content*.
@@ -1722,21 +1722,21 @@ STARTER_PROFILES: list[StarterProfile] = [
 
 - [ ] **Step 4: Add the `WRITER_COMMENTS` table and rewrite `_build_starter_profiles()` and `_build_starter_document()`**
 
-In `src/thoth/commands.py`, replace the existing `_build_starter_profiles()` and `_build_starter_document()` functions (lines ~70–159) with schema-driven versions. Above them, add the writer-owned comment table and a small walker.
+In `src/doxa_research/commands.py`, replace the existing `_build_starter_profiles()` and `_build_starter_document()` functions (lines ~70–159) with schema-driven versions. Above them, add the writer-owned comment table and a small walker.
 
 ```python
 # ---------------------------------------------------------------------------
-# P33: writer-owned structural prose for `thoth init`.
+# P33: writer-owned structural prose for `doxa-research init`.
 # ---------------------------------------------------------------------------
 # Inline help-comments live as field metadata on the schema (per P33
 # locked-decision 8). Multi-line *structural* prose stays here, keyed by
 # section path. Adding a comment for a new section: add an entry below.
 
 WRITER_COMMENTS: dict[str, list[str]] = {
-    "$header": ["Thoth Configuration File"],
+    "$header": ["Doxa Research Configuration File"],
     "profiles": [
         "Configuration profiles (P21). Activate with --profile NAME,",
-        "THOTH_PROFILE=NAME, or general.default_profile.",
+        "DOXA_PROFILE=NAME, or general.default_profile.",
         "Profile values REPLACE top-level values when the profile is active.",
     ],
 }
@@ -1788,13 +1788,13 @@ def _emit_starter_section(
 
 
 def _build_starter_profiles() -> tomlkit.items.Table:
-    """Build the `[profiles]` super-table shipped by `thoth init`.
+    """Build the `[profiles]` super-table shipped by `doxa-research init`.
 
-    P33: source of truth is `STARTER_PROFILES` in `thoth._starter_data`.
+    P33: source of truth is `STARTER_PROFILES` in `doxa-research._starter_data`.
     Profile *content* is frozen seed data; only the container construction
     lives here.
     """
-    from thoth._starter_data import STARTER_PROFILES
+    from doxa-research._starter_data import STARTER_PROFILES
 
     profiles = tomlkit.table()
     for entry in STARTER_PROFILES:
@@ -1803,26 +1803,26 @@ def _build_starter_profiles() -> tomlkit.items.Table:
 
 
 def _build_starter_document() -> tomlkit.TOMLDocument:
-    """Construct the full starter `~/.config/thoth/thoth.config.toml`.
+    """Construct the full starter `~/.config/doxa-research/doxa-research.config.toml`.
 
     P33: schema-driven. The set of in-starter fields and their default
-    values comes from `ThothConfig`'s field metadata; structural prose
+    values comes from `DoxaConfig`'s field metadata; structural prose
     comes from `WRITER_COMMENTS`.
     """
-    from thoth.config_schema import (
+    from doxa-research.config_schema import (
         ClarificationConfig,
         ExecutionConfig,
         GeneralConfig,
         OutputConfig,
         PathsConfig,
         ProvidersConfig,
-        ThothConfig,
+        DoxaConfig,
     )
 
     doc = tomlkit.document()
     for line in WRITER_COMMENTS.get("$header", []):
         doc.add(tomlkit.comment(line))
-    doc["version"] = ThothConfig.model_fields["version"].default
+    doc["version"] = DoxaConfig.model_fields["version"].default
 
     _emit_starter_section(doc, "general", GeneralConfig)
     _emit_starter_section(doc, "paths", PathsConfig)
@@ -1866,13 +1866,13 @@ Capture the pre-P33 init output for diffing (commit `f5e6700` is pre-P33):
 
 ```bash
 git stash
-git checkout f5e6700 -- src/thoth/commands.py
+git checkout f5e6700 -- src/doxa_research/commands.py
 uv run python -c "
-from thoth.commands import _build_starter_document
+from doxa-research.commands import _build_starter_document
 import tomlkit
 print(tomlkit.dumps(_build_starter_document()))
 " > /tmp/p33_pre_init.toml
-git checkout HEAD -- src/thoth/commands.py
+git checkout HEAD -- src/doxa_research/commands.py
 git stash pop || true
 ```
 
@@ -1880,7 +1880,7 @@ Now capture the post-P33 init output:
 
 ```bash
 uv run python -c "
-from thoth.commands import _build_starter_document
+from doxa-research.commands import _build_starter_document
 import tomlkit
 print(tomlkit.dumps(_build_starter_document()))
 " > /tmp/p33_post_init.toml
@@ -1890,10 +1890,10 @@ diff -u /tmp/p33_pre_init.toml /tmp/p33_post_init.toml
 
 Expected: empty diff, or only formatting differences (tomlkit-controlled blank lines around tables). Inspect any structural differences manually.
 
-- [ ] **Step 7: Run thoth_test integration**
+- [ ] **Step 7: Run doxa_test integration**
 
 ```bash
-./thoth_test -r --skip-interactive -q
+./doxa_test -r --skip-interactive -q
 ```
 
 Expected: green. The `M…: Init command creates user XDG config directory…` test exercises the writer end-to-end.
@@ -1901,8 +1901,8 @@ Expected: green. The `M…: Init command creates user XDG config directory…` t
 - [ ] **Step 8: Commit**
 
 ```bash
-git add src/thoth/_starter_data.py src/thoth/commands.py tests/test_config_starter_round_trip.py
-git commit -m "feat(config): derive thoth init from schema + STARTER_PROFILES seed (P33-T05, TS04)"
+git add src/doxa_research/_starter_data.py src/doxa_research/commands.py tests/test_config_starter_round_trip.py
+git commit -m "feat(config): derive doxa-research init from schema + STARTER_PROFILES seed (P33-T05, TS04)"
 ```
 
 ---
@@ -1910,17 +1910,17 @@ git commit -m "feat(config): derive thoth init from schema + STARTER_PROFILES se
 ### Task 8: Hook `ConfigSchema.validate()` into `ConfigManager.load_all_layers` (P33-T07)
 
 **Files:**
-- Modify: `src/thoth/config.py:283-371`
+- Modify: `src/doxa_research/config.py:283-371`
 - Modify: `tests/test_config_validate.py`
 
 - [ ] **Step 1: Add `ConfigManager.validation_reports` and per-layer validation**
 
-In `src/thoth/config.py`, modify `ConfigManager.__init__` (around line 286) to add the new field:
+In `src/doxa_research/config.py`, modify `ConfigManager.__init__` (around line 286) to add the new field:
 
 ```python
 def __init__(self, config_path: Path | None = None):
     self.user_config_path = config_path or user_config_file()
-    self.project_config_paths = ["./thoth.config.toml", "./.thoth.config.toml"]
+    self.project_config_paths = ["./doxa.config.toml", "./.doxa-research.config.toml"]
     self.layers: dict[str, dict[str, Any]] = {}
     self.data: dict[str, Any] = {}
     self.project_config_path: Path | None = None
@@ -1928,7 +1928,7 @@ def __init__(self, config_path: Path | None = None):
     self.active_profile: ProfileLayer | None = None
     self.profile_catalog: list[ProfileLayer] = []
     # P33: per-layer validation reports keyed by layer name.
-    from thoth.config_schema import ValidationReport
+    from doxa-research.config_schema import ValidationReport
 
     self.validation_reports: dict[str, ValidationReport] = {}
 ```
@@ -1938,7 +1938,7 @@ Then modify `load_all_layers()` to validate each layer immediately after loading
 ```python
 def _validate_layer(self, layer: str, data: dict[str, Any]) -> None:
     """Validate a layer's raw data; collect warnings; emit to console."""
-    from thoth.config_schema import ConfigSchema
+    from doxa-research.config_schema import ConfigSchema
 
     report = ConfigSchema.validate(data, layer=layer)
     self.validation_reports[layer] = report
@@ -2002,9 +2002,9 @@ Append to `tests/test_config_validate.py`:
 ```python
 def test_validation_reports_populated_per_layer(tmp_path) -> None:
     """ConfigManager.validation_reports must contain a report per layer."""
-    from thoth.config import ConfigManager
+    from doxa-research.config import ConfigManager
 
-    cfg = tmp_path / "thoth.config.toml"
+    cfg = tmp_path / "doxa-research.config.toml"
     cfg.write_text(
         '\n'.join(
             [
@@ -2035,9 +2035,9 @@ def test_validation_reports_populated_per_layer(tmp_path) -> None:
 
 def test_existing_test_fixtures_produce_zero_warnings(tmp_path) -> None:
     """A *valid* P21-shape config produces no warnings."""
-    from thoth.config import ConfigManager
+    from doxa-research.config import ConfigManager
 
-    cfg = tmp_path / "thoth.config.toml"
+    cfg = tmp_path / "doxa-research.config.toml"
     cfg.write_text(
         '\n'.join(
             [
@@ -2074,11 +2074,11 @@ uv run pytest tests/test_config_validate.py -v
 
 Expected: all PASS.
 
-- [ ] **Step 6: Run the full pytest suite + thoth_test**
+- [ ] **Step 6: Run the full pytest suite + doxa_test**
 
 ```bash
 uv run pytest -q
-./thoth_test -r --skip-interactive -q
+./doxa_test -r --skip-interactive -q
 ```
 
 Expected: green. Existing fixtures should produce zero warnings on every layer (otherwise they encode invalid shapes — fix the fixture, not the schema).
@@ -2086,7 +2086,7 @@ Expected: green. Existing fixtures should produce zero warnings on every layer (
 - [ ] **Step 7: Commit**
 
 ```bash
-git add src/thoth/config.py tests/test_config_validate.py
+git add src/doxa_research/config.py tests/test_config_validate.py
 git commit -m "feat(config): hook schema validation into load_all_layers, store reports per-layer (P33-T07)"
 ```
 
@@ -2127,7 +2127,7 @@ from unittest.mock import AsyncMock, MagicMock
 def test_provider_temperature_reaches_request_builder(monkeypatch) -> None:
     """`[providers.openai] temperature = 0.2` for a non-`o*` model must
     appear in the request_params passed to `client.responses.create`."""
-    from thoth.providers.openai import OpenAIProvider
+    from doxa-research.providers.openai import OpenAIProvider
 
     captured: dict[str, Any] = {}
 
@@ -2165,10 +2165,10 @@ def test_provider_temperature_reaches_request_builder(monkeypatch) -> None:
 def test_profile_overlay_system_prompt_reaches_submit(monkeypatch, tmp_path) -> None:
     """A profile-overlaid `[profiles.fast.modes.thinking] system_prompt = "..."`
     must reach `OpenAIProvider.submit`'s `system_prompt` argument."""
-    from thoth.config import ConfigManager
-    from thoth.providers.openai import OpenAIProvider
+    from doxa-research.config import ConfigManager
+    from doxa-research.providers.openai import OpenAIProvider
 
-    cfg = tmp_path / "thoth.config.toml"
+    cfg = tmp_path / "doxa-research.config.toml"
     cfg.write_text(
         '\n'.join(
             [
@@ -2237,7 +2237,7 @@ Expected: PASS. The repo uses `asyncio.run(coro)` to sync-wrap async tests — n
 
 For each modeled OpenAI field that fails the consumption assertion:
 
-1. **Wire it** in `src/thoth/providers/openai.py` if it's a small change (e.g. read `self.config.get("max_tokens")` and pass through).
+1. **Wire it** in `src/doxa_research/providers/openai.py` if it's a small change (e.g. read `self.config.get("max_tokens")` and pass through).
 2. **Otherwise downgrade** the schema-only claim: remove the field from `OpenAIConfig` (or annotate it with a comment "P33 schema-only; runtime pickup deferred to <future P##>") and remove the corresponding TS09 assertion. Do not silently let the test be skipped.
 
 - [ ] **Step 4: Commit**
@@ -2278,7 +2278,7 @@ If Step 1 surfaced no warnings on existing fixtures, the user-visible delta is z
 If warnings DO appear on existing fixtures (a good signal that P33 caught a latent bug — fix the fixture, not the schema), add a short note to README's "Configuration" section:
 
 ```markdown
-**Note:** Thoth now warns on unknown config keys (e.g. `prompy_prefix` typos). Warnings
+**Note:** Doxa Research now warns on unknown config keys (e.g. `prompy_prefix` typos). Warnings
 are advisory and do not block execution. Pass `--no-validate` to suppress them. The
 `[experimental]` super-table accepts arbitrary keys without warning.
 ```
@@ -2301,7 +2301,7 @@ uv run ruff check src/ tests/
 uv run ruff format --check src/ tests/
 uv run ty check src/
 uv run pytest -q
-./thoth_test -r --skip-interactive -q
+./doxa_test -r --skip-interactive -q
 ```
 
 Expected: all green.
@@ -2325,16 +2325,16 @@ gh pr create --title "P33: Schema-Driven Config Defaults" --body "$(cat <<'EOF'
 ## Summary
 - Pydantic v2 schema is now the single source of truth for runtime defaults, init starter content, and per-provider config surface
 - `ConfigSchema.get_defaults()` derives from `_ROOT_SCHEMA.model_dump(...)` — signature unchanged
-- `thoth init` walks the schema for in-starter fields; profile content is sourced from `STARTER_PROFILES` seed data
+- `doxa-research init` walks the schema for in-starter fields; profile content is sourced from `STARTER_PROFILES` seed data
 - Warn-only validation hooks into `ConfigManager.load_all_layers`; reports stored on `ConfigManager.validation_reports`; `--no-validate` flag and `[experimental]` carve-out provide escape hatches
 - Provider config is forward-looking: `OpenAIConfig`, `PerplexityConfig`, `GeminiConfig` all subclass `ProviderConfigBase`; OpenAI fields are runtime-consumption regression-tested
 
 ## Test plan
 - [ ] `uv run pytest tests/test_p33_pydantic_dep.py tests/test_config_schema.py tests/test_config_validate.py tests/test_config_starter_round_trip.py tests/test_openai_config_consumption.py -v` — TS00–TS09 green
-- [ ] `./thoth_test -r --skip-interactive -q` — no regressions
+- [ ] `./doxa_test -r --skip-interactive -q` — no regressions
 - [ ] `just check` — lint + typecheck clean
-- [ ] Manual: `thoth init --hidden /tmp/thoth-p33-check.toml`, diff against pre-P33 capture
-- [ ] Manual: add `[general] prompy_prefix = "x"` to a config; run `thoth status`; observe one warning at `general.prompy_prefix`. Pass `--no-validate`; observe none
+- [ ] Manual: `doxa-research init --hidden /tmp/doxa-research-p33-check.toml`, diff against pre-P33 capture
+- [ ] Manual: add `[general] prompy_prefix = "x"` to a config; run `doxa-research status`; observe one warning at `general.prompy_prefix`. Pass `--no-validate`; observe none
 - [ ] Manual: add `[experimental] anything = true`; observe no warning
 
 Closes P33.
@@ -2351,9 +2351,9 @@ After completing all tasks above, run this checklist:
 - [ ] Every TS00–TS09 in the spec has a corresponding test file/test function in this plan.
 - [ ] Every T00–T09 in the spec has a corresponding plan task.
 - [ ] All type names used in later tasks match what was defined earlier:
-  - `ThothConfig`, `GeneralConfig`, `PathsConfig`, `ExecutionConfig`, `OutputConfig`, `ProvidersConfig`, `ClarificationConfig`, `ClarificationCLIConfig`, `ClarificationInteractiveConfig`, `ModeConfig`
+  - `DoxaConfig`, `GeneralConfig`, `PathsConfig`, `ExecutionConfig`, `OutputConfig`, `ProvidersConfig`, `ClarificationConfig`, `ClarificationCLIConfig`, `ClarificationInteractiveConfig`, `ModeConfig`
   - `ProviderConfigBase`, `OpenAIConfig`, `PerplexityConfig`, `GeminiConfig`
-  - `make_partial`, `PartialThothConfig`, `GeneralOverlay`, `ConfigOverlay`, `ProfileConfig`, `UserConfigFile`
+  - `make_partial`, `PartialDoxaConfig`, `GeneralOverlay`, `ConfigOverlay`, `ProfileConfig`, `UserConfigFile`
   - `StarterField`, `_ROOT_SCHEMA`, `_ROOT_DEFAULTS_DICT`, `_no_validate`
   - `ValidationWarning`, `ValidationReport`
   - `ConfigSchema.validate(data, *, layer="user", strict=False)`, `.starter_keys()`, `.model()`

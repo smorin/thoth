@@ -5,8 +5,8 @@
 
 PR2's design must be measured against this checklist to ensure no functionality is silently dropped during migration. The "soon-to-be-removed" surface is:
 
-- `thoth --resume OP_ID` and `thoth -R OP_ID` (top-level option that should become a `thoth resume OP_ID` subcommand)
-- `thoth providers -- --list / --models / --keys / --refresh-cache / --no-cache` and the equivalent in-group hidden subcommands `thoth providers --list / --models / --keys` (the deprecation shim re-introduced in PR1.5)
+- `doxa-research --resume OP_ID` and `doxa-research -R OP_ID` (top-level option that should become a `doxa-research resume OP_ID` subcommand)
+- `doxa-research providers -- --list / --models / --keys / --refresh-cache / --no-cache` and the equivalent in-group hidden subcommands `doxa-research providers --list / --models / --keys` (the deprecation shim re-introduced in PR1.5)
 
 ---
 
@@ -16,26 +16,26 @@ PR2's design must be measured against this checklist to ensure no functionality 
 
 Format: `<argv>` — file:line — exit code — what it does.
 
-- `thoth --resume <OP_ID>` — `tests/test_resume.py:48` — exit `0` on success — calls `resume_operation(op_id, verbose=False, ctx=app_ctx)` after Click parses globals (cli.py:347-358).
-- `thoth --resume <OP_ID>` — `tests/test_resume.py:90` — exit `7` when the checkpoint is `failed/permanent` — message: `"failed permanently"`.
-- `thoth --resume <OP_ID>` — `tests/test_resume.py:131` — exit `0` (no-op) when checkpoint already `completed` — message: `"already completed"`.
-- `thoth --resume <op_id>` — `tests/test_cli_regressions.py:76` (BUG-CLI-002 regression) — exit `0` — verifies `resume_operation(operation_id="op_regression", verbose=False, ctx=…)` is called.
-- `thoth --pick-model --resume <OP_ID>` — `tests/test_pick_model.py:48,109` — exit `≠0` — `BadParameter("--pick-model only applies to research runs")` (cli.py:621).
-- `thoth --version --resume op_123 --async` — `tests/test_cli_regressions.py:164` (BUG-CLI-010 regression) — exit `≠0` — `--version must be used alone` (cli.py:590-597).
-- thoth_test runner: TR-02 expects stdout pattern `r"Resume with: .*thoth --resume"` (`thoth_test:2216`).
-- thoth_test runner: TR-03 expects the resume hint to be ABSENT for permanent failures (`thoth_test:2238`).
-- thoth_test runner: TS-09 (signal/Ctrl-C) expects pattern `r"Checkpoint saved\. Resume with: thoth --resume"` (`thoth_test:2170`).
-- README example: `thoth --resume research-20240803-143022-…` (`README.md:218`).
+- `doxa-research --resume <OP_ID>` — `tests/test_resume.py:48` — exit `0` on success — calls `resume_operation(op_id, verbose=False, ctx=app_ctx)` after Click parses globals (cli.py:347-358).
+- `doxa-research --resume <OP_ID>` — `tests/test_resume.py:90` — exit `7` when the checkpoint is `failed/permanent` — message: `"failed permanently"`.
+- `doxa-research --resume <OP_ID>` — `tests/test_resume.py:131` — exit `0` (no-op) when checkpoint already `completed` — message: `"already completed"`.
+- `doxa-research --resume <op_id>` — `tests/test_cli_regressions.py:76` (BUG-CLI-002 regression) — exit `0` — verifies `resume_operation(operation_id="op_regression", verbose=False, ctx=…)` is called.
+- `doxa-research --pick-model --resume <OP_ID>` — `tests/test_pick_model.py:48,109` — exit `≠0` — `BadParameter("--pick-model only applies to research runs")` (cli.py:621).
+- `doxa-research --version --resume op_123 --async` — `tests/test_cli_regressions.py:164` (BUG-CLI-010 regression) — exit `≠0` — `--version must be used alone` (cli.py:590-597).
+- doxa_test runner: TR-02 expects stdout pattern `r"Resume with: .*doxa-research --resume"` (`doxa_test:2216`).
+- doxa_test runner: TR-03 expects the resume hint to be ABSENT for permanent failures (`doxa_test:2238`).
+- doxa_test runner: TS-09 (signal/Ctrl-C) expects pattern `r"Checkpoint saved\. Resume with: doxa-research --resume"` (`doxa_test:2170`).
+- README example: `doxa-research --resume research-20240803-143022-…` (`README.md:218`).
 
 ### Helper paths that build `--resume` hints (not invocation, but format anchors)
 
-- `src/thoth/run.py:629, 654, 827, 854` — emits `Resume with: [bold]thoth --resume {operation.id}[/bold]` after research runs.
-- `src/thoth/signals.py:93, 99` — emits `Resume later: thoth --resume {id}` on Ctrl-C / async background.
-- `src/thoth/commands.py:227, 238` — emits `print_hint(f"thoth --resume {op_id}", …)` for both Ctrl-C and retry-from-checkpoint surfaces.
-- `src/thoth/help.py:134` — top-level help epilog literally lists `thoth --resume op_abc123` as an example.
-- `tests/_fixture_helpers.py:63-65` — `extract_resume_id` parses `thoth --resume <op_id>` out of stdout/stderr; uses regex `r"thoth --resume\s+(research-\d{8}-\d{6}-[a-f0-9]{16})"`.
-- `tests/test_progress_spinner.py:152` — asserts `"Resume later: thoth --resume op_abc123" in output`.
-- `tests/test_cli_help.py:26` — asserts `"thoth --resume" in out` (help text).
+- `src/doxa_research/run.py:629, 654, 827, 854` — emits `Resume with: [bold]doxa-research --resume {operation.id}[/bold]` after research runs.
+- `src/doxa_research/signals.py:93, 99` — emits `Resume later: doxa-research --resume {id}` on Ctrl-C / async background.
+- `src/doxa_research/commands.py:227, 238` — emits `print_hint(f"doxa-research --resume {op_id}", …)` for both Ctrl-C and retry-from-checkpoint surfaces.
+- `src/doxa_research/help.py:134` — top-level help epilog literally lists `doxa-research --resume op_abc123` as an example.
+- `tests/_fixture_helpers.py:63-65` — `extract_resume_id` parses `doxa-research --resume <op_id>` out of stdout/stderr; uses regex `r"doxa-research --resume\s+(research-\d{8}-\d{6}-[a-f0-9]{16})"`.
+- `tests/test_progress_spinner.py:152` — asserts `"Resume later: doxa-research --resume op_abc123" in output`.
+- `tests/test_cli_help.py:26` — asserts `"doxa-research --resume" in out` (help text).
 
 ### Options that combine with --resume (seen or implied)
 
@@ -80,15 +80,15 @@ Format: `<argv>` — file:line — exit code — what it does.
 - `"Research completed"` on resume of recoverable failure (`test_resume.py:55`).
 - `"failed permanently"` on permanent-failure resume (`test_resume.py:98-100`).
 - `"already completed"` on already-completed resume (`test_resume.py:138-139`).
-- The spawned process must emit the literal `"Resume with: thoth --resume <op_id>"` (`thoth_test` TR-02, signals path, run.py emitter).
+- The spawned process must emit the literal `"Resume with: doxa-research --resume <op_id>"` (`doxa_test` TR-02, signals path, run.py emitter).
 
 ---
 
 ## providers -- (legacy shim) and providers --… (in-group shim)
 
 Two surfaces share the same handler:
-1. `thoth providers -- --list` (the `--` separator form, original syntax).
-2. `thoth providers --list` (in-group hidden subcommand form, added in PR1.5 to keep working without the `--`).
+1. `doxa-research providers -- --list` (the `--` separator form, original syntax).
+2. `doxa-research providers --list` (in-group hidden subcommand form, added in PR1.5 to keep working without the `--`).
 
 Both emit the same deprecation warning and route into `commands.providers_command` / `providers_list` / `providers_check`.
 
@@ -96,28 +96,28 @@ Both emit the same deprecation warning and route into `commands.providers_comman
 
 | argv | Source | Exit | Notes |
 |---|---|---|---|
-| `thoth providers -- --list` | `tests/test_providers_subcommand.py:24` | `0` | Pytest: must print `"deprecated"` and `"openai"`. |
-| `thoth providers -- --list` | `thoth_test:2307` (P07-M2-01) | `0` | Pattern: `r"perplexity"` and `r"Perplexity search AI \(not.*implemented\)"`. |
-| `thoth providers -- --models` | `thoth_test:2269` (T-PROV-08) | `0` | Pattern: `r"Fetching available models"`, `r"Mock Models"`. |
-| `thoth providers -- --models --provider mock` | `thoth_test:2260` (T-PROV-07) | `0` | Pattern: `r"Mock Models"`, `r"mock-model-v1"`. |
-| `thoth providers -- --models --provider invalid` | `thoth_test:2290-2297` (T-PROV-10) | `1` | Stderr: `"Unknown provider: invalid"`, `"Available providers: openai, perplexity, mock"`. |
-| `thoth providers list` (new form) | `tests/test_providers_subcommand.py:7`, `thoth_test` (no direct test) | `0` | Pytest: `"openai"` substring. |
-| `thoth providers list --provider openai` | `tests/test_cli_regressions.py:181` (BUG-11) | `0` | `"openai" in output`, `"perplexity" not in output`. |
-| `thoth providers models` (new form) | `tests/test_providers_subcommand.py:13` | `0` | Plain exit-zero check. |
-| `thoth providers check` (new form) | `tests/test_providers_subcommand.py:18` | `0` or `2` | `0` if all keys present, `2` if any missing. |
-| `thoth providers` (no args) | `thoth_test:2250` (T-PROV-06) | `0` | Stdout patterns: `r"thoth providers"`, `r"--list\|--models\|list\|models"`. |
-| `thoth providers` (no args) | `tests/test_p16_dispatch_parity.py:89` (P16-TS15) | `0` or `2` | Combined output must contain `list`, `models`, `check`. |
-| `thoth help providers` | `thoth_test:2278` (T-PROV-09) | `0` | Patterns: `r"thoth providers.*List available models"`, `r"OpenAI models are fetched dynamically"`, `r"--models.*List available models"`, `r"--provider.*Filter by specific provider"`. |
+| `doxa-research providers -- --list` | `tests/test_providers_subcommand.py:24` | `0` | Pytest: must print `"deprecated"` and `"openai"`. |
+| `doxa-research providers -- --list` | `doxa_test:2307` (P07-M2-01) | `0` | Pattern: `r"perplexity"` and `r"Perplexity search AI \(not.*implemented\)"`. |
+| `doxa-research providers -- --models` | `doxa_test:2269` (T-PROV-08) | `0` | Pattern: `r"Fetching available models"`, `r"Mock Models"`. |
+| `doxa-research providers -- --models --provider mock` | `doxa_test:2260` (T-PROV-07) | `0` | Pattern: `r"Mock Models"`, `r"mock-model-v1"`. |
+| `doxa-research providers -- --models --provider invalid` | `doxa_test:2290-2297` (T-PROV-10) | `1` | Stderr: `"Unknown provider: invalid"`, `"Available providers: openai, perplexity, mock"`. |
+| `doxa-research providers list` (new form) | `tests/test_providers_subcommand.py:7`, `doxa_test` (no direct test) | `0` | Pytest: `"openai"` substring. |
+| `doxa-research providers list --provider openai` | `tests/test_cli_regressions.py:181` (BUG-11) | `0` | `"openai" in output`, `"perplexity" not in output`. |
+| `doxa-research providers models` (new form) | `tests/test_providers_subcommand.py:13` | `0` | Plain exit-zero check. |
+| `doxa-research providers check` (new form) | `tests/test_providers_subcommand.py:18` | `0` or `2` | `0` if all keys present, `2` if any missing. |
+| `doxa-research providers` (no args) | `doxa_test:2250` (T-PROV-06) | `0` | Stdout patterns: `r"doxa-research providers"`, `r"--list\|--models\|list\|models"`. |
+| `doxa-research providers` (no args) | `tests/test_p16_dispatch_parity.py:89` (P16-TS15) | `0` or `2` | Combined output must contain `list`, `models`, `check`. |
+| `doxa-research help providers` | `doxa_test:2278` (T-PROV-09) | `0` | Patterns: `r"doxa-research providers.*List available models"`, `r"OpenAI models are fetched dynamically"`, `r"--models.*List available models"`, `r"--provider.*Filter by specific provider"`. |
 
 ### Forms NOT directly seen in tests but supported by the implementation
 
-- `thoth providers -- --keys` — implemented in `cli_subcommands/providers.py:53-54` and `commands.providers_command(show_keys=True)` (commands.py:413-440); also surfaced as a hidden in-group subcommand `providers --keys` (providers.py:165-174). **Untested but in production.**
-- `thoth providers -- --refresh-cache` — implemented (commands.py:444-456 force-refreshes via `list_models_cached(force_refresh=True, …)`). Modifier-only; usually combined with `--models`. **Untested but in production.** Also note: spawning `--refresh-cache` ALONE (no `--list/--models/--keys`) currently falls into the "no flag set" help branch and is silently ignored.
-- `thoth providers -- --no-cache` — implemented (commands.py:454-455 forwards `no_cache=True` to `list_models_cached`). Same caveat: alone it triggers the help branch. **Untested but in production.**
-- `thoth providers -- --models --refresh-cache` — implemented combo (run-output asserts `"Fetching available models (refreshing cache)..."` at commands.py:445). **Untested but in production.**
-- `thoth providers -- --models --no-cache` — implemented (commands.py:454-455). **Untested but in production.**
-- `thoth providers -- --models --provider openai --refresh-cache` — documented in PRD v24 and the help text (commands.py:341); implementation path exists. **Untested but in production.**
-- `thoth providers --check` aliased to `--keys` in the in-group shim (providers.py:53). **Untested but in production.**
+- `doxa-research providers -- --keys` — implemented in `cli_subcommands/providers.py:53-54` and `commands.providers_command(show_keys=True)` (commands.py:413-440); also surfaced as a hidden in-group subcommand `providers --keys` (providers.py:165-174). **Untested but in production.**
+- `doxa-research providers -- --refresh-cache` — implemented (commands.py:444-456 force-refreshes via `list_models_cached(force_refresh=True, …)`). Modifier-only; usually combined with `--models`. **Untested but in production.** Also note: spawning `--refresh-cache` ALONE (no `--list/--models/--keys`) currently falls into the "no flag set" help branch and is silently ignored.
+- `doxa-research providers -- --no-cache` — implemented (commands.py:454-455 forwards `no_cache=True` to `list_models_cached`). Same caveat: alone it triggers the help branch. **Untested but in production.**
+- `doxa-research providers -- --models --refresh-cache` — implemented combo (run-output asserts `"Fetching available models (refreshing cache)..."` at commands.py:445). **Untested but in production.**
+- `doxa-research providers -- --models --no-cache` — implemented (commands.py:454-455). **Untested but in production.**
+- `doxa-research providers -- --models --provider openai --refresh-cache` — documented in PRD v24 and the help text (commands.py:341); implementation path exists. **Untested but in production.**
+- `doxa-research providers --check` aliased to `--keys` in the in-group shim (providers.py:53). **Untested but in production.**
 
 ### Options that combine with the providers shim
 
@@ -148,9 +148,9 @@ Both emit the same deprecation warning and route into `commands.providers_comman
 
 ### Stdout/stderr contracts asserted by tests
 
-- Deprecation warning text (printed on stdout via `click.echo`): `"warning: 'thoth providers -- ...' is deprecated; use 'thoth providers list|models|check'"` — providers.py:43-46, 110-112.
+- Deprecation warning text (printed on stdout via `click.echo`): `"warning: 'doxa-research providers -- ...' is deprecated; use 'doxa-research providers list|models|check'"` — providers.py:43-46, 110-112.
 - `tests/test_providers_subcommand.py:26` only asserts `"deprecated" in r.output.lower()` (substring; tolerates wording changes).
-- T-PROV-09 (`thoth help providers`) freezes the help epilog text: `--models.*List available models`, `--provider.*Filter by specific provider`. PR2 must keep these in the new help (or migrate the test).
+- T-PROV-09 (`doxa-research help providers`) freezes the help epilog text: `--models.*List available models`, `--provider.*Filter by specific provider`. PR2 must keep these in the new help (or migrate the test).
 - T-PROV-10 freezes the error wording: `"Unknown provider: invalid"` AND `"Available providers: openai, perplexity, mock"` (commands.py:352-353). PR2 must keep these strings (or migrate the test).
 - P07-M2-01 freezes Perplexity-specific row text in the `--list` table: `r"Perplexity search AI \(not.*implemented\)"` (commands.py:359).
 
@@ -158,12 +158,12 @@ Both emit the same deprecation warning and route into `commands.providers_comman
 
 ## Other potentially-affected legacy forms found during audit
 
-The audit prompt asked for "anything surprising — e.g., a test that uses `thoth modes --json some-arg` in a way that won't work after a strict-Click migration." Findings:
+The audit prompt asked for "anything surprising — e.g., a test that uses `doxa-research modes --json some-arg` in a way that won't work after a strict-Click migration." Findings:
 
-- `thoth modes --json` / `--show-secrets` / `--full` / `--name X` / `--source X` are still supported as **hidden subcommands** registered in `src/thoth/cli_subcommands/modes.py:55-105` (PR1.5 work). They will keep working through PR2 *unless* PR2 explicitly removes the hidden-subcommand shim. The current PR2 design (`docs/superpowers/specs/2026-04-25-promote-admin-commands-design.md`) does not call this out — that doc only explicitly removes `--resume` and `providers -- --list`. PR2 brainstorming should decide whether the modes legacy flags also get the same removal treatment, and if so, what tests need migration (none in `tests/`, but thoth_test contains `T-PROV-…` patterns and grep-search shows none in the integration suite either — the modes flag-style is currently uncovered by tests).
-- `thoth status` with no `OP_ID` now exits `1` with a friendlier message (status.py:14-17). The pytest baseline `tests/baselines/status_no_args.json` was recaptured to `exit_code: 1`. PR2 should preserve this (it's not a "removed legacy form" per se but is a recent UX change worth noting).
-- `thoth config <op>` flags pass through via `context_settings={ignore_unknown_options, allow_extra_args}` + `nargs=-1, type=click.UNPROCESSED` (config.py). PR2 should keep this passthrough or it will silently drop flags like `--raw`, `--json`.
-- `thoth config` (no op) exits `2` with "op required" hint (`tests/test_p16_dispatch_parity.py:98-103`). Not a removed form, but a contract worth preserving.
+- `doxa-research modes --json` / `--show-secrets` / `--full` / `--name X` / `--source X` are still supported as **hidden subcommands** registered in `src/doxa_research/cli_subcommands/modes.py:55-105` (PR1.5 work). They will keep working through PR2 *unless* PR2 explicitly removes the hidden-subcommand shim. The current PR2 design (`docs/superpowers/specs/2026-04-25-promote-admin-commands-design.md`) does not call this out — that doc only explicitly removes `--resume` and `providers -- --list`. PR2 brainstorming should decide whether the modes legacy flags also get the same removal treatment, and if so, what tests need migration (none in `tests/`, but doxa_test contains `T-PROV-…` patterns and grep-search shows none in the integration suite either — the modes flag-style is currently uncovered by tests).
+- `doxa-research status` with no `OP_ID` now exits `1` with a friendlier message (status.py:14-17). The pytest baseline `tests/baselines/status_no_args.json` was recaptured to `exit_code: 1`. PR2 should preserve this (it's not a "removed legacy form" per se but is a recent UX change worth noting).
+- `doxa-research config <op>` flags pass through via `context_settings={ignore_unknown_options, allow_extra_args}` + `nargs=-1, type=click.UNPROCESSED` (config.py). PR2 should keep this passthrough or it will silently drop flags like `--raw`, `--json`.
+- `doxa-research config` (no op) exits `2` with "op required" hint (`tests/test_p16_dispatch_parity.py:98-103`). Not a removed form, but a contract worth preserving.
 
 ---
 
@@ -171,7 +171,7 @@ The audit prompt asked for "anything surprising — e.g., a test that uses `thot
 
 Each item below must be addressed by PR2's `resume` subcommand and `providers list/models/check` subcommands. Mark the design's coverage during the brainstorming gate.
 
-### `thoth resume` subcommand must support
+### `doxa-research resume` subcommand must support
 
 - [ ] `OP_ID` positional arg (required; reject with helpful message if missing)
 - [ ] `--verbose` / `-v` flag inheritance from group (or per-leaf duplicate)
@@ -190,51 +190,51 @@ Each item below must be addressed by PR2's `resume` subcommand and `providers li
 - [ ] Stdout text `"Research completed"` on success
 - [ ] Stdout text `"already completed"` on no-op
 - [ ] Stdout text `"failed permanently"` on perma-fail
-- [ ] Update ALL emitter sites (`run.py:629/654/827/854`, `signals.py:93/99`, `commands.py:227/238`, `help.py:134`) to print the new form `thoth resume <op_id>` instead of `thoth --resume <op_id>` — otherwise users will copy-paste a deprecated flag.
-- [ ] Update `tests/_fixture_helpers.py:65` regex (`r"thoth --resume\s+(research-…)"` → new form).
-- [ ] **PR2 gate per design doc** (`2026-04-25-promote-admin-commands-design.md:188`): `thoth --resume OP_ID` exits `2` with helpful suggestion to use `thoth resume OP_ID`.
+- [ ] Update ALL emitter sites (`run.py:629/654/827/854`, `signals.py:93/99`, `commands.py:227/238`, `help.py:134`) to print the new form `doxa-research resume <op_id>` instead of `doxa-research --resume <op_id>` — otherwise users will copy-paste a deprecated flag.
+- [ ] Update `tests/_fixture_helpers.py:65` regex (`r"doxa-research --resume\s+(research-…)"` → new form).
+- [ ] **PR2 gate per design doc** (`2026-04-25-promote-admin-commands-design.md:188`): `doxa-research --resume OP_ID` exits `2` with helpful suggestion to use `doxa-research resume OP_ID`.
 
-### `thoth providers list / models / check` must support
+### `doxa-research providers list / models / check` must support
 
 - [ ] `providers list` exits `0` with all provider names
 - [ ] `providers list --provider X` / `-P X` filters to one provider (currently works in new form)
 - [ ] `providers models` exits `0`
 - [ ] `providers models --provider X` filters; exit `1` if no models for X (commands.py:541)
 - [ ] `providers check` exit `0` if all keys present, `2` if any missing
-- [ ] **DESIGN DECISION:** `--refresh-cache` placement — currently lives on the legacy shim only. PR2 should put it on `providers models` (and possibly `providers list` for cache-status display). The PRD v24 documents `thoth providers --models --refresh-cache` as the canonical form.
+- [ ] **DESIGN DECISION:** `--refresh-cache` placement — currently lives on the legacy shim only. PR2 should put it on `providers models` (and possibly `providers list` for cache-status display). The PRD v24 documents `doxa-research providers --models --refresh-cache` as the canonical form.
 - [ ] **DESIGN DECISION:** `--no-cache` placement — same as above.
 - [ ] **DESIGN DECISION:** Reject `--refresh-cache` + `--no-cache` combo (currently silently coexists).
 - [ ] Preserve "Unknown provider: X" / "Available providers: openai, perplexity, mock" stderr text (T-PROV-10).
 - [ ] Preserve `Perplexity search AI (not implemented)` listing text (P07-M2-01).
 - [ ] Preserve `help providers` epilog content (T-PROV-09 patterns).
-- [ ] **PR2 gate per design doc**: `thoth providers -- --list` exits `2` with helpful suggestion (currently it exits `0` with a deprecation warning).
-- [ ] Update `commands.py` self-references in help text (`thoth providers -- [OPTIONS]`, `thoth providers -- --list`, `thoth providers -- --keys`, `thoth providers -- --models`, etc. at commands.py:321-343, 409-410) to point to the new flat forms — otherwise the help text contradicts the gating.
-- [ ] Update `src/thoth/providers/openai.py:69` reference `'thoth providers -- --models --provider openai'` to the new form.
+- [ ] **PR2 gate per design doc**: `doxa-research providers -- --list` exits `2` with helpful suggestion (currently it exits `0` with a deprecation warning).
+- [ ] Update `commands.py` self-references in help text (`doxa-research providers -- [OPTIONS]`, `doxa-research providers -- --list`, `doxa-research providers -- --keys`, `doxa-research providers -- --models`, etc. at commands.py:321-343, 409-410) to point to the new flat forms — otherwise the help text contradicts the gating.
+- [ ] Update `src/doxa_research/providers/openai.py:69` reference `'doxa-research providers -- --models --provider openai'` to the new form.
 - [ ] Update `tests/test_providers_subcommand.py:23-27` (`test_old_form_deprecated_but_works`) to assert exit-2-with-suggestion under the new gating.
-- [ ] Update thoth_test cases T-PROV-07, T-PROV-08, T-PROV-10, P07-M2-01 to use the new form.
+- [ ] Update doxa_test cases T-PROV-07, T-PROV-08, T-PROV-10, P07-M2-01 to use the new form.
 
 ### Tests that need migration in PR2
 
 | File | Line | Old form | New form (proposed) | Notes |
 |---|---|---|---|---|
-| `tests/test_resume.py` | 48 | `thoth --resume <op>` | `thoth resume <op>` | Trivial swap. |
-| `tests/test_resume.py` | 90 | `thoth --resume <op>` | `thoth resume <op>` | Asserts exit 7 — preserve. |
-| `tests/test_resume.py` | 131 | `thoth --resume <op>` | `thoth resume <op>` | Asserts no-op. |
+| `tests/test_resume.py` | 48 | `doxa-research --resume <op>` | `doxa-research resume <op>` | Trivial swap. |
+| `tests/test_resume.py` | 90 | `doxa-research --resume <op>` | `doxa-research resume <op>` | Asserts exit 7 — preserve. |
+| `tests/test_resume.py` | 131 | `doxa-research --resume <op>` | `doxa-research resume <op>` | Asserts no-op. |
 | `tests/test_pick_model.py` | 48 | `--pick-model --resume op_test_123` | `--pick-model resume op_test_123` (or move guard to subcommand) | Swap depends on whether `--pick-model` stays a global flag. |
 | `tests/test_pick_model.py` | 109 | (same as 48) | (same) | Same. |
 | `tests/test_cli_regressions.py` | 76 | `--resume op_regression` | `resume op_regression` | BUG-CLI-002 regression. |
 | `tests/test_cli_regressions.py` | 164 | `--version --resume op_123 --async` | The `--version must be used alone` mutex must still trigger; argv changes shape but the contract holds. | |
-| `tests/test_cli_help.py` | 26 | Asserts `"thoth --resume" in out` | Update to assert the new form. | |
-| `tests/test_progress_spinner.py` | 152 | Asserts emitter prints `"thoth --resume op_abc123"` | Update to new form. | |
-| `tests/_fixture_helpers.py` | 63-65 | Regex `r"thoth --resume\s+…"` | Update to new form. | Without this, RES-tests can't extract the op_id. |
+| `tests/test_cli_help.py` | 26 | Asserts `"doxa-research --resume" in out` | Update to assert the new form. | |
+| `tests/test_progress_spinner.py` | 152 | Asserts emitter prints `"doxa-research --resume op_abc123"` | Update to new form. | |
+| `tests/_fixture_helpers.py` | 63-65 | Regex `r"doxa-research --resume\s+…"` | Update to new form. | Without this, RES-tests can't extract the op_id. |
 | `tests/test_providers_subcommand.py` | 24-27 | `providers -- --list` should still work + warn | Should now exit 2 with suggestion (PR2 gate). | |
-| `thoth_test` | 2170 | Pattern `r"Checkpoint saved\. Resume with: thoth --resume"` | Update pattern. | |
-| `thoth_test` | 2216 | Pattern `r"Resume with: .*thoth --resume"` | Update pattern. | |
-| `thoth_test` | 2238 | Pattern `r"Resume with: .*thoth --resume"` (negative) | Update pattern. | |
-| `thoth_test` | 2260 | `providers -- --models --provider mock` | `providers models --provider mock` | T-PROV-07. |
-| `thoth_test` | 2269 | `providers -- --models` | `providers models` | T-PROV-08. |
-| `thoth_test` | 2290-2297 | `providers -- --models --provider invalid` | `providers models --provider invalid` | T-PROV-10; verify exit 1 still emitted from new path. |
-| `thoth_test` | 2307 | `providers -- --list` (Perplexity row check) | `providers list` | P07-M2-01; verify Perplexity-row text still rendered. |
+| `doxa_test` | 2170 | Pattern `r"Checkpoint saved\. Resume with: doxa-research --resume"` | Update pattern. | |
+| `doxa_test` | 2216 | Pattern `r"Resume with: .*doxa-research --resume"` | Update pattern. | |
+| `doxa_test` | 2238 | Pattern `r"Resume with: .*doxa-research --resume"` (negative) | Update pattern. | |
+| `doxa_test` | 2260 | `providers -- --models --provider mock` | `providers models --provider mock` | T-PROV-07. |
+| `doxa_test` | 2269 | `providers -- --models` | `providers models` | T-PROV-08. |
+| `doxa_test` | 2290-2297 | `providers -- --models --provider invalid` | `providers models --provider invalid` | T-PROV-10; verify exit 1 still emitted from new path. |
+| `doxa_test` | 2307 | `providers -- --list` (Perplexity row check) | `providers list` | P07-M2-01; verify Perplexity-row text still rendered. |
 | `tests/test_p16_dispatch_parity.py` | PARITY_LABELS includes `"providers_list"` (line 26) | Baseline `tests/baselines/providers_list.json` was captured against current behaviour | If new form changes wording, recapture baseline. | |
 
 ### Items where the design must make a judgment call
@@ -244,12 +244,12 @@ Each item below must be addressed by PR2's `resume` subcommand and `providers li
 - **Resume + non-resume globals.** `--project`, `--output-dir`, `--provider`, `--input-file`, `--auto`, `--quiet`, `--no-metadata`, `--timeout`, `--api-key-…` are currently silently ignored on resume. Pick: drop, error, or honor for each. Design doc (`2026-04-25-promote-admin-commands-design.md`) does not address this explicitly.
 - **Resume + interactive (`-i` / `--clarify`).** Currently silent (resume wins). Spec is silent.
 - **`--refresh-cache` + `--no-cache`.** Currently silent coexistence; semantics fall to provider impl. PR2 should reject the combo.
-- **Multiple action flags on the legacy shim** (`--models --list --keys`) — silent drop today. New flat form makes this impossible (each is a separate leaf), so it's resolved by structure. Just confirm thoth_test has no test exercising the broken combo.
+- **Multiple action flags on the legacy shim** (`--models --list --keys`) — silent drop today. New flat form makes this impossible (each is a separate leaf), so it's resolved by structure. Just confirm doxa_test has no test exercising the broken combo.
 - **`--list --provider X` filter on the legacy shim** is unsupported (shim ignores `filter_provider` outside `--models`), but the new `providers list --provider X` does support it (test_cli_regressions.py:181). PR2's gating `providers -- --list` → exit 2 silently fixes this asymmetry — no migration footgun.
 - **`--refresh-cache` / `--no-cache` ALONE** (no `--models`) — currently falls into the help branch and silently does nothing. New form (`providers models --refresh-cache`) makes the dependency explicit, so the silent-no-op disappears. Just confirm no tests rely on the no-op behaviour (none found).
-- **`thoth providers` (no subcommand) exit code.** Currently `0` (providers.py:60: `ctx.exit(0)`); P16-TS15 accepts `0 OR 2`. PR2 design should pick one and stick with it. Click's natural behaviour for a subgroup-with-required-subcommand is exit 2.
-- **`thoth providers --check` alias for `--keys`.** Implemented in providers.py:53 but no test, no docs. Drop in PR2.
-- **All literal "thoth providers --" / "thoth --resume" strings in source code** (not tests) — these are help text and emitter strings (commands.py:321, 333, 335, 337, 339, 341, 343, 409, 410; providers/openai.py:69; help.py:134; signals.py:93, 99; run.py:629, 654, 827, 854; commands.py:227, 238). All must be updated, OR the PR2 gating message must explicitly tell users the new form (current design doc says "exits 2 with helpful suggestion" — that suggestion text needs to be authored).
+- **`doxa-research providers` (no subcommand) exit code.** Currently `0` (providers.py:60: `ctx.exit(0)`); P16-TS15 accepts `0 OR 2`. PR2 design should pick one and stick with it. Click's natural behaviour for a subgroup-with-required-subcommand is exit 2.
+- **`doxa-research providers --check` alias for `--keys`.** Implemented in providers.py:53 but no test, no docs. Drop in PR2.
+- **All literal "doxa-research providers --" / "doxa-research --resume" strings in source code** (not tests) — these are help text and emitter strings (commands.py:321, 333, 335, 337, 339, 341, 343, 409, 410; providers/openai.py:69; help.py:134; signals.py:93, 99; run.py:629, 654, 827, 854; commands.py:227, 238). All must be updated, OR the PR2 gating message must explicitly tell users the new form (current design doc says "exits 2 with helpful suggestion" — that suggestion text needs to be authored).
 
 ---
 
@@ -264,18 +264,18 @@ Each item below must be addressed by PR2's `resume` subcommand and `providers li
 - **Form** — exact argv that triggers the shim
 - **File:line** — where it's implemented
 - **Canonical replacement** — proposed new form for PR2
-- **Test coverage** — pytest test ids + thoth_test case ids that exercise it (or "UNTESTED" if none)
+- **Test coverage** — pytest test ids + doxa_test case ids that exercise it (or "UNTESTED" if none)
 - **Silent-drop risk** — what would silently break if we just deleted the shim
 
 ### 1. `--resume` family (top-level option-as-action)
 
-Cross-reference: see section "## --resume flag" earlier in this doc for the exhaustive treatment (mutex rules, exit codes, emitter sites, test list). The single canonical replacement is `thoth resume OP_ID`. Section 10 below has one row per form.
+Cross-reference: see section "## --resume flag" earlier in this doc for the exhaustive treatment (mutex rules, exit codes, emitter sites, test list). The single canonical replacement is `doxa-research resume OP_ID`. Section 10 below has one row per form.
 
 ### 2. `providers --` family (legacy `--` separator + in-group flag shim)
 
 Cross-reference: see section "## providers -- (legacy shim)" earlier in this doc. Two implementations share the same handler:
-- `thoth providers -- --list/--models/--keys/--refresh-cache/--no-cache` (the `--`-separator path), routed via `providers.py:34-62` group callback that inspects `ctx.args` (an unknown-arg dispatcher).
-- `thoth providers --list/--models/--keys` (the in-group hidden-subcommand path), `providers.py:140-173`.
+- `doxa-research providers -- --list/--models/--keys/--refresh-cache/--no-cache` (the `--`-separator path), routed via `providers.py:34-62` group callback that inspects `ctx.args` (an unknown-arg dispatcher).
+- `doxa-research providers --list/--models/--keys` (the in-group hidden-subcommand path), `providers.py:140-173`.
 
 Both emit the same deprecation warning text (`providers.py:43-46, 110-112`).
 
@@ -283,80 +283,80 @@ Both emit the same deprecation warning text (`providers.py:43-46, 110-112`).
 
 | Form | File:line | Canonical | Test coverage | Silent-drop risk |
 |---|---|---|---|---|
-| `thoth modes --json` | `cli_subcommands/modes.py:72-75` (hidden cmd) → `modes_command(None, ["--json", *args])` | `thoth modes list --json` | `tests/test_cli_regressions.py:113` (test_bug_cli_006) covers `["modes","list","--json"]` parity vs `["modes","--json"]`. The flag-style form itself is **UNTESTED directly**. | JSON consumers of `modes_cmd._op_list` would silently get plain-table output if the shim disappeared without a clear error. |
-| `thoth modes --show-secrets` | `cli_subcommands/modes.py:78-81` | `thoth modes list --show-secrets` | UNTESTED | Silent secret-masking re-engagement. Security-relevant: callers who depend on `--show-secrets` to view stored API keys would see masked output with no signal. |
-| `thoth modes --full` | `cli_subcommands/modes.py:84-87` | `thoth modes list --full` (when used with `--name`) | UNTESTED | Silent truncation of `system_prompt` to 200 chars (modes_cmd.py:230). |
-| `thoth modes --name <NAME>` | `cli_subcommands/modes.py:90-98` (consumes one positional) | `thoth modes list --name NAME` | UNTESTED | Detail view disappears; user gets table of all modes with no error. |
-| `thoth modes --source <SRC>` | `cli_subcommands/modes.py:101-109` (consumes one positional) | `thoth modes list --source SRC` | UNTESTED | Source filter silently ignored; user gets all modes. |
-| `thoth modes <UNKNOWN_OP>` | `cli_subcommands/modes.py:14-28` (`ModesGroup.invoke` unknown-arg dispatcher) | Currently routes to `modes_command(arg0, args[1:])` which returns 2 with `"unknown modes op: ..."`. | `thoth_test:2128-2129` asserts `"unknown modes op"` for `modes bogus_op`. | Without `ModesGroup.invoke` override, Click would emit `"No such command 'bogus_op'"` (exit 2) — wording change only, same exit code. |
-| `thoth modes` (no leaf) | `cli_subcommands/modes.py:39-49` (`invoke_without_command=True` + `ctx.invoked_subcommand is None`) | `thoth modes list` (proposed) | `tests/test_p16_thothgroup.py:223` asserts the bare form lists modes (current default). | If `modes` becomes subcommand-required, the bare form would exit 2 — DESIGN DECISION required. |
+| `doxa-research modes --json` | `cli_subcommands/modes.py:72-75` (hidden cmd) → `modes_command(None, ["--json", *args])` | `doxa-research modes list --json` | `tests/test_cli_regressions.py:113` (test_bug_cli_006) covers `["modes","list","--json"]` parity vs `["modes","--json"]`. The flag-style form itself is **UNTESTED directly**. | JSON consumers of `modes_cmd._op_list` would silently get plain-table output if the shim disappeared without a clear error. |
+| `doxa-research modes --show-secrets` | `cli_subcommands/modes.py:78-81` | `doxa-research modes list --show-secrets` | UNTESTED | Silent secret-masking re-engagement. Security-relevant: callers who depend on `--show-secrets` to view stored API keys would see masked output with no signal. |
+| `doxa-research modes --full` | `cli_subcommands/modes.py:84-87` | `doxa-research modes list --full` (when used with `--name`) | UNTESTED | Silent truncation of `system_prompt` to 200 chars (modes_cmd.py:230). |
+| `doxa-research modes --name <NAME>` | `cli_subcommands/modes.py:90-98` (consumes one positional) | `doxa-research modes list --name NAME` | UNTESTED | Detail view disappears; user gets table of all modes with no error. |
+| `doxa-research modes --source <SRC>` | `cli_subcommands/modes.py:101-109` (consumes one positional) | `doxa-research modes list --source SRC` | UNTESTED | Source filter silently ignored; user gets all modes. |
+| `doxa-research modes <UNKNOWN_OP>` | `cli_subcommands/modes.py:14-28` (`ModesGroup.invoke` unknown-arg dispatcher) | Currently routes to `modes_command(arg0, args[1:])` which returns 2 with `"unknown modes op: ..."`. | `doxa_test:2128-2129` asserts `"unknown modes op"` for `modes bogus_op`. | Without `ModesGroup.invoke` override, Click would emit `"No such command 'bogus_op'"` (exit 2) — wording change only, same exit code. |
+| `doxa-research modes` (no leaf) | `cli_subcommands/modes.py:39-49` (`invoke_without_command=True` + `ctx.invoked_subcommand is None`) | `doxa-research modes list` (proposed) | `tests/test_p16_doxagroup.py:223` asserts the bare form lists modes (current default). | If `modes` becomes subcommand-required, the bare form would exit 2 — DESIGN DECISION required. |
 
 ### 4. `config` subgroup analysis
 
-`src/thoth/cli_subcommands/config.py` defines 7 leaves (`get`, `set`, `unset`, `list`, `path`, `edit`, `help`), all with `context_settings=_PASSTHROUGH_CONTEXT` (`ignore_unknown_options=True, allow_extra_args=True`) and `nargs=-1, type=click.UNPROCESSED`. Every flag is parsed downstream by `config_cmd.py` ad-hoc parsers.
+`src/doxa_research/cli_subcommands/config.py` defines 7 leaves (`get`, `set`, `unset`, `list`, `path`, `edit`, `help`), all with `context_settings=_PASSTHROUGH_CONTEXT` (`ignore_unknown_options=True, allow_extra_args=True`) and `nargs=-1, type=click.UNPROCESSED`. Every flag is parsed downstream by `config_cmd.py` ad-hoc parsers.
 
 | Form | File:line | Canonical (PR2 proposal) | Test coverage | Silent-drop risk |
 |---|---|---|---|---|
-| `thoth config` (no op) | `config.py:14-21` | exit 2 with op-required hint (current behavior) | `tests/test_p16_dispatch_parity.py:100` asserts exit 2; `tests/baselines/status_no_args.json` not relevant. | None — already canonical. |
-| `thoth config get KEY` | `config.py:31-35` → `config_cmd._op_get` | Same; promote `--raw / --json / --show-secrets / --layer` to real Click options. | `tests/test_cli_regressions.py:101` covers `--raw` end-to-end. | If passthrough removed without typed options, `--raw` etc. would silently break. |
-| `thoth config get KEY --raw` | `config_cmd.py:65-67, 104` | `thoth config get KEY --raw` | `tests/test_cli_regressions.py:101` (BUG-CLI-004). | **Security-adjacent silent drop**: line 104 reads `if _is_secret_key(key) and not show_secrets and not raw:` — `--raw` *bypasses secret masking*. PR2 must decide: (a) keep `--raw` as masking bypass (document loudly), (b) require explicit `--show-secrets` even with `--raw`. |
-| `thoth config get KEY --json` | `config_cmd.py:68-70` | Same | UNTESTED | None — pure formatting flag. |
-| `thoth config get KEY --show-secrets` | `config_cmd.py:71-73` | Same | UNTESTED | Security-adjacent (reveals masked values). |
-| `thoth config get KEY --layer L` | `config_cmd.py:59-64` | Same | UNTESTED | Returns wrong-layer data silently if dropped. |
-| `thoth config set KEY VALUE` | `config.py:38-42` → `config_cmd._op_set` | Same; promote `--project / --string` flags. | UNTESTED in pytest; no thoth_test coverage of the flags. | `--project` writes to `./thoth.toml` instead of `~/.thoth/config.toml` — silent drop = wrong target file. |
-| `thoth config set KEY VALUE --project` | `config_cmd.py:186-188` | Same | UNTESTED | See above. |
-| `thoth config set KEY VALUE --string` | `config_cmd.py:189-191` | Same | UNTESTED | Without `--string`, `_parse_value` (line 111-124) silently coerces `"true"/"false"/numbers` to bool/int/float — losing string intent. |
-| `thoth config unset KEY` | `config.py:45-49` → `config_cmd._op_unset` | Same; promote `--project`. | UNTESTED | Same wrong-target risk as `set --project`. |
-| `thoth config unset KEY --project` | `config_cmd.py:245-247` | Same | UNTESTED | See above. |
-| `thoth config list` | `config.py:52-56` → `config_cmd._op_list` | Same; promote `--keys / --json / --show-secrets / --layer`. | `tests/test_p16_thothgroup.py:201` plain invocation. | None — canonical. |
-| `thoth config list --keys` | `config_cmd.py:307-309, 330-333` | Same | UNTESTED | **Silent drop**: `--keys` returns at line 333 BEFORE the `--json` and `--show-secrets` branches; combining them silently drops the second flag. PR2 should reject the combo or document precedence. |
-| `thoth config list --json` | `config_cmd.py:310-312` | Same | UNTESTED | None — formatting flag. |
-| `thoth config list --show-secrets` | `config_cmd.py:313-315` | Same | UNTESTED | Reveals secrets — security-adjacent. |
-| `thoth config list --layer L` | `config_cmd.py:301-306` | Same | UNTESTED | Returns wrong layer's data if dropped. |
-| `thoth config list <unknown-arg>` | `config_cmd.py:316-318` | Same | UNTESTED | Already exits 2 with `"unknown arg: ..."`. |
-| `thoth config path` | `config.py:59-63` → `config_cmd._op_path` | Same; promote `--project`. | UNTESTED | None — read-only. |
-| `thoth config path --project` | `config_cmd.py:348` | Same | UNTESTED | Silently shows wrong path if `--project` dropped. |
-| `thoth config edit` | `config.py:66-70` → `config_cmd._op_edit` | Same; promote `--project`. | UNTESTED in pytest. | None — opens `$EDITOR`. |
-| `thoth config edit --project` | `config_cmd.py:366` | Same | UNTESTED | Edits wrong file silently if dropped. |
-| `thoth config help` | `config.py:73-77` → `config_cmd._op_help` (calls `help.show_config_help()`) | Use `thoth help config` (which already exists at `help_cmd.py:31-42` and forwards to `config --help`). PR2 should pick ONE: keep `config help` leaf or rely on `help config`. | UNTESTED | Two registration paths today: `thoth config help` AND `thoth help config` route through different code paths. The first prints the rich-formatted text from `help.show_config_help()`; the second prints Click's `--help` output. **They diverge.** PR2 should converge or document. |
-| `thoth config <op> <unknown-flag>` | `_PASSTHROUGH_CONTEXT` | `ignore_unknown_options=True` means Click never validates the flag; downstream parsers (`_op_get`, etc.) silently include it as a positional. | UNTESTED | Silent flag-into-positional coercion. PR2 with typed Click options would catch this. |
-| `thoth config edit -- --extra-args` | passthrough chain | No `--`-to-EDITOR forwarding implemented. The `_op_edit` shells out via `subprocess.call([editor, str(path)])` with NO arg passthrough. | UNTESTED | `$EDITOR` flags are NOT forwarded (no `--` passthrough to subprocess). Worth noting in PR2 design. |
+| `doxa-research config` (no op) | `config.py:14-21` | exit 2 with op-required hint (current behavior) | `tests/test_p16_dispatch_parity.py:100` asserts exit 2; `tests/baselines/status_no_args.json` not relevant. | None — already canonical. |
+| `doxa-research config get KEY` | `config.py:31-35` → `config_cmd._op_get` | Same; promote `--raw / --json / --show-secrets / --layer` to real Click options. | `tests/test_cli_regressions.py:101` covers `--raw` end-to-end. | If passthrough removed without typed options, `--raw` etc. would silently break. |
+| `doxa-research config get KEY --raw` | `config_cmd.py:65-67, 104` | `doxa-research config get KEY --raw` | `tests/test_cli_regressions.py:101` (BUG-CLI-004). | **Security-adjacent silent drop**: line 104 reads `if _is_secret_key(key) and not show_secrets and not raw:` — `--raw` *bypasses secret masking*. PR2 must decide: (a) keep `--raw` as masking bypass (document loudly), (b) require explicit `--show-secrets` even with `--raw`. |
+| `doxa-research config get KEY --json` | `config_cmd.py:68-70` | Same | UNTESTED | None — pure formatting flag. |
+| `doxa-research config get KEY --show-secrets` | `config_cmd.py:71-73` | Same | UNTESTED | Security-adjacent (reveals masked values). |
+| `doxa-research config get KEY --layer L` | `config_cmd.py:59-64` | Same | UNTESTED | Returns wrong-layer data silently if dropped. |
+| `doxa-research config set KEY VALUE` | `config.py:38-42` → `config_cmd._op_set` | Same; promote `--project / --string` flags. | UNTESTED in pytest; no doxa_test coverage of the flags. | `--project` writes to `./doxa.toml` instead of `~/.doxa-research/config.toml` — silent drop = wrong target file. |
+| `doxa-research config set KEY VALUE --project` | `config_cmd.py:186-188` | Same | UNTESTED | See above. |
+| `doxa-research config set KEY VALUE --string` | `config_cmd.py:189-191` | Same | UNTESTED | Without `--string`, `_parse_value` (line 111-124) silently coerces `"true"/"false"/numbers` to bool/int/float — losing string intent. |
+| `doxa-research config unset KEY` | `config.py:45-49` → `config_cmd._op_unset` | Same; promote `--project`. | UNTESTED | Same wrong-target risk as `set --project`. |
+| `doxa-research config unset KEY --project` | `config_cmd.py:245-247` | Same | UNTESTED | See above. |
+| `doxa-research config list` | `config.py:52-56` → `config_cmd._op_list` | Same; promote `--keys / --json / --show-secrets / --layer`. | `tests/test_p16_doxagroup.py:201` plain invocation. | None — canonical. |
+| `doxa-research config list --keys` | `config_cmd.py:307-309, 330-333` | Same | UNTESTED | **Silent drop**: `--keys` returns at line 333 BEFORE the `--json` and `--show-secrets` branches; combining them silently drops the second flag. PR2 should reject the combo or document precedence. |
+| `doxa-research config list --json` | `config_cmd.py:310-312` | Same | UNTESTED | None — formatting flag. |
+| `doxa-research config list --show-secrets` | `config_cmd.py:313-315` | Same | UNTESTED | Reveals secrets — security-adjacent. |
+| `doxa-research config list --layer L` | `config_cmd.py:301-306` | Same | UNTESTED | Returns wrong layer's data if dropped. |
+| `doxa-research config list <unknown-arg>` | `config_cmd.py:316-318` | Same | UNTESTED | Already exits 2 with `"unknown arg: ..."`. |
+| `doxa-research config path` | `config.py:59-63` → `config_cmd._op_path` | Same; promote `--project`. | UNTESTED | None — read-only. |
+| `doxa-research config path --project` | `config_cmd.py:348` | Same | UNTESTED | Silently shows wrong path if `--project` dropped. |
+| `doxa-research config edit` | `config.py:66-70` → `config_cmd._op_edit` | Same; promote `--project`. | UNTESTED in pytest. | None — opens `$EDITOR`. |
+| `doxa-research config edit --project` | `config_cmd.py:366` | Same | UNTESTED | Edits wrong file silently if dropped. |
+| `doxa-research config help` | `config.py:73-77` → `config_cmd._op_help` (calls `help.show_config_help()`) | Use `doxa-research help config` (which already exists at `help_cmd.py:31-42` and forwards to `config --help`). PR2 should pick ONE: keep `config help` leaf or rely on `help config`. | UNTESTED | Two registration paths today: `doxa-research config help` AND `doxa-research help config` route through different code paths. The first prints the rich-formatted text from `help.show_config_help()`; the second prints Click's `--help` output. **They diverge.** PR2 should converge or document. |
+| `doxa-research config <op> <unknown-flag>` | `_PASSTHROUGH_CONTEXT` | `ignore_unknown_options=True` means Click never validates the flag; downstream parsers (`_op_get`, etc.) silently include it as a positional. | UNTESTED | Silent flag-into-positional coercion. PR2 with typed Click options would catch this. |
+| `doxa-research config edit -- --extra-args` | passthrough chain | No `--`-to-EDITOR forwarding implemented. The `_op_edit` shells out via `subprocess.call([editor, str(path)])` with NO arg passthrough. | UNTESTED | `$EDITOR` flags are NOT forwarded (no `--` passthrough to subprocess). Worth noting in PR2 design. |
 
 ### 5. `init` / `status` / `list` / `help` subcommands
 
 | Form | File:line | Notes / passthrough |
 |---|---|---|
-| `thoth init` | `cli_subcommands/init.py:15-24` | Single subcommand, NO options, NO passthrough. Reads `ctx.obj["config_path"]` from group inheritance only. Clean. |
-| `thoth status OP_ID` | `cli_subcommands/status.py:11-23` | One positional (`OP_ID`, optional). NO flags. NO passthrough. If missing → exit 1 with `"status command requires an operation ID"` (line 17). |
-| `thoth status` (no arg) | `cli_subcommands/status.py:16-18` | Exit 1 (NOT 2). Baseline at `tests/baselines/status_no_args.json`. PR2 should consider whether exit 1 is canonical (Click's default for missing required argument is 2). |
-| `thoth list` | `cli_subcommands/list_cmd.py:12-21` | One option `--all` / `show_all`, no positional, no passthrough. Clean. |
-| `thoth list --all` | `cli_subcommands/list_cmd.py:13` | Same. |
-| `thoth help` | `cli_subcommands/help_cmd.py:20-23` | One optional positional (`topic`). If absent → prints parent-group help (top-level). |
-| `thoth help <subcommand>` | `cli_subcommands/help_cmd.py:31-42` | Forwards to `<subcommand> --help`. If unknown → exit 2 with `"Available topics: ...auth"`. |
-| `thoth help auth` | `cli_subcommands/help_cmd.py:25-28` | Special-cased: routes to `show_auth_help()` directly. `auth` is NOT a Click subcommand. **Virtual topic.** |
-| `thoth -h auth` / `thoth --help auth` | `help.py:51-55` (`ThothGroup.parse_args`) | Special-cased at parse time: if argv is exactly `[--help|-h, auth]`, calls `show_auth_help()` and exits 0. **Top-level option-as-action with hidden side effect.** No test coverage found. |
+| `doxa-research init` | `cli_subcommands/init.py:15-24` | Single subcommand, NO options, NO passthrough. Reads `ctx.obj["config_path"]` from group inheritance only. Clean. |
+| `doxa-research status OP_ID` | `cli_subcommands/status.py:11-23` | One positional (`OP_ID`, optional). NO flags. NO passthrough. If missing → exit 1 with `"status command requires an operation ID"` (line 17). |
+| `doxa-research status` (no arg) | `cli_subcommands/status.py:16-18` | Exit 1 (NOT 2). Baseline at `tests/baselines/status_no_args.json`. PR2 should consider whether exit 1 is canonical (Click's default for missing required argument is 2). |
+| `doxa-research list` | `cli_subcommands/list_cmd.py:12-21` | One option `--all` / `show_all`, no positional, no passthrough. Clean. |
+| `doxa-research list --all` | `cli_subcommands/list_cmd.py:13` | Same. |
+| `doxa-research help` | `cli_subcommands/help_cmd.py:20-23` | One optional positional (`topic`). If absent → prints parent-group help (top-level). |
+| `doxa-research help <subcommand>` | `cli_subcommands/help_cmd.py:31-42` | Forwards to `<subcommand> --help`. If unknown → exit 2 with `"Available topics: ...auth"`. |
+| `doxa-research help auth` | `cli_subcommands/help_cmd.py:25-28` | Special-cased: routes to `show_auth_help()` directly. `auth` is NOT a Click subcommand. **Virtual topic.** |
+| `doxa-research -h auth` / `doxa-research --help auth` | `help.py:51-55` (`DoxaGroup.parse_args`) | Special-cased at parse time: if argv is exactly `[--help|-h, auth]`, calls `show_auth_help()` and exits 0. **Top-level option-as-action with hidden side effect.** No test coverage found. |
 
 ### 6. Top-level group options that dispatch (option-as-action)
 
-The top-level `cli` group callback (`src/thoth/cli.py:467-624`) defines 21 options. Most are configuration only, but several trigger actions or have special precedence rules:
+The top-level `cli` group callback (`src/doxa_research/cli.py:467-624`) defines 21 options. Most are configuration only, but several trigger actions or have special precedence rules:
 
 | Flag | File:line | Trigger / behavior | Mutex rules |
 |---|---|---|---|
-| `--version` / `-V` | `cli.py:502, 590-599` | Action: prints `Thoth v<VERSION>` and `sys.exit(0)`. | Mutex with EVERY other option/positional via `_version_conflicts(ctx, opts)` (cli.py:93-125). Any other supplied option → `BadParameter("--version must be used alone; remove other arguments/options: …")`. |
-| `--resume` / `-R` | `cli.py:477, 347-358` | Action: routes to `_thoth_run.resume_operation(...)` after `_dispatch_click_fallback` runs. | Mutex with `--async` (cli.py:609-610), positional research prompt (cli.py:348-349), `--pick-model` (cli.py:621-622), `--version` (via _version_conflicts). **Silent precedence over `--interactive`/`--clarify`** (line 347 checked before line 360). |
+| `--version` / `-V` | `cli.py:502, 590-599` | Action: prints `Doxa Research v<VERSION>` and `sys.exit(0)`. | Mutex with EVERY other option/positional via `_version_conflicts(ctx, opts)` (cli.py:93-125). Any other supplied option → `BadParameter("--version must be used alone; remove other arguments/options: …")`. |
+| `--resume` / `-R` | `cli.py:477, 347-358` | Action: routes to `_doxa_run.resume_operation(...)` after `_dispatch_click_fallback` runs. | Mutex with `--async` (cli.py:609-610), positional research prompt (cli.py:348-349), `--pick-model` (cli.py:621-622), `--version` (via _version_conflicts). **Silent precedence over `--interactive`/`--clarify`** (line 347 checked before line 360). |
 | `--interactive` / `-i` | `cli.py:520, 360-363` | Action: enters `enter_interactive_mode(...)`. | Mutex with `--pick-model` (cli.py:621). Silently loses to `--resume`. |
 | `--clarify` | `cli.py:521, 320` | Configures interactive mode's `clarify_mode=True`. Does NOT enter interactive mode by itself — it's a modifier consumed only when interactive is also set. | None. **Silently no-ops if `--interactive` not set.** UNTESTED. |
 | `--pick-model` / `-M` | `cli.py:522-528, 618-624, 374-376` | Modifies model selection during research run. | Mutex with `--resume`, `--interactive`, registered subcommands as `first arg`, AND requires a prompt (cli.py:621-624 — multi-condition predicate is itself a precedence rule worth flagging). |
 | `--prompt` / `-q` | `cli.py:474, 365-371` | Provides prompt content; falls through to research dispatch. | Mutex with `--prompt-file` (cli.py:612-613). |
 | `--prompt-file` / `-F` | `cli.py:475, 173-174` | Reads prompt from file/stdin; triggers research path. | Mutex with `--prompt`. |
-| `--config` / `-c` | `cli.py:511, 601` | Configures `_thoth_config._config_path` BEFORE any subcommand runs (via `_apply_config_path`). | None. Silently affects every downstream command. |
+| `--config` / `-c` | `cli.py:511, 601` | Configures `_doxa_config._config_path` BEFORE any subcommand runs (via `_apply_config_path`). | None. Silently affects every downstream command. |
 | `--input-file` | `cli.py:486-492` | Configures research run input. | Mutex with `--auto` (cli.py:615-616). |
 | `--auto` | `cli.py:493-500` | Configures research run input. | Mutex with `--input-file`. |
 | All other options (`--mode`, `--project`, `--output-dir`, `--provider`, `--verbose`, `--api-key-*`, `--combined`, `--quiet`, `--no-metadata`, `--timeout`, `--async`) | `cli.py:473-528` | Pure configuration; no standalone action. | Various per-pair mutexes; `--async` mutex with `--resume`. |
 
 ### 7. Hidden subcommands
 
-`grep -n hidden=True src/thoth/` results (8 hits, 2 modules):
+`grep -n hidden=True src/doxa_research/` results (8 hits, 2 modules):
 
 | File:line | Name | Purpose | PR2 disposition |
 |---|---|---|---|
@@ -375,10 +375,10 @@ Every `@click.group(invoke_without_command=True)` callback that branches on `ctx
 
 | File:line | Class/callback | Branching logic | Test coverage | PR2 implication |
 |---|---|---|---|---|
-| `help.py:64-89` | `ThothGroup.invoke` | 3 paths after collecting `protected_args + args`: (1) `args[0] in self.commands` → standard dispatch; (2) `args[0] in BUILTIN_MODES` → `_dispatch_click_fallback` (mode-positional); (3) else → `_dispatch_click_fallback` (bare-prompt). No-args → option-only fallback. | `tests/test_p16_thothgroup.py` (multiple), `tests/test_cli_regressions.py:55,76` | This is the CORE shim of the entire CLI. PR2 design must explicitly preserve OR reject `thoth deep_research "topic"` (mode-positional) and `thoth "PROMPT"` (bare-prompt). The PR2 doc currently doesn't address them. |
-| `help.py:51-55` | `ThothGroup.parse_args` | Hijacks `["--help"\|"-h", "auth"]` argv shape at parse time. | UNTESTED | Documented as "auth virtual topic". PR2 should keep, remove, or convert to a real subcommand. |
-| `cli_subcommands/providers.py:34-62` | `providers` callback | Inspects `ctx.args` for `legacy_flags = {--list, --models, --keys, --refresh-cache, --no-cache}`. If found → deprecation warning + dispatch. Else if `args` → exit 2 `"Unknown providers arguments: ..."`. Else → help, exit 0. | `tests/test_providers_subcommand.py:24` (legacy form), `thoth_test:2250` (no-args). | REMOVE legacy-flags branch per PR2 design; keep no-args help. |
-| `cli_subcommands/modes.py:14-28` | `ModesGroup.invoke` | If `args[0] not in self.commands` → route to `modes_command(args[0], args[1:])`. | `thoth_test:2128` asserts `unknown modes op` for `modes bogus_op`. | DECISION REQUIRED — `modes_command` returns 2 for unknown ops with custom wording; if removed, Click's default `"No such command 'bogus_op'"` would replace the wording. |
+| `help.py:64-89` | `DoxaGroup.invoke` | 3 paths after collecting `protected_args + args`: (1) `args[0] in self.commands` → standard dispatch; (2) `args[0] in BUILTIN_MODES` → `_dispatch_click_fallback` (mode-positional); (3) else → `_dispatch_click_fallback` (bare-prompt). No-args → option-only fallback. | `tests/test_p16_doxagroup.py` (multiple), `tests/test_cli_regressions.py:55,76` | This is the CORE shim of the entire CLI. PR2 design must explicitly preserve OR reject `doxa-research deep_research "topic"` (mode-positional) and `doxa-research "PROMPT"` (bare-prompt). The PR2 doc currently doesn't address them. |
+| `help.py:51-55` | `DoxaGroup.parse_args` | Hijacks `["--help"\|"-h", "auth"]` argv shape at parse time. | UNTESTED | Documented as "auth virtual topic". PR2 should keep, remove, or convert to a real subcommand. |
+| `cli_subcommands/providers.py:34-62` | `providers` callback | Inspects `ctx.args` for `legacy_flags = {--list, --models, --keys, --refresh-cache, --no-cache}`. If found → deprecation warning + dispatch. Else if `args` → exit 2 `"Unknown providers arguments: ..."`. Else → help, exit 0. | `tests/test_providers_subcommand.py:24` (legacy form), `doxa_test:2250` (no-args). | REMOVE legacy-flags branch per PR2 design; keep no-args help. |
+| `cli_subcommands/modes.py:14-28` | `ModesGroup.invoke` | If `args[0] not in self.commands` → route to `modes_command(args[0], args[1:])`. | `doxa_test:2128` asserts `unknown modes op` for `modes bogus_op`. | DECISION REQUIRED — `modes_command` returns 2 for unknown ops with custom wording; if removed, Click's default `"No such command 'bogus_op'"` would replace the wording. |
 | `cli_subcommands/config.py:14-21` | `config` group callback | Only checks `ctx.invoked_subcommand is None` for the no-op error. Does NOT branch on `ctx.args`. | `tests/test_p16_dispatch_parity.py:100` | Already canonical — no shim. |
 
 ### 9. Silent-precedence / silent-drop / silent-ambiguity table
@@ -408,81 +408,81 @@ Every old form found in this audit must either work in PR2 or fail with a clear 
 
 | Old form | Status in PR2 | New form | Test coverage today | Test required for PR2 |
 |---|---|---|---|---|
-| `thoth --resume OP_ID` | REMOVE | `thoth resume OP_ID` | `tests/test_resume.py:48,90,131`; `tests/test_cli_regressions.py:76` | Migrated tests + new `tests/test_resume_subcommand.py` exit-2-with-suggestion test |
-| `thoth -R OP_ID` | REMOVE | `thoth resume OP_ID` | implicit via `--resume` (alias) | exit-2 test for `-R` |
-| `thoth --resume OP --pick-model` | REMOVE-path | (rejected combo on new resume) | `tests/test_pick_model.py:48,109` | Migrate + verify exit 2 |
-| `thoth --resume OP --async` | REMOVE-path | (rejected combo) | UNTESTED in pytest | New test |
-| `thoth --resume OP --interactive` | REMOVE-path | DESIGN DECISION (silently wins today) | UNTESTED | New test for chosen behavior |
-| `thoth --resume OP --config PATH` | REMOVE-path | `thoth --config PATH resume OP` (group inheritance) | UNTESTED | New test |
-| `thoth providers -- --list` | REMOVE | `thoth providers list` | `tests/test_providers_subcommand.py:24`; `thoth_test:2307` | Migrate + exit-2-with-suggestion test |
-| `thoth providers -- --models` | REMOVE | `thoth providers models` | `thoth_test:2260,2269` | Migrate |
-| `thoth providers -- --keys` | REMOVE | `thoth providers check` | UNTESTED | New test |
-| `thoth providers -- --refresh-cache` (alone) | REMOVE | DESIGN DECISION — currently silent no-op | UNTESTED | New test (likely exit 2) |
-| `thoth providers -- --no-cache` (alone) | REMOVE | DESIGN DECISION — silent no-op today | UNTESTED | New test |
-| `thoth providers -- --models --refresh-cache` | REMOVE | `thoth providers models --refresh-cache` | UNTESTED | New leaf-flag option + test |
-| `thoth providers -- --models --no-cache` | REMOVE | `thoth providers models --no-cache` | UNTESTED | New leaf-flag option + test |
-| `thoth providers -- --models --provider X --refresh-cache` | REMOVE | `thoth providers models --provider X --refresh-cache` | UNTESTED (PRD v24 documents) | New test |
-| `thoth providers -- --refresh-cache --no-cache` | REMOVE | (combo rejected on new leaf) | UNTESTED | New mutex test |
-| `thoth providers -- --list --keys` (silent drop today) | REMOVE | (combo impossible structurally) | UNTESTED | None needed (resolved by structure) |
-| `thoth providers --list` (in-group hidden) | REMOVE | `thoth providers list` | UNTESTED | exit-2-with-suggestion test |
-| `thoth providers --models` (in-group hidden) | REMOVE | `thoth providers models` | UNTESTED | exit-2 test |
-| `thoth providers --keys` (in-group hidden) | REMOVE | `thoth providers check` | UNTESTED | exit-2 test |
-| `thoth providers --check` (alias for --keys, undocumented) | REMOVE | `thoth providers check` | UNTESTED | None — drop silently or exit-2 |
-| `thoth providers` (no leaf) | KEEP | Help + exit 0 (or exit 2 — pick) | `tests/test_p16_dispatch_parity.py:89`; `thoth_test:2250` | Confirm chosen exit code |
-| `thoth modes` (no leaf) | KEEP? | DESIGN: stay as `modes list` default OR require explicit leaf | `tests/test_p16_thothgroup.py:223` | If "require leaf": exit-2 test + migrate baseline |
-| `thoth modes --json` | KEEP? | `thoth modes list --json` | UNTESTED (only the `list --json` form is tested at `tests/test_cli_regressions.py:113`) | exit-2-with-suggestion test if removed |
-| `thoth modes --show-secrets` | KEEP? | `thoth modes list --show-secrets` | UNTESTED | exit-2 test if removed |
-| `thoth modes --full` | KEEP? | `thoth modes list --full` | UNTESTED | exit-2 test if removed |
-| `thoth modes --name NAME` | KEEP? | `thoth modes list --name NAME` | UNTESTED | exit-2 test if removed |
-| `thoth modes --source SRC` | KEEP? | `thoth modes list --source SRC` | UNTESTED | exit-2 test if removed |
-| `thoth modes <UNKNOWN_OP>` | KEEP | currently exit 2 `"unknown modes op"` | `thoth_test:2128` | Decide whether to keep custom wording or accept Click default |
-| `thoth modes list` | KEEP | canonical | `tests/test_cli_regressions.py:113` | OK |
-| `thoth modes list --json/--show-secrets/--full/--name/--source` | KEEP-but-promote | Same; but flags should be Click options not passthrough | UNTESTED for individual flags | Add per-flag tests once promoted |
-| `thoth config` (no op) | KEEP | exit 2 op-required hint | `tests/test_p16_dispatch_parity.py:100` | OK |
-| `thoth config get KEY` | KEEP | canonical | `tests/test_cli_regressions.py:101` | OK |
-| `thoth config get KEY --raw` | KEEP-but-document | Promote to typed Click option; loud-document secret-bypass behavior | `tests/test_cli_regressions.py:101` | New test asserting masking-bypass behavior is documented |
-| `thoth config get KEY --json` | KEEP-but-promote | Typed flag | UNTESTED | New test |
-| `thoth config get KEY --show-secrets` | KEEP-but-promote | Typed flag | UNTESTED | New test |
-| `thoth config get KEY --layer L` | KEEP-but-promote | Typed flag | UNTESTED | New test |
-| `thoth config set KEY VALUE` | KEEP | canonical | UNTESTED | New test |
-| `thoth config set KEY VALUE --project` | KEEP-but-promote | Typed flag | UNTESTED | New test |
-| `thoth config set KEY VALUE --string` | KEEP-but-promote | Typed flag | UNTESTED | New test |
-| `thoth config unset KEY` | KEEP | canonical | UNTESTED | New test |
-| `thoth config unset KEY --project` | KEEP-but-promote | Typed flag | UNTESTED | New test |
-| `thoth config list` | KEEP | canonical | `tests/test_p16_thothgroup.py:201` | OK |
-| `thoth config list --keys` | KEEP-but-document | Promote + document precedence over `--json/--show-secrets` (or reject combo) | UNTESTED | New test for chosen behavior |
-| `thoth config list --json` | KEEP-but-promote | Typed flag | UNTESTED | New test |
-| `thoth config list --show-secrets` | KEEP-but-promote | Typed flag | UNTESTED | New test |
-| `thoth config list --layer L` | KEEP-but-promote | Typed flag | UNTESTED | New test |
-| `thoth config list --keys --json` (silent drop) | KEEP? | DESIGN: reject combo OR document precedence | UNTESTED | New test for chosen behavior |
-| `thoth config path` | KEEP | canonical | UNTESTED | New test |
-| `thoth config path --project` | KEEP-but-promote | Typed flag | UNTESTED | New test |
-| `thoth config edit` | KEEP | canonical | UNTESTED | New test |
-| `thoth config edit --project` | KEEP-but-promote | Typed flag | UNTESTED | New test |
-| `thoth config help` | KEEP? | DESIGN: keep leaf OR collapse to `thoth help config` (two paths today render different output) | UNTESTED | New convergence test |
-| `thoth init` | KEEP | canonical | covered by `tests/test_p16_*` baselines | OK |
-| `thoth status OP_ID` | KEEP | canonical | covered | OK |
-| `thoth status` (no arg) | KEEP-but-decide | exit 1 today; Click default would be exit 2 | `tests/baselines/status_no_args.json` | Recapture baseline if changed |
-| `thoth list` | KEEP | canonical | covered | OK |
-| `thoth list --all` | KEEP | canonical | UNTESTED in pytest | New test |
-| `thoth help` | KEEP | canonical | covered (renders top-level help) | OK |
-| `thoth help <subcommand>` | KEEP | canonical (forwards to `--help`) | covered | OK |
-| `thoth help auth` | KEEP-but-document | Virtual topic — `auth` is not a real subcommand | UNTESTED | New test |
-| `thoth -h auth` / `thoth --help auth` | KEEP? | `ThothGroup.parse_args` hijack — DESIGN: keep or remove | UNTESTED | New test |
-| `thoth completion` | DEAD | listed in `ADMIN_COMMANDS` (help.py:20) but never registered as a Click command. **Phantom in help renderer.** | UNTESTED | Remove from `ADMIN_COMMANDS` OR add a real `completion` subcommand |
-| `thoth deep_research "topic"` (mode-positional) | KEEP? | DESIGN: keep `ThothGroup.invoke` mode-positional path OR require `thoth ask --mode deep_research "topic"` | covered widely | Mass test migration if removed |
-| `thoth ask "PROMPT"` | NEW? | DESIGN: `ask` is in `RUN_COMMANDS` (help.py:14) but is NOT a registered subcommand today (only modes-as-positional). PR2 may need to add a real `ask` leaf. | UNTESTED (no `ask` subcommand exists) | New subcommand + tests |
-| `thoth resume OP_ID` | NEW | New canonical for `--resume` | `tests/test_resume_subcommand.py` (PR2-new) | Required |
-| `thoth "bare prompt"` (whole-argv-as-prompt) | KEEP? | DESIGN: `ThothGroup.invoke` bare-prompt path | covered widely (`tests/test_cli_regressions.py:55`) | Mass test migration if removed |
-| `thoth -m MODE -q PROMPT` | KEEP | flag-style research | covered (`tests/test_cli_regressions.py:23`) | OK |
-| `thoth --version` | KEEP | canonical | covered | OK |
-| `thoth --version <anything>` | KEEP | exit 2 mutex (`tests/test_cli_regressions.py:164`) | covered | OK |
-| `thoth --interactive` / `-i` | KEEP | enters interactive mode | covered | OK |
-| `thoth --clarify` (alone) | DEAD-MODIFIER | silent no-op without `--interactive` | UNTESTED | New test (likely exit 2 if alone) |
-| `thoth --pick-model -q PROMPT` | KEEP | research with model picker | covered | OK |
-| `thoth --pick-model --resume OP` | KEEP-mutex | exit 2 | covered | OK |
-| `thoth --pick-model --interactive` | KEEP-mutex | exit 2 | UNTESTED | New test |
-| `thoth --pick-model <subcommand>` | KEEP-mutex | exit 2 (e.g., `--pick-model providers`) | UNTESTED | New test |
+| `doxa-research --resume OP_ID` | REMOVE | `doxa-research resume OP_ID` | `tests/test_resume.py:48,90,131`; `tests/test_cli_regressions.py:76` | Migrated tests + new `tests/test_resume_subcommand.py` exit-2-with-suggestion test |
+| `doxa-research -R OP_ID` | REMOVE | `doxa-research resume OP_ID` | implicit via `--resume` (alias) | exit-2 test for `-R` |
+| `doxa-research --resume OP --pick-model` | REMOVE-path | (rejected combo on new resume) | `tests/test_pick_model.py:48,109` | Migrate + verify exit 2 |
+| `doxa-research --resume OP --async` | REMOVE-path | (rejected combo) | UNTESTED in pytest | New test |
+| `doxa-research --resume OP --interactive` | REMOVE-path | DESIGN DECISION (silently wins today) | UNTESTED | New test for chosen behavior |
+| `doxa-research --resume OP --config PATH` | REMOVE-path | `doxa-research --config PATH resume OP` (group inheritance) | UNTESTED | New test |
+| `doxa-research providers -- --list` | REMOVE | `doxa-research providers list` | `tests/test_providers_subcommand.py:24`; `doxa_test:2307` | Migrate + exit-2-with-suggestion test |
+| `doxa-research providers -- --models` | REMOVE | `doxa-research providers models` | `doxa_test:2260,2269` | Migrate |
+| `doxa-research providers -- --keys` | REMOVE | `doxa-research providers check` | UNTESTED | New test |
+| `doxa-research providers -- --refresh-cache` (alone) | REMOVE | DESIGN DECISION — currently silent no-op | UNTESTED | New test (likely exit 2) |
+| `doxa-research providers -- --no-cache` (alone) | REMOVE | DESIGN DECISION — silent no-op today | UNTESTED | New test |
+| `doxa-research providers -- --models --refresh-cache` | REMOVE | `doxa-research providers models --refresh-cache` | UNTESTED | New leaf-flag option + test |
+| `doxa-research providers -- --models --no-cache` | REMOVE | `doxa-research providers models --no-cache` | UNTESTED | New leaf-flag option + test |
+| `doxa-research providers -- --models --provider X --refresh-cache` | REMOVE | `doxa-research providers models --provider X --refresh-cache` | UNTESTED (PRD v24 documents) | New test |
+| `doxa-research providers -- --refresh-cache --no-cache` | REMOVE | (combo rejected on new leaf) | UNTESTED | New mutex test |
+| `doxa-research providers -- --list --keys` (silent drop today) | REMOVE | (combo impossible structurally) | UNTESTED | None needed (resolved by structure) |
+| `doxa-research providers --list` (in-group hidden) | REMOVE | `doxa-research providers list` | UNTESTED | exit-2-with-suggestion test |
+| `doxa-research providers --models` (in-group hidden) | REMOVE | `doxa-research providers models` | UNTESTED | exit-2 test |
+| `doxa-research providers --keys` (in-group hidden) | REMOVE | `doxa-research providers check` | UNTESTED | exit-2 test |
+| `doxa-research providers --check` (alias for --keys, undocumented) | REMOVE | `doxa-research providers check` | UNTESTED | None — drop silently or exit-2 |
+| `doxa-research providers` (no leaf) | KEEP | Help + exit 0 (or exit 2 — pick) | `tests/test_p16_dispatch_parity.py:89`; `doxa_test:2250` | Confirm chosen exit code |
+| `doxa-research modes` (no leaf) | KEEP? | DESIGN: stay as `modes list` default OR require explicit leaf | `tests/test_p16_doxagroup.py:223` | If "require leaf": exit-2 test + migrate baseline |
+| `doxa-research modes --json` | KEEP? | `doxa-research modes list --json` | UNTESTED (only the `list --json` form is tested at `tests/test_cli_regressions.py:113`) | exit-2-with-suggestion test if removed |
+| `doxa-research modes --show-secrets` | KEEP? | `doxa-research modes list --show-secrets` | UNTESTED | exit-2 test if removed |
+| `doxa-research modes --full` | KEEP? | `doxa-research modes list --full` | UNTESTED | exit-2 test if removed |
+| `doxa-research modes --name NAME` | KEEP? | `doxa-research modes list --name NAME` | UNTESTED | exit-2 test if removed |
+| `doxa-research modes --source SRC` | KEEP? | `doxa-research modes list --source SRC` | UNTESTED | exit-2 test if removed |
+| `doxa-research modes <UNKNOWN_OP>` | KEEP | currently exit 2 `"unknown modes op"` | `doxa_test:2128` | Decide whether to keep custom wording or accept Click default |
+| `doxa-research modes list` | KEEP | canonical | `tests/test_cli_regressions.py:113` | OK |
+| `doxa-research modes list --json/--show-secrets/--full/--name/--source` | KEEP-but-promote | Same; but flags should be Click options not passthrough | UNTESTED for individual flags | Add per-flag tests once promoted |
+| `doxa-research config` (no op) | KEEP | exit 2 op-required hint | `tests/test_p16_dispatch_parity.py:100` | OK |
+| `doxa-research config get KEY` | KEEP | canonical | `tests/test_cli_regressions.py:101` | OK |
+| `doxa-research config get KEY --raw` | KEEP-but-document | Promote to typed Click option; loud-document secret-bypass behavior | `tests/test_cli_regressions.py:101` | New test asserting masking-bypass behavior is documented |
+| `doxa-research config get KEY --json` | KEEP-but-promote | Typed flag | UNTESTED | New test |
+| `doxa-research config get KEY --show-secrets` | KEEP-but-promote | Typed flag | UNTESTED | New test |
+| `doxa-research config get KEY --layer L` | KEEP-but-promote | Typed flag | UNTESTED | New test |
+| `doxa-research config set KEY VALUE` | KEEP | canonical | UNTESTED | New test |
+| `doxa-research config set KEY VALUE --project` | KEEP-but-promote | Typed flag | UNTESTED | New test |
+| `doxa-research config set KEY VALUE --string` | KEEP-but-promote | Typed flag | UNTESTED | New test |
+| `doxa-research config unset KEY` | KEEP | canonical | UNTESTED | New test |
+| `doxa-research config unset KEY --project` | KEEP-but-promote | Typed flag | UNTESTED | New test |
+| `doxa-research config list` | KEEP | canonical | `tests/test_p16_doxagroup.py:201` | OK |
+| `doxa-research config list --keys` | KEEP-but-document | Promote + document precedence over `--json/--show-secrets` (or reject combo) | UNTESTED | New test for chosen behavior |
+| `doxa-research config list --json` | KEEP-but-promote | Typed flag | UNTESTED | New test |
+| `doxa-research config list --show-secrets` | KEEP-but-promote | Typed flag | UNTESTED | New test |
+| `doxa-research config list --layer L` | KEEP-but-promote | Typed flag | UNTESTED | New test |
+| `doxa-research config list --keys --json` (silent drop) | KEEP? | DESIGN: reject combo OR document precedence | UNTESTED | New test for chosen behavior |
+| `doxa-research config path` | KEEP | canonical | UNTESTED | New test |
+| `doxa-research config path --project` | KEEP-but-promote | Typed flag | UNTESTED | New test |
+| `doxa-research config edit` | KEEP | canonical | UNTESTED | New test |
+| `doxa-research config edit --project` | KEEP-but-promote | Typed flag | UNTESTED | New test |
+| `doxa-research config help` | KEEP? | DESIGN: keep leaf OR collapse to `doxa-research help config` (two paths today render different output) | UNTESTED | New convergence test |
+| `doxa-research init` | KEEP | canonical | covered by `tests/test_p16_*` baselines | OK |
+| `doxa-research status OP_ID` | KEEP | canonical | covered | OK |
+| `doxa-research status` (no arg) | KEEP-but-decide | exit 1 today; Click default would be exit 2 | `tests/baselines/status_no_args.json` | Recapture baseline if changed |
+| `doxa-research list` | KEEP | canonical | covered | OK |
+| `doxa-research list --all` | KEEP | canonical | UNTESTED in pytest | New test |
+| `doxa-research help` | KEEP | canonical | covered (renders top-level help) | OK |
+| `doxa-research help <subcommand>` | KEEP | canonical (forwards to `--help`) | covered | OK |
+| `doxa-research help auth` | KEEP-but-document | Virtual topic — `auth` is not a real subcommand | UNTESTED | New test |
+| `doxa-research -h auth` / `doxa-research --help auth` | KEEP? | `DoxaGroup.parse_args` hijack — DESIGN: keep or remove | UNTESTED | New test |
+| `doxa-research completion` | DEAD | listed in `ADMIN_COMMANDS` (help.py:20) but never registered as a Click command. **Phantom in help renderer.** | UNTESTED | Remove from `ADMIN_COMMANDS` OR add a real `completion` subcommand |
+| `doxa-research deep_research "topic"` (mode-positional) | KEEP? | DESIGN: keep `DoxaGroup.invoke` mode-positional path OR require `doxa-research ask --mode deep_research "topic"` | covered widely | Mass test migration if removed |
+| `doxa-research ask "PROMPT"` | NEW? | DESIGN: `ask` is in `RUN_COMMANDS` (help.py:14) but is NOT a registered subcommand today (only modes-as-positional). PR2 may need to add a real `ask` leaf. | UNTESTED (no `ask` subcommand exists) | New subcommand + tests |
+| `doxa-research resume OP_ID` | NEW | New canonical for `--resume` | `tests/test_resume_subcommand.py` (PR2-new) | Required |
+| `doxa-research "bare prompt"` (whole-argv-as-prompt) | KEEP? | DESIGN: `DoxaGroup.invoke` bare-prompt path | covered widely (`tests/test_cli_regressions.py:55`) | Mass test migration if removed |
+| `doxa-research -m MODE -q PROMPT` | KEEP | flag-style research | covered (`tests/test_cli_regressions.py:23`) | OK |
+| `doxa-research --version` | KEEP | canonical | covered | OK |
+| `doxa-research --version <anything>` | KEEP | exit 2 mutex (`tests/test_cli_regressions.py:164`) | covered | OK |
+| `doxa-research --interactive` / `-i` | KEEP | enters interactive mode | covered | OK |
+| `doxa-research --clarify` (alone) | DEAD-MODIFIER | silent no-op without `--interactive` | UNTESTED | New test (likely exit 2 if alone) |
+| `doxa-research --pick-model -q PROMPT` | KEEP | research with model picker | covered | OK |
+| `doxa-research --pick-model --resume OP` | KEEP-mutex | exit 2 | covered | OK |
+| `doxa-research --pick-model --interactive` | KEEP-mutex | exit 2 | UNTESTED | New test |
+| `doxa-research --pick-model <subcommand>` | KEEP-mutex | exit 2 (e.g., `--pick-model providers`) | UNTESTED | New test |
 
 ---
 
@@ -490,27 +490,27 @@ Every old form found in this audit must either work in PR2 or fail with a clear 
 
 - `--resume`-using tests:
   - **pytest tests that issue `--resume`**: 6 (test_resume.py x3, test_pick_model.py x2, test_cli_regressions.py x2, plus test_progress_spinner.py and test_cli_help.py asserting on emitted text). Total CliRunner/subprocess invocations: 8.
-  - **thoth_test cases asserting `--resume` text**: 3 (TR-02, TR-03, signal-handler test).
+  - **doxa_test cases asserting `--resume` text**: 3 (TR-02, TR-03, signal-handler test).
   - **non-test source files emitting `--resume`**: 4 (run.py x4, signals.py x2, commands.py x2, help.py x1). Plus the cli.py wiring itself.
 - `providers --` / `providers --list/--models/--keys`-using tests:
   - **pytest tests**: 1 explicit (test_providers_subcommand.py:24, the deprecation-still-works test).
-  - **thoth_test cases**: 5 (T-PROV-07, T-PROV-08, T-PROV-10, P07-M2-01, plus T-PROV-06 which asserts the help mentions `--list|--models`).
+  - **doxa_test cases**: 5 (T-PROV-07, T-PROV-08, T-PROV-10, P07-M2-01, plus T-PROV-06 which asserts the help mentions `--list|--models`).
   - **non-test source files referencing the legacy form**: commands.py (8 references in help/error text), providers/openai.py:69 (1 hint), README.md (cited by audit, text only).
 
 ## Untested-but-in-production behaviours (silent-drop risks)
 
 These behaviours currently work in the binary but no automated test covers them. PR2 must explicitly decide for each whether to preserve, change, or drop — otherwise the migration may silently regress them.
 
-- `thoth --resume <op>` → exit 6 when op not found (run.py:720).
-- `thoth --resume <op> --config <path>` config inheritance (cli.py:345).
-- `thoth --resume <op> --verbose` verbose flow-through (cli.py:354).
-- `thoth --resume <op> -i` / `--clarify` (resume silently wins).
-- `thoth providers -- --keys` (no test).
-- `thoth providers -- --refresh-cache` alone (silent no-op).
-- `thoth providers -- --no-cache` alone (silent no-op).
-- `thoth providers -- --models --refresh-cache` combo.
-- `thoth providers -- --models --no-cache` combo.
-- `thoth providers -- --models --provider X --refresh-cache` per-provider refresh (documented in PRD v24, not tested).
-- `thoth providers -- --refresh-cache --no-cache` combo (silent ambiguity).
-- `thoth providers -- --list --keys` (silent drop of second flag).
-- `thoth providers --check` alias for `--keys` (in-group shim, no test, no docs).
+- `doxa-research --resume <op>` → exit 6 when op not found (run.py:720).
+- `doxa-research --resume <op> --config <path>` config inheritance (cli.py:345).
+- `doxa-research --resume <op> --verbose` verbose flow-through (cli.py:354).
+- `doxa-research --resume <op> -i` / `--clarify` (resume silently wins).
+- `doxa-research providers -- --keys` (no test).
+- `doxa-research providers -- --refresh-cache` alone (silent no-op).
+- `doxa-research providers -- --no-cache` alone (silent no-op).
+- `doxa-research providers -- --models --refresh-cache` combo.
+- `doxa-research providers -- --models --no-cache` combo.
+- `doxa-research providers -- --models --provider X --refresh-cache` per-provider refresh (documented in PRD v24, not tested).
+- `doxa-research providers -- --refresh-cache --no-cache` combo (silent ambiguity).
+- `doxa-research providers -- --list --keys` (silent drop of second flag).
+- `doxa-research providers --check` alias for `--keys` (in-group shim, no test, no docs).

@@ -2,7 +2,7 @@ from contextlib import contextmanager
 
 import pytest
 
-from thoth.progress import should_show_spinner
+from doxa_research.progress import should_show_spinner
 
 
 class FakeTTY:
@@ -41,10 +41,10 @@ def test_maybe_spinner_calls_spinner_when_gate_passes(monkeypatch):
         called["entered"] = True
         yield
 
-    monkeypatch.setattr("thoth.run.run_with_spinner", fake_spinner)
-    monkeypatch.setattr("thoth.run.should_show_spinner", lambda **kw: True)
+    monkeypatch.setattr("doxa_research.run.run_with_spinner", fake_spinner)
+    monkeypatch.setattr("doxa_research.run.should_show_spinner", lambda **kw: True)
 
-    from thoth.run import _maybe_spinner
+    from doxa_research.run import _maybe_spinner
 
     with _maybe_spinner(
         model="o3-deep-research",
@@ -64,10 +64,10 @@ def test_maybe_spinner_is_noop_when_gate_fails(monkeypatch):
         called["entered"] = True
         yield
 
-    monkeypatch.setattr("thoth.run.run_with_spinner", fake_spinner)
-    monkeypatch.setattr("thoth.run.should_show_spinner", lambda **kw: False)
+    monkeypatch.setattr("doxa_research.run.run_with_spinner", fake_spinner)
+    monkeypatch.setattr("doxa_research.run.should_show_spinner", lambda **kw: False)
 
-    from thoth.run import _maybe_spinner
+    from doxa_research.run import _maybe_spinner
 
     with _maybe_spinner(
         model="o3",
@@ -110,12 +110,12 @@ def test_poll_display_xor_spinner_when_gate_passes(monkeypatch):
         spinner_entered["v"] = True
         yield
 
-    monkeypatch.setattr("thoth.run.Progress", FakeProgress)
-    monkeypatch.setattr("thoth.run.run_with_spinner", fake_spinner)
+    monkeypatch.setattr("doxa_research.run.Progress", FakeProgress)
+    monkeypatch.setattr("doxa_research.run.run_with_spinner", fake_spinner)
 
-    from thoth.run import _poll_display
+    from doxa_research.run import _poll_display
 
-    monkeypatch.setattr("thoth.run.should_show_spinner", lambda **kw: True)
+    monkeypatch.setattr("doxa_research.run.should_show_spinner", lambda **kw: True)
     with _poll_display(quiet=False, mode_model="o3-deep-research", verbose=False):
         pass
     assert spinner_entered["v"] is True
@@ -123,7 +123,7 @@ def test_poll_display_xor_spinner_when_gate_passes(monkeypatch):
 
     progress_entered["v"] = False
     spinner_entered["v"] = False
-    monkeypatch.setattr("thoth.run.should_show_spinner", lambda **kw: False)
+    monkeypatch.setattr("doxa_research.run.should_show_spinner", lambda **kw: False)
     with _poll_display(quiet=False, mode_model="o3", verbose=False):
         pass
     assert spinner_entered["v"] is False
@@ -131,7 +131,7 @@ def test_poll_display_xor_spinner_when_gate_passes(monkeypatch):
 
 
 def test_sigint_prints_resume_hint(capsys):
-    import thoth.signals as sig
+    import doxa_research.signals as sig
 
     class FakeOp:
         id = "op_abc123"
@@ -149,4 +149,4 @@ def test_sigint_prints_resume_hint(capsys):
         pass
     captured = capsys.readouterr()
     output = captured.out + captured.err
-    assert "Resume later: thoth resume op_abc123" in output
+    assert "Resume later: doxa resume op_abc123" in output

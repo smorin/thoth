@@ -12,14 +12,14 @@
 - `projects/P24-gemini-immediate-sync.md` — full scope, parity matrix, provider-deltas, 17 TS/T tasks.
 - `planning/p24-immediate-providers-consolidation.v1.md` — factor-dedup output classifying drift across the three providers.
 
-**Self-pacing rule:** This plan touches 3 providers + CLI + CI + tests. Run the full pre-commit gate (`just check` + `uv run ruff format --check src/ tests/` + `uv run pytest -q` + `./thoth_test -r --skip-interactive -q`) every 2-3 commits, NOT only at the end (per `CLAUDE.md` "Periodic full-gate runs"). The plan calls out gate points explicitly.
+**Self-pacing rule:** This plan touches 3 providers + CLI + CI + tests. Run the full pre-commit gate (`just check` + `uv run ruff format --check src/ tests/` + `uv run pytest -q` + `./doxa_test -r --skip-interactive -q`) every 2-3 commits, NOT only at the end (per `CLAUDE.md` "Periodic full-gate runs"). The plan calls out gate points explicitly.
 
 ## Plan refresh notes (post-P27 merge — 2026-05-03)
 
 The factor-dedup pass that informed this plan ran against `perplexity.py` BEFORE P27 (Perplexity background deep-research) merged into main. Branch was fast-forwarded after the dedup pass. Material differences vs the original comparator report:
 
 1. **`perplexity.py` is now DUAL-MODE** (immediate + background). The factor-dedup classification of "immediate-only by design" applies only to the immediate-path methods inside the file — the file itself now has a sibling background path.
-2. **`_invalid_key_thotherror(provider, settings_url) -> ThothError` helper exists** at `perplexity.py:143`. P27 polish extracted this. **Plan adjustment**: in Phase 2 Task 2.2 (OpenAI auth-invalid `exit_code=2`) and Phase 4 Task 4.3 (Gemini auth-invalid handling), MOVE this helper to `src/thoth/providers/_helpers.py` and have all three providers call it, rather than each duplicating the `ThothError(...)` construction. This is the natural consolidation point — P27 did the first half; this work does the rest.
+2. **`_invalid_key_doxaerror(provider, settings_url) -> DoxaError` helper exists** at `perplexity.py:143`. P27 polish extracted this. **Plan adjustment**: in Phase 2 Task 2.2 (OpenAI auth-invalid `exit_code=2`) and Phase 4 Task 4.3 (Gemini auth-invalid handling), MOVE this helper to `src/doxa_research/providers/_helpers.py` and have all three providers call it, rather than each duplicating the `DoxaError(...)` construction. This is the natural consolidation point — P27 did the first half; this work does the rest.
 3. **`_map_perplexity_error_async`** at `perplexity.py:246` is the background-path sibling error mapper. Its docstring (line 151) explicitly says it preserves "byte-identical wording" with `_map_perplexity_error`. **Out of scope** for this plan — the consolidation is immediate-path only.
 4. **`_PERPLEXITY_STATUS_TABLE`** at `perplexity.py:109` is a new module-level status table for the background path. Not touched.
 5. **`list_models` adds `sonar-deep-research`** entry. The kind-mismatch guard logic in `_validate_kind_for_model` still rejects this model on `kind=immediate`; nothing in this plan changes.
@@ -33,7 +33,7 @@ The factor-dedup pass that informed this plan ran against `perplexity.py` BEFORE
 
 | Path | Responsibility |
 |---|---|
-| `src/thoth/providers/gemini.py` | New `GeminiProvider` class + `_map_gemini_error` + module constants |
+| `src/doxa_research/providers/gemini.py` | New `GeminiProvider` class + `_map_gemini_error` + module constants |
 | `tests/test_provider_gemini.py` | Unit tests for the Gemini provider |
 | `tests/extended/test_gemini_real_workflows.py` | Gated `live_api` end-to-end tests |
 | `planning/p24-providers-root-namespace-investigation.v1.md` | T17 investigation report deciding ship vs punt |
@@ -42,14 +42,14 @@ The factor-dedup pass that informed this plan ran against `perplexity.py` BEFORE
 
 | Path | Why |
 |---|---|
-| `src/thoth/providers/openai.py` | Namespace migration (TS10/T11), `md_link_*` sanitization (T12), `exit_code=2` alignment (T14), `_DIRECT_SDK_KEYS_OPENAI` + `_PROVIDER_NAME_OPENAI` constants, optionally streaming-events wire-up after audit (T13) |
-| `src/thoth/providers/perplexity.py` | Rename `_DIRECT_SDK_KEYS` → `_DIRECT_SDK_KEYS_PERPLEXITY`, `_PROVIDER_NAME` → `_PROVIDER_NAME_PERPLEXITY`; add `NotFoundError` mapping; add `unsupported parameter` regex extraction; add empty-content debug-print |
-| `src/thoth/providers/__init__.py` | Register `GeminiProvider` + `PROVIDER_ENV_VARS["gemini"] = "GEMINI_API_KEY"` |
-| `src/thoth/config.py` | Add 3 Gemini built-in modes to `BUILTIN_MODES` |
-| `src/thoth/cli.py`, `src/thoth/cli_subcommands/_options.py`, `src/thoth/cli_subcommands/ask.py`, `src/thoth/cli_subcommands/_option_policy.py`, `src/thoth/run.py` | Thread `--api-key-gemini` through the option surface |
-| `src/thoth/commands.py`, `src/thoth/interactive.py` | Replace "Gemini (not implemented)" copy with the implemented description |
-| `src/thoth/help.py` | Add `[providers.gemini]` block to auth help |
-| `src/thoth/errors.py` | (Possibly) update API-key resolution if a new provider needs registry knowledge |
+| `src/doxa_research/providers/openai.py` | Namespace migration (TS10/T11), `md_link_*` sanitization (T12), `exit_code=2` alignment (T14), `_DIRECT_SDK_KEYS_OPENAI` + `_PROVIDER_NAME_OPENAI` constants, optionally streaming-events wire-up after audit (T13) |
+| `src/doxa_research/providers/perplexity.py` | Rename `_DIRECT_SDK_KEYS` → `_DIRECT_SDK_KEYS_PERPLEXITY`, `_PROVIDER_NAME` → `_PROVIDER_NAME_PERPLEXITY`; add `NotFoundError` mapping; add `unsupported parameter` regex extraction; add empty-content debug-print |
+| `src/doxa_research/providers/__init__.py` | Register `GeminiProvider` + `PROVIDER_ENV_VARS["gemini"] = "GEMINI_API_KEY"` |
+| `src/doxa_research/config.py` | Add 3 Gemini built-in modes to `BUILTIN_MODES` |
+| `src/doxa_research/cli.py`, `src/doxa_research/cli_subcommands/_options.py`, `src/doxa_research/cli_subcommands/ask.py`, `src/doxa_research/cli_subcommands/_option_policy.py`, `src/doxa_research/run.py` | Thread `--api-key-gemini` through the option surface |
+| `src/doxa_research/commands.py`, `src/doxa_research/interactive.py` | Replace "Gemini (not implemented)" copy with the implemented description |
+| `src/doxa_research/help.py` | Add `[providers.gemini]` block to auth help |
+| `src/doxa_research/errors.py` | (Possibly) update API-key resolution if a new provider needs registry knowledge |
 | `tests/baselines/providers_list.json` | Regenerate snapshot after surface text changes |
 | `tests/extended/conftest.py` | Add `live_gemini_env` fixture, `require_gemini_key()` helper; extend `assert_no_secret_leaked` to redact `GEMINI_API_KEY` |
 | `tests/extended/test_model_kind_runtime.py` | Remove any current Gemini skip; verify auto-derivation from `BUILTIN_MODES` |
@@ -79,7 +79,7 @@ Rename Perplexity's bare constants to the suffix-named convention; introduce the
 ### Task 1.1: Rename Perplexity constants
 
 **Files:**
-- Modify: `src/thoth/providers/perplexity.py`
+- Modify: `src/doxa_research/providers/perplexity.py`
 - Test: `tests/test_provider_perplexity.py` (existing file)
 
 - [ ] **Step 1: Add tests asserting the renamed constants exist**
@@ -89,7 +89,7 @@ Append to `tests/test_provider_perplexity.py` (top-level test functions, no clas
 ```python
 def test_perplexity_constants_use_suffix_naming() -> None:
     """Perplexity module-level constants follow the cross-provider suffix convention."""
-    from thoth.providers import perplexity as pp
+    from doxa-research.providers import perplexity as pp
 
     assert hasattr(pp, "_DIRECT_SDK_KEYS_PERPLEXITY"), (
         "_DIRECT_SDK_KEYS_PERPLEXITY must exist (renamed from bare _DIRECT_SDK_KEYS)"
@@ -104,7 +104,7 @@ def test_perplexity_constants_use_suffix_naming() -> None:
 
 def test_perplexity_bare_constant_names_removed() -> None:
     """Bare unsuffixed names must NOT exist after the rename."""
-    from thoth.providers import perplexity as pp
+    from doxa-research.providers import perplexity as pp
 
     assert not hasattr(pp, "_DIRECT_SDK_KEYS"), "bare _DIRECT_SDK_KEYS leaked through rename"
     assert not hasattr(pp, "_PROVIDER_NAME"), "bare _PROVIDER_NAME leaked through rename"
@@ -118,7 +118,7 @@ Expected: FAIL — `_DIRECT_SDK_KEYS_PERPLEXITY` not found.
 
 - [ ] **Step 3: Mechanical rename via Edit's replace_all**
 
-Use Edit with `replace_all=true` on `src/thoth/providers/perplexity.py`:
+Use Edit with `replace_all=true` on `src/doxa_research/providers/perplexity.py`:
 1. `_DIRECT_SDK_KEYS` → `_DIRECT_SDK_KEYS_PERPLEXITY`
 2. `_PROVIDER_NAME` → `_PROVIDER_NAME_PERPLEXITY`
 
@@ -132,7 +132,7 @@ Expected: PASS for the 2 new tests + all existing Perplexity tests still pass (n
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/thoth/providers/perplexity.py tests/test_provider_perplexity.py
+git add src/doxa_research/providers/perplexity.py tests/test_provider_perplexity.py
 git commit -m "$(cat <<'EOF'
 refactor(perplexity): rename module constants to suffix-named convention
 
@@ -146,7 +146,7 @@ EOF
 ### Task 1.2: Introduce OpenAI constants
 
 **Files:**
-- Modify: `src/thoth/providers/openai.py`
+- Modify: `src/doxa_research/providers/openai.py`
 - Test: `tests/test_openai_errors.py` (existing file)
 
 - [ ] **Step 1: Add tests asserting OpenAI constants exist**
@@ -156,7 +156,7 @@ Append to `tests/test_openai_errors.py`:
 ```python
 def test_openai_constants_use_suffix_naming() -> None:
     """OpenAI module-level constants follow the cross-provider suffix convention."""
-    from thoth.providers import openai as op
+    from doxa-research.providers import openai as op
 
     assert hasattr(op, "_DIRECT_SDK_KEYS_OPENAI"), (
         "_DIRECT_SDK_KEYS_OPENAI must exist (introduced for cross-provider parity)"
@@ -178,7 +178,7 @@ Expected: FAIL — constants not found.
 
 - [ ] **Step 3: Add the constants to `openai.py`**
 
-In `src/thoth/providers/openai.py`, near the top of the module (after imports, before `_rate_limit_error_is_quota`):
+In `src/doxa_research/providers/openai.py`, near the top of the module (after imports, before `_rate_limit_error_is_quota`):
 
 ```python
 _PROVIDER_NAME_OPENAI = "openai"
@@ -205,7 +205,7 @@ Expected: PASS — all existing tests still pass + the new constant test passes.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/thoth/providers/openai.py tests/test_openai_errors.py
+git add src/doxa_research/providers/openai.py tests/test_openai_errors.py
 git commit -m "$(cat <<'EOF'
 refactor(openai): introduce _DIRECT_SDK_KEYS_OPENAI and _PROVIDER_NAME_OPENAI
 
@@ -230,7 +230,7 @@ Five small fixes, each test-driven. None are interdependent; commit each indepen
 ### Task 2.1: Backport `md_link_*` sanitization to OpenAI's Sources block (security)
 
 **Files:**
-- Modify: `src/thoth/providers/openai.py:614-622`
+- Modify: `src/doxa_research/providers/openai.py:614-622`
 - Test: `tests/test_openai_errors.py`
 
 - [ ] **Step 1: Write failing adversarial-input tests**
@@ -241,7 +241,7 @@ Append to `tests/test_openai_errors.py`:
 def test_openai_sources_block_escapes_html_in_title() -> None:
     """OpenAI's ## Sources block must use md_link_title to escape HTML."""
     from types import SimpleNamespace
-    from thoth.providers.openai import OpenAIProvider
+    from doxa-research.providers.openai import OpenAIProvider
 
     provider = OpenAIProvider(api_key="dummy", config={})
     fake_response = SimpleNamespace(
@@ -275,7 +275,7 @@ def test_openai_sources_block_escapes_html_in_title() -> None:
 def test_openai_sources_block_blocks_javascript_scheme_in_url() -> None:
     """OpenAI's ## Sources block must use md_link_url to neutralize javascript: URLs."""
     from types import SimpleNamespace
-    from thoth.providers.openai import OpenAIProvider
+    from doxa-research.providers.openai import OpenAIProvider
 
     provider = OpenAIProvider(api_key="dummy", config={})
     fake_response = SimpleNamespace(
@@ -310,10 +310,10 @@ Expected: FAIL — raw HTML/scheme passes through unsanitized.
 
 - [ ] **Step 3: Apply sanitization to `openai.py:614-622`**
 
-In `src/thoth/providers/openai.py`, near the top of file (after `_PROVIDER_NAME_OPENAI`):
+In `src/doxa_research/providers/openai.py`, near the top of file (after `_PROVIDER_NAME_OPENAI`):
 
 ```python
-from thoth.utils import md_link_title, md_link_url
+from doxa-research.utils import md_link_title, md_link_url
 ```
 
 In the citation rendering block (`openai.py:614-622`), find the `f"- [{title}]({url})"` line and replace with:
@@ -332,7 +332,7 @@ Expected: PASS — both new tests + all existing tests.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/thoth/providers/openai.py tests/test_openai_errors.py
+git add src/doxa_research/providers/openai.py tests/test_openai_errors.py
 git commit -m "$(cat <<'EOF'
 fix(openai): sanitize titles and URLs in ## Sources block
 
@@ -343,12 +343,12 @@ EOF
 )"
 ```
 
-### Task 2.2: OpenAI auth-invalid `exit_code=2` alignment + extract `_invalid_key_thotherror` helper
+### Task 2.2: OpenAI auth-invalid `exit_code=2` alignment + extract `_invalid_key_doxaerror` helper
 
-**Refresh note**: P27 already extracted `_invalid_key_thotherror(provider, settings_url) -> ThothError` to `perplexity.py:143`. This task now PROMOTES it to `src/thoth/providers/_helpers.py` and has OpenAI + Gemini call it, instead of duplicating the construction. The signature gains `exit_code=2` if it doesn't already have it.
+**Refresh note**: P27 already extracted `_invalid_key_doxaerror(provider, settings_url) -> DoxaError` to `perplexity.py:143`. This task now PROMOTES it to `src/doxa_research/providers/_helpers.py` and has OpenAI + Gemini call it, instead of duplicating the construction. The signature gains `exit_code=2` if it doesn't already have it.
 
 **Files:**
-- Modify: `src/thoth/providers/openai.py:73-80`
+- Modify: `src/doxa_research/providers/openai.py:73-80`
 - Test: `tests/test_openai_errors.py`
 
 - [ ] **Step 1: Write failing test**
@@ -356,11 +356,11 @@ EOF
 Append to `tests/test_openai_errors.py`:
 
 ```python
-def test_openai_invalid_key_thotherror_has_exit_code_2() -> None:
-    """OpenAI's invalid-key ThothError must set exit_code=2 to match Perplexity."""
+def test_openai_invalid_key_doxaerror_has_exit_code_2() -> None:
+    """OpenAI's invalid-key DoxaError must set exit_code=2 to match Perplexity."""
     import openai as openai_sdk
-    from thoth.providers.openai import _map_openai_error
-    from thoth.errors import ThothError
+    from doxa-research.providers.openai import _map_openai_error
+    from doxa-research.errors import DoxaError
 
     # Construct an AuthenticationError with the "incorrect api key" body trigger
     fake_exc = openai_sdk.AuthenticationError(
@@ -369,21 +369,21 @@ def test_openai_invalid_key_thotherror_has_exit_code_2() -> None:
         body={"error": {"code": "invalid_api_key", "message": "Incorrect API key provided"}},
     )
     mapped = _map_openai_error(fake_exc, "gpt-4o", verbose=False)
-    assert isinstance(mapped, ThothError)
+    assert isinstance(mapped, DoxaError)
     assert mapped.exit_code == 2, f"expected exit_code=2 (Perplexity parity), got {mapped.exit_code}"
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `uv run pytest tests/test_openai_errors.py::test_openai_invalid_key_thotherror_has_exit_code_2 -v`
+Run: `uv run pytest tests/test_openai_errors.py::test_openai_invalid_key_doxaerror_has_exit_code_2 -v`
 Expected: FAIL — current code does not set `exit_code`.
 
 - [ ] **Step 3: Update `openai.py:73-80`**
 
-Find the invalid-key `ThothError(...)` construction in `_map_openai_error` (around line 75-79). Add `exit_code=2` to the kwargs, mirroring `perplexity.py:142-152`'s pattern. Example:
+Find the invalid-key `DoxaError(...)` construction in `_map_openai_error` (around line 75-79). Add `exit_code=2` to the kwargs, mirroring `perplexity.py:142-152`'s pattern. Example:
 
 ```python
-return ThothError(
+return DoxaError(
     "Invalid OpenAI API key",
     hint="Verify the key at https://platform.openai.com/api-keys",
     exit_code=2,
@@ -398,14 +398,14 @@ Expected: PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/thoth/providers/openai.py tests/test_openai_errors.py
-git commit -m "fix(openai): align invalid-key ThothError exit_code=2 with Perplexity"
+git add src/doxa_research/providers/openai.py tests/test_openai_errors.py
+git commit -m "fix(openai): align invalid-key DoxaError exit_code=2 with Perplexity"
 ```
 
 ### Task 2.3: Perplexity `NotFoundError` mapping
 
 **Files:**
-- Modify: `src/thoth/providers/perplexity.py:132-206`
+- Modify: `src/doxa_research/providers/perplexity.py:132-206`
 - Test: `tests/test_provider_perplexity.py`
 
 - [ ] **Step 1: Write failing test**
@@ -416,8 +416,8 @@ Append to `tests/test_provider_perplexity.py`:
 def test_perplexity_not_found_error_maps_with_model_hint() -> None:
     """openai.NotFoundError must map to ProviderError with the 'models' CLI hint."""
     import openai as openai_sdk
-    from thoth.providers.perplexity import _map_perplexity_error
-    from thoth.errors import ProviderError
+    from doxa-research.providers.perplexity import _map_perplexity_error
+    from doxa-research.errors import ProviderError
 
     fake_exc = openai_sdk.NotFoundError(
         message="Model 'sonar-imaginary' not found",
@@ -440,7 +440,7 @@ Expected: FAIL — currently falls through to `APIError` generic catch.
 
 - [ ] **Step 3: Add the branch to `_map_perplexity_error`**
 
-In `src/thoth/providers/perplexity.py`, find `_map_perplexity_error` (~lines 132-206). After the `BadRequestError` branch and before `APITimeoutError`, insert the `NotFoundError` branch mirroring `openai.py:87-93`:
+In `src/doxa_research/providers/perplexity.py`, find `_map_perplexity_error` (~lines 132-206). After the `BadRequestError` branch and before `APITimeoutError`, insert the `NotFoundError` branch mirroring `openai.py:87-93`:
 
 ```python
 if isinstance(exc, openai.NotFoundError):
@@ -448,7 +448,7 @@ if isinstance(exc, openai.NotFoundError):
     return ProviderError(
         _PROVIDER_NAME_PERPLEXITY,
         f"Model {model_str} not found or unavailable on this provider.",
-        hint="Run `thoth providers --models --provider perplexity` to list valid models.",
+        hint="Run `doxa-research providers --models --provider perplexity` to list valid models.",
     )
 ```
 
@@ -460,16 +460,16 @@ Expected: PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/thoth/providers/perplexity.py tests/test_provider_perplexity.py
+git add src/doxa_research/providers/perplexity.py tests/test_provider_perplexity.py
 git commit -m "fix(perplexity): map NotFoundError to ProviderError with models CLI hint"
 ```
 
 ### Task 2.4: Perplexity `unsupported parameter` regex extraction
 
 **Files:**
-- Modify: `src/thoth/providers/perplexity.py` (`BadRequestError` branch in `_map_perplexity_error`)
+- Modify: `src/doxa_research/providers/perplexity.py` (`BadRequestError` branch in `_map_perplexity_error`)
 - Test: `tests/test_provider_perplexity.py`
-- Possibly create: `src/thoth/providers/_helpers.py` (if shared helper extraction is decided)
+- Possibly create: `src/doxa_research/providers/_helpers.py` (if shared helper extraction is decided)
 
 - [ ] **Step 1: Write failing test for regex extraction**
 
@@ -479,7 +479,7 @@ Append to `tests/test_provider_perplexity.py`:
 def test_perplexity_unsupported_parameter_regex_extraction() -> None:
     """BadRequestError with an offending-parameter hint surfaces the parameter name."""
     import openai as openai_sdk
-    from thoth.providers.perplexity import _map_perplexity_error
+    from doxa-research.providers.perplexity import _map_perplexity_error
 
     fake_exc = openai_sdk.BadRequestError(
         message="Unsupported parameter 'frequency_penalty' for sonar-pro.",
@@ -499,7 +499,7 @@ Expected: FAIL — current Perplexity branch produces a generic "Bad request" me
 
 - [ ] **Step 3: Add regex extraction to the `BadRequestError` branch**
 
-In `src/thoth/providers/perplexity.py`, find the `BadRequestError` branch in `_map_perplexity_error` (~lines 166-172). Add the same pattern OpenAI uses at `openai.py:95-113`:
+In `src/doxa_research/providers/perplexity.py`, find the `BadRequestError` branch in `_map_perplexity_error` (~lines 166-172). Add the same pattern OpenAI uses at `openai.py:95-113`:
 
 ```python
 if isinstance(exc, openai.BadRequestError):
@@ -524,7 +524,7 @@ if isinstance(exc, openai.BadRequestError):
 
 Inspect both providers' regex usage (`openai.py:95-113` and the new Perplexity branch). If the regex pattern + the surrounding "is this an unsupported-parameter error" check are identical, extract a helper:
 
-Create `src/thoth/providers/_helpers.py`:
+Create `src/doxa_research/providers/_helpers.py`:
 
 ```python
 """Shared helpers for provider error mapping."""
@@ -560,13 +560,13 @@ Expected: PASS — new test + all pre-existing OpenAI tests still pass after ref
 - [ ] **Step 6: Commit**
 
 ```bash
-git add src/thoth/providers/perplexity.py src/thoth/providers/_helpers.py src/thoth/providers/openai.py tests/test_provider_perplexity.py
+git add src/doxa_research/providers/perplexity.py src/doxa_research/providers/_helpers.py src/doxa_research/providers/openai.py tests/test_provider_perplexity.py
 git commit -m "$(cat <<'EOF'
 fix(perplexity): extract offending parameter on BadRequestError
 
 Adds the same regex extraction OpenAI does for "Unsupported parameter 'X'"
 errors so users get an actionable message. If both regex sites are identical,
-extract to thoth.providers._helpers.extract_unsupported_param; otherwise keep
+extract to doxa-research.providers._helpers.extract_unsupported_param; otherwise keep
 inline.
 EOF
 )"
@@ -575,7 +575,7 @@ EOF
 ### Task 2.5: Perplexity empty-content debug-print
 
 **Files:**
-- Modify: `src/thoth/providers/perplexity.py` (`get_result` / `_render_answer_with_sources`)
+- Modify: `src/doxa_research/providers/perplexity.py` (`get_result` / `_render_answer_with_sources`)
 - Test: `tests/test_provider_perplexity.py`
 
 - [ ] **Step 1: Write failing test**
@@ -586,7 +586,7 @@ Append to `tests/test_provider_perplexity.py`:
 def test_perplexity_empty_content_debug_print(capsys) -> None:
     """When response.choices[0].message.content is empty and verbose=True, emit debug info."""
     from types import SimpleNamespace
-    from thoth.providers.perplexity import PerplexityProvider
+    from doxa-research.providers.perplexity import PerplexityProvider
 
     provider = PerplexityProvider(api_key="dummy", config={})
     fake_response = SimpleNamespace(
@@ -611,7 +611,7 @@ Expected: FAIL — Perplexity has no debug-print path.
 
 - [ ] **Step 3: Backport the pattern from `openai.py:567-588`**
 
-In `src/thoth/providers/perplexity.py`, modify `get_result` (or `_render_answer_with_sources`) to call a debug-print helper when `verbose=True` AND the extracted answer is empty:
+In `src/doxa_research/providers/perplexity.py`, modify `get_result` (or `_render_answer_with_sources`) to call a debug-print helper when `verbose=True` AND the extracted answer is empty:
 
 ```python
 if verbose and not content:
@@ -643,7 +643,7 @@ Expected: PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/thoth/providers/perplexity.py tests/test_provider_perplexity.py
+git add src/doxa_research/providers/perplexity.py tests/test_provider_perplexity.py
 git commit -m "feat(perplexity): emit empty-content debug ladder when verbose=True"
 ```
 
@@ -654,9 +654,9 @@ git commit -m "feat(perplexity): emit empty-content debug ladder when verbose=Tr
   just check
   uv run ruff format --check src/ tests/
   uv run pytest -q
-  ./thoth_test -r --skip-interactive -q
+  ./doxa_test -r --skip-interactive -q
   ```
-- [ ] **Verify**: 0 lint, 0 type errors, all tests pass, thoth_test green.
+- [ ] **Verify**: 0 lint, 0 type errors, all tests pass, doxa_test green.
 
 ---
 
@@ -667,7 +667,7 @@ This phase migrates OpenAI from flat `self.config.get(...)` to `[modes.X.openai]
 ### Task 3.1: Add backwards-compat read path with deprecation
 
 **Files:**
-- Modify: `src/thoth/providers/openai.py:198-269` (`_submit_with_retry`)
+- Modify: `src/doxa_research/providers/openai.py:198-269` (`_submit_with_retry`)
 - Test: `tests/test_provider_config.py` (existing) and `tests/test_openai_errors.py`
 
 - [ ] **Step 1: Write failing tests for namespace + backwards-compat + deprecation**
@@ -681,7 +681,7 @@ import pytest
 
 def test_openai_reads_namespaced_config() -> None:
     """OpenAIProvider must read [modes.X.openai].* keys."""
-    from thoth.providers.openai import OpenAIProvider
+    from doxa-research.providers.openai import OpenAIProvider
 
     provider = OpenAIProvider(
         api_key="dummy",
@@ -696,7 +696,7 @@ def test_openai_reads_namespaced_config() -> None:
 
 def test_openai_flat_config_emits_deprecation_warning() -> None:
     """Flat top-level keys (temperature without 'openai' nesting) trigger DeprecationWarning."""
-    from thoth.providers.openai import OpenAIProvider
+    from doxa-research.providers.openai import OpenAIProvider
 
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
@@ -717,7 +717,7 @@ def test_openai_flat_config_emits_deprecation_warning() -> None:
 
 def test_openai_namespaced_overrides_flat_with_warning() -> None:
     """When both flat and namespaced keys exist, namespaced wins and a warning is emitted."""
-    from thoth.providers.openai import OpenAIProvider
+    from doxa-research.providers.openai import OpenAIProvider
 
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
@@ -741,7 +741,7 @@ Expected: FAIL — namespace not honored, no deprecation emitted.
 
 - [ ] **Step 3: Refactor `_submit_with_retry` to read from `self.config["openai"]` namespace with backwards-compat**
 
-In `src/thoth/providers/openai.py`, introduce a config-resolution helper near the top of the class:
+In `src/doxa_research/providers/openai.py`, introduce a config-resolution helper near the top of the class:
 
 ```python
 def _resolve_provider_config_value(
@@ -790,7 +790,7 @@ Expected: PASS — no regressions; deprecation warnings should appear in test ou
 - [ ] **Step 7: Commit**
 
 ```bash
-git add src/thoth/providers/openai.py tests/test_provider_config.py tests/test_openai_errors.py
+git add src/doxa_research/providers/openai.py tests/test_provider_config.py tests/test_openai_errors.py
 git commit -m "$(cat <<'EOF'
 refactor(openai): migrate to [modes.X.openai] namespaced config with deprecation
 
@@ -810,20 +810,20 @@ EOF
   just check
   uv run ruff format --check src/ tests/
   uv run pytest -q
-  ./thoth_test -r --skip-interactive -q
+  ./doxa_test -r --skip-interactive -q
   ```
 
 ---
 
 ## Phase 4 — Gemini implementation
 
-The biggest phase. Each task is one TDD-style increment of `src/thoth/providers/gemini.py`.
+The biggest phase. Each task is one TDD-style increment of `src/doxa_research/providers/gemini.py`.
 
 ### Task 4.1: Dependency + module skeleton
 
 **Files:**
 - Modify: `pyproject.toml`
-- Create: `src/thoth/providers/gemini.py`
+- Create: `src/doxa_research/providers/gemini.py`
 - Create: `tests/test_provider_gemini.py`
 
 - [ ] **Step 1: Add `google-genai` to `pyproject.toml`**
@@ -844,11 +844,11 @@ import pytest
 
 
 def test_gemini_module_exists() -> None:
-    from thoth.providers import gemini  # noqa: F401
+    from doxa-research.providers import gemini  # noqa: F401
 
 
 def test_gemini_constants_use_suffix_naming() -> None:
-    from thoth.providers import gemini
+    from doxa-research.providers import gemini
 
     assert hasattr(gemini, "_DIRECT_SDK_KEYS_GEMINI")
     assert hasattr(gemini, "_PROVIDER_NAME_GEMINI")
@@ -858,13 +858,13 @@ def test_gemini_constants_use_suffix_naming() -> None:
 
 
 def test_gemini_provider_class_exists() -> None:
-    from thoth.providers.gemini import GeminiProvider
-    from thoth.providers.base import ResearchProvider
+    from doxa-research.providers.gemini import GeminiProvider
+    from doxa-research.providers.base import ResearchProvider
 
     assert issubclass(GeminiProvider, ResearchProvider)
 ```
 
-- [ ] **Step 3: Create `src/thoth/providers/gemini.py` with skeleton**
+- [ ] **Step 3: Create `src/doxa_research/providers/gemini.py` with skeleton**
 
 ```python
 """Gemini synchronous chat provider (P24).
@@ -882,7 +882,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from thoth.providers.base import ResearchProvider, StreamEvent
+from doxa-research.providers.base import ResearchProvider, StreamEvent
 
 _PROVIDER_NAME_GEMINI = "gemini"
 
@@ -928,7 +928,7 @@ Expected: PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add pyproject.toml uv.lock src/thoth/providers/gemini.py tests/test_provider_gemini.py
+git add pyproject.toml uv.lock src/doxa_research/providers/gemini.py tests/test_provider_gemini.py
 git commit -m "feat(gemini): add google-genai dep and provider module skeleton"
 ```
 
@@ -936,7 +936,7 @@ git commit -m "feat(gemini): add google-genai dep and provider module skeleton"
 
 Per P24-TS01/T01 in the project file. Cover the three built-in modes (`gemini_quick`, `gemini_pro`, `gemini_reasoning`), `[modes.X.gemini]` namespace passthrough into `GenerateContentConfig`, system_instruction handling, default model fallback.
 
-- [ ] **Step 1: Add the three built-in modes to `src/thoth/config.py:BUILTIN_MODES`**
+- [ ] **Step 1: Add the three built-in modes to `src/doxa_research/config.py:BUILTIN_MODES`**
 
 Find the `BUILTIN_MODES` dict (~line 53) and append:
 
@@ -982,8 +982,8 @@ Append to `tests/test_provider_gemini.py`:
 def test_gemini_quick_mode_constructs_expected_request() -> None:
     """gemini_quick mode produces the right model + tools + thinking_budget."""
     from unittest.mock import AsyncMock, MagicMock, patch
-    from thoth.providers.gemini import GeminiProvider
-    from thoth.config import BUILTIN_MODES
+    from doxa-research.providers.gemini import GeminiProvider
+    from doxa-research.config import BUILTIN_MODES
 
     config = {**BUILTIN_MODES["gemini_quick"], "kind": "immediate"}
     with patch("google.genai.Client") as mock_client_cls:
@@ -1002,7 +1002,7 @@ def test_gemini_namespace_passthrough_for_safety_settings() -> None:
 
 
 def test_gemini_default_model_is_flash_lite_when_unconfigured() -> None:
-    from thoth.providers.gemini import GeminiProvider
+    from doxa-research.providers.gemini import GeminiProvider
 
     provider = GeminiProvider(api_key="dummy", config={})
     assert provider.model == "gemini-2.5-flash-lite"
@@ -1015,7 +1015,7 @@ Expected: only `test_gemini_default_model_is_flash_lite_when_unconfigured` passe
 
 - [ ] **Step 4: Implement request-construction helpers**
 
-In `src/thoth/providers/gemini.py`, add:
+In `src/doxa_research/providers/gemini.py`, add:
 
 ```python
 def _build_messages_and_system(self, prompt: str, system_prompt: str | None) -> tuple[list[Any], str | None]:
@@ -1068,7 +1068,7 @@ Run: `uv run pytest tests/test_provider_gemini.py -v`
 Expected: PASS.
 
 ```bash
-git add src/thoth/providers/gemini.py tests/test_provider_gemini.py src/thoth/config.py
+git add src/doxa_research/providers/gemini.py tests/test_provider_gemini.py src/doxa_research/config.py
 git commit -m "$(cat <<'EOF'
 feat(gemini): add built-in modes and request construction helpers
 
@@ -1092,7 +1092,7 @@ import pytest
 
 
 @pytest.mark.parametrize("status_code,status_string,expected_error_class,expected_substr", [
-    (401, "UNAUTHENTICATED", "ThothError", "key is invalid"),  # invalid-key path with exit_code=2
+    (401, "UNAUTHENTICATED", "DoxaError", "key is invalid"),  # invalid-key path with exit_code=2
     (429, "RESOURCE_EXHAUSTED", "APIRateLimitError", "rate"),  # per-minute throttling
     (400, "INVALID_ARGUMENT", "ProviderError", "Bad request"),
     (404, "NOT_FOUND", "ProviderError", "not found"),
@@ -1102,8 +1102,8 @@ import pytest
 ])
 def test_gemini_error_mapping_table(status_code, status_string, expected_error_class, expected_substr) -> None:
     from google.genai import errors as genai_errors
-    from thoth.providers.gemini import _map_gemini_error
-    from thoth.errors import APIRateLimitError, APIQuotaError, APIKeyError, ProviderError, ThothError
+    from doxa-research.providers.gemini import _map_gemini_error
+    from doxa-research.errors import APIRateLimitError, APIQuotaError, APIKeyError, ProviderError, DoxaError
 
     fake_exc = genai_errors.ClientError(code=status_code, response_json={"error": {"status": status_string, "message": "test"}}, response=None) \
         if status_code < 500 else \
@@ -1111,7 +1111,7 @@ def test_gemini_error_mapping_table(status_code, status_string, expected_error_c
 
     mapped = _map_gemini_error(fake_exc, "gemini-2.5-flash-lite", verbose=False)
     expected_cls = {
-        "ThothError": ThothError,
+        "DoxaError": DoxaError,
         "APIKeyError": APIKeyError,
         "APIRateLimitError": APIRateLimitError,
         "APIQuotaError": APIQuotaError,
@@ -1124,8 +1124,8 @@ def test_gemini_error_mapping_table(status_code, status_string, expected_error_c
 def test_gemini_quota_exhausted_per_day_maps_to_apiquotaerror() -> None:
     """429 with 'per day' or quota substring maps to APIQuotaError, not APIRateLimitError."""
     from google.genai import errors as genai_errors
-    from thoth.providers.gemini import _map_gemini_error
-    from thoth.errors import APIQuotaError
+    from doxa-research.providers.gemini import _map_gemini_error
+    from doxa-research.errors import APIQuotaError
 
     fake_exc = genai_errors.ClientError(
         code=429,
@@ -1142,10 +1142,10 @@ def test_gemini_quota_exhausted_per_day_maps_to_apiquotaerror() -> None:
     assert isinstance(mapped, APIQuotaError)
 
 
-def test_gemini_invalid_key_thotherror_has_exit_code_2() -> None:
+def test_gemini_invalid_key_doxaerror_has_exit_code_2() -> None:
     from google.genai import errors as genai_errors
-    from thoth.providers.gemini import _map_gemini_error
-    from thoth.errors import ThothError
+    from doxa-research.providers.gemini import _map_gemini_error
+    from doxa-research.errors import DoxaError
 
     fake_exc = genai_errors.ClientError(
         code=401,
@@ -1153,14 +1153,14 @@ def test_gemini_invalid_key_thotherror_has_exit_code_2() -> None:
         response=None,
     )
     mapped = _map_gemini_error(fake_exc, "gemini-2.5-flash-lite", verbose=False)
-    assert isinstance(mapped, ThothError)
+    assert isinstance(mapped, DoxaError)
     assert mapped.exit_code == 2
 
 
 def test_gemini_invalid_argument_extracts_offending_param() -> None:
     """400 INVALID_ARGUMENT with 'parameter X' extracts X via regex."""
     from google.genai import errors as genai_errors
-    from thoth.providers.gemini import _map_gemini_error
+    from doxa-research.providers.gemini import _map_gemini_error
 
     fake_exc = genai_errors.ClientError(
         code=400,
@@ -1178,8 +1178,8 @@ def test_gemini_invalid_argument_extracts_offending_param() -> None:
 
 def test_gemini_httpx_timeout_maps_to_provider_error() -> None:
     import httpx
-    from thoth.providers.gemini import _map_gemini_error
-    from thoth.errors import ProviderError
+    from doxa-research.providers.gemini import _map_gemini_error
+    from doxa-research.errors import ProviderError
 
     fake_exc = httpx.TimeoutException("Request timed out")
     mapped = _map_gemini_error(fake_exc, "gemini-2.5-pro", verbose=False)
@@ -1189,8 +1189,8 @@ def test_gemini_httpx_timeout_maps_to_provider_error() -> None:
 
 def test_gemini_httpx_connect_error_maps_to_provider_error() -> None:
     import httpx
-    from thoth.providers.gemini import _map_gemini_error
-    from thoth.errors import ProviderError
+    from doxa-research.providers.gemini import _map_gemini_error
+    from doxa-research.errors import ProviderError
 
     fake_exc = httpx.ConnectError("Connection refused")
     mapped = _map_gemini_error(fake_exc, "gemini-2.5-pro", verbose=False)
@@ -1205,14 +1205,14 @@ def test_gemini_retry_on_transient_succeeds_after_two_timeouts() -> None:
 
 
 def test_gemini_no_retry_on_invalid_key() -> None:
-    """ThothError(invalid-key) is non-retryable."""
+    """DoxaError(invalid-key) is non-retryable."""
     pass  # similar mock pattern
 
 
 def test_gemini_every_error_carries_provider_name() -> None:
-    """All mapped ThothError subclasses carry provider='gemini' (the _PROVIDER_NAME_GEMINI constant)."""
+    """All mapped DoxaError subclasses carry provider='gemini' (the _PROVIDER_NAME_GEMINI constant)."""
     from google.genai import errors as genai_errors
-    from thoth.providers.gemini import _map_gemini_error
+    from doxa-research.providers.gemini import _map_gemini_error
 
     for code, status in [(401, "UNAUTHENTICATED"), (429, "RESOURCE_EXHAUSTED"), (400, "INVALID_ARGUMENT")]:
         fake_exc = genai_errors.ClientError(code=code, response_json={"error": {"status": status, "message": "x"}}, response=None)
@@ -1227,7 +1227,7 @@ Expected: FAIL — `_map_gemini_error` does not exist.
 
 - [ ] **Step 3: Implement `_map_gemini_error` and the retry decorator**
 
-In `src/thoth/providers/gemini.py`, add at module level:
+In `src/doxa_research/providers/gemini.py`, add at module level:
 
 ```python
 import re
@@ -1236,12 +1236,12 @@ import httpx
 from google.genai import errors as genai_errors  # type: ignore[import-not-found]
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
-from thoth.errors import (
+from doxa-research.errors import (
     APIKeyError,
     APIQuotaError,
     APIRateLimitError,
     ProviderError,
-    ThothError,
+    DoxaError,
 )
 
 _INVALID_KEY_PHRASES_GEMINI = (
@@ -1276,8 +1276,8 @@ def _is_quota_exhaustion(message: str, details: list[dict[str, Any]] | None) -> 
     return False
 
 
-def _map_gemini_error(exc: Exception, model: str | None, verbose: bool = False) -> ThothError:
-    """Translate google-genai SDK and httpx exceptions into ThothError subclasses."""
+def _map_gemini_error(exc: Exception, model: str | None, verbose: bool = False) -> DoxaError:
+    """Translate google-genai SDK and httpx exceptions into DoxaError subclasses."""
     # ModeKindMismatchError must propagate unmapped — caller filters before this.
 
     if isinstance(exc, genai_errors.ClientError):
@@ -1291,7 +1291,7 @@ def _map_gemini_error(exc: Exception, model: str | None, verbose: bool = False) 
 
         if code == 401 or status == "UNAUTHENTICATED":
             if any(p in message.lower() for p in _INVALID_KEY_PHRASES_GEMINI):
-                return ThothError(
+                return DoxaError(
                     "Gemini API key is invalid",
                     hint="Verify the key at https://aistudio.google.com/app/apikey",
                     exit_code=2,
@@ -1308,7 +1308,7 @@ def _map_gemini_error(exc: Exception, model: str | None, verbose: bool = False) 
             return ProviderError(
                 _PROVIDER_NAME_GEMINI,
                 f"Model {model_str} not found or unavailable.",
-                hint="Run `thoth providers --models --provider gemini` to list valid models.",
+                hint="Run `doxa-research providers --models --provider gemini` to list valid models.",
             )
 
         if code == 400 or status in {"INVALID_ARGUMENT", "FAILED_PRECONDITION", "OUT_OF_RANGE"}:
@@ -1378,12 +1378,12 @@ Run: `uv run pytest tests/test_provider_gemini.py -k error -v`
 Expected: PASS for the parametrized table + the specific quota/key/argument tests. Retry-count tests stub-passing for now.
 
 ```bash
-git add src/thoth/providers/gemini.py tests/test_provider_gemini.py
+git add src/doxa_research/providers/gemini.py tests/test_provider_gemini.py
 git commit -m "$(cat <<'EOF'
 feat(gemini): implement _map_gemini_error 12-class branch
 
 Maps google.genai.errors.{ClientError, ServerError, APIError} and httpx
-transport exceptions to Thoth error classes. Distinguishes quota exhaustion
+transport exceptions to Doxa Research error classes. Distinguishes quota exhaustion
 (per-day, free-tier) from ordinary 429 rate-limiting via message + details
 heuristic. Sets exit_code=2 on invalid-key. Carries provider="gemini" via
 the _PROVIDER_NAME_GEMINI constant.
@@ -1424,7 +1424,7 @@ def _make_chunk(parts: list[dict] | None = None, grounding: dict | None = None) 
 
 def test_gemini_stream_emits_text_for_non_thought_parts() -> None:
     """A chunk with text parts (thought=False) emits StreamEvent('text', text)."""
-    from thoth.providers.gemini import GeminiProvider
+    from doxa-research.providers.gemini import GeminiProvider
 
     fake_chunks = [
         _make_chunk(parts=[{"text": "Hello "}, {"text": "world.", "thought": False}]),
@@ -1452,7 +1452,7 @@ def test_gemini_stream_emits_text_for_non_thought_parts() -> None:
 
 def test_gemini_stream_emits_reasoning_for_thought_parts() -> None:
     """A part with thought=True emits StreamEvent('reasoning', text)."""
-    from thoth.providers.gemini import GeminiProvider
+    from doxa-research.providers.gemini import GeminiProvider
 
     fake_chunks = [
         _make_chunk(parts=[
@@ -1485,8 +1485,8 @@ def test_gemini_stream_emits_reasoning_for_thought_parts() -> None:
 
 def test_gemini_stream_emits_citations_from_terminal_grounding_chunks() -> None:
     """grounding_metadata.grounding_chunks emits StreamEvent('citation', Citation(...)) deduped."""
-    from thoth.providers.gemini import GeminiProvider
-    from thoth.providers.base import Citation
+    from doxa-research.providers.gemini import GeminiProvider
+    from doxa-research.providers.base import Citation
 
     grounding = {
         "grounding_chunks": [
@@ -1524,7 +1524,7 @@ def test_gemini_stream_emits_citations_from_terminal_grounding_chunks() -> None:
 
 def test_gemini_stream_terminal_done_event() -> None:
     """Stream always ends with StreamEvent('done', '')."""
-    from thoth.providers.gemini import GeminiProvider
+    from doxa-research.providers.gemini import GeminiProvider
 
     async def fake_generator():
         yield _make_chunk(parts=[{"text": "Hi."}])
@@ -1546,7 +1546,7 @@ def test_gemini_stream_terminal_done_event() -> None:
 def test_gemini_stream_title_falls_back_to_netloc_when_empty() -> None:
     """Citation.title = urlparse(uri).netloc when web.title is missing/empty."""
     from urllib.parse import urlparse
-    from thoth.providers.gemini import GeminiProvider
+    from doxa-research.providers.gemini import GeminiProvider
 
     grounding = {
         "grounding_chunks": [
@@ -1578,13 +1578,13 @@ Expected: FAIL — `stream()` not implemented.
 
 - [ ] **Step 3: Implement `stream()`**
 
-In `src/thoth/providers/gemini.py`, add the method:
+In `src/doxa_research/providers/gemini.py`, add the method:
 
 ```python
 from typing import AsyncIterator
 from urllib.parse import urlparse
 
-from thoth.providers.base import Citation
+from doxa-research.providers.base import Citation
 
 
 async def stream(
@@ -1651,7 +1651,7 @@ async def stream(
         raise _map_gemini_error(e, self.model, verbose=verbose) from e
 ```
 
-(Add `from thoth.errors import ModeKindMismatchError` import at the top.)
+(Add `from doxa-research.errors import ModeKindMismatchError` import at the top.)
 
 - [ ] **Step 4: Run tests to verify they pass**
 
@@ -1661,7 +1661,7 @@ Expected: PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/thoth/providers/gemini.py tests/test_provider_gemini.py
+git add src/doxa_research/providers/gemini.py tests/test_provider_gemini.py
 git commit -m "$(cat <<'EOF'
 feat(gemini): implement stream() with Part.thought reasoning + grounding citations
 
@@ -1688,7 +1688,7 @@ Append to `tests/test_provider_gemini.py`:
 ```python
 def test_gemini_submit_returns_job_id() -> None:
     """submit() runs a one-shot generate_content and stashes the response under a job_id."""
-    from thoth.providers.gemini import GeminiProvider
+    from doxa-research.providers.gemini import GeminiProvider
 
     fake_response = SimpleNamespace(
         candidates=[SimpleNamespace(
@@ -1717,7 +1717,7 @@ def test_gemini_submit_returns_job_id() -> None:
 
 def test_gemini_get_result_renders_text_reasoning_sources() -> None:
     """get_result extracts text + ## Reasoning + ## Sources with sanitization."""
-    from thoth.providers.gemini import GeminiProvider
+    from doxa-research.providers.gemini import GeminiProvider
 
     grounding = SimpleNamespace(
         grounding_chunks=[
@@ -1748,7 +1748,7 @@ def test_gemini_get_result_renders_text_reasoning_sources() -> None:
 
 def test_gemini_get_result_sanitizes_adversarial_citation() -> None:
     """Adversarial title HTML and javascript: URLs are neutralized via md_link_*."""
-    from thoth.providers.gemini import GeminiProvider
+    from doxa-research.providers.gemini import GeminiProvider
 
     grounding = SimpleNamespace(
         grounding_chunks=[
@@ -1778,13 +1778,13 @@ Expected: FAIL — methods not implemented.
 
 - [ ] **Step 3: Implement submit / check_status / get_result**
 
-In `src/thoth/providers/gemini.py`:
+In `src/doxa_research/providers/gemini.py`:
 
 ```python
 import time
 import uuid
 
-from thoth.utils import md_link_title, md_link_url
+from doxa-research.utils import md_link_title, md_link_url
 
 
 async def submit(
@@ -1919,7 +1919,7 @@ Run: `uv run pytest tests/test_provider_gemini.py -k "submit or get_result" -v`
 Expected: PASS.
 
 ```bash
-git add src/thoth/providers/gemini.py tests/test_provider_gemini.py
+git add src/doxa_research/providers/gemini.py tests/test_provider_gemini.py
 git commit -m "$(cat <<'EOF'
 feat(gemini): implement submit/check_status/get_result with retry
 
@@ -1942,8 +1942,8 @@ Append to `tests/test_provider_gemini.py`:
 ```python
 def test_gemini_kind_mismatch_rejects_deep_research_in_immediate() -> None:
     """deep-research-pro-preview-12-2025 with kind=immediate must raise ModeKindMismatchError."""
-    from thoth.providers.gemini import GeminiProvider
-    from thoth.errors import ModeKindMismatchError
+    from doxa-research.providers.gemini import GeminiProvider
+    from doxa-research.errors import ModeKindMismatchError
 
     provider = GeminiProvider(
         api_key="dummy",
@@ -1955,7 +1955,7 @@ def test_gemini_kind_mismatch_rejects_deep_research_in_immediate() -> None:
 
 def test_gemini_kind_mismatch_allows_regular_models() -> None:
     """gemini-2.5-pro with kind=immediate is allowed."""
-    from thoth.providers.gemini import GeminiProvider
+    from doxa-research.providers.gemini import GeminiProvider
 
     provider = GeminiProvider(
         api_key="dummy",
@@ -1967,8 +1967,8 @@ def test_gemini_kind_mismatch_allows_regular_models() -> None:
 
 def test_gemini_kind_mismatch_no_http_call_before_raise() -> None:
     """ModeKindMismatchError fires BEFORE any HTTP attempt."""
-    from thoth.providers.gemini import GeminiProvider
-    from thoth.errors import ModeKindMismatchError
+    from doxa-research.providers.gemini import GeminiProvider
+    from doxa-research.errors import ModeKindMismatchError
     from unittest.mock import MagicMock
 
     captured = {"called": False}
@@ -2005,13 +2005,13 @@ Expected: FAIL — `_validate_kind_for_model` not implemented.
 
 - [ ] **Step 3: Implement `_validate_kind_for_model`**
 
-In `src/thoth/providers/gemini.py`, add to the class body:
+In `src/doxa_research/providers/gemini.py`, add to the class body:
 
 ```python
 def _validate_kind_for_model(self, mode: str) -> None:
     """Mirror openai.py:160-180 / perplexity.py:253-266."""
-    from thoth.errors import ModeKindMismatchError
-    from thoth.config import is_background_model
+    from doxa-research.errors import ModeKindMismatchError
+    from doxa-research.config import is_background_model
 
     declared_kind = (self.config or {}).get("kind")
     if declared_kind == "immediate" and is_background_model(self.model):
@@ -2023,7 +2023,7 @@ def _validate_kind_for_model(self, mode: str) -> None:
         )
 ```
 
-Verify `thoth.config.is_background_model` recognizes `deep-research-pro-preview-12-2025` (substring match on `"deep-research"` should already cover it; if not, update its allowlist in a separate small commit).
+Verify `doxa-research.config.is_background_model` recognizes `deep-research-pro-preview-12-2025` (substring match on `"deep-research"` should already cover it; if not, update its allowlist in a separate small commit).
 
 - [ ] **Step 4: Run tests to verify they pass**
 
@@ -2033,7 +2033,7 @@ Expected: PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/thoth/providers/gemini.py tests/test_provider_gemini.py
+git add src/doxa_research/providers/gemini.py tests/test_provider_gemini.py
 git commit -m "feat(gemini): implement kind-mismatch guard for *-deep-research-* models"
 ```
 
@@ -2044,7 +2044,7 @@ git commit -m "feat(gemini): implement kind-mismatch guard for *-deep-research-*
   just check
   uv run ruff format --check src/ tests/
   uv run pytest -q
-  ./thoth_test -r --skip-interactive -q
+  ./doxa_test -r --skip-interactive -q
   ```
 - [ ] Verify Gemini provider unit tests pass without external API calls.
 
@@ -2062,15 +2062,15 @@ In `tests/test_provider_config.py` add:
 
 ```python
 def test_create_provider_returns_gemini_when_provider_is_gemini() -> None:
-    from thoth.providers import create_provider
+    from doxa-research.providers import create_provider
 
     provider = create_provider("gemini", api_key="dummy", config={})
-    from thoth.providers.gemini import GeminiProvider
+    from doxa-research.providers.gemini import GeminiProvider
     assert isinstance(provider, GeminiProvider)
 
 
 def test_provider_env_vars_includes_gemini() -> None:
-    from thoth.providers import PROVIDER_ENV_VARS
+    from doxa-research.providers import PROVIDER_ENV_VARS
     assert PROVIDER_ENV_VARS.get("gemini") == "GEMINI_API_KEY"
 ```
 
@@ -2079,7 +2079,7 @@ In `tests/test_cli_option_policy.py` add:
 ```python
 def test_api_key_gemini_accepted_by_research_commands() -> None:
     from click.testing import CliRunner
-    from thoth.cli import main
+    from doxa-research.cli import main
 
     runner = CliRunner()
     # Test that --api-key-gemini ... ask "..." doesn't error on parse
@@ -2097,12 +2097,12 @@ def test_api_key_gemini_rejected_by_non_research_subcommands() -> None:
 
 Expected: FAIL — Gemini not registered, `--api-key-gemini` not present.
 
-- [ ] **Step 3: Register Gemini in `src/thoth/providers/__init__.py`**
+- [ ] **Step 3: Register Gemini in `src/doxa_research/providers/__init__.py`**
 
 Add the import and the registry entries:
 
 ```python
-from thoth.providers.gemini import GeminiProvider
+from doxa-research.providers.gemini import GeminiProvider
 
 PROVIDERS["gemini"] = GeminiProvider
 PROVIDER_ENV_VARS["gemini"] = "GEMINI_API_KEY"
@@ -2114,17 +2114,17 @@ Mirror `--api-key-perplexity`'s definition exactly. The flag must be in the shar
 
 - [ ] **Step 5: Thread the flag through `cli.py`, `cli_subcommands/ask.py`, `run.py`, `create_provider()`**
 
-Mirror the P23 commit's plumbing pattern (commits referenced in `projects/P23-perplexity-immediate-sync.md` task TS01/T01). The exact lines are visible in `git log --oneline -- src/thoth/cli.py src/thoth/cli_subcommands/ask.py` filtered to P23 commits.
+Mirror the P23 commit's plumbing pattern (commits referenced in `projects/P23-perplexity-immediate-sync.md` task TS01/T01). The exact lines are visible in `git log --oneline -- src/doxa_research/cli.py src/doxa_research/cli_subcommands/ask.py` filtered to P23 commits.
 
-- [ ] **Step 6: Update `src/thoth/help.py`** — add `[providers.gemini]` block to auth help (mirror the `[providers.openai]` and `[providers.perplexity]` blocks).
+- [ ] **Step 6: Update `src/doxa_research/help.py`** — add `[providers.gemini]` block to auth help (mirror the `[providers.openai]` and `[providers.perplexity]` blocks).
 
-- [ ] **Step 7: Update provider description copy in `src/thoth/commands.py` and `src/thoth/interactive.py`** — replace any "Gemini (not implemented)" copy with the new description (e.g., "Gemini 2.5 (web-grounded synchronous search with optional thinking)").
+- [ ] **Step 7: Update provider description copy in `src/doxa_research/commands.py` and `src/doxa_research/interactive.py`** — replace any "Gemini (not implemented)" copy with the new description (e.g., "Gemini 2.5 (web-grounded synchronous search with optional thinking)").
 
 - [ ] **Step 8: Regenerate `tests/baselines/providers_list.json`**
 
 Run the provider-list command and capture the output:
 ```bash
-uv run python -c "from thoth.commands import _list_providers_json; import json; print(json.dumps(_list_providers_json(), indent=2))" > tests/baselines/providers_list.json
+uv run python -c "from doxa-research.commands import _list_providers_json; import json; print(json.dumps(_list_providers_json(), indent=2))" > tests/baselines/providers_list.json
 ```
 (Adjust command per the actual provider-list snapshot generation pattern.)
 
@@ -2136,7 +2136,7 @@ Run: `uv run pytest tests/test_provider_config.py tests/test_cli_option_policy.p
 Expected: PASS.
 
 ```bash
-git add src/thoth/providers/__init__.py src/thoth/cli.py src/thoth/cli_subcommands/_options.py src/thoth/cli_subcommands/ask.py src/thoth/cli_subcommands/_option_policy.py src/thoth/run.py src/thoth/help.py src/thoth/commands.py src/thoth/interactive.py tests/baselines/providers_list.json tests/extended/conftest.py tests/test_provider_config.py tests/test_cli_option_policy.py
+git add src/doxa_research/providers/__init__.py src/doxa_research/cli.py src/doxa_research/cli_subcommands/_options.py src/doxa_research/cli_subcommands/ask.py src/doxa_research/cli_subcommands/_option_policy.py src/doxa_research/run.py src/doxa_research/help.py src/doxa_research/commands.py src/doxa_research/interactive.py tests/baselines/providers_list.json tests/extended/conftest.py tests/test_provider_config.py tests/test_cli_option_policy.py
 git commit -m "$(cat <<'EOF'
 feat(gemini): register provider, add --api-key-gemini CLI plumbing
 
@@ -2206,7 +2206,7 @@ EOF
   just check
   uv run ruff format --check src/ tests/
   uv run pytest -q
-  ./thoth_test -r --skip-interactive -q
+  ./doxa_test -r --skip-interactive -q
   ```
 
 ---
@@ -2288,7 +2288,7 @@ Flip TS01–TS17 + T01–T17 checkboxes from `[ ]` to `[x]` for the items that l
 make env-check
 just fix
 just check
-./thoth_test -r --skip-interactive -q
+./doxa_test -r --skip-interactive -q
 just test-fix
 just test-lint
 just test-typecheck
@@ -2315,7 +2315,7 @@ git commit -m "$(cat <<'EOF'
 chore(p24): close out P24 — Gemini immediate + cross-provider consistency
 
 All TS/T tasks complete. Trunk flipped to [x]. Full pre-commit gate green:
-ruff, ty, pytest, thoth_test all pass with all three providers normalized to
+ruff, ty, pytest, doxa_test all pass with all three providers normalized to
 the unified canonical surface.
 EOF
 )"
@@ -2335,10 +2335,10 @@ gh pr create --title "feat(gemini): synchronous chat provider + cross-provider c
 ## Test plan
 - [ ] `just check` passes
 - [ ] `uv run pytest -q` passes (full default suite)
-- [ ] `./thoth_test -r --skip-interactive -q` passes
-- [ ] Manual `thoth ask --mode gemini_quick "What's new in CRISPR?"` returns grounded answer with ## Sources
-- [ ] Manual `thoth ask --mode gemini_reasoning "..."` shows ## Reasoning section
-- [ ] Manual `thoth ask --provider gemini --model deep-research-pro-preview-12-2025 "x"` raises ModeKindMismatchError before any HTTP call
+- [ ] `./doxa_test -r --skip-interactive -q` passes
+- [ ] Manual `doxa-research ask --mode gemini_quick "What's new in CRISPR?"` returns grounded answer with ## Sources
+- [ ] Manual `doxa-research ask --mode gemini_reasoning "..."` shows ## Reasoning section
+- [ ] Manual `doxa-research ask --provider gemini --model deep-research-pro-preview-12-2025 "x"` raises ModeKindMismatchError before any HTTP call
 - [ ] OpenAI namespace migration: existing flat-key configs still work + emit DeprecationWarning
 EOF
 )"

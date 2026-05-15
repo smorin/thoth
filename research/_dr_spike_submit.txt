@@ -2,4 +2,4 @@ Installed 25 packages in 21ms
 interaction_id = 'v1_Chc1V1lEYXJyVUM0R3IxTWtQcm9qcDhBZxIXNVdZRGFyclVDNEdyMU1rUHJvanA4QWc'
 type = Interaction
 attrs = ['agent', 'agent_config', 'construct', 'copy', 'created', 'dict', 'from_orm', 'id', 'input', 'json', 'model', 'model_computed_fields', 'model_config', 'model_construct', 'model_copy', 'model_dump', 'model_dump_json', 'model_extra', 'model_fields', 'model_fields_set', 'model_json_schema', 'model_parametrized_name', 'model_post_init', 'model_rebuild', 'model_validate', 'model_validate_json', 'model_validate_strings', 'model_validator', 'parse_file', 'parse_obj', 'parse_raw', 'previous_interaction_id', 'response_format', 'response_mime_type', 'response_modalities', 'role', 'schema', 'schema_json', 'service_tier', 'status', 'steps', 'system_instruction', 'to_dict', 'to_json', 'tools', 'update_forward_refs', 'updated', 'usage', 'validate', 'webhook_config']
-saved /Users/stevemorin/c/thoth-worktrees/p28-gemini-background-deep-research/research/_dr_spike_submit.json
+saved /Users/stevemorin/c/doxa-research-worktrees/p28-gemini-background-deep-research/research/_dr_spike_submit.json

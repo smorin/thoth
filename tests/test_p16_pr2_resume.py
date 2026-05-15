@@ -1,6 +1,6 @@
 """P16 PR2 — `resume` subcommand tests (Categories A + F).
 
-The Category A/F tests below stub `thoth.run.resume_operation` to verify
+The Category A/F tests below stub `doxa_research.run.resume_operation` to verify
 CLI-side forwarding into the function's kwargs. The "honor downstream"
 test at the bottom of the file exercises the *body* of `resume_operation`
 to verify the honored kwargs are actually threaded into
@@ -17,7 +17,7 @@ from pathlib import Path
 import pytest
 from click.testing import CliRunner
 
-from thoth.cli import cli
+from doxa_research.cli import cli
 
 
 def _stub_resume(monkeypatch):
@@ -30,7 +30,7 @@ def _stub_resume(monkeypatch):
         captured.update(kwargs)
         return None
 
-    monkeypatch.setattr("thoth.run.resume_operation", fake)
+    monkeypatch.setattr("doxa_research.run.resume_operation", fake)
     return captured
 
 
@@ -105,7 +105,7 @@ def test_resume_honors_api_key_mock(monkeypatch):
 
 def test_resume_honors_config_path(monkeypatch, tmp_path):
     captured = _stub_resume(monkeypatch)
-    cfg = tmp_path / "thoth.config.toml"
+    cfg = tmp_path / "doxa.config.toml"
     cfg.write_text('version = "2.0"\n')
     r = CliRunner().invoke(cli, ["resume", "op_x", "--config", str(cfg)])
     assert r.exit_code == 0, r.output
@@ -149,8 +149,8 @@ def test_resume_operation_threads_honored_kwargs_to_downstream(monkeypatch):
     """P16-PR2-C1: resume_operation passes no_metadata/timeout_override/cli_api_keys downstream."""
     from datetime import datetime
 
-    from thoth import run as run_mod
-    from thoth.models import OperationStatus
+    from doxa_research import run as run_mod
+    from doxa_research.models import OperationStatus
 
     captured: dict[str, object] = {}
 
@@ -206,7 +206,7 @@ def test_resume_operation_threads_honored_kwargs_to_downstream(monkeypatch):
         cli_api_keys={"mock": "mock-key-from-cli"},
     )
     # create_provider raises _StopResume; resume_operation lets it propagate
-    # (it only catches APIKeyError/ProviderError/ThothError). Catch it here.
+    # (it only catches APIKeyError/ProviderError/DoxaError). Catch it here.
     with pytest.raises(_StopResume):
         asyncio.run(coro)
 
@@ -225,8 +225,8 @@ def test_resume_operation_honors_quiet_downstream_and_output(monkeypatch, capsys
     """P16-PR2-C1: quiet reaches _poll_display and suppresses resume success chatter."""
     from datetime import datetime
 
-    from thoth import run as run_mod
-    from thoth.models import OperationStatus
+    from doxa_research import run as run_mod
+    from doxa_research.models import OperationStatus
 
     captured: dict[str, object] = {}
 

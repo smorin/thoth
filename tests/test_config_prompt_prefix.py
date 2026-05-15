@@ -17,8 +17,8 @@ from pathlib import Path
 
 import pytest
 
-from thoth.config import ConfigManager
-from thoth.config_profiles import resolve_prompt_prefix
+from doxa_research.config import ConfigManager
+from doxa_research.config_profiles import resolve_prompt_prefix
 
 
 def _write(path: Path, text: str) -> None:
@@ -27,7 +27,7 @@ def _write(path: Path, text: str) -> None:
 
 
 def _cm(isolated: Path, body: str, *, profile: str | None = None) -> ConfigManager:
-    from thoth.paths import user_config_file
+    from doxa_research.paths import user_config_file
 
     _write(user_config_file(), body)
     cm = ConfigManager()
@@ -38,24 +38,24 @@ def _cm(isolated: Path, body: str, *, profile: str | None = None) -> ConfigManag
     return cm
 
 
-def test_no_prefix_anywhere_returns_none(isolated_thoth_home: Path) -> None:
-    cm = _cm(isolated_thoth_home, 'version = "2.0"\n')
+def test_no_prefix_anywhere_returns_none(isolated_doxa_home: Path) -> None:
+    cm = _cm(isolated_doxa_home, 'version = "2.0"\n')
     assert resolve_prompt_prefix(cm, "default") is None
 
 
 def test_general_prompt_prefix_applies_when_no_other_levels(
-    isolated_thoth_home: Path,
+    isolated_doxa_home: Path,
 ) -> None:
     cm = _cm(
-        isolated_thoth_home,
+        isolated_doxa_home,
         'version = "2.0"\n[general]\nprompt_prefix = "GLOBAL"\n',
     )
     assert resolve_prompt_prefix(cm, "default") == "GLOBAL"
 
 
-def test_modes_prefix_overrides_general(isolated_thoth_home: Path) -> None:
+def test_modes_prefix_overrides_general(isolated_doxa_home: Path) -> None:
     cm = _cm(
-        isolated_thoth_home,
+        isolated_doxa_home,
         """version = "2.0"
 [general]
 prompt_prefix = "GLOBAL"
@@ -69,9 +69,9 @@ prompt_prefix = "MODE"
     assert resolve_prompt_prefix(cm, "default") == "GLOBAL"
 
 
-def test_profile_prefix_overrides_modes_and_general(isolated_thoth_home: Path) -> None:
+def test_profile_prefix_overrides_modes_and_general(isolated_doxa_home: Path) -> None:
     cm = _cm(
-        isolated_thoth_home,
+        isolated_doxa_home,
         """version = "2.0"
 [general]
 prompt_prefix = "GLOBAL"
@@ -88,9 +88,9 @@ prompt_prefix = "PROFILE"
     assert resolve_prompt_prefix(cm, "default") == "PROFILE"
 
 
-def test_profile_modes_prefix_is_most_specific(isolated_thoth_home: Path) -> None:
+def test_profile_modes_prefix_is_most_specific(isolated_doxa_home: Path) -> None:
     cm = _cm(
-        isolated_thoth_home,
+        isolated_doxa_home,
         """version = "2.0"
 [general]
 prompt_prefix = "GLOBAL"
@@ -111,9 +111,9 @@ prompt_prefix = "PROFILE_MODE"
     assert resolve_prompt_prefix(cm, "default") == "PROFILE"
 
 
-def test_no_active_profile_skips_profile_levels(isolated_thoth_home: Path) -> None:
+def test_no_active_profile_skips_profile_levels(isolated_doxa_home: Path) -> None:
     cm = _cm(
-        isolated_thoth_home,
+        isolated_doxa_home,
         """version = "2.0"
 [general]
 prompt_prefix = "GLOBAL"
@@ -122,14 +122,14 @@ prompt_prefix = "GLOBAL"
 prompt_prefix = "PROFILE"
 """,
     )
-    # No --profile / THOTH_PROFILE / default_profile, so profile is not active
+    # No --profile / DOXA_PROFILE / default_profile, so profile is not active
     assert cm.profile_selection.name is None
     assert resolve_prompt_prefix(cm, "default") == "GLOBAL"
 
 
-def test_empty_string_is_treated_as_unset(isolated_thoth_home: Path) -> None:
+def test_empty_string_is_treated_as_unset(isolated_doxa_home: Path) -> None:
     cm = _cm(
-        isolated_thoth_home,
+        isolated_doxa_home,
         """version = "2.0"
 [general]
 prompt_prefix = "GLOBAL"
@@ -143,9 +143,9 @@ prompt_prefix = ""
     assert resolve_prompt_prefix(cm, "default") == "GLOBAL"
 
 
-def test_replace_semantics_no_concatenation(isolated_thoth_home: Path) -> None:
+def test_replace_semantics_no_concatenation(isolated_doxa_home: Path) -> None:
     cm = _cm(
-        isolated_thoth_home,
+        isolated_doxa_home,
         """version = "2.0"
 [general]
 prompt_prefix = "OUTER"
@@ -169,9 +169,9 @@ prompt_prefix = "INNER"
         ("default", "PROFILE"),
     ],
 )
-def test_resolution_per_mode(isolated_thoth_home: Path, mode: str, expected: str) -> None:
+def test_resolution_per_mode(isolated_doxa_home: Path, mode: str, expected: str) -> None:
     cm = _cm(
-        isolated_thoth_home,
+        isolated_doxa_home,
         """version = "2.0"
 [profiles.fast]
 prompt_prefix = "PROFILE"

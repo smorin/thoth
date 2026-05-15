@@ -11,87 +11,87 @@
 
 ## 1. Goal
 
-Standardize the Thoth config filename to **`thoth.config.toml`**. There is **one** user-tier location and **two** project-tier locations (mutually exclusive). The filename alone uniquely identifies a Thoth config file regardless of where it lives.
+Standardize the Doxa Research config filename to **`doxa-research.config.toml`**. There is **one** user-tier location and **two** project-tier locations (mutually exclusive). The filename alone uniquely identifies a Doxa Research config file regardless of where it lives.
 
 | Tier | Today | After P21c |
 |---|---|---|
-| User (XDG) | `$XDG_CONFIG_HOME/thoth/config.toml` | `$XDG_CONFIG_HOME/thoth/thoth.config.toml` |
-| Project — visible | `./thoth.toml` | `./thoth.config.toml` |
-| Project — hidden | `./.thoth/config.toml` (dir form) | `./.thoth.config.toml` (dotfile form) |
+| User (XDG) | `$XDG_CONFIG_HOME/doxa-research/config.toml` | `$XDG_CONFIG_HOME/doxa-research/doxa-research.config.toml` |
+| Project — visible | `./doxa.toml` | `./doxa.config.toml` |
+| Project — hidden | `./.doxa-research/config.toml` (dir form) | `./.doxa-research.config.toml` (dotfile form) |
 
 **No legacy fallback.** The old filenames stop being read entirely. Users with existing config files must rename them.
 
-**Both project-tier files present → hard error.** Thoth refuses to choose; the user must delete one. There is no precedence rule between `./thoth.config.toml` and `./.thoth.config.toml`.
+**Both project-tier files present → hard error.** Doxa Research refuses to choose; the user must delete one. There is no precedence rule between `./doxa.config.toml` and `./.doxa-research.config.toml`.
 
 ## 2. Motivation
 
-Thoth currently uses three different filenames depending on where the file lives:
+Doxa Research currently uses three different filenames depending on where the file lives:
 
-- `config.toml` (user XDG dir) — generic, only meaningful because of the surrounding `thoth/` directory.
-- `thoth.toml` (project root) — specific, but a different name from the user file.
-- `config.toml` again (project `.thoth/` dir) — same as the user file, but ambiguous when seen out of context.
+- `config.toml` (user XDG dir) — generic, only meaningful because of the surrounding `doxa-research/` directory.
+- `doxa-research.toml` (project root) — specific, but a different name from the user file.
+- `config.toml` again (project `.doxa-research/` dir) — same as the user file, but ambiguous when seen out of context.
 
 This creates friction:
 
-- **Identification.** A user opening `~/.config/thoth/config.toml` in an editor sees a tab labeled `config.toml` with no provenance. A `thoth.config.toml` tab is unambiguous.
-- **Search.** `grep -r thoth.config.toml .` locates every Thoth config; today there is no single filename that works.
+- **Identification.** A user opening `~/.config/doxa-research/config.toml` in an editor sees a tab labeled `config.toml` with no provenance. A `doxa-research.config.toml` tab is unambiguous.
+- **Search.** `grep -r doxa-research.config.toml .` locates every Doxa Research config; today there is no single filename that works.
 - **Documentation.** README, help text, manual-testing notes, and error messages all have to qualify which config file they mean. One filename collapses that.
 - **Mental model.** Users have to remember three names and which goes where. One name removes the rule.
 
-The trade-off is a mildly redundant XDG path (`thoth/thoth.config.toml`). That redundancy is the *intended* cost of "filename identifies it" — it is not accidental.
+The trade-off is a mildly redundant XDG path (`doxa-research/doxa-research.config.toml`). That redundancy is the *intended* cost of "filename identifies it" — it is not accidental.
 
 ## 3. Decisions
 
 ### Q1. What is the canonical filename? *(locked)*
 
-`thoth.config.toml`. Rationale:
+`doxa-research.config.toml`. Rationale:
 
-- `thoth.` prefix → unambiguous tool identification regardless of directory.
+- `doxa-research.` prefix → unambiguous tool identification regardless of directory.
 - `.config.` infix → matches the existing convention shared by tools like `vite.config.ts`, `prettier.config.js`, where `<tool>.config.<ext>` reads as "the config for this tool."
 - `.toml` suffix → unchanged file format.
 
 ### Q2. Backwards compatibility? *(locked — none)*
 
-No legacy fallback. The loader does **not** read `~/.config/thoth/config.toml`, `./thoth.toml`, or `./.thoth/config.toml`. After P21c lands, those files are inert.
+No legacy fallback. The loader does **not** read `~/.config/doxa-research/config.toml`, `./doxa.toml`, or `./.doxa-research/config.toml`. After P21c lands, those files are inert.
 
-When no canonical config is found, Thoth raises a clear "config not found" error. **As a UX courtesy** (not a fallback), the error message *checks for* legacy filenames at the same paths and, if any are present, names them in the suggestion text:
+When no canonical config is found, Doxa Research raises a clear "config not found" error. **As a UX courtesy** (not a fallback), the error message *checks for* legacy filenames at the same paths and, if any are present, names them in the suggestion text:
 
 ```text
-No Thoth config found.
-  Looked for: ~/.config/thoth/thoth.config.toml
-              ./thoth.config.toml
-              ./.thoth.config.toml
+No Doxa Research config found.
+  Looked for: ~/.config/doxa-research/doxa-research.config.toml
+              ./doxa.config.toml
+              ./.doxa-research.config.toml
 
-  Detected legacy file: ./thoth.toml
-  This filename is no longer read. Rename it to ./thoth.config.toml or ./.thoth.config.toml.
+  Detected legacy file: ./doxa.toml
+  This filename is no longer read. Rename it to ./doxa.config.toml or ./.doxa-research.config.toml.
 ```
 
 The detection is purely informational. It runs only on the "config not found" path; it does not load the legacy file or fire on the happy path.
 
 ### Q3. How are the two project-tier filenames resolved? *(locked — error on ambiguity)*
 
-`./thoth.config.toml` and `./.thoth.config.toml` are equally acceptable. There is **no precedence**. If both exist in the same project root, Thoth raises `ConfigAmbiguousError` and asks the user to delete one:
+`./doxa.config.toml` and `./.doxa-research.config.toml` are equally acceptable. There is **no precedence**. If both exist in the same project root, Doxa Research raises `ConfigAmbiguousError` and asks the user to delete one:
 
 ```text
-Two Thoth config files found in the project root:
-  ./thoth.config.toml
-  ./.thoth.config.toml
+Two Doxa Research config files found in the project root:
+  ./doxa.config.toml
+  ./.doxa-research.config.toml
 
-Delete one before continuing. They are not merged and Thoth will not pick between them.
+Delete one before continuing. They are not merged and Doxa Research will not pick between them.
 ```
 
 Rationale: precedence in this case is arbitrary (no semantic difference between visible and dotfile forms), and silently picking one is worse than refusing — a user who edits the "wrong" one would never see their changes apply.
 
-The check fires whenever Thoth resolves a project config path: at config load and at any CLI command that resolves the project file (e.g. mutator `config` leaves and `init`).
+The check fires whenever Doxa Research resolves a project config path: at config load and at any CLI command that resolves the project file (e.g. mutator `config` leaves and `init`).
 
 ### Q4. Does this change `init`? *(locked — yes, both forms)*
 
 Yes:
 
-- `thoth init` (project) writes `./thoth.config.toml` by default. A flag to write the dotfile form (`./.thoth.config.toml`) instead is included — see §4.3 for the exact spelling.
-- `thoth init --user` writes `$XDG_CONFIG_HOME/thoth/thoth.config.toml`. This is in scope (P21c-T04).
+- `doxa-research init` (project) writes `./doxa.config.toml` by default. A flag to write the dotfile form (`./.doxa-research.config.toml`) instead is included — see §4.3 for the exact spelling.
+- `doxa-research init --user` writes `$XDG_CONFIG_HOME/doxa-research/doxa-research.config.toml`. This is in scope (P21c-T04).
 - `init` refuses to overwrite an existing canonical file unless `--force` is passed (existing `init` behavior; documented here only for completeness).
-- `init` does **not** auto-rename legacy files. If the user has `./thoth.toml` and runs `thoth init`, the new file is written alongside; the next `thoth` invocation hits the §3 Q3 ambiguity case (legacy file ignored, canonical loaded — see §3 Q2: legacy detection is informational only and does not block load when canonical is present). The "Detected legacy file" notice still appears in any error path.
+- `init` does **not** auto-rename legacy files. If the user has `./doxa.toml` and runs `doxa-research init`, the new file is written alongside; the next `doxa-research` invocation hits the §3 Q3 ambiguity case (legacy file ignored, canonical loaded — see §3 Q2: legacy detection is informational only and does not block load when canonical is present). The "Detected legacy file" notice still appears in any error path.
 
 ### Q5. Does this affect the `[profiles.<name>]` overlay? *(locked — no)*
 
@@ -99,23 +99,23 @@ P21 lives entirely *inside* whichever config file is loaded. The filename change
 
 ## 4. Architecture
 
-### 4.1 `src/thoth/paths.py`
+### 4.1 `src/doxa_research/paths.py`
 
 ```python
 def user_config_file() -> Path:
-    return user_config_dir() / "thoth.config.toml"
+    return user_config_dir() / "doxa-research.config.toml"
 ```
 
 The legacy `legacy_user_config_file()` helper proposed in the earlier draft is **not** added. Legacy detection lives in the error-path helper (§4.4), not in `paths.py`.
 
-### 4.2 `src/thoth/config.py`
+### 4.2 `src/doxa_research/config.py`
 
 `ConfigManager.__init__`:
 
 ```python
 self.project_config_paths = [
-    "./thoth.config.toml",
-    "./.thoth.config.toml",
+    "./doxa.config.toml",
+    "./.doxa-research.config.toml",
 ]
 ```
 
@@ -128,11 +128,11 @@ self.project_config_paths = [
 
 User-tier loading: load `user_config_file()` if it exists; if not, treat as missing (no fallback). The "config not found" error handler runs the legacy detector and embellishes the message.
 
-### 4.3 `thoth init`
+### 4.3 `doxa-research init`
 
-- `thoth init` → writes `./thoth.config.toml`.
-- `thoth init --hidden` (or `--dotfile` — final spelling decided in plan) → writes `./.thoth.config.toml` instead.
-- `thoth init --user` → writes `$XDG_CONFIG_HOME/thoth/thoth.config.toml`.
+- `doxa-research init` → writes `./doxa.config.toml`.
+- `doxa-research init --hidden` (or `--dotfile` — final spelling decided in plan) → writes `./.doxa-research.config.toml` instead.
+- `doxa-research init --user` → writes `$XDG_CONFIG_HOME/doxa-research/doxa-research.config.toml`.
 - `--user` and `--hidden` are mutually exclusive.
 - All three respect existing `--force` overwrite semantics.
 
@@ -144,10 +144,10 @@ A small helper centralizes legacy-file detection so the error path is the *only*
 
 ```python
 LEGACY_USER_PATH = user_config_dir() / "config.toml"
-LEGACY_PROJECT_PATHS = ("./thoth.toml", "./.thoth/config.toml")
+LEGACY_PROJECT_PATHS = ("./doxa.toml", "./.doxa-research/config.toml")
 
 def detect_legacy_paths() -> list[Path]:
-    """Return any legacy Thoth config files that exist on disk.
+    """Return any legacy Doxa Research config files that exist on disk.
     Used to enrich 'config not found' error messages — never to load.
     """
     ...
@@ -157,10 +157,10 @@ Called only from the "no config found" error formatter. Never invoked on the hap
 
 ### 4.5 Errors
 
-`src/thoth/errors.py` adds two error classes:
+`src/doxa_research/errors.py` adds two error classes:
 
-- `ConfigNotFoundError(ThothError)` — raised when config is required but no canonical file exists. Message includes the canonical paths Thoth looked at and any detected legacy files (§3 Q2 wording).
-- `ConfigAmbiguousError(ThothError)` — raised when both `./thoth.config.toml` and `./.thoth.config.toml` exist (§3 Q3 wording).
+- `ConfigNotFoundError(DoxaError)` — raised when config is required but no canonical file exists. Message includes the canonical paths Doxa Research looked at and any detected legacy files (§3 Q2 wording).
+- `ConfigAmbiguousError(DoxaError)` — raised when both `./doxa.config.toml` and `./.doxa-research.config.toml` exist (§3 Q3 wording).
 
 `ConfigProfileError` from P21 is unchanged.
 
@@ -168,10 +168,10 @@ Called only from the "no config found" error formatter. Never invoked on the hap
 
 Every literal string in code that names a config path is audited and updated:
 
-- `src/thoth/help.py` — `thoth help config`, init help, etc.
-- `src/thoth/cli_subcommands/config.py` — leaf help text.
-- `src/thoth/errors.py` — error formatting.
-- Any other `*.py` file containing `config.toml`, `thoth.toml`, or `.thoth/`.
+- `src/doxa_research/help.py` — `doxa-research help config`, init help, etc.
+- `src/doxa_research/cli_subcommands/config.py` — leaf help text.
+- `src/doxa_research/errors.py` — error formatting.
+- Any other `*.py` file containing `config.toml`, `doxa-research.toml`, or `.doxa-research/`.
 
 ## 5. Documentation
 
@@ -186,18 +186,18 @@ P21c updates:
 
 The migration note in README is short:
 
-> **Migrating from earlier Thoth versions.** Rename `~/.config/thoth/config.toml` → `~/.config/thoth/thoth.config.toml`, `./thoth.toml` → `./thoth.config.toml` (or `./.thoth.config.toml`), and `./.thoth/config.toml` → `./.thoth.config.toml`. Thoth no longer reads the old filenames.
+> **Migrating from earlier Doxa Research versions.** Rename `~/.config/doxa-research/config.toml` → `~/.config/doxa-research/doxa-research.config.toml`, `./doxa.toml` → `./doxa.config.toml` (or `./.doxa-research.config.toml`), and `./.doxa-research/config.toml` → `./.doxa-research.config.toml`. Doxa Research no longer reads the old filenames.
 
 ## 6. Out of Scope
 
-- A `thoth config migrate` CLI command that renames files in place. (Could be a future project if the rename instruction proves insufficient.)
+- A `doxa-research config migrate` CLI command that renames files in place. (Could be a future project if the rename instruction proves insufficient.)
 - A "deprecation window" or fallback read of legacy filenames. Decided against; clean break.
 - Changing the file format (still TOML).
 - Changing the *structure* inside the file.
-- Changing the project marker semantics (presence of either canonical project path still means "this is a Thoth project").
-- Adding a `THOTH_CONFIG_FILENAME` env var to override the filename.
-- Picking precedence between `./thoth.config.toml` and `./.thoth.config.toml`. There is no precedence; both present → error.
-- A directory-form project config (e.g. `./.thoth/thoth.config.toml`). The `.thoth/` directory pattern is retired for config purposes.
+- Changing the project marker semantics (presence of either canonical project path still means "this is a Doxa Research project").
+- Adding a `DOXA_CONFIG_FILENAME` env var to override the filename.
+- Picking precedence between `./doxa.config.toml` and `./.doxa-research.config.toml`. There is no precedence; both present → error.
+- A directory-form project config (e.g. `./.doxa-research/doxa-research.config.toml`). The `.doxa-research/` directory pattern is retired for config purposes.
 
 ## 7. Sequencing
 
@@ -211,14 +211,14 @@ Option 1 is recommended unless P21 is already mid-implementation when P21c is ap
 
 ## 8. Acceptance Criteria
 
-- `thoth.config.toml` is read from all three canonical locations: user XDG, project root, and project dotfile form.
-- Legacy filenames (`config.toml` in user dir, `thoth.toml`, `.thoth/config.toml`) are **not** read.
+- `doxa-research.config.toml` is read from all three canonical locations: user XDG, project root, and project dotfile form.
+- Legacy filenames (`config.toml` in user dir, `doxa-research.toml`, `.doxa-research/config.toml`) are **not** read.
 - When no canonical config is found and a legacy file exists at one of the legacy paths, the "config not found" error names the detected legacy file(s) and the rename target.
-- When both `./thoth.config.toml` and `./.thoth.config.toml` exist in the project root, Thoth raises `ConfigAmbiguousError` and asks the user to delete one. No precedence is applied.
-- `thoth init` writes `./thoth.config.toml`. The dotfile-form flag writes `./.thoth.config.toml`. `thoth init --user` writes `$XDG_CONFIG_HOME/thoth/thoth.config.toml`. `--user` and the dotfile-form flag are mutually exclusive. `init --user` is a target-file write and must not pre-load project config, so it still works when the current directory has both project-tier config filenames. `--json --non-interactive` preserves the same overwrite policy: existing targets are refused without `--force` via a JSON error envelope, and overwritten with `--force` via a JSON success envelope.
-- README, manual_testing_instructions, help text, error messages, and P21/P21b spec/plan docs all reference `thoth.config.toml`.
+- When both `./doxa.config.toml` and `./.doxa-research.config.toml` exist in the project root, Doxa Research raises `ConfigAmbiguousError` and asks the user to delete one. No precedence is applied.
+- `doxa-research init` writes `./doxa.config.toml`. The dotfile-form flag writes `./.doxa-research.config.toml`. `doxa-research init --user` writes `$XDG_CONFIG_HOME/doxa-research/doxa-research.config.toml`. `--user` and the dotfile-form flag are mutually exclusive. `init --user` is a target-file write and must not pre-load project config, so it still works when the current directory has both project-tier config filenames. `--json --non-interactive` preserves the same overwrite policy: existing targets are refused without `--force` via a JSON error envelope, and overwritten with `--force` via a JSON success envelope.
+- README, manual_testing_instructions, help text, error messages, and P21/P21b spec/plan docs all reference `doxa-research.config.toml`.
 - Successful config loads do **not** call the legacy detection helper (regression guard for inadvertent fallback).
-- `git diff --check`, `just check`, `./thoth_test -r --skip-interactive -q`, `just test-lint`, `just test-typecheck` all pass.
+- `git diff --check`, `just check`, `./doxa_test -r --skip-interactive -q`, `just test-lint`, `just test-typecheck` all pass.
 
 ## 9. Open Questions
 

@@ -1,7 +1,7 @@
 """Tests for _translate_provider_status — the shared status-enum dispatcher.
 
 Used by both OpenAIProvider.check_status and PerplexityProvider._poll_async_job
-to translate provider-specific status literals to Thoth's internal status
+to translate provider-specific status literals to Doxa Research's internal status
 dict ({status, progress, error?}). Pure data transform; no I/O, no caching.
 """
 
@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from thoth.providers._status import _translate_provider_status
+from doxa_research.providers._status import _translate_provider_status
 
 
 def test_table_lookup_returns_template_copy() -> None:

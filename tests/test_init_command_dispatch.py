@@ -1,4 +1,4 @@
-"""Dispatcher + merge tests for `thoth init` — P31."""
+"""Dispatcher + merge tests for `doxa init` — P31."""
 
 from __future__ import annotations
 
@@ -11,15 +11,15 @@ import pytest
 import tomlkit
 from rich.console import Console
 
-from thoth.commands import (
+from doxa_research.commands import (
     CommandHandler,
     _apply_wizard_answers,
     _build_starter_document,
     _load_or_build_doc,
     _prefill_from_doc,
 )
-from thoth.config import ConfigManager
-from thoth.init_wizard import ProviderChoice, WizardAnswers
+from doxa_research.config import ConfigManager
+from doxa_research.init_wizard import ProviderChoice, WizardAnswers
 
 
 def _make(answers: tuple[ProviderChoice, ...], mode: str = "default") -> WizardAnswers:
@@ -110,14 +110,14 @@ def test_prefill_ignores_interactive_default_mode() -> None:
 
 
 def test_load_or_build_returns_existing_doc(tmp_path: Path) -> None:
-    p = tmp_path / "thoth.config.toml"
+    p = tmp_path / "doxa.config.toml"
     p.write_text('version = 1\n[general]\ndefault_mode = "thinking"\n')
     doc = _load_or_build_doc(p, force=True)
     assert doc["general"]["default_mode"] == "thinking"  # ty: ignore[not-subscriptable]
 
 
 def test_load_or_build_returns_starter_when_missing(tmp_path: Path) -> None:
-    p = tmp_path / "thoth.config.toml"
+    p = tmp_path / "doxa.config.toml"
     doc = _load_or_build_doc(p, force=False)
     # starter doc has known shape
     assert "profiles" in doc
@@ -131,10 +131,10 @@ def test_dispatch_non_interactive_uses_static_starter(tmp_path: Path, monkeypatc
         called["flag"] = True
         raise AssertionError("wizard.run should not be called")
 
-    import thoth.init_wizard as wiz
+    import doxa_research.init_wizard as wiz
 
     monkeypatch.setattr(wiz, "run", boom)
-    target = tmp_path / "thoth.config.toml"
+    target = tmp_path / "doxa.config.toml"
     h = CommandHandler(ConfigManager())
     h.init_command(config_path=str(target), force=False, non_interactive=True)
     assert target.exists()
@@ -143,14 +143,14 @@ def test_dispatch_non_interactive_uses_static_starter(tmp_path: Path, monkeypatc
 
 def test_dispatch_interactive_writes_wizard_output(tmp_path: Path, monkeypatch) -> None:
     """Wizard answers land in the file."""
-    target = tmp_path / "thoth.config.toml"
+    target = tmp_path / "doxa.config.toml"
     answers = WizardAnswers(
         providers=(ProviderChoice("openai", "literal", "sk-stub"),),
         default_mode="thinking",
         target_path=target,
     )
 
-    import thoth.init_wizard as wiz
+    import doxa_research.init_wizard as wiz
 
     monkeypatch.setattr(wiz, "run", lambda **_: answers)
     h = CommandHandler(ConfigManager())
@@ -161,9 +161,9 @@ def test_dispatch_interactive_writes_wizard_output(tmp_path: Path, monkeypatch) 
 
 
 def test_dispatch_wizard_cancel_no_file_written(tmp_path: Path, monkeypatch) -> None:
-    target = tmp_path / "thoth.config.toml"
+    target = tmp_path / "doxa.config.toml"
 
-    import thoth.init_wizard as wiz
+    import doxa_research.init_wizard as wiz
 
     monkeypatch.setattr(wiz, "run", lambda **_: None)
     h = CommandHandler(ConfigManager())
@@ -173,12 +173,12 @@ def test_dispatch_wizard_cancel_no_file_written(tmp_path: Path, monkeypatch) -> 
 
 def test_dispatch_real_prompt_renders_wizard_brackets_plainly(tmp_path: Path, monkeypatch) -> None:
     """Regression: Rich markup must not eat wizard labels like [n]o."""
-    target = tmp_path / "thoth.config.toml"
+    target = tmp_path / "doxa.config.toml"
     rendered = StringIO()
 
     import rich.prompt as rich_prompt
 
-    import thoth.init_wizard as wiz
+    import doxa_research.init_wizard as wiz
 
     prompt_text = (
         "Default mode:\n  1) default\n[default: default] > \nWrite this? [Y]es / [n]o / [e]dit > "
@@ -207,7 +207,7 @@ def test_dispatch_real_prompt_renders_wizard_brackets_plainly(tmp_path: Path, mo
 
 
 def test_dispatch_force_roundtrip_preserves_unknown(tmp_path: Path, monkeypatch) -> None:
-    target = tmp_path / "thoth.config.toml"
+    target = tmp_path / "doxa.config.toml"
     target.write_text(
         'version = 1\n[general]\ndefault_mode = "default"\n[mysection]\nkeep_me = "yes"\n'
     )
@@ -217,7 +217,7 @@ def test_dispatch_force_roundtrip_preserves_unknown(tmp_path: Path, monkeypatch)
         target_path=target,
     )
 
-    import thoth.init_wizard as wiz
+    import doxa_research.init_wizard as wiz
 
     monkeypatch.setattr(wiz, "run", lambda **_: answers)
     h = CommandHandler(ConfigManager())
@@ -231,12 +231,12 @@ def test_dispatch_json_envelope_regression(tmp_path: Path, monkeypatch: pytest.M
     """TS01-m: --json --non-interactive path is unchanged by P31."""
     from click.testing import CliRunner
 
-    import thoth.config as thoth_config
-    from thoth.cli import cli
+    import doxa_research.config as doxa_config
+    from doxa_research.cli import cli
 
-    monkeypatch.setattr(thoth_config, "_config_path", None)
+    monkeypatch.setattr(doxa_config, "_config_path", None)
     runner = CliRunner()
-    target = tmp_path / "thoth.config.toml"
+    target = tmp_path / "doxa.config.toml"
     result = runner.invoke(
         cli,
         ["--config", str(target), "init", "--json", "--non-interactive"],
@@ -247,7 +247,7 @@ def test_dispatch_json_envelope_regression(tmp_path: Path, monkeypatch: pytest.M
     payload = json.loads(result.output)
     # Repo-wide JSON envelope contract: see tests/test_json_envelopes.py.
     # Successful responses are {"status": "ok", "data": {...}}; the init
-    # data payload carries config_path, created, thoth_version, non_interactive.
+    # data payload carries config_path, created, doxa_version, non_interactive.
     assert payload["status"] == "ok"
     assert payload["data"]["config_path"] == str(target)
     assert payload["data"]["created"] is True

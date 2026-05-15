@@ -4,12 +4,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from thoth.config import ConfigManager
-from thoth.interactive_picker import immediate_models_for_provider
+from doxa_research.config import ConfigManager
+from doxa_research.interactive_picker import immediate_models_for_provider
 
 
 def _config_with_modes(tmp_path: Path, body: str) -> ConfigManager:
-    cfg_file = tmp_path / "thoth.config.toml"
+    cfg_file = tmp_path / "doxa.config.toml"
     cfg_file.write_text('version = "2.0"\n' + body)
     cm = ConfigManager(cfg_file)
     cm.load_all_layers()

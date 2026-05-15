@@ -1,6 +1,6 @@
 from click.testing import CliRunner
 
-from thoth.cli import cli
+from doxa_research.cli import cli
 
 
 def test_providers_list_exits_zero():
@@ -34,4 +34,4 @@ def test_old_form_gated_with_migration_hint():
     r = CliRunner().invoke(cli, ["providers", "--", "--list"])
     assert r.exit_code == 2
     combined = r.output or ""
-    assert "thoth providers list" in combined
+    assert "doxa providers list" in combined

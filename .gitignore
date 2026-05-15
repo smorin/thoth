@@ -29,8 +29,8 @@ env/
 
 # Testing
 .pytest_cache/
-# thoth_test runner state
-.thoth_test_cache/
+# doxa_test runner state
+.doxa_test_cache/
 test_outputs/
 .coverage
 htmlcov/
@@ -46,9 +46,9 @@ snapshot_report.html
 *~
 .DS_Store
 
-# Thoth specific
+# Doxa Research specific
 research-outputs/
-~/.thoth/checkpoints/
+~/.doxa-research/checkpoints/
 *.md
 openai.env
 !README.md
@@ -58,7 +58,7 @@ openai.env
 !RELEASE.md
 !AGENTS.md
 !CLAUDE.md
-!thoth.*.md
+!doxa-research.*.md
 !temp.*.md
 !references.md
 !manual_testing_instructions.md
@@ -69,12 +69,12 @@ openai.env
 !docs/json-output.md
 !research/*.md
 !MILESTONES.md
-!thoth_vcr.md
+!doxa_vcr.md
 !.codex/skills/**/*.md
 
 # Logs
 *.log
-thoth.log
+doxa-research.log
 
 # Temporary files
 *.tmp

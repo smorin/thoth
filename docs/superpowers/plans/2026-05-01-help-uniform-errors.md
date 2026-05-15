@@ -4,10 +4,10 @@
 - **Project:** [projects/P36-help-uniform-errors.md](../../../projects/P36-help-uniform-errors.md) — P36 project file (scope, tasks, verification — canonical)
 - **Trunk:** [PROJECTS.md](../../../PROJECTS.md)
 - **Code:**
-  - `src/thoth/help.py:109-137` (ThothGroup.invoke, the dispatch fix surface)
-  - `src/thoth/errors.py:45-64` (APIKeyError, the message surface)
-  - `src/thoth/providers/__init__.py:25-65` (PROVIDERS, PROVIDER_ENV_VARS, resolve_api_key)
-  - `src/thoth/run.py:272-294` (provider-selection fallback)
+  - `src/doxa_research/help.py:109-137` (DoxaGroup.invoke, the dispatch fix surface)
+  - `src/doxa_research/errors.py:45-64` (APIKeyError, the message surface)
+  - `src/doxa_research/providers/__init__.py:25-65` (PROVIDERS, PROVIDER_ENV_VARS, resolve_api_key)
+  - `src/doxa_research/run.py:272-294` (provider-selection fallback)
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:subagent-driven-development` to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -15,7 +15,7 @@
 
 **Architecture:** Three orthogonal layers, each its own subagent-driven cycle:
 
-- **Layer 1** — Dispatch fix in `ThothGroup.invoke`. Short-circuit `--help`/`-h` before the bare-prompt fallback; reject single-token unrecognized commands with a structured "unknown command" error including a fuzzy + curated suggestion plus the full top-level command listing.
+- **Layer 1** — Dispatch fix in `DoxaGroup.invoke`. Short-circuit `--help`/`-h` before the bare-prompt fallback; reject single-token unrecognized commands with a structured "unknown command" error including a fuzzy + curated suggestion plus the full top-level command listing.
 - **Layer 2** — `APIKeyError` message enhancement. Enumerate all three input channels (env var, `--api-key-*` CLI flag, config file syntax). Show every provider's env-var status, not just the failing one. Preserve the title-line substring `"{provider} API key not found"` so existing assertions stay green.
 - **Layer 3** — Multi-provider default fallback in `run.py`. Add `available_providers(config) -> list[str]` helper that returns providers with resolvable keys (no exception). When no `--provider` is specified and no mode-specific provider is set, pick from available providers, honoring `general.default_provider` if set. Only fall back to "openai" + Layer 2's enhanced error when zero providers have keys.
 
@@ -27,22 +27,22 @@
 
 ## Context
 
-Running `uv run thoth profiles --help` currently fails with:
+Running `uv run doxa-research profiles --help` currently fails with:
 
 ```
 Error: openai API key not found
-Suggestion: Set OPENAI_API_KEY (or edit /Users/stevemorin/.config/thoth/thoth.config.toml)
-  Config file: /Users/stevemorin/.config/thoth/thoth.config.toml  (exists)
+Suggestion: Set OPENAI_API_KEY (or edit /Users/stevemorin/.config/doxa-research/doxa-research.config.toml)
+  Config file: /Users/stevemorin/.config/doxa-research/doxa-research.config.toml  (exists)
   Env checked: OPENAI_API_KEY (unset)
 ```
 
 Three layered bugs cause this:
 
-1. **`profiles` is not a top-level command** (it's `config profiles`). `ThothGroup.invoke` (`src/thoth/help.py:109-137`) has three dispatch paths: registered subcommand → builtin mode → bare-prompt fallback. The bare-prompt fallback greedily accepts ANY unrecognized first-arg, including obvious typos.
+1. **`profiles` is not a top-level command** (it's `config profiles`). `DoxaGroup.invoke` (`src/doxa_research/help.py:109-137`) has three dispatch paths: registered subcommand → builtin mode → bare-prompt fallback. The bare-prompt fallback greedily accepts ANY unrecognized first-arg, including obvious typos.
 
-2. **`--help` is not in the bare-prompt parser's flag table** (`src/thoth/cli.py:250-266`), so `--help` flows through as a positional and becomes part of the "research prompt."
+2. **`--help` is not in the bare-prompt parser's flag table** (`src/doxa_research/cli.py:250-266`), so `--help` flows through as a positional and becomes part of the "research prompt."
 
-3. **The default provider is hardcoded to "openai"** at `src/thoth/run.py:280`. The bare-prompt fallback then tries to instantiate the OpenAI provider, which fails on the missing `OPENAI_API_KEY` even though the user has other providers configured.
+3. **The default provider is hardcoded to "openai"** at `src/doxa_research/run.py:280`. The bare-prompt fallback then tries to instantiate the OpenAI provider, which fails on the missing `OPENAI_API_KEY` even though the user has other providers configured.
 
 The user-visible result: a help command for an unknown subcommand emits a misleading API-key error instead of "unknown command" or the help text. This violates the principle of least surprise (`bash: foo: command not found` ≫ `Error: openai API key not found`).
 
@@ -52,11 +52,11 @@ A diagnostic finding worth flagging: `tests/baselines/unknown_command.json` lite
 
 ## Pre-flight (already complete)
 
-- [x] **P0.1**: Worktree created at `/Users/stevemorin/c/thoth-worktrees/help-uniform-errors` on branch `help-uniform-errors`, branched from `origin/main` at `582853b` (P12 squash-merge).
+- [x] **P0.1**: Worktree created at `/Users/stevemorin/c/doxa-research-worktrees/help-uniform-errors` on branch `help-uniform-errors`, branched from `origin/main` at `582853b` (P12 squash-merge).
 - [x] **P0.2**: Baseline gate green from worktree:
   - `just check`: ruff + ty all pass
   - `uv run pytest -q`: 980 passed, 16 deselected
-  - `./thoth_test -r --skip-interactive -q`: 76 passed, 0 failed, 10 skipped
+  - `./doxa_test -r --skip-interactive -q`: 76 passed, 0 failed, 10 skipped
 - [ ] **P0.3**: Commit project file + plan reference (this commit also flips trunk glyph `[?]`/missing → `[~]` and Status line).
 
 ---
@@ -71,9 +71,9 @@ Any invocation containing `--help` or `-h` shows help (top-level, command-specif
 
 | File | Change |
 |---|---|
-| `src/thoth/help.py:109-137` (`ThothGroup.invoke`) | Add a `--help`/`-h` short-circuit ahead of the existing 3-path dispatch. Add an unknown-command branch for single-token cases that look like command identifiers. |
-| `src/thoth/help.py` (new helpers) | `_KNOWN_SUBPATHS: dict[str, str]`, `_suggest_command(typed, registered) -> str | None`, `_format_unknown_command_error(typed, registered, run_commands, admin_commands) -> str`. |
-| `src/thoth/cli.py:250-266` | Add `--help` and `-h` to the `flag_options` dict so the bare-prompt parser recognizes them and routes to help. (Belt-and-suspenders — Layer 1's invoke-level fix should catch them earlier, but this prevents regression if dispatch changes.) |
+| `src/doxa_research/help.py:109-137` (`DoxaGroup.invoke`) | Add a `--help`/`-h` short-circuit ahead of the existing 3-path dispatch. Add an unknown-command branch for single-token cases that look like command identifiers. |
+| `src/doxa_research/help.py` (new helpers) | `_KNOWN_SUBPATHS: dict[str, str]`, `_suggest_command(typed, registered) -> str | None`, `_format_unknown_command_error(typed, registered, run_commands, admin_commands) -> str`. |
+| `src/doxa_research/cli.py:250-266` | Add `--help` and `-h` to the `flag_options` dict so the bare-prompt parser recognizes them and routes to help. (Belt-and-suspenders — Layer 1's invoke-level fix should catch them earlier, but this prevents regression if dispatch changes.) |
 
 ### Dispatch rule (replaces current Path 3)
 
@@ -99,12 +99,12 @@ else:
 
 ### Error message format
 
-For `thoth profiles --help`:
+For `doxa-research profiles --help`:
 
 ```text
 Error: unknown command 'profiles'
 
-Did you mean 'thoth config profiles'?
+Did you mean 'doxa-research config profiles'?
 
 Available top-level commands:
   Run research:
@@ -113,7 +113,7 @@ Available top-level commands:
     clarification    Ask clarifying questions before research
     deep_research    Background deep-research mode
     ...
-  Manage thoth:
+  Manage doxa-research:
     config           Read/write configuration
     init             Bootstrap a config file
     list             List recent research runs
@@ -122,25 +122,25 @@ Available top-level commands:
     status           Show in-flight background runs
     ...
 
-Run `thoth --help` for the full command list and options.
+Run `doxa-research --help` for the full command list and options.
 ```
 
-Fuzzy-match seed list: registered top-level subcommands + a hand-curated `_KNOWN_SUBPATHS` dict for common nested paths (`profiles → thoth config profiles`, etc.) so the suggestion can name the right path even when the user typed only the leaf.
+Fuzzy-match seed list: registered top-level subcommands + a hand-curated `_KNOWN_SUBPATHS` dict for common nested paths (`profiles → doxa-research config profiles`, etc.) so the suggestion can name the right path even when the user typed only the leaf.
 
 ### `_KNOWN_SUBPATHS` initial entries
 
 ```python
 _KNOWN_SUBPATHS: dict[str, str] = {
-    "profiles": "thoth config profiles",
-    "profile": "thoth config profiles",
-    "set": "thoth config set",
-    "get": "thoth config get",
-    "unset": "thoth config unset",
-    # P12 mode operations (also accepted at top level via `thoth modes`)
-    "add": "thoth modes add",
-    "remove": "thoth modes remove",
-    "rename": "thoth modes rename",
-    "copy": "thoth modes copy",
+    "profiles": "doxa-research config profiles",
+    "profile": "doxa-research config profiles",
+    "set": "doxa-research config set",
+    "get": "doxa-research config get",
+    "unset": "doxa-research config unset",
+    # P12 mode operations (also accepted at top level via `doxa-research modes`)
+    "add": "doxa-research modes add",
+    "remove": "doxa-research modes remove",
+    "rename": "doxa-research modes rename",
+    "copy": "doxa-research modes copy",
 }
 ```
 
@@ -148,18 +148,18 @@ _KNOWN_SUBPATHS: dict[str, str] = {
 
 In `tests/test_cli_help.py` (or a new `tests/test_unknown_command.py`):
 
-- `test_help_works_for_unknown_command` — `thoth profiles --help` → exit 2, stdout contains `unknown command 'profiles'`, `Did you mean 'thoth config profiles'`, `Available top-level commands:`.
-- `test_help_works_for_registered_command` — `thoth modes --help` → exit 0 with the standard click help (regression preservation).
-- `test_help_works_for_builtin_mode` — `thoth default --help` → mode help (existing behavior preserved).
-- `test_unknown_single_token_no_help_flag` — `thoth profiles` → exit 2 with the same "unknown command" error (the bare-prompt fallback should NOT swallow this).
-- `test_bare_prompt_multi_token_still_works` — `thoth quantum gravity` → bare-prompt fallback (unchanged).
-- `test_quoted_prompt_still_works` — `thoth "what is X"` → bare-prompt fallback (quoted strings have spaces, don't match the command-name regex).
-- `test_help_flag_short_form` — `thoth profiles -h` → same path as `--help`.
+- `test_help_works_for_unknown_command` — `doxa-research profiles --help` → exit 2, stdout contains `unknown command 'profiles'`, `Did you mean 'doxa-research config profiles'`, `Available top-level commands:`.
+- `test_help_works_for_registered_command` — `doxa-research modes --help` → exit 0 with the standard click help (regression preservation).
+- `test_help_works_for_builtin_mode` — `doxa-research default --help` → mode help (existing behavior preserved).
+- `test_unknown_single_token_no_help_flag` — `doxa-research profiles` → exit 2 with the same "unknown command" error (the bare-prompt fallback should NOT swallow this).
+- `test_bare_prompt_multi_token_still_works` — `doxa-research quantum gravity` → bare-prompt fallback (unchanged).
+- `test_quoted_prompt_still_works` — `doxa-research "what is X"` → bare-prompt fallback (quoted strings have spaces, don't match the command-name regex).
+- `test_help_flag_short_form` — `doxa-research profiles -h` → same path as `--help`.
 
 ### Tests to update (Layer 1)
 
 - `tests/baselines/unknown_command.json` — regenerate. Currently pins the broken behavior (its `stdout` is the API-key error). New baseline captures the "unknown command" error.
-- `tests/test_p16_thothgroup.py::test_invoke_routes_bare_prompt` — currently asserts "single unknown first-word → bare-prompt routing." Reframe: assert single-token unknown → "unknown command" error; multi-token unknown → bare-prompt.
+- `tests/test_p16_doxagroup.py::test_invoke_routes_bare_prompt` — currently asserts "single unknown first-word → bare-prompt routing." Reframe: assert single-token unknown → "unknown command" error; multi-token unknown → bare-prompt.
 
 ---
 
@@ -173,9 +173,9 @@ When key validation fails legitimately, the error enumerates ALL input channels 
 
 | File | Change |
 |---|---|
-| `src/thoth/errors.py:45-64` (`APIKeyError`) | Expand the suggestion to mention env var, CLI flag, AND config file with concrete TOML syntax. Show every provider's env-var status, not just the failing one. |
-| `src/thoth/errors.py:20-32` (`format_config_context`) | Extend to optionally emit the multi-provider env-var status block, OR add a new helper alongside it. (Caller-side decision in implementation.) |
-| `src/thoth/providers/__init__.py:32-36` (`PROVIDER_ENV_VARS`) | Add a sibling `PROVIDER_CLI_FLAGS: dict[str, str]` mapping provider → CLI flag name (`"openai" → "--api-key-openai"`, etc.) for use by the error formatter. |
+| `src/doxa_research/errors.py:45-64` (`APIKeyError`) | Expand the suggestion to mention env var, CLI flag, AND config file with concrete TOML syntax. Show every provider's env-var status, not just the failing one. |
+| `src/doxa_research/errors.py:20-32` (`format_config_context`) | Extend to optionally emit the multi-provider env-var status block, OR add a new helper alongside it. (Caller-side decision in implementation.) |
+| `src/doxa_research/providers/__init__.py:32-36` (`PROVIDER_ENV_VARS`) | Add a sibling `PROVIDER_CLI_FLAGS: dict[str, str]` mapping provider → CLI flag name (`"openai" → "--api-key-openai"`, etc.) for use by the error formatter. |
 
 ### Updated error message format
 
@@ -184,8 +184,8 @@ Error: openai API key not found
 
 Provide an OpenAI API key via one of:
   1. Environment variable: export OPENAI_API_KEY=sk-...
-  2. CLI flag:              thoth --api-key-openai sk-... <command>
-  3. Config file:           Add to /Users/stevemorin/.config/thoth/thoth.config.toml:
+  2. CLI flag:              doxa-research --api-key-openai sk-... <command>
+  3. Config file:           Add to /Users/stevemorin/.config/doxa-research/doxa-research.config.toml:
                               [providers.openai]
                               api_key = "sk-..."
 
@@ -193,7 +193,7 @@ Or switch providers with --provider perplexity (or another) and supply that
 provider's key via the same channels.
 
 Status of currently-checked sources:
-  Config file: /Users/stevemorin/.config/thoth/thoth.config.toml  (exists)
+  Config file: /Users/stevemorin/.config/doxa-research/doxa-research.config.toml  (exists)
   Env vars:    OPENAI_API_KEY (unset)  PERPLEXITY_API_KEY (unset)  MOCK_API_KEY (set)
 ```
 
@@ -219,8 +219,8 @@ When `--provider` is not specified and the active mode doesn't pin a provider, t
 
 | File | Change |
 |---|---|
-| `src/thoth/providers/__init__.py` (new helper) | Add `available_providers(config, cli_api_keys=None) -> list[str]` that returns providers with resolvable keys (consults CLI args, env, config — does NOT raise on missing keys). Order matches `PROVIDERS` dict iteration (stable). |
-| `src/thoth/run.py:272-294` | Replace the hardcoded `providers_to_use = ["openai"]` fallback with `available_providers(...)` lookup. Preference order: `general.default_provider` if set + resolvable → first available in `PROVIDERS` dict order → "openai" (when zero available, to trigger Layer 2's enhanced error). |
+| `src/doxa_research/providers/__init__.py` (new helper) | Add `available_providers(config, cli_api_keys=None) -> list[str]` that returns providers with resolvable keys (consults CLI args, env, config — does NOT raise on missing keys). Order matches `PROVIDERS` dict iteration (stable). |
+| `src/doxa_research/run.py:272-294` | Replace the hardcoded `providers_to_use = ["openai"]` fallback with `available_providers(...)` lookup. Preference order: `general.default_provider` if set + resolvable → first available in `PROVIDERS` dict order → "openai" (when zero available, to trigger Layer 2's enhanced error). |
 
 ### `available_providers` helper
 
@@ -313,22 +313,22 @@ After all three layers land:
 ```bash
 # Layer 1: unknown command + --help
 unset OPENAI_API_KEY
-uv run thoth profiles --help              # → "unknown command 'profiles', did you mean 'thoth config profiles'?" + full list, exit 2
-uv run thoth profiles                     # → same error, exit 2 (no longer falls into research)
-uv run thoth profiel --help               # → typo: "did you mean 'thoth profiles'" via fuzzy match
-uv run thoth modes --help                 # → standard click help (regression check)
-uv run thoth quantum gravity              # → bare-prompt fallback (existing behavior)
+uv run doxa-research profiles --help              # → "unknown command 'profiles', did you mean 'doxa-research config profiles'?" + full list, exit 2
+uv run doxa-research profiles                     # → same error, exit 2 (no longer falls into research)
+uv run doxa-research profiel --help               # → typo: "did you mean 'doxa-research profiles'" via fuzzy match
+uv run doxa-research modes --help                 # → standard click help (regression check)
+uv run doxa-research quantum gravity              # → bare-prompt fallback (existing behavior)
 
 # Layer 2: enhanced APIKeyError
-uv run thoth ask "test"                   # → multi-line error with env/flag/config syntax + multi-provider status
+uv run doxa-research ask "test"                   # → multi-line error with env/flag/config syntax + multi-provider status
 
 # Layer 3: multi-provider default
 unset OPENAI_API_KEY
 export PERPLEXITY_API_KEY=pplx-...
-uv run thoth ask "test"                   # → uses perplexity automatically (was: openai-not-found error)
+uv run doxa-research ask "test"                   # → uses perplexity automatically (was: openai-not-found error)
 
 # Full gate
-just check && uv run pytest -q && ./thoth_test -r --skip-interactive -q
+just check && uv run pytest -q && ./doxa_test -r --skip-interactive -q
 ```
 
 ### Acceptance criteria
@@ -341,7 +341,7 @@ just check && uv run pytest -q && ./thoth_test -r --skip-interactive -q
 - [ ] Runner picks any-provider-with-key when no `--provider` is given.
 - [ ] `general.default_provider` config key honored when its provider has a key.
 - [ ] No regressions in registered-subcommand or builtin-mode dispatch.
-- [ ] Full pytest suite green; thoth_test green; lefthook gate green.
+- [ ] Full pytest suite green; doxa_test green; lefthook gate green.
 
 ---
 
@@ -352,7 +352,7 @@ just check && uv run pytest -q && ./thoth_test -r --skip-interactive -q
 | File / Test | What changes |
 |---|---|
 | `tests/baselines/unknown_command.json` | Regenerate with new "unknown command" error output. |
-| `tests/test_p16_thothgroup.py::test_invoke_routes_bare_prompt` | Reframe: assert single-token unknown → "unknown command" error; multi-token unknown → bare-prompt. |
+| `tests/test_p16_doxagroup.py::test_invoke_routes_bare_prompt` | Reframe: assert single-token unknown → "unknown command" error; multi-token unknown → bare-prompt. |
 | `tests/test_p16_dispatch_parity.py` (parity baselines) | Possibly regenerate `unknown_command` baseline; other parity cases unchanged. |
 | `tests/test_config_profile_cli_integration.py::test_profile_default_mode_used_for_bare_prompt` | Verify behavior — should still pass IF it uses a multi-token prompt. |
 
@@ -389,14 +389,14 @@ Each commit goes through the full lefthook gate. No `--no-verify`.
 
 | File | Purpose |
 |---|---|
-| `src/thoth/help.py:109-137` | `ThothGroup.invoke` — main dispatch (Layer 1) |
-| `src/thoth/help.py:139-160` | `format_commands` — command-list rendering (reused by Layer 1's error) |
-| `src/thoth/cli.py:250-266` | `_extract_fallback_options` flag/value tables (Layer 1 belt-and-suspenders) |
-| `src/thoth/errors.py:20-32` | `format_config_context` (Layer 2) |
-| `src/thoth/errors.py:45-64` | `APIKeyError` class (Layer 2) |
-| `src/thoth/providers/__init__.py:25-36` | `PROVIDERS`, `PROVIDER_ENV_VARS` registries (Layer 2/3) |
-| `src/thoth/providers/__init__.py:39-65` | `resolve_api_key` (Layer 2 caller; new `available_providers` sits alongside) |
-| `src/thoth/run.py:272-294` | Provider-selection fallback (Layer 3) |
+| `src/doxa_research/help.py:109-137` | `DoxaGroup.invoke` — main dispatch (Layer 1) |
+| `src/doxa_research/help.py:139-160` | `format_commands` — command-list rendering (reused by Layer 1's error) |
+| `src/doxa_research/cli.py:250-266` | `_extract_fallback_options` flag/value tables (Layer 1 belt-and-suspenders) |
+| `src/doxa_research/errors.py:20-32` | `format_config_context` (Layer 2) |
+| `src/doxa_research/errors.py:45-64` | `APIKeyError` class (Layer 2) |
+| `src/doxa_research/providers/__init__.py:25-36` | `PROVIDERS`, `PROVIDER_ENV_VARS` registries (Layer 2/3) |
+| `src/doxa_research/providers/__init__.py:39-65` | `resolve_api_key` (Layer 2 caller; new `available_providers` sits alongside) |
+| `src/doxa_research/run.py:272-294` | Provider-selection fallback (Layer 3) |
 | `tests/test_cli_help.py` | Existing CLI help tests (Layer 1 extends) |
 | `tests/test_api_key_resolver.py` | Existing resolver tests (Layer 2 extends) |
 | `tests/test_run_provider_fallback.py` (NEW) | Layer 3 tests |

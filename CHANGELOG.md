@@ -1,24 +1,64 @@
 # Changelog
 
-All notable changes to Thoth are documented here.
+All notable changes to Doxa Research are documented here.
 
-## [3.0.0] — 2026-04-26
+## [3.0.0] — 2026-05-15
+
+### Renamed (BREAKING)
+
+This release renames the project from `thoth` to `doxa-research`. Every public-facing identifier changes — there is **no automatic migration** for existing users.
+
+| Surface | Old | New |
+|---|---|---|
+| PyPI distribution | `thoth` | `doxa-research` |
+| Install command | `pip install thoth` | `pip install doxa-research` |
+| Python import | `import thoth` | `import doxa_research` |
+| CLI command | `thoth …` | `doxa …` (also `doxa-research …`) |
+| Module entry point | `python -m thoth` | `python -m doxa_research` |
+| Environment variables | `THOTH_*` (13 vars) | `DOXA_*` |
+| Click completion env | `_THOTH_COMPLETE` | `_DOXA_COMPLETE` |
+| User config dir | `~/.config/thoth/` | `~/.config/doxa/` |
+| User state dir | `~/.local/state/thoth/` | `~/.local/state/doxa/` |
+| User cache dir | `~/.cache/thoth/` | `~/.cache/doxa/` |
+| Config file name | `thoth.config.toml` | `doxa.config.toml` |
+| GitHub repo | `smorin/thoth` | `smorin/doxa-research` |
+| Internal classes | `ThothError`, `ThothGroup`, `ThothConfig`, `ThothCommand`, `ThothOrchestrator` | `DoxaError`, `DoxaGroup`, `DoxaConfig`, `DoxaCommand`, `DoxaOrchestrator` |
+
+**Migration for existing users** (one-time):
+
+```bash
+# 1. Install the new package
+pip uninstall thoth
+pip install doxa-research
+
+# 2. Copy your config + state + cache (no auto-migration)
+mkdir -p ~/.config/doxa ~/.cache/doxa ~/.local/state/doxa
+cp -r ~/.config/thoth/. ~/.config/doxa/ 2>/dev/null || true
+cp -r ~/.cache/thoth/. ~/.cache/doxa/ 2>/dev/null || true
+cp -r ~/.local/state/thoth/. ~/.local/state/doxa/ 2>/dev/null || true
+mv ~/.config/doxa/thoth.config.toml ~/.config/doxa/doxa.config.toml 2>/dev/null || true
+
+# 3. Update shell init scripts: THOTH_* → DOXA_*, _THOTH_COMPLETE → _DOXA_COMPLETE
+# 4. Old thoth 2.5.0 remains on PyPI (frozen, will not receive updates)
+```
+
+The `thothspinner` dependency is unrelated to this rename and keeps its name.
 
 ### Removed (BREAKING)
 
-- The `--resume` / `-R` global flag is removed. Use `thoth resume OP_ID` instead.
-- The `thoth providers -- --list` / `--models` / `--keys` / `--check` / `--refresh-cache` / `--no-cache` legacy `--`-separator forms are removed. Use `thoth providers list|models|check` instead.
-- The `thoth providers --list` / `--models` / `--keys` / `--check` in-group flag forms (PR1.5 hidden subcommands) are removed. Same migration as above.
-- The `thoth modes --json` / `--show-secrets` / `--full` / `--name X` / `--source X` flag-style forms are removed. Use `thoth modes list <flag>` instead.
-- The `thoth --help <topic>` parse-time hijack is removed. Use `thoth help <topic>` (or `thoth <topic> --help` for real subcommands).
-- The `auth` virtual help topic on `thoth help auth` is removed.
+- The `--resume` / `-R` global flag is removed. Use `doxa-research resume OP_ID` instead.
+- The `doxa-research providers -- --list` / `--models` / `--keys` / `--check` / `--refresh-cache` / `--no-cache` legacy `--`-separator forms are removed. Use `doxa-research providers list|models|check` instead.
+- The `doxa-research providers --list` / `--models` / `--keys` / `--check` in-group flag forms (PR1.5 hidden subcommands) are removed. Same migration as above.
+- The `doxa-research modes --json` / `--show-secrets` / `--full` / `--name X` / `--source X` flag-style forms are removed. Use `doxa-research modes list <flag>` instead.
+- The `doxa-research --help <topic>` parse-time hijack is removed. Use `doxa-research help <topic>` (or `doxa-research <topic> --help` for real subcommands).
+- The `auth` virtual help topic on `doxa-research help auth` is removed.
 - `completion` was removed from the help renderer's command listing (it was a phantom — never registered as a real subcommand).
 
 ### Added
 
-- `thoth ask "PROMPT"` — canonical scripted research entry point. Accepts the full research-options stack (per Q3-PR2-C, applied identically to the cli group).
-- `thoth resume OP_ID` — canonical resume entry point. Honors `--verbose`, `--config`, `--quiet`, `--no-metadata`, `--timeout`, `--api-key-{openai,perplexity,mock}` per Q1-PR2-C.
-- `thoth completion {bash,zsh,fish}` — emit eval-able shell init scripts. Supports `--install` (TTY-detect + prompt-before-overwrite), `--install --force` (CI-friendly silent overwrite), `--install --manual` (print block + instructions; never write), and `--json` (structured success/error envelopes for install metadata or shell-validation errors). Closes PRD F-70.
+- `doxa-research ask "PROMPT"` — canonical scripted research entry point. Accepts the full research-options stack (per Q3-PR2-C, applied identically to the cli group).
+- `doxa-research resume OP_ID` — canonical resume entry point. Honors `--verbose`, `--config`, `--quiet`, `--no-metadata`, `--timeout`, `--api-key-{openai,perplexity,mock}` per Q1-PR2-C.
+- `doxa-research completion {bash,zsh,fish}` — emit eval-able shell init scripts. Supports `--install` (TTY-detect + prompt-before-overwrite), `--install --force` (CI-friendly silent overwrite), `--install --manual` (print block + instructions; never write), and `--json` (structured success/error envelopes for install metadata or shell-validation errors). Closes PRD F-70.
 - TAB completion of operation IDs (`resume`, `status`), mode names (`modes list --name`), config keys (`config get`), and provider names (`providers list/models/check --provider`).
 - `--json` flag on every data/action admin command: `init`, `status`, `list`, `providers list/models/check`, `config get/set/unset/list/path/edit`, `modes list`, `ask`, `resume`. Envelope contract documented in `docs/json-output.md`.
 - `ask --json` immediate-mode returns full result inline; background-mode auto-asyncs and returns an op-id submit envelope.
@@ -26,30 +66,30 @@ All notable changes to Thoth are documented here.
 
 ### Changed (BREAKING)
 
-- `thoth config get KEY --raw` no longer bypasses secret masking. To reveal a secret value, use `--show-secrets` (with or without `--raw`). `--raw` now controls only output formatting. `--raw` is supported only on `thoth config get`; `thoth config list --raw` exits 2 with a clear message (use `thoth config list --json` for machine-readable list output).
-- `thoth status` (no OP_ID) now exits 2 instead of 1 (matches Click's default for a missing required argument).
-- `thoth providers` (no leaf) now exits 2 (was 0) — Click default for required-subcommand groups.
-- `thoth modes` (no leaf) now exits 2 (was 0). Use `thoth modes list` for the previous default behavior.
-- `thoth providers models --refresh-cache --no-cache` is now mutually exclusive (was a silent ambiguity that fell through to the provider implementation).
-- `thoth modes list --name X --source Y` now intersects both filters (was: silently dropped `--source`).
-- `thoth --clarify` (without `--interactive`) now exits 2 with `--clarify requires --interactive` (was: silent no-op).
-- `thoth config get KEY --layer L` now validates `L` against the actual layer set (`defaults|user|project|env|cli`) and exits 2 on invalid values (was: silently returned wrong-layer data).
+- `doxa-research config get KEY --raw` no longer bypasses secret masking. To reveal a secret value, use `--show-secrets` (with or without `--raw`). `--raw` now controls only output formatting. `--raw` is supported only on `doxa-research config get`; `doxa-research config list --raw` exits 2 with a clear message (use `doxa-research config list --json` for machine-readable list output).
+- `doxa-research status` (no OP_ID) now exits 2 instead of 1 (matches Click's default for a missing required argument).
+- `doxa-research providers` (no leaf) now exits 2 (was 0) — Click default for required-subcommand groups.
+- `doxa-research modes` (no leaf) now exits 2 (was 0). Use `doxa-research modes list` for the previous default behavior.
+- `doxa-research providers models --refresh-cache --no-cache` is now mutually exclusive (was a silent ambiguity that fell through to the provider implementation).
+- `doxa-research modes list --name X --source Y` now intersects both filters (was: silently dropped `--source`).
+- `doxa-research --clarify` (without `--interactive`) now exits 2 with `--clarify requires --interactive` (was: silent no-op).
+- `doxa-research config get KEY --layer L` now validates `L` against the actual layer set (`defaults|user|project|env|cli`) and exits 2 on invalid values (was: silently returned wrong-layer data).
 
 ### Migration from v2.x
 
 | Old form | New form |
 |---|---|
-| `thoth --resume OP_ID` | `thoth resume OP_ID` |
-| `thoth providers -- --list` | `thoth providers list` |
-| `thoth providers -- --models` | `thoth providers models` |
-| `thoth providers -- --models --provider openai` | `thoth providers models --provider openai` |
-| `thoth providers -- --models --refresh-cache` | `thoth providers models --refresh-cache` |
-| `thoth providers -- --keys` (or `--check`) | `thoth providers check` |
-| `thoth providers --list` (in-group shim) | `thoth providers list` |
-| `thoth modes --json` | `thoth modes list --json` |
-| `thoth modes --name deep_research` | `thoth modes list --name deep_research` |
-| `thoth --help auth` | (no replacement — `auth` topic dropped) |
-| `thoth config get KEY --raw` (revealing secrets) | `thoth config get KEY --show-secrets` |
+| `doxa-research --resume OP_ID` | `doxa-research resume OP_ID` |
+| `doxa-research providers -- --list` | `doxa-research providers list` |
+| `doxa-research providers -- --models` | `doxa-research providers models` |
+| `doxa-research providers -- --models --provider openai` | `doxa-research providers models --provider openai` |
+| `doxa-research providers -- --models --refresh-cache` | `doxa-research providers models --refresh-cache` |
+| `doxa-research providers -- --keys` (or `--check`) | `doxa-research providers check` |
+| `doxa-research providers --list` (in-group shim) | `doxa-research providers list` |
+| `doxa-research modes --json` | `doxa-research modes list --json` |
+| `doxa-research modes --name deep_research` | `doxa-research modes list --name deep_research` |
+| `doxa-research --help auth` | (no replacement — `auth` topic dropped) |
+| `doxa-research config get KEY --raw` (revealing secrets) | `doxa-research config get KEY --show-secrets` |
 
 ## [Unreleased]
 
@@ -64,13 +104,13 @@ All notable changes to Thoth are documented here.
 - ThothSpinner construction in `progress.py` sets `spinner_style="npm_dots"`, `message_shimmer=True`, `timer_format="auto"`, `hint_text="Ctrl-C to background"`, and hides the (zero-progress) progress component for deep-research UX.
 
 ### Added
-- `thoth providers list`, `thoth providers models`, `thoth providers check` — explicit subcommands replace `thoth providers -- --list`.
-- `thoth help auth` — in-CLI authentication guidance.
-- `thoth cancel OP_ID` — cancels an in-flight background operation where the provider supports upstream cancellation and marks the local checkpoint cancelled.
+- `doxa-research providers list`, `doxa-research providers models`, `doxa-research providers check` — explicit subcommands replace `doxa-research providers -- --list`.
+- `doxa-research help auth` — in-CLI authentication guidance.
+- `doxa-research cancel OP_ID` — cancels an in-flight background operation where the provider supports upstream cancellation and marks the local checkpoint cancelled.
 - `--pick-model` / `-M` flag for interactively selecting a model on immediate (non-background) modes.
 - Progress spinner during sync background-mode runs (via `thothspinner`).
 - Config file path surfaced in `APIKeyError` messages.
-- "Resume later: thoth resume OP_ID" hint on Ctrl-C.
+- "Resume later: doxa-research resume OP_ID" hint on Ctrl-C.
 
 ### Changed
 - `--help` now shows the workflow chain (clarification → … → tdd) and worked examples for `--auto`, `--async`/`--resume`, and `-v` debugging.
@@ -79,7 +119,7 @@ All notable changes to Thoth are documented here.
 - README Authentication section documents env-vars → config-file → CLI-flags in that order.
 
 ### Deprecated
-- `thoth providers -- --list` — still works for one release; use `thoth providers list`.
+- `doxa-research providers -- --list` — still works for one release; use `doxa-research providers list`.
 
 ## [2.6.0] — In Development
 
@@ -99,7 +139,7 @@ All notable changes to Thoth are documented here.
 ## [2.2.0]
 
 ### Added
-- Provider discovery (`thoth providers -- --list`, `--models`, `--keys`)
+- Provider discovery (`doxa-research providers -- --list`, `--models`, `--keys`)
 - Provider-specific API key flags (`--api-key-openai`, `--api-key-perplexity`, `--api-key-mock`)
 - Enhanced metadata headers in output files (model, operation_id, created_at)
 
@@ -113,8 +153,8 @@ All notable changes to Thoth are documented here.
 
 ### Added
 - Mode chaining (clarification → exploration → deep_research with `--auto`)
-- Checkpoint/resume for async operations (`thoth --resume <operation-id>`)
-- Operation management (`thoth list`, `thoth status <id>`)
+- Checkpoint/resume for async operations (`doxa-research --resume <operation-id>`)
+- Operation management (`doxa-research list`, `doxa-research status <id>`)
 - Project-based output organization (`--project`)
 - Async submit-and-exit mode (`--async`)
 
@@ -127,4 +167,4 @@ All notable changes to Thoth are documented here.
 - Rich terminal UI with progress indicators
 - Interactive prompt mode with slash commands and tab completion
 - Combined report generation (`--combined`)
-- Config file support (`~/.thoth/config.toml`)
+- Config file support (`~/.doxa-research/config.toml`)

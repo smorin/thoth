@@ -20,8 +20,8 @@
 
 ### Automated Verification
 - `make check` passes
-- `./thoth_test -r -t GAP01 --skip-interactive` → 3/3 pass
-- `./thoth_test -r --provider mock --skip-interactive` → no regressions
+- `./doxa_test -r -t GAP01 --skip-interactive` → 3/3 pass
+- `./doxa_test -r --provider mock --skip-interactive` → no regressions
 
 ### Regression Test Status
 - [x] GAP01-01 verifies max_tool_calls reaches the request payload

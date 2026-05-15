@@ -4,8 +4,8 @@ from typing import Any, cast
 
 import pytest
 
-from thoth.config import ConfigManager
-from thoth.providers.parameter_config import build_provider_runtime_config
+from doxa_research.config import ConfigManager
+from doxa_research.providers.parameter_config import build_provider_runtime_config
 
 
 def _config(data: dict[str, Any]) -> ConfigManager:
@@ -13,7 +13,7 @@ def _config(data: dict[str, Any]) -> ConfigManager:
 
 
 def _loaded_config(tmp_path: Path, text: str, *, profile: str | None = None) -> ConfigManager:
-    config_path = tmp_path / "thoth.config.toml"
+    config_path = tmp_path / "doxa.config.toml"
     config_path.write_text(text.strip() + "\n", encoding="utf-8")
     manager = ConfigManager(config_path=config_path)
     cli_args = {"_profile": profile} if profile else {}
@@ -457,7 +457,7 @@ def test_profile_mode_provider_namespace_extra_body_is_allowed(tmp_path: Path) -
 
 
 def test_perplexity_extra_body_survives_runtime_to_legacy_request_shapes() -> None:
-    from thoth.providers.perplexity import PerplexityProvider
+    from doxa_research.providers.perplexity import PerplexityProvider
 
     config = _config(
         {
@@ -492,7 +492,7 @@ def test_perplexity_extra_body_survives_runtime_to_legacy_request_shapes() -> No
 def test_profile_perplexity_extra_body_survives_runtime_to_legacy_request_shapes(
     tmp_path: Path,
 ) -> None:
-    from thoth.providers.perplexity import PerplexityProvider
+    from doxa_research.providers.perplexity import PerplexityProvider
 
     config = _loaded_config(
         tmp_path,
@@ -532,7 +532,7 @@ def test_profile_perplexity_extra_body_survives_runtime_to_legacy_request_shapes
 
 
 def test_builtin_mode_provider_namespace_user_override_deep_merges() -> None:
-    from thoth.config import ConfigManager
+    from doxa_research.config import ConfigManager
 
     manager = ConfigManager.__new__(ConfigManager)
     manager.data = {

@@ -18,4 +18,4 @@ Installed 25 packages in 38ms
   step[5].type = 'model_output'
     step[5].content[0].type = 'text'; text_preview = '\n\n**Sources:**\n1. [usenix.org](https://vertexaisearch.cloud.google.com/grounding'
 
-saved /Users/stevemorin/c/thoth-worktrees/p28-gemini-background-deep-research/research/_dr_spike_poll.json
+saved /Users/stevemorin/c/doxa-research-worktrees/p28-gemini-background-deep-research/research/_dr_spike_poll.json

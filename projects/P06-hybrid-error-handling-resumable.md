@@ -5,7 +5,7 @@
 
 **Status:** `[x]` Completed (v2.7.0).
 
-**Goal**: Classify provider errors as transient vs permanent, retry transient ones in-place with bounded backoff, and make recoverable failures (and Ctrl-C) resumable via `thoth --resume <id>` by reconnecting to persisted job IDs.
+**Goal**: Classify provider errors as transient vs permanent, retry transient ones in-place with bounded backoff, and make recoverable failures (and Ctrl-C) resumable via `doxa-research --resume <id>` by reconnecting to persisted job IDs.
 
 **Out of Scope**
 - Checkpoint schema migration (backward-compat handled via `setdefault("failure_type", None)`)
@@ -13,7 +13,7 @@
 - Decorrelated-jitter backoff (simple exponential backoff is sufficient)
 
 ### Tests & Tasks
-- [x] [P06-T01] Extend MockProvider with THOTH_MOCK_BEHAVIOR env (flake:N, permanent)
+- [x] [P06-T01] Extend MockProvider with DOXA_MOCK_BEHAVIOR env (flake:N, permanent)
 - [x] [P06-T02] Add `OperationStatus.failure_type` + checkpoint serialization
 - [x] [P06-T03] Allow failed → running state transition so resume can re-enter
 - [x] [P06-T04] Classify errors in `OpenAIProvider.check_status` (transient vs permanent)
@@ -22,7 +22,7 @@
 - [x] [P06-T07] Add retry loop + exponential backoff for transient errors
 - [x] [P06-T08] Add `OpenAIProvider.reconnect` + `MockProvider.reconnect`
 - [x] [P06-T09] Implement `resume_operation` to rebuild providers and re-enter poll loop
-- [x] [P06-T10] Surface "Resume with: thoth --resume <id>" hint on recoverable failure and SIGINT
+- [x] [P06-T10] Surface "Resume with: doxa-research --resume <id>" hint on recoverable failure and SIGINT
 - [x] [P06-TS01] TR-01: transient errors below threshold retried and job completes
 - [x] [P06-TS02] TR-02: transient errors above threshold fail recoverable with resume hint
 - [x] [P06-TS03] TR-03: permanent error fails immediately with no resume hint
@@ -34,7 +34,7 @@
 - `make env-check` passes
 - `just lint` / `just typecheck` pass
 - `just test-lint` / `just test-typecheck` pass
-- `./thoth_test -r` → 124 passed, 1 skipped, 0 failed
+- `./doxa_test -r` → 124 passed, 1 skipped, 0 failed
 
 ### Regression Test Status
 - [x] OAI-BG-01..08 updated for new `permanent_error` / `transient_error` return values

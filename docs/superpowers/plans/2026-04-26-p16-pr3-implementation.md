@@ -2,11 +2,11 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:subagent-driven-development` (recommended) or `superpowers:executing-plans` to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Land v3.0.0's automation-polish commits — add `thoth completion {bash,zsh,fish}` with `--install/--manual/--force/--json`, add `--json` to every data/action admin command via the B-deferred per-handler `get_*_data() -> dict` extraction pattern, wire `shell_complete=` callbacks for TAB completion of operation IDs / mode names / config keys / provider names. Pure additive (no removals).
+**Goal:** Land v3.0.0's automation-polish commits — add `doxa-research completion {bash,zsh,fish}` with `--install/--manual/--force/--json`, add `--json` to every data/action admin command via the B-deferred per-handler `get_*_data() -> dict` extraction pattern, wire `shell_complete=` callbacks for TAB completion of operation IDs / mode names / config keys / provider names. Pure additive (no removals).
 
 **Architecture:** Single PR landing as ~20 commits on `main` (no feature branch — user explicit). Each commit is independently reviewable. The `as_json` flag NEVER reaches handlers (per spec §7.2 critical invariant); data functions are pure dict-returners; subcommand wrappers branch on the flag. Option E (mode-aware non-blocking JSON) for `ask`/`resume`: immediate-mode `ask --json` returns full result inline; background-mode `ask --json` auto-async (submit + return op-id envelope); `resume --json` is pure snapshot (never advances state).
 
-**Tech Stack:** Python 3.11+, Click 8.x (with `_THOTH_COMPLETE=<shell>_source thoth` machinery + native `click.Choice` completion), pytest with `CliRunner` + `tmp_path`, existing `isolated_thoth_home` fixture, `./thoth_test` integration runner, `uv run` for all Python invocations.
+**Tech Stack:** Python 3.11+, Click 8.x (with `_DOXA_COMPLETE=<shell>_source doxa-research` machinery + native `click.Choice` completion), pytest with `CliRunner` + `tmp_path`, existing `isolated_doxa_home` fixture, `./doxa_test` integration runner, `uv run` for all Python invocations.
 
 **Spec:** `docs/superpowers/specs/2026-04-26-p16-pr3-design.md`
 **Predecessor specs:**
@@ -24,12 +24,12 @@
 ## File Structure
 
 **Create (production):**
-- `src/thoth/json_output.py` — `emit_json(data, *, exit_code=0)` and `emit_error(code, message, details=None, *, exit_code=1)` (~40 LOC; Task 1)
-- `src/thoth/completion/__init__.py` — package marker (Task 3)
-- `src/thoth/completion/script.py` — `generate_script(shell)` and `fenced_block(shell)` (~80 LOC; Task 3)
-- `src/thoth/completion/install.py` — `InstallResult` dataclass + `install(shell, *, force=False, manual=False, rc_path=None)` (~120 LOC; Task 3)
-- `src/thoth/completion/sources.py` — 5 completer data functions: `operation_ids`, `mode_names`, `config_keys`, `provider_names`, `mode_kind` (~80 LOC; Task 3)
-- `src/thoth/cli_subcommands/completion.py` — Click subcommand wiring (~50 LOC; Task 4)
+- `src/doxa_research/json_output.py` — `emit_json(data, *, exit_code=0)` and `emit_error(code, message, details=None, *, exit_code=1)` (~40 LOC; Task 1)
+- `src/doxa_research/completion/__init__.py` — package marker (Task 3)
+- `src/doxa_research/completion/script.py` — `generate_script(shell)` and `fenced_block(shell)` (~80 LOC; Task 3)
+- `src/doxa_research/completion/install.py` — `InstallResult` dataclass + `install(shell, *, force=False, manual=False, rc_path=None)` (~120 LOC; Task 3)
+- `src/doxa_research/completion/sources.py` — 5 completer data functions: `operation_ids`, `mode_names`, `config_keys`, `provider_names`, `mode_kind` (~80 LOC; Task 3)
+- `src/doxa_research/cli_subcommands/completion.py` — Click subcommand wiring (~50 LOC; Task 4)
 
 **Create (tests):**
 - `tests/test_json_output.py` — Category A: 5 envelope-contract tests (Task 1)
@@ -48,32 +48,32 @@
 - `tests/test_ci_lint_rules.py` — Category H: 3 meta-tests (Tasks 14–15)
 
 **Modify (production):**
-- `src/thoth/cli.py` — register `completion` subcommand (Task 4); wire `shell_complete=` callbacks on existing options (Task 5)
-- `src/thoth/help.py` — restore `"completion"` into `ADMIN_COMMANDS` tuple (Task 4) — PR2 T8 removed it as a phantom; PR3 makes it real
-- `src/thoth/cli_subcommands/init.py` — add `--json` flag + body branch (Task 6)
-- `src/thoth/cli_subcommands/status.py` — add `--json` flag + body branch (Task 7)
-- `src/thoth/cli_subcommands/list_cmd.py` — add `--json` flag + body branch (Task 8)
-- `src/thoth/cli_subcommands/providers.py` — add `--json` flag to `list/models/check` leaves (Task 9); wire `shell_complete=provider_names` on the `--provider` Click options (Task 5)
-- `src/thoth/cli_subcommands/config.py` — add `--json` to `get/set/unset/list/path/edit` leaves (Tasks 10–11); wire `shell_complete=config_keys` on `KEY` argument (Task 5)
-- `src/thoth/cli_subcommands/modes.py` — add `--json` flag (Task 12); wire `shell_complete=mode_names` on `--name` (Task 5)
-- `src/thoth/cli_subcommands/ask.py` — add `--json` flag + Option-E branching (Task 13)
-- `src/thoth/cli_subcommands/resume.py` — add `--json` flag + snapshot branch + `shell_complete=operation_ids` on `OP_ID` (Tasks 5, 13)
-- `src/thoth/commands.py` — extract `get_status_data()`, `get_list_data()`, `get_providers_list_data()`, `get_providers_models_data()`, `get_providers_check_data()` siblings (Tasks 7, 8, 9); refactor existing `show_status`/`list_operations`/`providers_list`/`providers_models`/`providers_check` to call data functions then format
-- `src/thoth/config_cmd.py` — extract `get_config_get_data()`, `get_config_list_data()`, `get_config_path_data()`, `get_config_set_data()`, `get_config_unset_data()`, `get_config_edit_data()` siblings (Tasks 10–11); refactor existing `_op_*` to call data functions
-- `src/thoth/modes_cmd.py` — extract `get_modes_list_data()` sibling (Task 12); refactor `_op_list` to call data function
-- `src/thoth/run.py` — add `get_resume_snapshot_data(operation_id)` pure-read function (Task 13)
-- `src/thoth/checkpoint.py` — add `list_operation_ids(self) -> list[str]` method on `CheckpointManager` (Task 3) — natural home; spec §6.4 names it; current callsites glob `checkpoint_dir.glob("*.json")` and extract stems
+- `src/doxa_research/cli.py` — register `completion` subcommand (Task 4); wire `shell_complete=` callbacks on existing options (Task 5)
+- `src/doxa_research/help.py` — restore `"completion"` into `ADMIN_COMMANDS` tuple (Task 4) — PR2 T8 removed it as a phantom; PR3 makes it real
+- `src/doxa_research/cli_subcommands/init.py` — add `--json` flag + body branch (Task 6)
+- `src/doxa_research/cli_subcommands/status.py` — add `--json` flag + body branch (Task 7)
+- `src/doxa_research/cli_subcommands/list_cmd.py` — add `--json` flag + body branch (Task 8)
+- `src/doxa_research/cli_subcommands/providers.py` — add `--json` flag to `list/models/check` leaves (Task 9); wire `shell_complete=provider_names` on the `--provider` Click options (Task 5)
+- `src/doxa_research/cli_subcommands/config.py` — add `--json` to `get/set/unset/list/path/edit` leaves (Tasks 10–11); wire `shell_complete=config_keys` on `KEY` argument (Task 5)
+- `src/doxa_research/cli_subcommands/modes.py` — add `--json` flag (Task 12); wire `shell_complete=mode_names` on `--name` (Task 5)
+- `src/doxa_research/cli_subcommands/ask.py` — add `--json` flag + Option-E branching (Task 13)
+- `src/doxa_research/cli_subcommands/resume.py` — add `--json` flag + snapshot branch + `shell_complete=operation_ids` on `OP_ID` (Tasks 5, 13)
+- `src/doxa_research/commands.py` — extract `get_status_data()`, `get_list_data()`, `get_providers_list_data()`, `get_providers_models_data()`, `get_providers_check_data()` siblings (Tasks 7, 8, 9); refactor existing `show_status`/`list_operations`/`providers_list`/`providers_models`/`providers_check` to call data functions then format
+- `src/doxa_research/config_cmd.py` — extract `get_config_get_data()`, `get_config_list_data()`, `get_config_path_data()`, `get_config_set_data()`, `get_config_unset_data()`, `get_config_edit_data()` siblings (Tasks 10–11); refactor existing `_op_*` to call data functions
+- `src/doxa_research/modes_cmd.py` — extract `get_modes_list_data()` sibling (Task 12); refactor `_op_list` to call data function
+- `src/doxa_research/run.py` — add `get_resume_snapshot_data(operation_id)` pure-read function (Task 13)
+- `src/doxa_research/checkpoint.py` — add `list_operation_ids(self) -> list[str]` method on `CheckpointManager` (Task 3) — natural home; spec §6.4 names it; current callsites glob `checkpoint_dir.glob("*.json")` and extract stems
 
 **Modify (docs/release):**
 - `pyproject.toml` — verify `click>=8.0` already permits fish (Task 2; no-op if already 8.0+)
-- `planning/thoth.prd.v24.md` line 96 — flip F-70 from aspirational to shipped (Task 16)
+- `planning/doxa-research.prd.v24.md` line 96 — flip F-70 from aspirational to shipped (Task 16)
 - `docs/json-output.md` — NEW; envelope-contract reference + per-command schemas (Task 17)
 - `README.md` — add "Shell completion" + "JSON output" sections (Task 18)
 - `CHANGELOG.md` — append PR3 entries to existing `## [3.0.0]` section's `### Added` (do NOT create a duplicate `[3.0.0]` block; Task 19)
 - `PROJECTS.md` — flip P16 PR3 from `[ ]` to `[x]` and check off all 28 task identifiers (Task 20)
 
 **Test paths consumed (no edits):**
-- `tests/conftest.py::isolated_thoth_home` — used by Categories C, D, E, F, G fixtures
+- `tests/conftest.py::isolated_doxa_home` — used by Categories C, D, E, F, G fixtures
 - `tests/conftest.py::checkpoint_dir`, `make_operation` — used by Categories D, F (for `operation_ids` source), G
 
 ---
@@ -87,14 +87,14 @@
    - Subcommand wrapper picks: `if as_json: emit_json(get_*_data(...)); else: show_*(...)`.
    - The `as_json` flag NEVER reaches the handler module.
    T07 establishes this pattern with the FULL code shown for both functions; T08–T12 reference it back but show the concrete delta (`get_*_data` body + wrapper branch). NO "similar to T07" hand-waves.
-3. **`LEFTHOOK=0` discipline.** Tasks T05–T13 may produce transitional `./thoth_test` states (the integration suite already passes after PR2; the PR3 additions won't regress it, but if they do during a single transitional task, document the failure ID in the commit body and proceed). For each of those tasks, the per-task gate documents the targeted pytest invocation that MUST pass before invoking `LEFTHOOK=0 git commit`. **Task 20 (final commit) MUST go through the full hook set without bypass** per CLAUDE.md "Hook discipline".
+3. **`LEFTHOOK=0` discipline.** Tasks T05–T13 may produce transitional `./doxa_test` states (the integration suite already passes after PR2; the PR3 additions won't regress it, but if they do during a single transitional task, document the failure ID in the commit body and proceed). For each of those tasks, the per-task gate documents the targeted pytest invocation that MUST pass before invoking `LEFTHOOK=0 git commit`. **Task 20 (final commit) MUST go through the full hook set without bypass** per CLAUDE.md "Hook discipline".
 4. **Option E (Q1-PR3) for ask/resume (spec §6.7, §6.8).** T13 implements both. `ask --json` branches on `_is_background_mode(mode)` — uses `BUILTIN_MODES[mode]` plus `is_background_mode(mode_config)` from `config.py:146` for the immediate-vs-background derivation. `resume --json` is pure snapshot via `get_resume_snapshot_data()` and NEVER advances state.
 5. **`recoverable_failure` mapping (spec §8.5).** No checkpoint state is named `recoverable_failure` today; `commands.show_status` knows `queued|running|completed|cancelled|failed`, with `failure_type=permanent` distinguishing permanent failures. `get_resume_snapshot_data()` MAPS `status=="failed" and failure_type != "permanent"` to envelope-`data.status:"recoverable_failure"`. The Category G test constructs the corresponding fixture by writing a checkpoint with `status="failed"` and `failure_type="transient"` (or `None`).
-6. **Test category bundling per spec §9.2.** Each task lists which test categories (A–H) get added in that commit. Final PR3 gate (post-T20) MUST show pytest count ≥ 460+ (391 PR2 baseline + ~70 PR3-new) and `./thoth_test -r` 63+ passing.
+6. **Test category bundling per spec §9.2.** Each task lists which test categories (A–H) get added in that commit. Final PR3 gate (post-T20) MUST show pytest count ≥ 460+ (391 PR2 baseline + ~70 PR3-new) and `./doxa_test -r` 63+ passing.
 7. **No regression in PR1+PR2's gates.** All PR1+PR2 tests must stay green throughout. The only file that grows test counts is `tests/test_json_envelopes.py` (parametrize list grows per task) — but its assertions never tighten existing tests, only add new parametrize rows.
 8. **Category H meta-tests (Tasks 14–15).** The `as_json` exclusion test is a 5-line `Path.read_text() + assert "as_json" not in content` check against `commands.py`, `config_cmd.py`, `modes_cmd.py`. The `JSON_COMMANDS` completeness test is the AST walker per spec §6.5 + §9.1 H — `ast.parse()` of every `cli_subcommands/*.py` file, walks for `@click.option` declarations naming `--json`, asserts each command appears in the parametrize list. ~30 LOC of stdlib AST visitor.
 9. **Conventional Commits enforced.** Every commit message in this plan starts with `feat:`, `test:`, `docs:`, or `chore:`. The `commit-msg` lefthook + commitlint CI both reject malformed messages. Use `feat:` for any user-visible new behavior; `test:` for pure test additions (T14, T15); `docs:` for T16–T20.
-10. **Click 8.x `protected_args` deprecation.** PR3 does NOT modify `ThothGroup.parse_args` or `ThothGroup.invoke` (PR2 already wraps `protected_args` in `warnings.catch_warnings()` and PR3 introduces no new uses).
+10. **Click 8.x `protected_args` deprecation.** PR3 does NOT modify `DoxaGroup.parse_args` or `DoxaGroup.invoke` (PR2 already wraps `protected_args` in `warnings.catch_warnings()` and PR3 introduces no new uses).
 
 ---
 
@@ -103,7 +103,7 @@
 **Why first:** Every later task that adds `--json` will import `emit_json` and `emit_error` from this module. Landing it first as ~40 LOC + 5 tests gives every downstream commit a stable single-source-of-truth for the envelope shape.
 
 **Files:**
-- Create: `src/thoth/json_output.py`
+- Create: `src/doxa_research/json_output.py`
 - Create: `tests/test_json_output.py`
 
 - [ ] **Step 1.1: Write the failing tests first**
@@ -111,7 +111,7 @@
 Create `tests/test_json_output.py`:
 
 ```python
-"""Envelope-contract tests for `thoth.json_output`.
+"""Envelope-contract tests for `doxa-research.json_output`.
 
 Per spec §6.1 + §8.3, every `--json` command's output MUST satisfy:
 1. Output parses as JSON (json.loads doesn't raise)
@@ -133,7 +133,7 @@ import pytest
 
 
 def test_emit_json_writes_success_envelope_and_exits_zero(capsys):
-    from thoth.json_output import emit_json
+    from doxa-research.json_output import emit_json
 
     with pytest.raises(SystemExit) as excinfo:
         emit_json({"foo": 1, "bar": "baz"})
@@ -145,7 +145,7 @@ def test_emit_json_writes_success_envelope_and_exits_zero(capsys):
 
 
 def test_emit_error_writes_error_envelope_with_default_exit_code_one(capsys):
-    from thoth.json_output import emit_error
+    from doxa-research.json_output import emit_error
 
     with pytest.raises(SystemExit) as excinfo:
         emit_error("CODE", "human message", {"detail_key": 42})
@@ -164,7 +164,7 @@ def test_emit_error_writes_error_envelope_with_default_exit_code_one(capsys):
 
 
 def test_emit_error_omits_details_when_none(capsys):
-    from thoth.json_output import emit_error
+    from doxa-research.json_output import emit_error
 
     with pytest.raises(SystemExit):
         emit_error("CODE", "msg")
@@ -174,7 +174,7 @@ def test_emit_error_omits_details_when_none(capsys):
 
 
 def test_emit_error_honors_exit_code_override(capsys):
-    from thoth.json_output import emit_error
+    from doxa-research.json_output import emit_error
 
     with pytest.raises(SystemExit) as excinfo:
         emit_error("CODE", "msg", exit_code=2)
@@ -183,7 +183,7 @@ def test_emit_error_honors_exit_code_override(capsys):
 
 
 def test_emit_json_honors_exit_code_override(capsys):
-    from thoth.json_output import emit_json
+    from doxa-research.json_output import emit_json
 
     with pytest.raises(SystemExit) as excinfo:
         emit_json({"x": 1}, exit_code=130)
@@ -197,11 +197,11 @@ def test_emit_json_honors_exit_code_override(capsys):
 uv run pytest tests/test_json_output.py -v
 ```
 
-Expected: 5 errors, all `ModuleNotFoundError: No module named 'thoth.json_output'`.
+Expected: 5 errors, all `ModuleNotFoundError: No module named 'doxa-research.json_output'`.
 
 - [ ] **Step 1.3: Implement the module**
 
-Create `src/thoth/json_output.py`:
+Create `src/doxa_research/json_output.py`:
 
 ```python
 """Single source of truth for the `--json` envelope contract.
@@ -291,7 +291,7 @@ Expected: green.
 - [ ] **Step 1.6: Commit**
 
 ```bash
-git add src/thoth/json_output.py tests/test_json_output.py
+git add src/doxa_research/json_output.py tests/test_json_output.py
 git commit -m "feat: add json_output.py envelope contract"
 ```
 
@@ -349,11 +349,11 @@ If Case A (no changes), skip the commit. Note in the task ledger that T02 was a 
 **Why next:** T04 (`completion` Click subcommand) imports from this package, and T05 (wire `shell_complete=` callbacks) imports from `completion/sources.py`. Building the entire package in one commit (with all four modules + the `CheckpointManager` glue) keeps the diff coherent.
 
 **Files:**
-- Create: `src/thoth/completion/__init__.py`
-- Create: `src/thoth/completion/script.py`
-- Create: `src/thoth/completion/install.py`
-- Create: `src/thoth/completion/sources.py`
-- Modify: `src/thoth/checkpoint.py` (add `list_operation_ids` method)
+- Create: `src/doxa_research/completion/__init__.py`
+- Create: `src/doxa_research/completion/script.py`
+- Create: `src/doxa_research/completion/install.py`
+- Create: `src/doxa_research/completion/sources.py`
+- Modify: `src/doxa_research/checkpoint.py` (add `list_operation_ids` method)
 - Create: `tests/test_completion.py` (Category B)
 - Create: `tests/test_completion_install.py` (Category C — minimal subset; full matrix expanded in T04)
 - Create: `tests/test_completion_sources.py` (Category D)
@@ -371,29 +371,29 @@ import pytest
 
 
 @pytest.mark.parametrize("shell", ["bash", "zsh", "fish"])
-def test_generate_script_includes_THOTH_COMPLETE_marker(shell):
-    from thoth.completion.script import generate_script
+def test_generate_script_includes_DOXA_COMPLETE_marker(shell):
+    from doxa-research.completion.script import generate_script
 
     out = generate_script(shell)
-    assert "_THOTH_COMPLETE" in out
+    assert "_DOXA_COMPLETE" in out
     assert shell in out
 
 
 def test_generate_script_rejects_unknown_shell():
-    from thoth.completion.script import generate_script
+    from doxa-research.completion.script import generate_script
 
     with pytest.raises(ValueError, match="unsupported shell"):
         generate_script("powershell")
 
 
 @pytest.mark.parametrize("shell", ["bash", "zsh", "fish"])
-def test_fenced_block_brackets_with_thoth_completion_markers(shell):
-    from thoth.completion.script import fenced_block
+def test_fenced_block_brackets_with_doxa_completion_markers(shell):
+    from doxa-research.completion.script import fenced_block
 
     out = fenced_block(shell)
-    assert "# >>> thoth completion >>>" in out
-    assert "# <<< thoth completion <<<" in out
-    assert "_THOTH_COMPLETE" in out
+    assert "# >>> doxa-research completion >>>" in out
+    assert "# <<< doxa-research completion <<<" in out
+    assert "_DOXA_COMPLETE" in out
 ```
 
 - [ ] **Step 3.2: Failing tests for `sources.py` (Category D)**
@@ -423,7 +423,7 @@ def _make_ctx_param():
 
 
 def test_operation_ids_returns_stems_of_checkpoint_files(checkpoint_dir):
-    from thoth.completion.sources import operation_ids
+    from doxa-research.completion.sources import operation_ids
 
     op1 = make_operation("research-20260427-000000-aaaaaaaaaaaaaaaa")
     op2 = make_operation("research-20260427-000001-bbbbbbbbbbbbbbbb")
@@ -455,7 +455,7 @@ def test_operation_ids_returns_stems_of_checkpoint_files(checkpoint_dir):
 
 
 def test_operation_ids_filters_by_incomplete_prefix(checkpoint_dir):
-    from thoth.completion.sources import operation_ids
+    from doxa-research.completion.sources import operation_ids
 
     target = make_operation("research-20260427-000000-aaaaaaaaaaaaaaaa")
     other = make_operation("research-20260428-000000-bbbbbbbbbbbbbbbb")
@@ -480,15 +480,15 @@ def test_operation_ids_filters_by_incomplete_prefix(checkpoint_dir):
     assert other.id not in out
 
 
-def test_operation_ids_returns_empty_when_no_checkpoints(isolated_thoth_home):
-    from thoth.completion.sources import operation_ids
+def test_operation_ids_returns_empty_when_no_checkpoints(isolated_doxa_home):
+    from doxa-research.completion.sources import operation_ids
 
     ctx, param = _make_ctx_param()
     assert operation_ids(ctx, param, "") == []
 
 
 def test_mode_names_includes_default_and_other_builtins():
-    from thoth.completion.sources import mode_names
+    from doxa-research.completion.sources import mode_names
 
     ctx, param = _make_ctx_param()
     out = mode_names(ctx, param, "")
@@ -496,23 +496,23 @@ def test_mode_names_includes_default_and_other_builtins():
 
 
 def test_mode_names_filters_by_incomplete_prefix():
-    from thoth.completion.sources import mode_names
+    from doxa-research.completion.sources import mode_names
 
     ctx, param = _make_ctx_param()
     out = mode_names(ctx, param, "deep")
     assert all(name.startswith("deep") for name in out)
 
 
-def test_config_keys_returns_dotted_keys_from_defaults(isolated_thoth_home):
-    from thoth.completion.sources import config_keys
+def test_config_keys_returns_dotted_keys_from_defaults(isolated_doxa_home):
+    from doxa-research.completion.sources import config_keys
 
     ctx, param = _make_ctx_param()
     out = config_keys(ctx, param, "")
     assert any("." in key for key in out)
 
 
-def test_config_keys_filters_by_incomplete_prefix(isolated_thoth_home):
-    from thoth.completion.sources import config_keys
+def test_config_keys_filters_by_incomplete_prefix(isolated_doxa_home):
+    from doxa-research.completion.sources import config_keys
 
     ctx, param = _make_ctx_param()
     out = config_keys(ctx, param, "providers.")
@@ -520,7 +520,7 @@ def test_config_keys_filters_by_incomplete_prefix(isolated_thoth_home):
 
 
 def test_provider_names_returns_known_providers():
-    from thoth.completion.sources import provider_names
+    from doxa-research.completion.sources import provider_names
 
     ctx, param = _make_ctx_param()
     out = provider_names(ctx, param, "")
@@ -528,7 +528,7 @@ def test_provider_names_returns_known_providers():
 
 
 def test_provider_names_filters_by_incomplete_prefix():
-    from thoth.completion.sources import provider_names
+    from doxa-research.completion.sources import provider_names
 
     ctx, param = _make_ctx_param()
     out = provider_names(ctx, param, "open")
@@ -538,7 +538,7 @@ def test_provider_names_filters_by_incomplete_prefix():
 
 def test_mode_kind_returns_immediate_and_background_choices():
     """P18 forward-compat — currently dead code per spec §6.4."""
-    from thoth.completion.sources import mode_kind
+    from doxa-research.completion.sources import mode_kind
 
     ctx, param = _make_ctx_param()
     out = mode_kind(ctx, param, "")
@@ -566,27 +566,27 @@ import pytest
 
 
 def test_install_manual_mode_returns_preview_action_and_writes_nothing(tmp_path):
-    from thoth.completion.install import install
+    from doxa-research.completion.install import install
 
     rc_path = tmp_path / ".bashrc"
     result = install("bash", manual=True, rc_path=rc_path)
 
     assert result.action == "preview"
-    assert "thoth completion" in result.message
+    assert "doxa-research completion" in result.message
     assert not rc_path.exists()
 
 
 def test_install_manual_force_mutex_raises(tmp_path):
     import click
 
-    from thoth.completion.install import install
+    from doxa-research.completion.install import install
 
     with pytest.raises(click.BadParameter, match="mutex"):
         install("bash", manual=True, force=True, rc_path=tmp_path / ".bashrc")
 
 
 def test_install_force_writes_silently(tmp_path):
-    from thoth.completion.install import install
+    from doxa-research.completion.install import install
 
     rc_path = tmp_path / ".bashrc"
     result = install("bash", force=True, rc_path=rc_path)
@@ -594,38 +594,38 @@ def test_install_force_writes_silently(tmp_path):
     assert result.action == "written"
     assert rc_path.exists()
     text = rc_path.read_text()
-    assert "# >>> thoth completion >>>" in text
-    assert "# <<< thoth completion <<<" in text
+    assert "# >>> doxa-research completion >>>" in text
+    assert "# <<< doxa-research completion <<<" in text
 
 
 def test_install_force_overwrites_existing_block(tmp_path):
-    from thoth.completion.install import install
+    from doxa-research.completion.install import install
 
     rc_path = tmp_path / ".bashrc"
     rc_path.write_text(
         "# user content above\n"
-        "# >>> thoth completion >>>\n"
+        "# >>> doxa-research completion >>>\n"
         "OLD CONTENT\n"
-        "# <<< thoth completion <<<\n"
+        "# <<< doxa-research completion <<<\n"
         "# user content below\n"
     )
     install("bash", force=True, rc_path=rc_path)
 
     text = rc_path.read_text()
-    assert text.count("# >>> thoth completion >>>") == 1
+    assert text.count("# >>> doxa-research completion >>>") == 1
     assert "OLD CONTENT" not in text
     assert "# user content above" in text
     assert "# user content below" in text
 
 
 def test_install_fish_uses_fish_completion_path_when_default(tmp_path, monkeypatch):
-    """Fish convention: ~/.config/fish/completions/thoth.fish (per spec §6.3)."""
-    from thoth.completion.install import install
+    """Fish convention: ~/.config/fish/completions/doxa-research.fish (per spec §6.3)."""
+    from doxa-research.completion.install import install
 
     monkeypatch.setenv("HOME", str(tmp_path))
     result = install("fish", force=True)
 
-    assert result.path == tmp_path / ".config" / "fish" / "completions" / "thoth.fish"
+    assert result.path == tmp_path / ".config" / "fish" / "completions" / "doxa-research.fish"
     assert result.path.exists()
 ```
 
@@ -635,11 +635,11 @@ def test_install_fish_uses_fish_completion_path_when_default(tmp_path, monkeypat
 uv run pytest tests/test_completion.py tests/test_completion_install.py tests/test_completion_sources.py -v
 ```
 
-Expected: all errors, `ModuleNotFoundError: No module named 'thoth.completion'`.
+Expected: all errors, `ModuleNotFoundError: No module named 'doxa-research.completion'`.
 
 - [ ] **Step 3.5: Implement `completion/__init__.py`**
 
-Create `src/thoth/completion/__init__.py`:
+Create `src/doxa_research/completion/__init__.py`:
 
 ```python
 """Shell-completion package.
@@ -651,19 +651,19 @@ package owns:
   - `sources.py`  — pure data functions for `shell_complete=` callbacks
 
 The Click `completion` subcommand lives at
-`src/thoth/cli_subcommands/completion.py` and imports from this package.
+`src/doxa_research/cli_subcommands/completion.py` and imports from this package.
 """
 ```
 
 - [ ] **Step 3.6: Implement `completion/script.py`**
 
-Create `src/thoth/completion/script.py`:
+Create `src/doxa_research/completion/script.py`:
 
 ```python
-"""Generate shell init scripts that wire Click's `_THOTH_COMPLETE` machinery.
+"""Generate shell init scripts that wire Click's `_DOXA_COMPLETE` machinery.
 
 Per spec §6.2: each shell's snippet evaluates the appropriate
-`_THOTH_COMPLETE=<shell>_source thoth` form to enable TAB completion.
+`_DOXA_COMPLETE=<shell>_source doxa-research` form to enable TAB completion.
 """
 
 from __future__ import annotations
@@ -673,9 +673,9 @@ from typing import Literal
 Shell = Literal["bash", "zsh", "fish"]
 _SUPPORTED: tuple[str, ...] = ("bash", "zsh", "fish")
 
-_BASH_TEMPLATE = 'eval "$(_THOTH_COMPLETE=bash_source thoth)"'
-_ZSH_TEMPLATE = 'eval "$(_THOTH_COMPLETE=zsh_source thoth)"'
-_FISH_TEMPLATE = "_THOTH_COMPLETE=fish_source thoth | source"
+_BASH_TEMPLATE = 'eval "$(_DOXA_COMPLETE=bash_source doxa-research)"'
+_ZSH_TEMPLATE = 'eval "$(_DOXA_COMPLETE=zsh_source doxa-research)"'
+_FISH_TEMPLATE = "_DOXA_COMPLETE=fish_source doxa-research | source"
 
 
 def generate_script(shell: str) -> str:
@@ -696,17 +696,17 @@ def generate_script(shell: str) -> str:
 def fenced_block(shell: str) -> str:
     """Return a fenced block (markers + script) for safe rc-file insertion.
 
-    The fenced markers `# >>> thoth completion >>>` / `# <<< thoth
+    The fenced markers `# >>> doxa-research completion >>>` / `# <<< doxa-research
     completion <<<` make the block trivially removable via:
 
-        sed -i '/# >>> thoth completion >>>/,/# <<< thoth completion <<</d' ~/.bashrc
+        sed -i '/# >>> doxa-research completion >>>/,/# <<< doxa-research completion <<</d' ~/.bashrc
     """
     if shell not in _SUPPORTED:
         raise ValueError(f"unsupported shell: {shell!r} (supported: {_SUPPORTED})")
     return (
-        "# >>> thoth completion >>>\n"
+        "# >>> doxa-research completion >>>\n"
         f"{generate_script(shell)}\n"
-        "# <<< thoth completion <<<\n"
+        "# <<< doxa-research completion <<<\n"
     )
 
 
@@ -715,7 +715,7 @@ __all__ = ["fenced_block", "generate_script"]
 
 - [ ] **Step 3.7: Implement `completion/install.py`**
 
-Create `src/thoth/completion/install.py`:
+Create `src/doxa_research/completion/install.py`:
 
 ```python
 """Install completion fenced block into shell rc files.
@@ -740,18 +740,18 @@ from typing import Literal
 
 import click
 
-from thoth.completion.script import fenced_block
+from doxa-research.completion.script import fenced_block
 
 Shell = Literal["bash", "zsh", "fish"]
 
 _DEFAULT_RC: dict[str, tuple[str, ...]] = {
     "bash": (".bashrc",),
     "zsh": (".zshrc",),
-    "fish": (".config", "fish", "completions", "thoth.fish"),
+    "fish": (".config", "fish", "completions", "doxa-research.fish"),
 }
 
 _BLOCK_RE = re.compile(
-    r"# >>> thoth completion >>>.*?# <<< thoth completion <<<\n?",
+    r"# >>> doxa-research completion >>>.*?# <<< doxa-research completion <<<\n?",
     re.DOTALL,
 )
 
@@ -803,7 +803,7 @@ def install(
             "Add the following block to your shell rc file (or run with --install):\n\n"
             f"{block}\n"
             "Remove with:\n"
-            "  sed -i '/# >>> thoth completion >>>/,/# <<< thoth completion <<</d' "
+            "  sed -i '/# >>> doxa-research completion >>>/,/# <<< doxa-research completion <<</d' "
             f"{rc_path or _default_rc_path(shell)}\n"
         )
         return InstallResult(
@@ -832,10 +832,10 @@ def install(
         action="written",
         path=target,
         message=(
-            f"Wrote thoth completion block to {target}.\n"
+            f"Wrote doxa-research completion block to {target}.\n"
             "Restart your shell (or `source` the file) to activate.\n"
             "Remove later with:\n"
-            "  sed -i '/# >>> thoth completion >>>/,/# <<< thoth completion <<</d' "
+            "  sed -i '/# >>> doxa-research completion >>>/,/# <<< doxa-research completion <<</d' "
             f"{target}\n"
         ),
     )
@@ -846,7 +846,7 @@ __all__ = ["InstallResult", "install"]
 
 - [ ] **Step 3.8: Implement `completion/sources.py`**
 
-Create `src/thoth/completion/sources.py`:
+Create `src/doxa_research/completion/sources.py`:
 
 ```python
 """Pure data functions for Click `shell_complete=` callbacks.
@@ -864,8 +864,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from thoth.config import BUILTIN_MODES, ConfigManager, ConfigSchema
-from thoth.paths import user_checkpoints_dir
+from doxa-research.config import BUILTIN_MODES, ConfigManager, ConfigSchema
+from doxa-research.paths import user_checkpoints_dir
 
 
 def _starts_with(items: list[str], incomplete: str) -> list[str]:
@@ -945,14 +945,14 @@ __all__ = [
 
 Spec §6.4 names this method. Add it as a small additive sibling on `CheckpointManager`. The implementation matches the existing glob pattern in `commands.list_operations`.
 
-Edit `src/thoth/checkpoint.py` (append after `trigger_checkpoint`, before `_console`):
+Edit `src/doxa_research/checkpoint.py` (append after `trigger_checkpoint`, before `_console`):
 
 ```python
     def list_operation_ids(self) -> list[str]:
         """Return all operation IDs known to the checkpoint store.
 
         Used by `completion/sources.py::operation_ids` and (transitively)
-        by future `thoth list --json` callers that want to enumerate
+        by future `doxa-research list --json` callers that want to enumerate
         without loading every operation. Synchronous on purpose — this is
         a metadata-only filesystem listing.
         """
@@ -967,7 +967,7 @@ Edit `src/thoth/checkpoint.py` (append after `trigger_checkpoint`, before `_cons
 uv run pytest tests/test_completion.py tests/test_completion_install.py tests/test_completion_sources.py -v
 ```
 
-Expected: ~21 passed (3+5+10+3 dataclass paths). If `mode_names` test fails because BUILTIN_MODES doesn't include `default`, verify with `grep -n '"default"' src/thoth/config.py` — `default` is defined at config.py:43.
+Expected: ~21 passed (3+5+10+3 dataclass paths). If `mode_names` test fails because BUILTIN_MODES doesn't include `default`, verify with `grep -n '"default"' src/doxa_research/config.py` — `default` is defined at config.py:43.
 
 - [ ] **Step 3.11: Lint + typecheck**
 
@@ -980,7 +980,7 @@ Expected: green.
 - [ ] **Step 3.12: Commit**
 
 ```bash
-git add src/thoth/completion src/thoth/checkpoint.py \
+git add src/doxa_research/completion src/doxa_research/checkpoint.py \
         tests/test_completion.py tests/test_completion_install.py \
         tests/test_completion_sources.py
 git commit -m "feat(completion): add completion/ package + CheckpointManager.list_operation_ids"
@@ -992,12 +992,12 @@ Pre-commit gate: full hook set should pass — no JSON or `--json` paths touched
 
 ## Task 4: Add `completion` Click subcommand and restore it to ADMIN_COMMANDS
 
-**Why now:** With T01–T03 landed, the wiring layer can ship. This commit makes `thoth completion bash|zsh|fish` real for the first time.
+**Why now:** With T01–T03 landed, the wiring layer can ship. This commit makes `doxa-research completion bash|zsh|fish` real for the first time.
 
 **Files:**
-- Create: `src/thoth/cli_subcommands/completion.py`
-- Modify: `src/thoth/cli.py` (register subcommand)
-- Modify: `src/thoth/help.py` (restore `"completion"` in `ADMIN_COMMANDS`)
+- Create: `src/doxa_research/cli_subcommands/completion.py`
+- Modify: `src/doxa_research/cli.py` (register subcommand)
+- Modify: `src/doxa_research/help.py` (restore `"completion"` in `ADMIN_COMMANDS`)
 - Append to: `tests/test_completion.py` (Category B — CLI invocation tests)
 - Append to: `tests/test_completion_install.py` (Category C — full TTY matrix via CliRunner)
 
@@ -1013,7 +1013,7 @@ from click.testing import CliRunner
 
 
 def _invoke(args: list[str]):
-    from thoth.cli import cli
+    from doxa-research.cli import cli
 
     runner = CliRunner(mix_stderr=False)
     return runner.invoke(cli, args, catch_exceptions=False)
@@ -1023,7 +1023,7 @@ def _invoke(args: list[str]):
 def test_cli_completion_emits_eval_able_script(shell):
     result = _invoke(["completion", shell])
     assert result.exit_code == 0
-    assert "_THOTH_COMPLETE" in result.output
+    assert "_DOXA_COMPLETE" in result.output
     assert shell in result.output
 
 
@@ -1057,7 +1057,7 @@ from click.testing import CliRunner
 
 
 def _invoke(args: list[str], **kwargs):
-    from thoth.cli import cli
+    from doxa-research.cli import cli
 
     runner = CliRunner(mix_stderr=False)
     return runner.invoke(cli, args, catch_exceptions=False, **kwargs)
@@ -1077,14 +1077,14 @@ def test_cli_install_non_tty_with_force_writes_silently(monkeypatch, tmp_path):
     assert result.exit_code == 0
     bashrc = tmp_path / ".bashrc"
     assert bashrc.exists()
-    assert "_THOTH_COMPLETE" in bashrc.read_text()
+    assert "_DOXA_COMPLETE" in bashrc.read_text()
 
 
 def test_cli_install_manual_prints_block_never_writes(monkeypatch, tmp_path):
     monkeypatch.setenv("HOME", str(tmp_path))
     result = _invoke(["completion", "bash", "--install", "--manual"])
     assert result.exit_code == 0
-    assert "# >>> thoth completion >>>" in result.output
+    assert "# >>> doxa-research completion >>>" in result.output
     assert not (tmp_path / ".bashrc").exists()
 
 
@@ -1114,10 +1114,10 @@ Expected: new tests fail with `Error: No such command 'completion'.` (Click's na
 
 - [ ] **Step 4.4: Implement the subcommand**
 
-Create `src/thoth/cli_subcommands/completion.py`:
+Create `src/doxa_research/cli_subcommands/completion.py`:
 
 ```python
-"""`thoth completion <shell>` Click subcommand.
+"""`doxa-research completion <shell>` Click subcommand.
 
 Per spec §6.5: `shell` is intentionally NOT a `click.Choice`, because
 invalid-shell errors must be emit-able as `UNSUPPORTED_SHELL` JSON
@@ -1125,10 +1125,10 @@ envelopes, which Click's choice validation can't do. The body validates
 against `{"bash", "zsh", "fish"}`.
 
 Behavior:
-  - `thoth completion <shell>` (no flags) — emit eval-able script to stdout.
-  - `thoth completion <shell> --install` (TTY) — write fenced block; prompt on overwrite.
-  - `thoth completion <shell> --install --force` — write/overwrite silently.
-  - `thoth completion <shell> --install --manual` — print block + instructions; never write.
+  - `doxa-research completion <shell>` (no flags) — emit eval-able script to stdout.
+  - `doxa-research completion <shell> --install` (TTY) — write fenced block; prompt on overwrite.
+  - `doxa-research completion <shell> --install --force` — write/overwrite silently.
+  - `doxa-research completion <shell> --install --manual` — print block + instructions; never write.
   - Any of the above with `--json` — wrap result/error in JSON envelope.
 """
 
@@ -1138,9 +1138,9 @@ import sys
 
 import click
 
-from thoth.completion.install import install as do_install
-from thoth.completion.script import generate_script
-from thoth.json_output import emit_error, emit_json
+from doxa-research.completion.install import install as do_install
+from doxa-research.completion.script import generate_script
+from doxa-research.json_output import emit_error, emit_json
 
 _SUPPORTED_SHELLS = ("bash", "zsh", "fish")
 
@@ -1221,7 +1221,7 @@ def completion(
 
     # No --install: emit eval-able script to stdout (raw — not wrapped in JSON
     # even if --json is passed; per spec §3 + acceptance criteria, the script
-    # stays raw for `eval "$(thoth completion zsh)"` use).
+    # stays raw for `eval "$(doxa-research completion zsh)"` use).
     click.echo(generate_script(shell))
 
 
@@ -1230,19 +1230,19 @@ __all__ = ["completion"]
 
 - [ ] **Step 4.5: Register the subcommand**
 
-Edit `src/thoth/cli.py` — add an import + `cli.add_command(...)` line near the existing registrations (around line 590, after `cli.add_command(_modes_mod.modes)`):
+Edit `src/doxa_research/cli.py` — add an import + `cli.add_command(...)` line near the existing registrations (around line 590, after `cli.add_command(_modes_mod.modes)`):
 
 ```python
-from thoth.cli_subcommands import completion as _completion_mod
+from doxa-research.cli_subcommands import completion as _completion_mod
 ...
 cli.add_command(_completion_mod.completion)
 ```
 
-(Place the import next to the other `from thoth.cli_subcommands import ...` lines and the `add_command` line in registration order, before the `help_cmd` registration.)
+(Place the import next to the other `from doxa-research.cli_subcommands import ...` lines and the `add_command` line in registration order, before the `help_cmd` registration.)
 
 - [ ] **Step 4.6: Restore `completion` in `ADMIN_COMMANDS`**
 
-Edit `src/thoth/help.py` line 15-21 — restore `"completion"` to the tuple (PR2 T8 removed it as a phantom; PR3 makes it real):
+Edit `src/doxa_research/help.py` line 15-21 — restore `"completion"` to the tuple (PR2 T8 removed it as a phantom; PR3 makes it real):
 
 ```python
 ADMIN_COMMANDS: tuple[str, ...] = (
@@ -1266,7 +1266,7 @@ Expected: all green. The 5 CLI completion tests + 5 CLI install tests join the 2
 - [ ] **Step 4.8: Spot-check the parity gate stays green**
 
 ```bash
-uv run pytest tests/test_p16_dispatch_parity.py tests/test_p16_thothgroup.py -v
+uv run pytest tests/test_p16_dispatch_parity.py tests/test_p16_doxagroup.py -v
 ```
 
 Expected: all 40 PR1 parity tests still green. The `--help` baseline includes `completion` in the listing now (PR2 baseline did NOT include it — PR2 T8 explicitly removed it from `ADMIN_COMMANDS`). If the help baseline test fails, recapture per the conftest_p16 baseline-update flow (single-line update); the change is documented in spec §3 + PROJECTS.md.
@@ -1282,7 +1282,7 @@ just check
 - [ ] **Step 4.10: Commit**
 
 ```bash
-git add src/thoth/cli_subcommands/completion.py src/thoth/cli.py src/thoth/help.py \
+git add src/doxa_research/cli_subcommands/completion.py src/doxa_research/cli.py src/doxa_research/help.py \
         tests/test_completion.py tests/test_completion_install.py
 # Include the help baseline only if regenerated in Step 4.8:
 git add tests/baselines/help_post_pr1.json 2>/dev/null || true
@@ -1295,14 +1295,14 @@ Pre-commit gate: full hook set must pass.
 
 ## Task 5: Wire `shell_complete=` callbacks on subcommand options
 
-**Why now:** With `completion/sources.py` registered (T03) and the `completion` subcommand live (T04), the dynamic completers can be attached to existing subcommand options. This is the user-visible payoff of the completion package — `thoth resume <TAB>` actually completes operation IDs.
+**Why now:** With `completion/sources.py` registered (T03) and the `completion` subcommand live (T04), the dynamic completers can be attached to existing subcommand options. This is the user-visible payoff of the completion package — `doxa-research resume <TAB>` actually completes operation IDs.
 
 **Files:**
-- Modify: `src/thoth/cli_subcommands/resume.py` — `shell_complete=operation_ids` on `OP_ID`
-- Modify: `src/thoth/cli_subcommands/status.py` — `shell_complete=operation_ids` on `OP_ID`
-- Modify: `src/thoth/cli_subcommands/config.py` — `shell_complete=config_keys` on `KEY` (in `config_get`; `set/unset` keep passthrough so completion is wired only on `get`)
-- Modify: `src/thoth/cli_subcommands/modes.py` — `shell_complete=mode_names` on `--name` (it's a passthrough in PR2; T05 promotes `--name` to a typed option to enable `shell_complete=`)
-- Modify: `src/thoth/cli_subcommands/providers.py` — `shell_complete=provider_names` on `--provider` Click options (3 sites: `list`, `models`, `check`)
+- Modify: `src/doxa_research/cli_subcommands/resume.py` — `shell_complete=operation_ids` on `OP_ID`
+- Modify: `src/doxa_research/cli_subcommands/status.py` — `shell_complete=operation_ids` on `OP_ID`
+- Modify: `src/doxa_research/cli_subcommands/config.py` — `shell_complete=config_keys` on `KEY` (in `config_get`; `set/unset` keep passthrough so completion is wired only on `get`)
+- Modify: `src/doxa_research/cli_subcommands/modes.py` — `shell_complete=mode_names` on `--name` (it's a passthrough in PR2; T05 promotes `--name` to a typed option to enable `shell_complete=`)
+- Modify: `src/doxa_research/cli_subcommands/providers.py` — `shell_complete=provider_names` on `--provider` Click options (3 sites: `list`, `models`, `check`)
 - Append to: `tests/test_completion_sources.py` (assertions that the `shell_complete` callback is wired on each command)
 
 - [ ] **Step 5.1: Failing test — `shell_complete` wiring assertions**
@@ -1311,40 +1311,40 @@ Append to `tests/test_completion_sources.py`:
 
 ```python
 def test_resume_op_id_argument_has_operation_ids_completer():
-    from thoth.cli_subcommands.resume import resume
-    from thoth.completion.sources import operation_ids
+    from doxa-research.cli_subcommands.resume import resume
+    from doxa-research.completion.sources import operation_ids
 
     op_id_param = next(p for p in resume.params if p.name == "operation_id")
     assert op_id_param.shell_complete is operation_ids
 
 
 def test_status_op_id_argument_has_operation_ids_completer():
-    from thoth.cli_subcommands.status import status
-    from thoth.completion.sources import operation_ids
+    from doxa-research.cli_subcommands.status import status
+    from doxa-research.completion.sources import operation_ids
 
     op_id_param = next(p for p in status.params if p.name == "operation_id")
     assert op_id_param.shell_complete is operation_ids
 
 
 def test_config_get_key_argument_has_config_keys_completer():
-    from thoth.cli_subcommands.config import config_get
-    from thoth.completion.sources import config_keys
+    from doxa-research.cli_subcommands.config import config_get
+    from doxa-research.completion.sources import config_keys
 
     key_param = next(p for p in config_get.params if p.name == "key")
     assert key_param.shell_complete is config_keys
 
 
 def test_modes_list_name_option_has_mode_names_completer():
-    from thoth.cli_subcommands.modes import modes_list
-    from thoth.completion.sources import mode_names
+    from doxa-research.cli_subcommands.modes import modes_list
+    from doxa-research.completion.sources import mode_names
 
     name_param = next(p for p in modes_list.params if p.name == "name")
     assert name_param.shell_complete is mode_names
 
 
 def test_providers_list_provider_option_has_provider_names_completer():
-    from thoth.cli_subcommands.providers import providers_list_cmd
-    from thoth.completion.sources import provider_names
+    from doxa-research.cli_subcommands.providers import providers_list_cmd
+    from doxa-research.completion.sources import provider_names
 
     provider_param = next(p for p in providers_list_cmd.params if p.name == "filter_provider")
     assert provider_param.shell_complete is provider_names
@@ -1360,20 +1360,20 @@ Expected: 5 new failures, `AssertionError: ... is not <function ...>` (shell_com
 
 - [ ] **Step 5.3: Wire the callbacks**
 
-Edit `src/thoth/cli_subcommands/resume.py` line 37 — add `shell_complete=`:
+Edit `src/doxa_research/cli_subcommands/resume.py` line 37 — add `shell_complete=`:
 
 ```python
 @click.argument(
     "operation_id",
     metavar="OP_ID",
-    shell_complete=__import__("thoth.completion.sources", fromlist=["operation_ids"]).operation_ids,
+    shell_complete=__import__("doxa-research.completion.sources", fromlist=["operation_ids"]).operation_ids,
 )
 ```
 
 Cleaner — at the top of `resume.py` import:
 
 ```python
-from thoth.completion.sources import operation_ids as _operation_ids_completer
+from doxa-research.completion.sources import operation_ids as _operation_ids_completer
 ```
 
 then:
@@ -1384,7 +1384,7 @@ then:
 
 Apply the same pattern to:
 - `status.py` line 13: `@click.argument("operation_id", metavar="OP_ID", required=False, shell_complete=_operation_ids_completer)` (preserve `required=False`).
-- `config.py` line 50: `@click.argument("key", shell_complete=_config_keys_completer)`. Add the import: `from thoth.completion.sources import config_keys as _config_keys_completer`.
+- `config.py` line 50: `@click.argument("key", shell_complete=_config_keys_completer)`. Add the import: `from doxa-research.completion.sources import config_keys as _config_keys_completer`.
 - `providers.py`: in EACH of the three `@click.option("--provider", "-P", ...)` decorators at lines 96–102, 134–138, 201–207 — add `shell_complete=_provider_names_completer`. Add the import once at the top of `providers.py`.
 
 - [ ] **Step 5.4: Promote `modes list --name` to a typed option**
@@ -1392,7 +1392,7 @@ Apply the same pattern to:
 `modes.py:72-86` currently uses `args = nargs=-1, type=click.UNPROCESSED` passthrough so `_op_list` parses `--name` itself. To attach `shell_complete=mode_names`, promote `--name` to a real Click option AND keep `args` passthrough for the other flags. Edit `modes.py`:
 
 ```python
-from thoth.completion.sources import mode_names as _mode_names_completer
+from doxa-research.completion.sources import mode_names as _mode_names_completer
 
 @modes.command(name="list", context_settings=_PASSTHROUGH_CONTEXT)
 @click.argument("args", nargs=-1, type=click.UNPROCESSED)
@@ -1408,7 +1408,7 @@ def modes_list(ctx: click.Context, args: tuple[str, ...], name: str | None) -> N
     """List research modes."""
     validate_inherited_options(ctx, "modes list", DEFAULT_HONOR)
 
-    from thoth.modes_cmd import modes_command
+    from doxa-research.modes_cmd import modes_command
 
     config_path = inherited_value(ctx, "config_path")
     rebuilt = list(args)
@@ -1435,7 +1435,7 @@ Expected: all green.
 - [ ] **Step 5.6: Re-run the full PR2 baseline gate**
 
 ```bash
-uv run pytest tests/test_p16_dispatch_parity.py tests/test_p16_thothgroup.py \
+uv run pytest tests/test_p16_dispatch_parity.py tests/test_p16_doxagroup.py \
               tests/test_resume.py tests/test_modes_cli.py \
               tests/test_providers_subcommand.py -v
 ```
@@ -1451,9 +1451,9 @@ just check
 - [ ] **Step 5.8: Commit**
 
 ```bash
-git add src/thoth/cli_subcommands/resume.py src/thoth/cli_subcommands/status.py \
-        src/thoth/cli_subcommands/config.py src/thoth/cli_subcommands/modes.py \
-        src/thoth/cli_subcommands/providers.py tests/test_completion_sources.py
+git add src/doxa_research/cli_subcommands/resume.py src/doxa_research/cli_subcommands/status.py \
+        src/doxa_research/cli_subcommands/config.py src/doxa_research/cli_subcommands/modes.py \
+        src/doxa_research/cli_subcommands/providers.py tests/test_completion_sources.py
 git commit -m "feat(completion): wire shell_complete callbacks on subcommand options"
 ```
 
@@ -1466,8 +1466,8 @@ git commit -m "feat(completion): wire shell_complete callbacks on subcommand opt
 **Why now:** Smallest possible `--json` rollout — `init` has no data to fetch; the envelope just confirms config write. Establishing the wrapper-layer pattern here (before T07's heavier handler extraction) keeps the diff focused.
 
 **Files:**
-- Modify: `src/thoth/cli_subcommands/init.py`
-- Modify: `src/thoth/commands.py` — add `get_init_data()` returning init outcome dict (extracted from `init_command`)
+- Modify: `src/doxa_research/cli_subcommands/init.py`
+- Modify: `src/doxa_research/commands.py` — add `get_init_data()` returning init outcome dict (extracted from `init_command`)
 - Create: `tests/test_get_init_data.py` (Category F)
 - Append to: `tests/test_json_envelopes.py` (Category E — first row of the parametrize list)
 
@@ -1485,8 +1485,8 @@ from pathlib import Path
 import pytest
 
 
-def test_get_init_data_returns_dict_with_config_path(isolated_thoth_home, monkeypatch):
-    from thoth.commands import get_init_data
+def test_get_init_data_returns_dict_with_config_path(isolated_doxa_home, monkeypatch):
+    from doxa-research.commands import get_init_data
 
     data = get_init_data(non_interactive=True, config_path=None)
     assert isinstance(data, dict)
@@ -1495,11 +1495,11 @@ def test_get_init_data_returns_dict_with_config_path(isolated_thoth_home, monkey
     assert isinstance(data["created"], bool)
 
 
-def test_get_init_data_does_not_branch_on_as_json(isolated_thoth_home):
+def test_get_init_data_does_not_branch_on_as_json(isolated_doxa_home):
     """spec §7.2 critical invariant — `as_json` MUST NOT appear in handler signature."""
     import inspect
 
-    from thoth.commands import get_init_data
+    from doxa-research.commands import get_init_data
 
     params = inspect.signature(get_init_data).parameters
     assert "as_json" not in params
@@ -1514,7 +1514,7 @@ Create `tests/test_json_envelopes.py`:
 
 The JSON_COMMANDS list grows as each subcommand T06–T13 adds `--json`.
 Category H meta-test in test_ci_lint_rules.py uses an AST walker against
-src/thoth/cli_subcommands/ to assert this list stays complete.
+src/doxa_research/cli_subcommands/ to assert this list stays complete.
 """
 
 from __future__ import annotations
@@ -1535,12 +1535,12 @@ JSON_COMMANDS: list[tuple[str, list[str], int]] = [
 
 @pytest.fixture
 def cli():
-    from thoth.cli import cli as _cli
+    from doxa-research.cli import cli as _cli
     return _cli
 
 
 @pytest.mark.parametrize("label,argv,exit_code", JSON_COMMANDS, ids=[c[0] for c in JSON_COMMANDS])
-def test_json_envelope_contract(label, argv, exit_code, cli, isolated_thoth_home):
+def test_json_envelope_contract(label, argv, exit_code, cli, isolated_doxa_home):
     runner = CliRunner(mix_stderr=False)
     result = runner.invoke(cli, argv, catch_exceptions=False)
 
@@ -1558,7 +1558,7 @@ def test_json_envelope_contract(label, argv, exit_code, cli, isolated_thoth_home
 
 
 def test_init_json_without_non_interactive_emits_JSON_REQUIRES_NONINTERACTIVE(
-    cli, isolated_thoth_home
+    cli, isolated_doxa_home
 ):
     runner = CliRunner(mix_stderr=False)
     result = runner.invoke(cli, ["init", "--json"], catch_exceptions=False)
@@ -1581,18 +1581,18 @@ Expected: failures (`AttributeError: get_init_data`, `Error: No such option: --j
 
 The current `init_command` is on `CommandHandler` (commands.py:43). Extract a sibling:
 
-Add to `src/thoth/commands.py` (near `show_status`, before `_print_status_hints`):
+Add to `src/doxa_research/commands.py` (near `show_status`, before `_print_status_hints`):
 
 ```python
 def get_init_data(*, non_interactive: bool, config_path: str | None) -> dict:
-    """Pure data function for `thoth init`.
+    """Pure data function for `doxa-research init`.
 
     Returns a dict describing the init outcome (config path, whether the
     file was newly created, and the version). Does NOT print Rich output.
     The legacy `init_command` continues to handle the human-readable path.
     """
-    from thoth.config import THOTH_VERSION
-    from thoth.paths import user_config_file
+    from doxa-research.config import DOXA_VERSION
+    from doxa-research.paths import user_config_file
 
     target = Path(config_path).expanduser().resolve() if config_path else user_config_file()
     created = not target.exists()
@@ -1602,7 +1602,7 @@ def get_init_data(*, non_interactive: bool, config_path: str | None) -> dict:
     return {
         "config_path": str(target),
         "created": created,
-        "thoth_version": THOTH_VERSION,
+        "doxa_version": DOXA_VERSION,
         "non_interactive": non_interactive,
     }
 ```
@@ -1611,19 +1611,19 @@ Note: the existing `init_command` retains its Rich-printing behavior; T06 doesn'
 
 - [ ] **Step 6.5: Wire `--json` + `--non-interactive` on `cli_subcommands/init.py`**
 
-Edit `src/thoth/cli_subcommands/init.py`:
+Edit `src/doxa_research/cli_subcommands/init.py`:
 
 ```python
-"""`thoth init` Click subcommand."""
+"""`doxa-research init` Click subcommand."""
 
 from __future__ import annotations
 
 import click
 
-from thoth.cli_subcommands._option_policy import DEFAULT_HONOR, validate_inherited_options
-from thoth.commands import CommandHandler, get_init_data
-from thoth.config import ConfigManager
-from thoth.json_output import emit_error, emit_json
+from doxa-research.cli_subcommands._option_policy import DEFAULT_HONOR, validate_inherited_options
+from doxa-research.commands import CommandHandler, get_init_data
+from doxa-research.config import ConfigManager
+from doxa-research.json_output import emit_error, emit_json
 
 
 @click.command(name="init")
@@ -1635,7 +1635,7 @@ from thoth.json_output import emit_error, emit_json
 )
 @click.pass_context
 def init(ctx: click.Context, as_json: bool, non_interactive: bool) -> None:
-    """Initialize thoth configuration."""
+    """Initialize doxa-research configuration."""
     validate_inherited_options(ctx, "init", DEFAULT_HONOR)
 
     config_path = ctx.obj.get("config_path") if ctx.obj else None
@@ -1644,7 +1644,7 @@ def init(ctx: click.Context, as_json: bool, non_interactive: bool) -> None:
         if not non_interactive:
             emit_error(
                 "JSON_REQUIRES_NONINTERACTIVE",
-                "thoth init --json requires --non-interactive",
+                "doxa-research init --json requires --non-interactive",
                 exit_code=2,
             )
         emit_json(get_init_data(non_interactive=True, config_path=config_path))
@@ -1672,7 +1672,7 @@ just check
 - [ ] **Step 6.8: Commit**
 
 ```bash
-git add src/thoth/commands.py src/thoth/cli_subcommands/init.py \
+git add src/doxa_research/commands.py src/doxa_research/cli_subcommands/init.py \
         tests/test_get_init_data.py tests/test_json_envelopes.py
 git commit -m "feat(cli): add --json to init"
 ```
@@ -1686,8 +1686,8 @@ Pre-commit gate: full hook set should pass.
 **Why now:** `status` is the canonical B-deferred extraction example. T07 establishes the pattern shown in spec §6.6, with both `get_status_data()` AND the refactored `show_status()` calling it. Tasks T08–T12 reference T07 but show their own concrete deltas; no "similar to T07" hand-waves are allowed.
 
 **Files:**
-- Modify: `src/thoth/commands.py` — add `get_status_data()`; refactor `show_status` to call it
-- Modify: `src/thoth/cli_subcommands/status.py` — add `--json` flag + body branch
+- Modify: `src/doxa_research/commands.py` — add `get_status_data()`; refactor `show_status` to call it
+- Modify: `src/doxa_research/cli_subcommands/status.py` — add `--json` flag + body branch
 - Create: `tests/test_get_status_data.py` (Category F)
 - Append to: `tests/test_json_envelopes.py` (Category E — `status` row)
 
@@ -1729,15 +1729,15 @@ def _write_checkpoint(checkpoint_dir: Path, op) -> None:
     (checkpoint_dir / f"{op.id}.json").write_text(json.dumps(payload))
 
 
-def test_get_status_data_returns_none_for_missing_operation(isolated_thoth_home, checkpoint_dir):
-    from thoth.commands import get_status_data
+def test_get_status_data_returns_none_for_missing_operation(isolated_doxa_home, checkpoint_dir):
+    from doxa-research.commands import get_status_data
 
     result = asyncio.run(get_status_data("not-a-real-op"))
     assert result is None
 
 
 def test_get_status_data_returns_dict_for_existing_operation(checkpoint_dir):
-    from thoth.commands import get_status_data
+    from doxa-research.commands import get_status_data
 
     op = make_operation("research-20260427-000000-aaaaaaaaaaaaaaaa", status="running")
     _write_checkpoint(checkpoint_dir, op)
@@ -1750,9 +1750,9 @@ def test_get_status_data_returns_dict_for_existing_operation(checkpoint_dir):
     assert data["prompt"] == "test prompt"
 
 
-def test_get_status_data_signature_excludes_as_json(isolated_thoth_home):
+def test_get_status_data_signature_excludes_as_json(isolated_doxa_home):
     """spec §7.2 critical invariant — `as_json` MUST NOT appear here."""
-    from thoth.commands import get_status_data
+    from doxa-research.commands import get_status_data
 
     params = inspect.signature(get_status_data).parameters
     assert "as_json" not in params
@@ -1769,7 +1769,7 @@ Append to `tests/test_json_envelopes.py` `JSON_COMMANDS` list:
 Also append a dedicated assertion (since the parametrized test only checks shape):
 
 ```python
-def test_status_json_missing_op_emits_OPERATION_NOT_FOUND(cli, isolated_thoth_home):
+def test_status_json_missing_op_emits_OPERATION_NOT_FOUND(cli, isolated_doxa_home):
     runner = CliRunner(mix_stderr=False)
     result = runner.invoke(cli, ["status", "research-MISSING", "--json"], catch_exceptions=False)
 
@@ -1787,11 +1787,11 @@ uv run pytest tests/test_get_status_data.py tests/test_json_envelopes.py -v
 
 - [ ] **Step 7.4: Extract `get_status_data` in `commands.py`**
 
-Add to `src/thoth/commands.py` (immediately before the existing `async def show_status`):
+Add to `src/doxa_research/commands.py` (immediately before the existing `async def show_status`):
 
 ```python
 async def get_status_data(operation_id: str) -> dict | None:
-    """Pure data function for `thoth status OP_ID`.
+    """Pure data function for `doxa-research status OP_ID`.
 
     Returns a dict describing the operation, or None if not found.
     Per spec §7.2, this function NEVER takes an `as_json` flag — the
@@ -1821,7 +1821,7 @@ async def get_status_data(operation_id: str) -> dict | None:
 
 - [ ] **Step 7.5: Refactor `show_status` to call `get_status_data`**
 
-Replace `src/thoth/commands.py:167-213` (the existing `async def show_status` body) with:
+Replace `src/doxa_research/commands.py:167-213` (the existing `async def show_status` body) with:
 
 ```python
 async def show_status(operation_id: str):
@@ -1882,10 +1882,10 @@ The two-`load` pattern (data fn + Rich path each call `load`) is acceptable for 
 
 - [ ] **Step 7.6: Wire `--json` on `cli_subcommands/status.py`**
 
-Edit `src/thoth/cli_subcommands/status.py`:
+Edit `src/doxa_research/cli_subcommands/status.py`:
 
 ```python
-"""`thoth status OP_ID` Click subcommand."""
+"""`doxa-research status OP_ID` Click subcommand."""
 
 from __future__ import annotations
 
@@ -1893,11 +1893,11 @@ import asyncio
 
 import click
 
-from thoth.cli_subcommands._option_policy import DEFAULT_HONOR, validate_inherited_options
-from thoth.commands import CommandHandler, get_status_data
-from thoth.completion.sources import operation_ids as _operation_ids_completer
-from thoth.config import ConfigManager
-from thoth.json_output import emit_error, emit_json
+from doxa-research.cli_subcommands._option_policy import DEFAULT_HONOR, validate_inherited_options
+from doxa-research.commands import CommandHandler, get_status_data
+from doxa-research.completion.sources import operation_ids as _operation_ids_completer
+from doxa-research.config import ConfigManager
+from doxa-research.json_output import emit_error, emit_json
 
 
 @click.command(name="status")
@@ -1957,7 +1957,7 @@ just check
 - [ ] **Step 7.9: Commit**
 
 ```bash
-git add src/thoth/commands.py src/thoth/cli_subcommands/status.py \
+git add src/doxa_research/commands.py src/doxa_research/cli_subcommands/status.py \
         tests/test_get_status_data.py tests/test_json_envelopes.py
 git commit -m "feat(cli): add --json to status"
 ```
@@ -1971,8 +1971,8 @@ Pre-commit gate: full hook set must pass.
 **Why now:** Direct application of T07's pattern to `list_operations`. The data function returns a list of operation summaries; the Rich function continues to render the table.
 
 **Files:**
-- Modify: `src/thoth/commands.py` — add `get_list_data()`; refactor `list_operations` to call it
-- Modify: `src/thoth/cli_subcommands/list_cmd.py` — add `--json` flag + body branch
+- Modify: `src/doxa_research/commands.py` — add `get_list_data()`; refactor `list_operations` to call it
+- Modify: `src/doxa_research/cli_subcommands/list_cmd.py` — add `--json` flag + body branch
 - Create: `tests/test_get_list_data.py` (Category F)
 - Append to: `tests/test_json_envelopes.py` `JSON_COMMANDS` list
 
@@ -2004,7 +2004,7 @@ def _write_checkpoint(checkpoint_dir: Path, op) -> None:
 
 
 def test_get_list_data_returns_dict_with_operations_list(checkpoint_dir):
-    from thoth.commands import get_list_data
+    from doxa-research.commands import get_list_data
 
     op1 = make_operation("research-20260427-000000-aaaaaaaaaaaaaaaa", status="running")
     op2 = make_operation("research-20260427-000001-bbbbbbbbbbbbbbbb", status="completed")
@@ -2018,14 +2018,14 @@ def test_get_list_data_returns_dict_with_operations_list(checkpoint_dir):
     assert len(data["operations"]) == 2
 
 
-def test_get_list_data_signature_excludes_as_json(isolated_thoth_home):
-    from thoth.commands import get_list_data
+def test_get_list_data_signature_excludes_as_json(isolated_doxa_home):
+    from doxa-research.commands import get_list_data
     assert "as_json" not in inspect.signature(get_list_data).parameters
 
 
 def test_get_list_data_filters_by_show_all_false(checkpoint_dir):
     """Only running/queued + last 24h appear when show_all=False."""
-    from thoth.commands import get_list_data
+    from doxa-research.commands import get_list_data
 
     op_running = make_operation("research-20260427-000000-aaaaaaaaaaaaaaaa", status="running")
     _write_checkpoint(checkpoint_dir, op_running)
@@ -2051,11 +2051,11 @@ uv run pytest tests/test_get_list_data.py tests/test_json_envelopes.py -v
 
 - [ ] **Step 8.4: Extract `get_list_data` in `commands.py`**
 
-Add to `src/thoth/commands.py` (immediately before `async def list_operations`):
+Add to `src/doxa_research/commands.py` (immediately before `async def list_operations`):
 
 ```python
 async def get_list_data(show_all: bool) -> dict:
-    """Pure data function for `thoth list`.
+    """Pure data function for `doxa-research list`.
 
     Returns a dict with `operations` (list of operation summaries) and
     `count`. Filters by show_all per the same rules as the Rich-printing
@@ -2154,15 +2154,15 @@ async def list_operations(show_all: bool):
         )
 
     console.print(table)
-    console.print("\nUse 'thoth status <ID>' for details")
+    console.print("\nUse 'doxa-research status <ID>' for details")
 ```
 
 - [ ] **Step 8.6: Wire `--json` on `cli_subcommands/list_cmd.py`**
 
-Edit `src/thoth/cli_subcommands/list_cmd.py`:
+Edit `src/doxa_research/cli_subcommands/list_cmd.py`:
 
 ```python
-"""`thoth list` Click subcommand."""
+"""`doxa-research list` Click subcommand."""
 
 from __future__ import annotations
 
@@ -2170,10 +2170,10 @@ import asyncio
 
 import click
 
-from thoth.cli_subcommands._option_policy import DEFAULT_HONOR, validate_inherited_options
-from thoth.commands import CommandHandler, get_list_data
-from thoth.config import ConfigManager
-from thoth.json_output import emit_json
+from doxa-research.cli_subcommands._option_policy import DEFAULT_HONOR, validate_inherited_options
+from doxa-research.commands import CommandHandler, get_list_data
+from doxa-research.config import ConfigManager
+from doxa-research.json_output import emit_json
 
 
 @click.command(name="list")
@@ -2209,7 +2209,7 @@ just check
 - [ ] **Step 8.9: Commit**
 
 ```bash
-git add src/thoth/commands.py src/thoth/cli_subcommands/list_cmd.py \
+git add src/doxa_research/commands.py src/doxa_research/cli_subcommands/list_cmd.py \
         tests/test_get_list_data.py tests/test_json_envelopes.py
 git commit -m "feat(cli): add --json to list"
 ```
@@ -2221,8 +2221,8 @@ git commit -m "feat(cli): add --json to list"
 **Why now:** All three providers leaves share the same B-deferred extraction shape — extract three sibling data functions (`get_providers_list_data`, `get_providers_models_data`, `get_providers_check_data`) and add `--json` to each leaf.
 
 **Files:**
-- Modify: `src/thoth/commands.py` — add three data functions; refactor existing `providers_list`/`providers_models`/`providers_check` to call them
-- Modify: `src/thoth/cli_subcommands/providers.py` — add `--json` to all three leaves
+- Modify: `src/doxa_research/commands.py` — add three data functions; refactor existing `providers_list`/`providers_models`/`providers_check` to call them
+- Modify: `src/doxa_research/cli_subcommands/providers.py` — add `--json` to all three leaves
 - Create: `tests/test_get_providers_data.py` (Category F)
 - Append to: `tests/test_json_envelopes.py` `JSON_COMMANDS`
 
@@ -2239,7 +2239,7 @@ import inspect
 
 
 def test_get_providers_list_data_returns_providers_dict(stub_config):
-    from thoth.commands import get_providers_list_data
+    from doxa-research.commands import get_providers_list_data
 
     data = get_providers_list_data(stub_config, filter_provider=None)
     assert isinstance(data, dict)
@@ -2251,14 +2251,14 @@ def test_get_providers_list_data_returns_providers_dict(stub_config):
 
 
 def test_get_providers_list_data_filters_by_provider(stub_config):
-    from thoth.commands import get_providers_list_data
+    from doxa-research.commands import get_providers_list_data
 
     data = get_providers_list_data(stub_config, filter_provider="openai")
     assert all(entry["name"] == "openai" for entry in data["providers"])
 
 
 def test_get_providers_models_data_returns_models_per_provider(stub_config):
-    from thoth.commands import get_providers_models_data
+    from doxa-research.commands import get_providers_models_data
 
     data = get_providers_models_data(stub_config, filter_provider=None)
     assert "providers" in data
@@ -2268,7 +2268,7 @@ def test_get_providers_models_data_returns_models_per_provider(stub_config):
 
 
 def test_get_providers_check_data_returns_missing_list(stub_config):
-    from thoth.commands import get_providers_check_data
+    from doxa-research.commands import get_providers_check_data
 
     data = get_providers_check_data(stub_config)
     assert "missing" in data
@@ -2276,7 +2276,7 @@ def test_get_providers_check_data_returns_missing_list(stub_config):
 
 
 def test_data_functions_exclude_as_json(stub_config):
-    from thoth.commands import (
+    from doxa-research.commands import (
         get_providers_check_data,
         get_providers_list_data,
         get_providers_models_data,
@@ -2299,13 +2299,13 @@ def test_data_functions_exclude_as_json(stub_config):
 
 - [ ] **Step 9.4: Extract three data functions in `commands.py`**
 
-Add to `src/thoth/commands.py` (replacing the existing `providers_list`, `providers_models`, `providers_check` body OR adding new siblings; choose siblings to keep the legacy callers stable):
+Add to `src/doxa_research/commands.py` (replacing the existing `providers_list`, `providers_models`, `providers_check` body OR adding new siblings; choose siblings to keep the legacy callers stable):
 
 ```python
 def get_providers_list_data(
     config: ConfigManager, filter_provider: str | None = None
 ) -> dict:
-    """Pure data function for `thoth providers list`."""
+    """Pure data function for `doxa-research providers list`."""
     import os
     import re
 
@@ -2327,8 +2327,8 @@ def get_providers_list_data(
 def get_providers_models_data(
     config: ConfigManager, filter_provider: str | None = None
 ) -> dict:
-    """Pure data function for `thoth providers models`."""
-    from thoth.config import BUILTIN_MODES
+    """Pure data function for `doxa-research providers models`."""
+    from doxa-research.config import BUILTIN_MODES
 
     seen: dict[str, set[str]] = {}
     for cfg in BUILTIN_MODES.values():
@@ -2347,7 +2347,7 @@ def get_providers_models_data(
 
 
 def get_providers_check_data(config: ConfigManager) -> dict:
-    """Pure data function for `thoth providers check`."""
+    """Pure data function for `doxa-research providers check`."""
     import os
     import re
 
@@ -2388,7 +2388,7 @@ Apply the same pattern to `providers_models` and `providers_check`.
 
 - [ ] **Step 9.5: Add `--json` to providers leaves**
 
-Edit `src/thoth/cli_subcommands/providers.py`. For each of the three leaves (`providers_list_cmd`, `providers_models_cmd`, `providers_check_cmd`), add `--json` and a wrapper branch.
+Edit `src/doxa_research/cli_subcommands/providers.py`. For each of the three leaves (`providers_list_cmd`, `providers_models_cmd`, `providers_check_cmd`), add `--json` and a wrapper branch.
 
 Pattern for `providers_list_cmd`:
 
@@ -2410,9 +2410,9 @@ def providers_list_cmd(
     """List available providers."""
     validate_inherited_options(ctx, "providers list", _PROVIDERS_LIST_HONOR)
 
-    from thoth import commands as _commands
-    from thoth.config import ConfigManager
-    from thoth.json_output import emit_error, emit_json
+    from doxa-research import commands as _commands
+    from doxa-research.config import ConfigManager
+    from doxa-research.json_output import emit_error, emit_json
 
     effective_provider = pick_value(filter_provider, ctx, "provider")
 
@@ -2450,7 +2450,7 @@ Apply the analogous pattern to `providers_models_cmd` (also pass `refresh_cache`
 uv run pytest tests/test_get_providers_data.py tests/test_json_envelopes.py \
               tests/test_providers_subcommand.py -v
 just check
-git add src/thoth/commands.py src/thoth/cli_subcommands/providers.py \
+git add src/doxa_research/commands.py src/doxa_research/cli_subcommands/providers.py \
         tests/test_get_providers_data.py tests/test_json_envelopes.py
 git commit -m "feat(cli/providers): add --json to list/models/check"
 ```
@@ -2462,8 +2462,8 @@ git commit -m "feat(cli/providers): add --json to list/models/check"
 **Why now:** Config has six leaves; T10 covers the five non-edit ones (T11 handles `edit` separately because `$EDITOR` interleaves output). Keeping them grouped here mirrors the spec §10 commit numbering.
 
 **Files:**
-- Modify: `src/thoth/config_cmd.py` — add `get_config_get_data`, `get_config_set_data`, `get_config_unset_data`, `get_config_list_data`, `get_config_path_data`; refactor `_op_*` to call them
-- Modify: `src/thoth/cli_subcommands/config.py` — add `--json` to all five non-edit leaves
+- Modify: `src/doxa_research/config_cmd.py` — add `get_config_get_data`, `get_config_set_data`, `get_config_unset_data`, `get_config_list_data`, `get_config_path_data`; refactor `_op_*` to call them
+- Modify: `src/doxa_research/cli_subcommands/config.py` — add `--json` to all five non-edit leaves
 - Create: `tests/test_get_config_data.py` (Category F)
 - Append to: `tests/test_json_envelopes.py` `JSON_COMMANDS`
 
@@ -2481,8 +2481,8 @@ import inspect
 import pytest
 
 
-def test_get_config_get_data_returns_value_dict(isolated_thoth_home):
-    from thoth.config_cmd import get_config_get_data
+def test_get_config_get_data_returns_value_dict(isolated_doxa_home):
+    from doxa-research.config_cmd import get_config_get_data
 
     data = get_config_get_data("paths.base_output_dir", layer=None, raw=False, show_secrets=False)
     assert isinstance(data, dict)
@@ -2492,15 +2492,15 @@ def test_get_config_get_data_returns_value_dict(isolated_thoth_home):
     assert data["found"] is True
 
 
-def test_get_config_get_data_missing_key_returns_not_found(isolated_thoth_home):
-    from thoth.config_cmd import get_config_get_data
+def test_get_config_get_data_missing_key_returns_not_found(isolated_doxa_home):
+    from doxa-research.config_cmd import get_config_get_data
 
     data = get_config_get_data("nonexistent.key", layer=None, raw=False, show_secrets=False)
     assert data["found"] is False
 
 
-def test_get_config_get_data_masks_secret_when_not_show_secrets(isolated_thoth_home, monkeypatch):
-    from thoth.config_cmd import get_config_get_data
+def test_get_config_get_data_masks_secret_when_not_show_secrets(isolated_doxa_home, monkeypatch):
+    from doxa-research.config_cmd import get_config_get_data
 
     monkeypatch.setenv("OPENAI_API_KEY", "sk-secret-value")
     data = get_config_get_data(
@@ -2510,22 +2510,22 @@ def test_get_config_get_data_masks_secret_when_not_show_secrets(isolated_thoth_h
         assert "secret" not in str(data["value"]).lower() or "***" in str(data["value"])
 
 
-def test_get_config_list_data_returns_layers(isolated_thoth_home):
-    from thoth.config_cmd import get_config_list_data
+def test_get_config_list_data_returns_layers(isolated_doxa_home):
+    from doxa-research.config_cmd import get_config_list_data
 
     data = get_config_list_data(layer=None, keys_only=False, show_secrets=False)
     assert "config" in data or "keys" in data
 
 
-def test_get_config_path_data_returns_path(isolated_thoth_home):
-    from thoth.config_cmd import get_config_path_data
+def test_get_config_path_data_returns_path(isolated_doxa_home):
+    from doxa-research.config_cmd import get_config_path_data
 
     data = get_config_path_data(project=False)
     assert "path" in data
 
 
-def test_data_functions_exclude_as_json(isolated_thoth_home):
-    import thoth.config_cmd as cc
+def test_data_functions_exclude_as_json(isolated_doxa_home):
+    import doxa-research.config_cmd as cc
 
     for name in (
         "get_config_get_data",
@@ -2564,7 +2564,7 @@ def get_config_get_data(
     show_secrets: bool,
     config_path: str | Path | None = None,
 ) -> dict:
-    """Pure data function for `thoth config get KEY`.
+    """Pure data function for `doxa-research config get KEY`.
 
     Returns:
         {
@@ -2691,7 +2691,7 @@ def config_get(
     config_path = inherited_value(ctx, "config_path")
 
     if as_json:
-        from thoth.config_cmd import get_config_get_data
+        from doxa-research.config_cmd import get_config_get_data
         data = get_config_get_data(
             key, layer=layer, raw=raw, show_secrets=show_secrets, config_path=config_path,
         )
@@ -2722,7 +2722,7 @@ Apply the analogous pattern to `config_set`, `config_unset`, `config_list`, `con
 uv run pytest tests/test_get_config_data.py tests/test_json_envelopes.py \
               tests/test_config_cli.py -v
 just check
-git add src/thoth/config_cmd.py src/thoth/cli_subcommands/config.py \
+git add src/doxa_research/config_cmd.py src/doxa_research/cli_subcommands/config.py \
         tests/test_get_config_data.py tests/test_json_envelopes.py
 git commit -m "feat(cli/config): add --json to get/set/unset/list/path"
 ```
@@ -2734,8 +2734,8 @@ git commit -m "feat(cli/config): add --json to get/set/unset/list/path"
 **Why now:** `edit` is special because `$EDITOR` runs interactively; the `--json` envelope is emitted AFTER the editor exits. Failure case: editor exits non-zero → `EDITOR_FAILED` envelope.
 
 **Files:**
-- Modify: `src/thoth/config_cmd.py` — add `get_config_edit_data` + refactor `_op_edit`
-- Modify: `src/thoth/cli_subcommands/config.py` — add `--json` to `config_edit`
+- Modify: `src/doxa_research/config_cmd.py` — add `get_config_edit_data` + refactor `_op_edit`
+- Modify: `src/doxa_research/cli_subcommands/config.py` — add `--json` to `config_edit`
 - Append to: `tests/test_get_config_data.py` (Category F)
 - Append to: `tests/test_json_envelopes.py` (Category E)
 
@@ -2744,9 +2744,9 @@ git commit -m "feat(cli/config): add --json to get/set/unset/list/path"
 Append to `tests/test_get_config_data.py`:
 
 ```python
-def test_get_config_edit_data_invokes_editor_returns_dict(isolated_thoth_home, monkeypatch):
+def test_get_config_edit_data_invokes_editor_returns_dict(isolated_doxa_home, monkeypatch):
     """Editor returns 0 → success envelope dict."""
-    from thoth.config_cmd import get_config_edit_data
+    from doxa-research.config_cmd import get_config_edit_data
 
     monkeypatch.setenv("EDITOR", "true")  # `true` exits 0
     data = get_config_edit_data(project=False, config_path=None)
@@ -2754,9 +2754,9 @@ def test_get_config_edit_data_invokes_editor_returns_dict(isolated_thoth_home, m
     assert "path" in data
 
 
-def test_get_config_edit_data_propagates_editor_failure(isolated_thoth_home, monkeypatch):
+def test_get_config_edit_data_propagates_editor_failure(isolated_doxa_home, monkeypatch):
     """Editor returns non-zero → caller decides EDITOR_FAILED envelope."""
-    from thoth.config_cmd import get_config_edit_data
+    from doxa-research.config_cmd import get_config_edit_data
 
     monkeypatch.setenv("EDITOR", "false")  # `false` exits 1
     data = get_config_edit_data(project=False, config_path=None)
@@ -2773,13 +2773,13 @@ Append to `JSON_COMMANDS`:
 
 - [ ] **Step 11.2: Implement**
 
-Add to `src/thoth/config_cmd.py`:
+Add to `src/doxa_research/config_cmd.py`:
 
 ```python
 def get_config_edit_data(
     *, project: bool, config_path: str | Path | None
 ) -> dict:
-    """Pure data function for `thoth config edit`.
+    """Pure data function for `doxa-research config edit`.
 
     Returns dict with editor exit code and the path that was opened.
     Caller is responsible for translating non-zero `editor_exit_code`
@@ -2819,7 +2819,7 @@ def config_edit(ctx, args, as_json):
     project = "--project" in args
 
     if as_json:
-        from thoth.config_cmd import get_config_edit_data
+        from doxa-research.config_cmd import get_config_edit_data
         data = get_config_edit_data(project=project, config_path=config_path)
         if data.get("error") == "PROJECT_CONFIG_CONFLICT":
             emit_error("PROJECT_CONFIG_CONFLICT", "--config cannot be used with --project",
@@ -2841,7 +2841,7 @@ def config_edit(ctx, args, as_json):
 ```bash
 uv run pytest tests/test_get_config_data.py tests/test_json_envelopes.py -v
 just check
-git add src/thoth/config_cmd.py src/thoth/cli_subcommands/config.py \
+git add src/doxa_research/config_cmd.py src/doxa_research/cli_subcommands/config.py \
         tests/test_get_config_data.py tests/test_json_envelopes.py
 git commit -m "feat(cli/config): add --json to edit (special envelope after editor closes)"
 ```
@@ -2853,8 +2853,8 @@ git commit -m "feat(cli/config): add --json to edit (special envelope after edit
 **Why now:** `modes list` already had `--json` pre-PR2 with the P11 schema; PR2 removed the legacy `modes --json` shim. T12 moves the schema into the unified envelope contract via `get_modes_list_data`.
 
 **Files:**
-- Modify: `src/thoth/modes_cmd.py` — add `get_modes_list_data`; refactor `_op_list` to call it for the data
-- Modify: `src/thoth/cli_subcommands/modes.py` — add `--json` flag to `modes_list` Click command (it's already a typed option for `--name` per T05)
+- Modify: `src/doxa_research/modes_cmd.py` — add `get_modes_list_data`; refactor `_op_list` to call it for the data
+- Modify: `src/doxa_research/cli_subcommands/modes.py` — add `--json` flag to `modes_list` Click command (it's already a typed option for `--name` per T05)
 - Create: `tests/test_get_modes_data.py` (Category F)
 - Append to: `tests/test_json_envelopes.py` (Category E)
 
@@ -2870,30 +2870,30 @@ from __future__ import annotations
 import inspect
 
 
-def test_get_modes_list_data_returns_modes_list(isolated_thoth_home):
-    from thoth.modes_cmd import get_modes_list_data
+def test_get_modes_list_data_returns_modes_list(isolated_doxa_home):
+    from doxa-research.modes_cmd import get_modes_list_data
 
     data = get_modes_list_data(name=None, source="all", show_secrets=False)
     assert "modes" in data
     assert any(m["name"] == "default" for m in data["modes"])
 
 
-def test_get_modes_list_data_filters_by_name(isolated_thoth_home):
-    from thoth.modes_cmd import get_modes_list_data
+def test_get_modes_list_data_filters_by_name(isolated_doxa_home):
+    from doxa-research.modes_cmd import get_modes_list_data
 
     data = get_modes_list_data(name="default", source="all", show_secrets=False)
     assert data["mode"]["name"] == "default"
 
 
-def test_get_modes_list_data_unknown_name_returns_none(isolated_thoth_home):
-    from thoth.modes_cmd import get_modes_list_data
+def test_get_modes_list_data_unknown_name_returns_none(isolated_doxa_home):
+    from doxa-research.modes_cmd import get_modes_list_data
 
     data = get_modes_list_data(name="not-a-real-mode", source="all", show_secrets=False)
     assert data["mode"] is None
 
 
-def test_signature_excludes_as_json(isolated_thoth_home):
-    from thoth.modes_cmd import get_modes_list_data
+def test_signature_excludes_as_json(isolated_doxa_home):
+    from doxa-research.modes_cmd import get_modes_list_data
     assert "as_json" not in inspect.signature(get_modes_list_data).parameters
 ```
 
@@ -2914,7 +2914,7 @@ def get_modes_list_data(
     show_secrets: bool,
     config_path: str | None = None,
 ) -> dict:
-    """Pure data function for `thoth modes list`.
+    """Pure data function for `doxa-research modes list`.
 
     Returns either {"modes": [...]} (no name) or {"mode": {...} | None} (with name).
     """
@@ -2960,13 +2960,13 @@ def modes_list(ctx, args, name, as_json, source, show_secrets):
     config_path = inherited_value(ctx, "config_path")
 
     if as_json:
-        from thoth.modes_cmd import get_modes_list_data
-        from thoth.json_output import emit_json
+        from doxa-research.modes_cmd import get_modes_list_data
+        from doxa-research.json_output import emit_json
         emit_json(get_modes_list_data(
             name=name, source=source, show_secrets=show_secrets, config_path=config_path,
         ))
 
-    from thoth.modes_cmd import modes_command
+    from doxa-research.modes_cmd import modes_command
 
     rebuilt = list(args)
     if name is not None:
@@ -2989,7 +2989,7 @@ def modes_list(ctx, args, name, as_json, source, show_secrets):
 uv run pytest tests/test_get_modes_data.py tests/test_json_envelopes.py \
               tests/test_modes_cli.py tests/test_modes_cmd.py -v
 just check
-git add src/thoth/modes_cmd.py src/thoth/cli_subcommands/modes.py \
+git add src/doxa_research/modes_cmd.py src/doxa_research/cli_subcommands/modes.py \
         tests/test_get_modes_data.py tests/test_json_envelopes.py
 git commit -m "feat(cli/modes): add --json to list (replaces removed modes --json shim)"
 ```
@@ -3001,9 +3001,9 @@ git commit -m "feat(cli/modes): add --json to list (replaces removed modes --jso
 **Why now:** Last `--json` rollout. Spec §6.7 + §6.8 lock the Option-E body shapes. Both subcommands gain `--json`; `ask --json` branches on `_is_background_mode` (auto-async for background modes); `resume --json` is a pure snapshot via `get_resume_snapshot_data`.
 
 **Files:**
-- Modify: `src/thoth/run.py` — add `get_resume_snapshot_data(operation_id) -> dict | None`
-- Modify: `src/thoth/cli_subcommands/ask.py` — add `--json` + Option-E branching
-- Modify: `src/thoth/cli_subcommands/resume.py` — add `--json` + snapshot branch
+- Modify: `src/doxa_research/run.py` — add `get_resume_snapshot_data(operation_id) -> dict | None`
+- Modify: `src/doxa_research/cli_subcommands/ask.py` — add `--json` + Option-E branching
+- Modify: `src/doxa_research/cli_subcommands/resume.py` — add `--json` + snapshot branch
 - Create: `tests/test_get_resume_snapshot_data.py` (Category F)
 - Create: `tests/test_json_non_blocking.py` (Category G — 3 timing-assertion tests)
 - Append to: `tests/test_json_envelopes.py` (Category E)
@@ -3035,13 +3035,13 @@ def _write_checkpoint(checkpoint_dir: Path, op, **overrides) -> None:
     (checkpoint_dir / f"{op.id}.json").write_text(json.dumps(payload))
 
 
-def test_get_resume_snapshot_data_returns_none_for_missing_op(isolated_thoth_home, checkpoint_dir):
-    from thoth.run import get_resume_snapshot_data
+def test_get_resume_snapshot_data_returns_none_for_missing_op(isolated_doxa_home, checkpoint_dir):
+    from doxa-research.run import get_resume_snapshot_data
     assert get_resume_snapshot_data("not-real") is None
 
 
 def test_snapshot_running_op_returns_status_running(checkpoint_dir):
-    from thoth.run import get_resume_snapshot_data
+    from doxa-research.run import get_resume_snapshot_data
 
     op = make_operation("research-20260427-000000-aaaaaaaaaaaaaaaa", status="running")
     _write_checkpoint(checkpoint_dir, op)
@@ -3053,7 +3053,7 @@ def test_snapshot_running_op_returns_status_running(checkpoint_dir):
 
 def test_snapshot_recoverable_failure_maps_failed_with_transient(checkpoint_dir):
     """spec §8.5 mapping: status=failed + failure_type!=permanent → recoverable_failure."""
-    from thoth.run import get_resume_snapshot_data
+    from doxa-research.run import get_resume_snapshot_data
 
     op = make_operation(
         "research-20260427-000000-aaaaaaaaaaaaaaaa", status="failed",
@@ -3071,7 +3071,7 @@ def test_snapshot_recoverable_failure_maps_failed_with_transient(checkpoint_dir)
 
 
 def test_snapshot_failed_permanent_keeps_failed_status(checkpoint_dir):
-    from thoth.run import get_resume_snapshot_data
+    from doxa-research.run import get_resume_snapshot_data
 
     op = make_operation("research-20260427-000000-aaaaaaaaaaaaaaaa", status="failed")
     _write_checkpoint(
@@ -3083,7 +3083,7 @@ def test_snapshot_failed_permanent_keeps_failed_status(checkpoint_dir):
 
 
 def test_signature_excludes_as_json():
-    from thoth.run import get_resume_snapshot_data
+    from doxa-research.run import get_resume_snapshot_data
     assert "as_json" not in inspect.signature(get_resume_snapshot_data).parameters
 ```
 
@@ -3106,7 +3106,7 @@ from tests.conftest import make_operation
 
 @pytest.fixture
 def cli():
-    from thoth.cli import cli as _cli
+    from doxa-research.cli import cli as _cli
     return _cli
 
 
@@ -3152,9 +3152,9 @@ def test_resume_json_recoverable_failure_returns_status_ok(cli, checkpoint_dir):
     assert payload["data"]["status"] == "recoverable_failure"
 
 
-def test_ask_json_background_mode_returns_within_5s(cli, isolated_thoth_home, monkeypatch):
+def test_ask_json_background_mode_returns_within_5s(cli, isolated_doxa_home, monkeypatch):
     """ask --json in background mode auto-asyncs and returns op-id envelope."""
-    monkeypatch.setenv("THOTH_TEST_MODE", "1")
+    monkeypatch.setenv("DOXA_TEST_MODE", "1")
 
     runner = CliRunner(mix_stderr=False)
     start = time.time()
@@ -3184,11 +3184,11 @@ Append to `JSON_COMMANDS`:
 
 - [ ] **Step 13.2: Implement `get_resume_snapshot_data` in `run.py`**
 
-Add to `src/thoth/run.py` (top-level, near `resume_operation`):
+Add to `src/doxa_research/run.py` (top-level, near `resume_operation`):
 
 ```python
 def get_resume_snapshot_data(operation_id: str) -> dict | None:
-    """Pure data function for `thoth resume OP_ID --json`.
+    """Pure data function for `doxa-research resume OP_ID --json`.
 
     Reads the checkpoint and returns a snapshot dict. Per spec §6.8 +
     §8.5, this function NEVER advances state (no provider polling, no
@@ -3206,7 +3206,7 @@ def get_resume_snapshot_data(operation_id: str) -> dict | None:
     from datetime import datetime
     from pathlib import Path as _Path
 
-    from thoth.config import get_config
+    from doxa-research.config import get_config
 
     config = get_config()
     checkpoint_dir = _Path(config.data["paths"]["checkpoint_dir"])
@@ -3245,7 +3245,7 @@ def get_resume_snapshot_data(operation_id: str) -> dict | None:
 
 - [ ] **Step 13.3: Wire `--json` on `resume.py`**
 
-Edit `src/thoth/cli_subcommands/resume.py` — add `--json`, the `as_json` param, and the snapshot branch BEFORE the existing async-resume call:
+Edit `src/doxa_research/cli_subcommands/resume.py` — add `--json`, the `as_json` param, and the snapshot branch BEFORE the existing async-resume call:
 
 ```python
 @click.command(name="resume")
@@ -3261,14 +3261,14 @@ def resume(
     validate_inherited_options(ctx, "resume", _RESUME_HONOR)
 
     if as_json:
-        import thoth.run as _thoth_run
-        from thoth.cli import _apply_config_path
-        from thoth.json_output import emit_error, emit_json
+        import doxa-research.run as _doxa_run
+        from doxa-research.cli import _apply_config_path
+        from doxa-research.json_output import emit_error, emit_json
 
         effective_config = config_path or (ctx.obj or {}).get("config_path")
         _apply_config_path(effective_config)
 
-        data = _thoth_run.get_resume_snapshot_data(operation_id)
+        data = _doxa_run.get_resume_snapshot_data(operation_id)
         if data is None:
             emit_error(
                 "OPERATION_NOT_FOUND",
@@ -3290,7 +3290,7 @@ def resume(
 
 - [ ] **Step 13.4: Wire `--json` on `ask.py`**
 
-Edit `src/thoth/cli_subcommands/ask.py` — add `--json` to the `_research_options` decorator stack OR as a sibling option (sibling is cleaner for T13's scope, since it's `ask`-specific behavior):
+Edit `src/doxa_research/cli_subcommands/ask.py` — add `--json` to the `_research_options` decorator stack OR as a sibling option (sibling is cleaner for T13's scope, since it's `ask`-specific behavior):
 
 Add `@click.option("--json", "as_json", is_flag=True, help="Emit JSON envelope")` between the existing options and the `@click.pass_context` on `ask`.
 
@@ -3298,8 +3298,8 @@ In the `ask` body, AFTER the existing prompt-resolution + mutex checks but BEFOR
 
 ```python
 if as_json:
-    from thoth.config import BUILTIN_MODES, is_background_mode
-    from thoth.json_output import emit_error, emit_json
+    from doxa-research.config import BUILTIN_MODES, is_background_mode
+    from doxa-research.json_output import emit_error, emit_json
 
     mode_config = BUILTIN_MODES.get(effective_mode, {})
     is_bg = is_background_mode(mode_config) if mode_config else False
@@ -3329,7 +3329,7 @@ if as_json:
                 )
 
         # Read the most-recently-created operation_id from the checkpoint store.
-        from thoth.completion.sources import operation_ids
+        from doxa-research.completion.sources import operation_ids
         ids = operation_ids(None, None, "")
         op_id = ids[-1] if ids else None
         emit_json({
@@ -3359,8 +3359,8 @@ if as_json:
                     {"exit_code": exc.code},
                     exit_code=1,
                 )
-        from thoth.completion.sources import operation_ids
-        from thoth.run import get_resume_snapshot_data
+        from doxa-research.completion.sources import operation_ids
+        from doxa-research.run import get_resume_snapshot_data
         ids = operation_ids(None, None, "")
         op_id = ids[-1] if ids else None
         data = get_resume_snapshot_data(op_id) if op_id else None
@@ -3378,7 +3378,7 @@ uv run pytest tests/test_get_resume_snapshot_data.py tests/test_json_non_blockin
               tests/test_json_envelopes.py tests/test_p16_pr2_resume.py \
               tests/test_p16_pr2_ask.py -v
 just check
-git add src/thoth/run.py src/thoth/cli_subcommands/ask.py src/thoth/cli_subcommands/resume.py \
+git add src/doxa_research/run.py src/doxa_research/cli_subcommands/ask.py src/doxa_research/cli_subcommands/resume.py \
         tests/test_get_resume_snapshot_data.py tests/test_json_non_blocking.py \
         tests/test_json_envelopes.py
 git commit -m "feat(cli): add --json to ask + resume (Option E paths)"
@@ -3414,9 +3414,9 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 @pytest.mark.parametrize(
     "handler_path",
     [
-        "src/thoth/commands.py",
-        "src/thoth/config_cmd.py",
-        "src/thoth/modes_cmd.py",
+        "src/doxa_research/commands.py",
+        "src/doxa_research/config_cmd.py",
+        "src/doxa_research/modes_cmd.py",
     ],
 )
 def test_handler_modules_do_not_reference_as_json(handler_path):
@@ -3485,7 +3485,7 @@ Append to `tests/test_ci_lint_rules.py`:
 import ast
 
 
-_CLI_SUBCOMMANDS_DIR = _REPO_ROOT / "src" / "thoth" / "cli_subcommands"
+_CLI_SUBCOMMANDS_DIR = _REPO_ROOT / "src" / "doxa-research" / "cli_subcommands"
 
 
 def _discover_json_commands() -> set[str]:
@@ -3595,30 +3595,30 @@ git commit -m "test: add CI lint rule asserting JSON_COMMANDS list completeness 
 
 ---
 
-## Task 16: Update planning/thoth.prd.v24.md F-70 status
+## Task 16: Update planning/doxa-research.prd.v24.md F-70 status
 
 **Why now:** Spec §13 calls out the stale PRD line. T16 flips it from aspirational to shipped — pure docs task.
 
 **Files:**
-- Modify: `planning/thoth.prd.v24.md` line 96
+- Modify: `planning/doxa-research.prd.v24.md` line 96
 
 - [ ] **Step 16.1: Verify the current text**
 
 ```bash
-sed -n '90,100p' planning/thoth.prd.v24.md
+sed -n '90,100p' planning/doxa-research.prd.v24.md
 ```
 
 Expected: a line near 96 that says "Added shell completion support" (or similar) framed aspirationally.
 
 - [ ] **Step 16.2: Edit the line**
 
-Change "Added shell completion support" → "Shell completion shipped (`thoth completion bash|zsh|fish`) per P16 PR3."
+Change "Added shell completion support" → "Shell completion shipped (`doxa-research completion bash|zsh|fish`) per P16 PR3."
 
 - [ ] **Step 16.3: Commit**
 
 ```bash
-git add planning/thoth.prd.v24.md
-git commit -m "docs: update planning/thoth.prd.v24.md F-70 status"
+git add planning/doxa-research.prd.v24.md
+git commit -m "docs: update planning/doxa-research.prd.v24.md F-70 status"
 ```
 
 ---
@@ -3637,7 +3637,7 @@ Create `docs/json-output.md`:
 ```markdown
 # JSON output (`--json`) — envelope contract
 
-Every data/action admin command in thoth supports `--json` for scripted
+Every data/action admin command in doxa-research supports `--json` for scripted
 consumption. The output is a single JSON object on stdout; the exit code
 indicates success (0) or failure (non-zero).
 
@@ -3707,7 +3707,7 @@ indicates success (0) or failure (non-zero).
 `recoverable_failure` is an envelope-data state mapped from on-disk
 `status="failed"` + `failure_type` not equal to `"permanent"`. The
 COMMAND succeeded (`status:"ok"`); `data.status` describes the
-operation. To advance/retry, run `thoth resume OP_ID` WITHOUT `--json`.
+operation. To advance/retry, run `doxa-research resume OP_ID` WITHOUT `--json`.
 
 ## Non-blocking guarantee (Option E)
 
@@ -3723,13 +3723,13 @@ Tests assert these complete within 5 seconds.
 
 The completion `--install` writes a fenced block:
 
-    # >>> thoth completion >>>
-    eval "$(_THOTH_COMPLETE=bash_source thoth)"
-    # <<< thoth completion <<<
+    # >>> doxa-research completion >>>
+    eval "$(_DOXA_COMPLETE=bash_source doxa-research)"
+    # <<< doxa-research completion <<<
 
 Remove with one sed invocation:
 
-    sed -i '/# >>> thoth completion >>>/,/# <<< thoth completion <<</d' ~/.bashrc
+    sed -i '/# >>> doxa-research completion >>>/,/# <<< doxa-research completion <<</d' ~/.bashrc
 
 A real `--uninstall` flag is a future PR.
 ```
@@ -3758,19 +3758,19 @@ Append to `README.md` (after the existing usage sections):
 Generate an `eval`-able script:
 
 ```bash
-eval "$(thoth completion bash)"   # or: zsh, fish
+eval "$(doxa-research completion bash)"   # or: zsh, fish
 ```
 
 Persistent install (writes a fenced block to your shell's rc file):
 
 ```bash
-thoth completion bash --install         # interactive: detect + prompt before overwrite
-thoth completion bash --install --force # CI-friendly: write/overwrite silently
-thoth completion bash --install --manual # print block + instructions; never write
+doxa completion bash --install         # interactive: detect + prompt before overwrite
+doxa completion bash --install --force # CI-friendly: write/overwrite silently
+doxa completion bash --install --manual # print block + instructions; never write
 ```
 
-After install, `thoth resume <TAB>`, `thoth status <TAB>`, `thoth config get <TAB>`,
-`thoth modes list --name <TAB>`, and `thoth providers list --provider <TAB>` complete
+After install, `doxa-research resume <TAB>`, `doxa-research status <TAB>`, `doxa-research config get <TAB>`,
+`doxa-research modes list --name <TAB>`, and `doxa-research providers list --provider <TAB>` complete
 with live data.
 
 ## JSON output
@@ -3778,9 +3778,9 @@ with live data.
 Every data/action admin command supports `--json`:
 
 ```bash
-thoth status OP_ID --json | jq '.data.status'
-thoth providers list --json | jq '.data.providers[].name'
-thoth list --json | jq '.data.operations[]'
+doxa status OP_ID --json | jq '.data.status'
+doxa providers list --json | jq '.data.providers[].name'
+doxa list --json | jq '.data.operations[]'
 ```
 
 See `docs/json-output.md` for the envelope contract and per-command schemas.
@@ -3815,7 +3815,7 @@ Expected: a single `## [3.0.0]` header with at least one `### Added` subsection.
 Edit `CHANGELOG.md` — under the existing `### Added` subsection (do not create a new one), append:
 
 ```markdown
-- `thoth completion {bash,zsh,fish}` — emit eval-able shell init scripts. Supports `--install` (TTY-detect + prompt-before-overwrite), `--install --force` (CI-friendly silent overwrite), `--install --manual` (print block + instructions; never write), and `--json` (structured success/error envelopes for install metadata or shell-validation errors). Closes PRD F-70.
+- `doxa-research completion {bash,zsh,fish}` — emit eval-able shell init scripts. Supports `--install` (TTY-detect + prompt-before-overwrite), `--install --force` (CI-friendly silent overwrite), `--install --manual` (print block + instructions; never write), and `--json` (structured success/error envelopes for install metadata or shell-validation errors). Closes PRD F-70.
 - TAB completion of operation IDs (`resume`, `status`), mode names (`modes list --name`), config keys (`config get`), and provider names (`providers list/models/check --provider`).
 - `--json` flag on every data/action admin command: `init`, `status`, `list`, `providers list/models/check`, `config get/set/unset/list/path/edit`, `modes list`, `ask`, `resume`. Envelope contract documented in `docs/json-output.md`.
 - `ask --json` immediate-mode returns full result inline; background-mode auto-asyncs and returns an op-id submit envelope.
@@ -3854,15 +3854,15 @@ Also flip `- [ ] Regression Test Status` → `- [x] Regression Test Status` once
 make env-check
 just check
 uv run pytest tests/ -v
-./thoth_test -r --skip-interactive -q
-git grep -nE "as_json:" src/thoth/commands.py src/thoth/config_cmd.py src/thoth/modes_cmd.py
+./doxa_test -r --skip-interactive -q
+git grep -nE "as_json:" src/doxa_research/commands.py src/doxa_research/config_cmd.py src/doxa_research/modes_cmd.py
 ```
 
 Expected:
 - `make env-check`: green
 - `just check`: green
 - `uv run pytest tests/`: ≥ 460 passed (391 PR2 baseline + ~70 PR3-new)
-- `./thoth_test -r --skip-interactive -q`: 63+ passed
+- `./doxa_test -r --skip-interactive -q`: 63+ passed
 - The grep MUST return zero hits (handler signatures stay JSON-agnostic per spec §7.2)
 
 - [ ] **Step 20.4: Verify release-please will propose v3.0.0**
@@ -3906,7 +3906,7 @@ After completing all 20 tasks:
 | §4 documented default — fenced markers for sed-uninstall | Task 3 (`fenced_block`), Task 17 (`docs/json-output.md` Uninstall section) |
 | §5.2 file layout (16+ files) | Tasks 1, 3, 4, 6–13 cover production files; Task 17–19 cover doc files |
 | §5.3 net code-line impact (~1630 LOC) | Distributed across all tasks |
-| §5.4 what stays unchanged | `ThothGroup`, RUN_COMMANDS, existing tests, etc. — no task touches these |
+| §5.4 what stays unchanged | `DoxaGroup`, RUN_COMMANDS, existing tests, etc. — no task touches these |
 | §6.1 `json_output.py` interface | Task 1 |
 | §6.2 `completion/script.py` interface | Task 3 |
 | §6.3 `completion/install.py` interface + 5-row matrix | Tasks 3, 4 |
@@ -3946,7 +3946,7 @@ After completing all 20 tasks:
   - `get_resume_snapshot_data` (T13). ✓
 - `JSON_COMMANDS` parametrize-list naming — used identically in T06 (creation), T07–T13 (extension), T15 (AST walker assertion). ✓
 - `as_json` is the consistent flag name on every Click `--json` option (`@click.option("--json", "as_json", is_flag=True, ...)`) — used identically in T04, T06–T13. ✓
-- Fenced markers `# >>> thoth completion >>>` / `# <<< thoth completion <<<` — identical across `script.py::fenced_block` (T03), `install.py::_BLOCK_RE` (T03), `docs/json-output.md` (T17). ✓
+- Fenced markers `# >>> doxa-research completion >>>` / `# <<< doxa-research completion <<<` — identical across `script.py::fenced_block` (T03), `install.py::_BLOCK_RE` (T03), `docs/json-output.md` (T17). ✓
 - `_SUPPORTED_SHELLS = ("bash", "zsh", "fish")` — identical in `script.py` and `cli_subcommands/completion.py`. ✓
 - `InstallResult.action` literal type `"written"|"preview"|"skipped"` — declared once in `install.py`, asserted in tests via `assert result.action == "..."`. ✓
 
@@ -3960,7 +3960,7 @@ After completing all 20 tasks:
 - **T13 step 13.1 (Category G) — 5s timing threshold may flake on slow CI.** Per spec §13, relax to 10s if needed; document the change in the commit body. Do NOT remove the test — the contract is "non-blocking", which means seconds, not minutes.
 - **T15 step 15.1 — AST walker maintenance.** If a future PR uses a non-standard `--json` declaration pattern (e.g., a custom decorator factory), the walker will miss it. Extending the walker is the responsibility of that future PR. Document the recognized pattern at the top of `_discover_json_commands`.
 - **T20 step 20.5 — final commit MUST NOT use `LEFTHOOK=0`.** Per CLAUDE.md "Hook discipline" + spec §10. If the full hook fails, diagnose and fix in a NEW commit (don't amend).
-- **`isolated_thoth_home` + `checkpoint_dir` fixtures** — defined in `tests/conftest.py:30-43`. Used by Categories C, D, F, G fixtures. Available globally to tests under `tests/`.
+- **`isolated_doxa_home` + `checkpoint_dir` fixtures** — defined in `tests/conftest.py:30-43`. Used by Categories C, D, F, G fixtures. Available globally to tests under `tests/`.
 
 ---
 

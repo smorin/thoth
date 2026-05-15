@@ -6,7 +6,7 @@ from pathlib import Path
 
 from click.testing import CliRunner
 
-from thoth.cli import cli
+from doxa_research.cli import cli
 
 
 def _mock_stream(prompt: str, mode: str = "default") -> str:
@@ -20,7 +20,7 @@ def _stub_run_research(monkeypatch):
         captured.update(kwargs)
         return 0
 
-    monkeypatch.setattr("thoth.run.run_research", fake_run)
+    monkeypatch.setattr("doxa_research.run.run_research", fake_run)
     return captured
 
 
@@ -29,8 +29,8 @@ def test_bug_cli_001_research_fallback_forwards_global_options(
     monkeypatch,
 ) -> None:
     captured = _stub_run_research(monkeypatch)
-    monkeypatch.setattr("thoth.config._config_path", None)
-    cfg = tmp_path / "thoth.config.toml"
+    monkeypatch.setattr("doxa_research.config._config_path", None)
+    cfg = tmp_path / "doxa.config.toml"
     cfg.write_text('version = "2.0"\n')
 
     result = CliRunner().invoke(
@@ -92,7 +92,7 @@ def test_bare_prompt_forwards_trailing_out_and_append(monkeypatch, tmp_path: Pat
 
 
 def test_bare_prompt_leading_out_writes_stream_file(
-    isolated_thoth_home: Path, monkeypatch, tmp_path: Path
+    isolated_doxa_home: Path, monkeypatch, tmp_path: Path
 ) -> None:
     monkeypatch.setenv("MOCK_API_KEY", "test")
     target = tmp_path / "leading.md"
@@ -108,7 +108,7 @@ def test_bare_prompt_leading_out_writes_stream_file(
 
 
 def test_bare_prompt_trailing_out_writes_stream_file(
-    isolated_thoth_home: Path, monkeypatch, tmp_path: Path
+    isolated_doxa_home: Path, monkeypatch, tmp_path: Path
 ) -> None:
     monkeypatch.setenv("MOCK_API_KEY", "test")
     target = tmp_path / "trailing.md"
@@ -192,7 +192,7 @@ def test_bug_cli_002_resume_option_invokes_resume(monkeypatch) -> None:
         captured["ctx"] = ctx
         return 0
 
-    monkeypatch.setattr("thoth.run.resume_operation", fake_resume)
+    monkeypatch.setattr("doxa_research.run.resume_operation", fake_resume)
 
     result = CliRunner().invoke(cli, ["resume", "op_regression"])
 
@@ -217,7 +217,7 @@ def test_bug_cli_003_prompt_file_is_read_before_research(
 
 
 def test_bug_cli_004_config_passthrough_flags_and_help(
-    isolated_thoth_home: Path,
+    isolated_doxa_home: Path,
 ) -> None:
     get_result = CliRunner().invoke(cli, ["config", "get", "general.default_mode", "--raw"])
     assert get_result.exit_code == 0, get_result.output
@@ -225,11 +225,11 @@ def test_bug_cli_004_config_passthrough_flags_and_help(
 
     help_result = CliRunner().invoke(cli, ["config", "help"])
     assert help_result.exit_code == 0, help_result.output
-    assert "thoth config" in help_result.output
+    assert "doxa config" in help_result.output
 
 
 def test_bug_cli_006_modes_list_leaf_matches_default(
-    isolated_thoth_home: Path,
+    isolated_doxa_home: Path,
 ) -> None:
     result = CliRunner().invoke(cli, ["modes", "list", "--json"])
 
@@ -242,15 +242,15 @@ def test_bug_01_auth_help_interception_is_root_only() -> None:
 
     assert result.exit_code == 0, result.output
     assert "Authentication" not in result.output
-    assert "Initialize thoth configuration" in result.output
+    assert "Initialize doxa configuration" in result.output
 
 
 def test_bug_04_show_general_help_dead_export_removed() -> None:
-    import thoth.__main__ as thoth_main
-    import thoth.help as thoth_help
+    import doxa_research.__main__ as doxa_main
+    import doxa_research.help as doxa_help
 
-    assert not hasattr(thoth_help, "show_general_help")
-    assert not hasattr(thoth_main, "show_general_help")
+    assert not hasattr(doxa_help, "show_general_help")
+    assert not hasattr(doxa_main, "show_general_help")
 
 
 def test_bug_05_version_after_prompt_is_prompt_text(monkeypatch) -> None:
@@ -259,7 +259,7 @@ def test_bug_05_version_after_prompt_is_prompt_text(monkeypatch) -> None:
     result = CliRunner().invoke(cli, ["foo", "--version"])
 
     assert result.exit_code == 0, result.output
-    assert "Thoth v" not in result.output
+    assert "Doxa Research v" not in result.output
     assert captured["mode"] == "default"
     assert captured["prompt"] == "foo --version"
 
@@ -268,17 +268,17 @@ def test_bug_08_extract_fallback_options_is_parse_only(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
-    import thoth.config as thoth_config
-    from thoth.cli import _extract_fallback_options
+    import doxa_research.config as doxa_config
+    from doxa_research.cli import _extract_fallback_options
 
-    cfg = tmp_path / "thoth.config.toml"
-    monkeypatch.setattr(thoth_config, "_config_path", None)
+    cfg = tmp_path / "doxa.config.toml"
+    monkeypatch.setattr(doxa_config, "_config_path", None)
 
     positional, parsed = _extract_fallback_options(["foo", "--config", str(cfg)], {})
 
     assert positional == ["foo"]
     assert parsed["config_path"] == str(cfg)
-    assert thoth_config._config_path is None
+    assert doxa_config._config_path is None
 
 
 def test_bug_10_version_must_be_used_alone() -> None:
@@ -297,7 +297,7 @@ def test_bug_10_version_help_documents_alone() -> None:
 
 
 def test_bug_11_providers_list_supports_provider_filter(
-    isolated_thoth_home: Path,
+    isolated_doxa_home: Path,
 ) -> None:
     result = CliRunner().invoke(cli, ["providers", "list", "--provider", "openai"])
 
@@ -312,7 +312,7 @@ def test_root_no_args_shows_help() -> None:
     assert result.exit_code == 0, result.output
     assert "Usage:" in result.output
     assert "Run research:" in result.output
-    assert "Manage thoth:" in result.output
+    assert "Manage doxa-research:" in result.output
 
 
 def test_command_error_shows_command_help_before_error() -> None:

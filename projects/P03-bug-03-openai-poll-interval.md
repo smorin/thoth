@@ -20,8 +20,8 @@
 
 ### Automated Verification
 - `make check` passes
-- `./thoth_test -r -t BUG03 --skip-interactive` → 3/3 pass
-- `./thoth_test -r -t OAI-BG --skip-interactive` → 14/14 pass
+- `./doxa_test -r -t BUG03 --skip-interactive` → 3/3 pass
+- `./doxa_test -r -t OAI-BG --skip-interactive` → 14/14 pass
 
 ### Regression Test Status
 - [x] BUG03-01 verifies -10% jitter still polls at 1.8s, not 1.0s

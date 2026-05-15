@@ -6,29 +6,29 @@ import pytest
 
 
 @pytest.mark.parametrize("shell", ["bash", "zsh", "fish"])
-def test_generate_script_includes_THOTH_COMPLETE_marker(shell):
-    from thoth.completion.script import generate_script
+def test_generate_script_includes_DOXA_COMPLETE_marker(shell):
+    from doxa_research.completion.script import generate_script
 
     out = generate_script(shell)
-    assert "_THOTH_COMPLETE" in out
+    assert "_DOXA_COMPLETE" in out
     assert shell in out
 
 
 def test_generate_script_rejects_unknown_shell():
-    from thoth.completion.script import generate_script
+    from doxa_research.completion.script import generate_script
 
     with pytest.raises(ValueError, match="unsupported shell"):
         generate_script("powershell")
 
 
 @pytest.mark.parametrize("shell", ["bash", "zsh", "fish"])
-def test_fenced_block_brackets_with_thoth_completion_markers(shell):
-    from thoth.completion.script import fenced_block
+def test_fenced_block_brackets_with_doxa_completion_markers(shell):
+    from doxa_research.completion.script import fenced_block
 
     out = fenced_block(shell)
-    assert "# >>> thoth completion >>>" in out
-    assert "# <<< thoth completion <<<" in out
-    assert "_THOTH_COMPLETE" in out
+    assert "# >>> doxa completion >>>" in out
+    assert "# <<< doxa completion <<<" in out
+    assert "_DOXA_COMPLETE" in out
 
 
 # === Category B (T04): CLI invocation tests ===
@@ -39,7 +39,7 @@ from click.testing import CliRunner  # noqa: E402
 
 
 def _invoke(args: list[str]):
-    from thoth.cli import cli
+    from doxa_research.cli import cli
 
     runner = CliRunner()
     return runner.invoke(cli, args, catch_exceptions=False)
@@ -49,7 +49,7 @@ def _invoke(args: list[str]):
 def test_cli_completion_emits_eval_able_script(shell):
     result = _invoke(["completion", shell])
     assert result.exit_code == 0
-    assert "_THOTH_COMPLETE" in result.output
+    assert "_DOXA_COMPLETE" in result.output
     assert shell in result.output
 
 

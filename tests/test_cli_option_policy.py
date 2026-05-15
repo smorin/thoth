@@ -11,7 +11,7 @@ from pathlib import Path
 
 from click.testing import CliRunner
 
-from thoth.cli import cli
+from doxa_research.cli import cli
 
 
 def _stub_run_research(monkeypatch):
@@ -21,7 +21,7 @@ def _stub_run_research(monkeypatch):
         captured.update(kwargs)
         return None
 
-    monkeypatch.setattr("thoth.run.run_research", fake)
+    monkeypatch.setattr("doxa_research.run.run_research", fake)
     return captured
 
 
@@ -40,7 +40,7 @@ def test_resume_rejects_inherited_research_only_prompt(monkeypatch):
     async def fake_resume(*args, **kwargs):
         captured["called"] = True
 
-    monkeypatch.setattr("thoth.run.resume_operation", fake_resume)
+    monkeypatch.setattr("doxa_research.run.resume_operation", fake_resume)
 
     result = CliRunner().invoke(cli, ["--prompt", "ignored", "resume", "op_x"])
 
@@ -65,7 +65,7 @@ def test_providers_list_honors_inherited_provider(monkeypatch):
         captured.update(kwargs)
         return 0
 
-    monkeypatch.setattr("thoth.commands.providers_command", fake_providers_command)
+    monkeypatch.setattr("doxa_research.commands.providers_command", fake_providers_command)
 
     result = CliRunner().invoke(cli, ["--provider", "mock", "providers", "list"])
 
@@ -80,7 +80,7 @@ def test_providers_models_honors_inherited_api_key_and_timeout(monkeypatch):
         captured.update(kwargs)
         return 0
 
-    monkeypatch.setattr("thoth.commands.providers_command", fake_providers_command)
+    monkeypatch.setattr("doxa_research.commands.providers_command", fake_providers_command)
 
     result = CliRunner().invoke(
         cli,
@@ -107,7 +107,7 @@ def test_providers_models_honors_inherited_api_key_and_timeout(monkeypatch):
     assert captured["timeout_override"] == 12.5
 
 
-def test_providers_check_filters_and_validates_inherited_mock_key(isolated_thoth_home: Path):
+def test_providers_check_filters_and_validates_inherited_mock_key(isolated_doxa_home: Path):
     result = CliRunner().invoke(
         cli,
         ["--provider", "mock", "--api-key-mock", "mock-root", "providers", "check"],
@@ -119,7 +119,7 @@ def test_providers_check_filters_and_validates_inherited_mock_key(isolated_thoth
     assert "set" in result.output.lower()
 
 
-def test_providers_check_returns_2_for_missing_filtered_key(isolated_thoth_home: Path):
+def test_providers_check_returns_2_for_missing_filtered_key(isolated_doxa_home: Path):
     result = CliRunner().invoke(cli, ["--provider", "mock", "providers", "check"])
 
     assert result.exit_code == 2
@@ -315,7 +315,7 @@ def test_admin_command_rejects_inherited_model_flag(monkeypatch):
         captured.update(kwargs)
         return 0
 
-    monkeypatch.setattr("thoth.commands.providers_command", fake_providers_command)
+    monkeypatch.setattr("doxa_research.commands.providers_command", fake_providers_command)
 
     result = CliRunner().invoke(cli, ["--model", "sonar", "providers", "list"])
 
@@ -335,7 +335,7 @@ def test_bare_prompt_trailing_model_and_pick_model_are_mutually_exclusive(monkey
         pick_called = True
         return "picked-model"
 
-    monkeypatch.setattr("thoth.cli._pick_model_override", fake_pick_model_override)
+    monkeypatch.setattr("doxa_research.cli._pick_model_override", fake_pick_model_override)
 
     result = CliRunner().invoke(cli, ["test prompt", "--model", "sonar", "--pick-model"])
 
@@ -357,7 +357,7 @@ def test_bare_prompt_trailing_pick_model_and_model_are_mutually_exclusive(monkey
         pick_called = True
         return "picked-model"
 
-    monkeypatch.setattr("thoth.cli._pick_model_override", fake_pick_model_override)
+    monkeypatch.setattr("doxa_research.cli._pick_model_override", fake_pick_model_override)
 
     result = CliRunner().invoke(cli, ["test prompt", "--pick-model", "--model", "sonar"])
 
@@ -377,7 +377,7 @@ def test_bare_prompt_trailing_pick_model_and_model_are_mutually_exclusive(monkey
 
 def test_root_option_labels_includes_api_key_gemini() -> None:
     """P24-T07: ROOT_OPTION_LABELS maps api_key_gemini to --api-key-gemini."""
-    from thoth.cli_subcommands._option_policy import ROOT_OPTION_LABELS
+    from doxa_research.cli_subcommands._option_policy import ROOT_OPTION_LABELS
 
     assert ROOT_OPTION_LABELS.get("api_key_gemini") == "--api-key-gemini"
 
@@ -386,7 +386,7 @@ def test_inherited_api_keys_includes_gemini() -> None:
     """P24-T07: inherited_api_keys() returns a 'gemini' entry."""
     from unittest.mock import MagicMock
 
-    from thoth.cli_subcommands._option_policy import inherited_api_keys
+    from doxa_research.cli_subcommands._option_policy import inherited_api_keys
 
     fake_ctx = MagicMock()
     fake_ctx.obj = {

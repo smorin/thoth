@@ -1,8 +1,8 @@
-# P18-T38: `thoth resume --async` Implementation Plan
+# P18-T38: `doxa-research resume --async` Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:subagent-driven-development` (recommended) or `superpowers:executing-plans` to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add `--async / -A` flag to `thoth resume <op-id>` for non-blocking status check + ready-file download. The async variant performs **exactly one** `provider.check_status()` per non-completed provider, saves results for any that have flipped to `completed`, updates the checkpoint, prints a summary (or JSON envelope when `--json` is also set), and exits — without entering the polling loop. Use case: drive-by progress check that also pulls down whatever's ready, e.g. checking on a multi-day deep-research without committing the terminal to it.
+**Goal:** Add `--async / -A` flag to `doxa-research resume <op-id>` for non-blocking status check + ready-file download. The async variant performs **exactly one** `provider.check_status()` per non-completed provider, saves results for any that have flipped to `completed`, updates the checkpoint, prints a summary (or JSON envelope when `--json` is also set), and exits — without entering the polling loop. Use case: drive-by progress check that also pulls down whatever's ready, e.g. checking on a multi-day deep-research without committing the terminal to it.
 
 **Architecture:** Reuse the existing reconnect machinery in `resume_operation` (run.py:1004-1030) — extract it into a `_resume_one_tick(...)` helper so both the polling-loop path and the new async path share the same provider-instantiation surface. The async branch returns early *before* `_run_polling_loop` is called, so it never enters the polling loop and inherits none of its progress UI / interrupt handling. Output side-effects use the same `OutputManager.save_result(...)` call path the polling loop uses at run.py:608-621 — no new save abstraction.
 
@@ -15,11 +15,11 @@
 1. **Operation status on partial:** stay as-is; only per-provider statuses move. Aggregate `operation.status` flips to `"completed"` only when *every* provider reports completed.
 2. **JSON envelope shape:** same fields as `get_resume_snapshot_data(...)` PLUS a new `newly_completed: list[str]` field listing provider names whose status flipped to `completed` during this tick.
 3. **Already-completed op:** print `"Operation X already completed"` and exit 0. No API calls, no file writes.
-4. **Failed providers:** treat as partial success. Save successes, record the failure on the affected provider, exit 0. The user can re-run `thoth resume` (without `--async`) to retry recoverable failures.
+4. **Failed providers:** treat as partial success. Save successes, record the failure on the affected provider, exit 0. The user can re-run `doxa-research resume` (without `--async`) to retry recoverable failures.
 
 **Out of scope:**
 
-- Multi-tick polling — that's plain `thoth resume`. `--async` is intentionally one-shot.
+- Multi-tick polling — that's plain `doxa-research resume`. `--async` is intentionally one-shot.
 - Resume with `--async` on a checkpoint whose providers don't support `reconnect()` — we keep the existing run.py:1027 error path verbatim.
 - Provider-side retry logic — the async tick is "what's the status RIGHT NOW," not "retry until success."
 
@@ -30,10 +30,10 @@
 | Action | Path | Responsibility |
 |---|---|---|
 | Create | `tests/test_resume_async.py` | New file. 7 tests covering path isolation, all-running, one-completed partial, all-completed terminal, JSON envelope shape, missing op-id (exit 6), already-completed no-op. Tests written FIRST per CLAUDE.md TDD discipline. |
-| Modify | `src/thoth/cli_subcommands/resume.py` | Add local `--async / -A` flag (`is_flag=True`, default `False`). Do NOT add to `_RESUME_HONOR` — the cli-group's own `--async/-A` flag (`async_mode`) is for *initial* submissions and remains rejected on `resume` by `validate_inherited_options`. Thread the local flag to `resume_operation(async_check=...)`. When `as_json and async_check`, branch to a dedicated envelope path that returns the snapshot dict + `newly_completed`. |
-| Modify | `src/thoth/run.py` | (a) Add `async_check: bool = False` parameter to `resume_operation`. (b) Extract a `_resume_one_tick(operation, provider_instances, output_manager, checkpoint_manager, mode_config, ctx, verbose) -> dict` helper that runs one `check_status` per provider, saves any newly-completed results, updates and saves checkpoint, returns `{"newly_completed": [...], "operation": operation}`. (c) Branch in `resume_operation`: when `async_check=True`, after the existing reconnect block, call `_resume_one_tick(...)` and return its result instead of entering `_run_polling_loop`. |
-| Modify | `src/thoth/run.py` | (d) Update the existing polling-loop branch to ALSO call `_resume_one_tick(...)` once before entering the loop (cosmetic — see Task 3 design note); OR leave it untouched (see decision in Task 3). Default: leave untouched, no shared call. |
-| Modify | `manual_testing_instructions.md` | New section *P. `thoth resume --async`* with: P1 still-running drive-by, P2 partial-completion download, P3 already-completed no-op, P4 JSON envelope shape with `newly_completed`. Mirrors the K1–K6 pattern that section K already uses. |
+| Modify | `src/doxa_research/cli_subcommands/resume.py` | Add local `--async / -A` flag (`is_flag=True`, default `False`). Do NOT add to `_RESUME_HONOR` — the cli-group's own `--async/-A` flag (`async_mode`) is for *initial* submissions and remains rejected on `resume` by `validate_inherited_options`. Thread the local flag to `resume_operation(async_check=...)`. When `as_json and async_check`, branch to a dedicated envelope path that returns the snapshot dict + `newly_completed`. |
+| Modify | `src/doxa_research/run.py` | (a) Add `async_check: bool = False` parameter to `resume_operation`. (b) Extract a `_resume_one_tick(operation, provider_instances, output_manager, checkpoint_manager, mode_config, ctx, verbose) -> dict` helper that runs one `check_status` per provider, saves any newly-completed results, updates and saves checkpoint, returns `{"newly_completed": [...], "operation": operation}`. (c) Branch in `resume_operation`: when `async_check=True`, after the existing reconnect block, call `_resume_one_tick(...)` and return its result instead of entering `_run_polling_loop`. |
+| Modify | `src/doxa_research/run.py` | (d) Update the existing polling-loop branch to ALSO call `_resume_one_tick(...)` once before entering the loop (cosmetic — see Task 3 design note); OR leave it untouched (see decision in Task 3). Default: leave untouched, no shared call. |
+| Modify | `manual_testing_instructions.md` | New section *P. `doxa-research resume --async`* with: P1 still-running drive-by, P2 partial-completion download, P3 already-completed no-op, P4 JSON envelope shape with `newly_completed`. Mirrors the K1–K6 pattern that section K already uses. |
 | Modify | `PROJECTS.md` | Flip `[P18-T38] [ ]` → `[x]` at the end. No row-text change; the captured description remains the contract. |
 
 **Decomposition rationale:** Adding `_resume_one_tick(...)` as a dedicated helper (rather than inlining the per-provider loop in two places) avoids duplication and makes the async path independently testable. Tests live in one new file because all 7 cases share the same fixture shape (a checkpoint on disk + `MockProvider` instances reconnected to it); splitting into two files would just duplicate the fixture.
@@ -45,17 +45,17 @@
 - [ ] **P0.1: Create a worktree for the work**
 
 ```bash
-cd /Users/stevemorin/c/thoth
-git worktree add /Users/stevemorin/c/thoth-worktrees/p18-t38-resume-async -b p18-t38-resume-async main
-cd /Users/stevemorin/c/thoth-worktrees/p18-t38-resume-async
+cd /Users/stevemorin/c/doxa-research
+git worktree add /Users/stevemorin/c/doxa-research-worktrees/p18-t38-resume-async -b p18-t38-resume-async main
+cd /Users/stevemorin/c/doxa-research-worktrees/p18-t38-resume-async
 ```
 
-Per the user-memory note `feedback_worktrees.md`, thoth worktrees go in `/Users/stevemorin/c/thoth-worktrees/<branch>` (sibling to the repo, NOT `.worktrees/`).
+Per the user-memory note `feedback_worktrees.md`, doxa-research worktrees go in `/Users/stevemorin/c/doxa-research-worktrees/<branch>` (sibling to the repo, NOT `.worktrees/`).
 
 - [ ] **P0.2: Verify the gate is green before starting**
 
 ```bash
-just check && uv run pytest -q --ignore=tests/extended && ./thoth_test -r --skip-interactive -q
+just check && uv run pytest -q --ignore=tests/extended && ./doxa_test -r --skip-interactive -q
 ```
 
 Expected: all green. T27 just landed at `9d01b9a`; baseline should be clean.
@@ -91,11 +91,11 @@ Both providers return `completed`. Assert: two `save_result` calls, both per-pro
 
 - [ ] **Step 1.5: Write `test_resume_async_json_envelope`**
 
-Run `thoth resume <op-id> --async --json` via `CliRunner`. Assert JSON output contains `operation_id`, `status`, `mode`, `providers`, AND a `newly_completed` field listing provider names that flipped this tick. No prose on stdout.
+Run `doxa-research resume <op-id> --async --json` via `CliRunner`. Assert JSON output contains `operation_id`, `status`, `mode`, `providers`, AND a `newly_completed` field listing provider names that flipped this tick. No prose on stdout.
 
 - [ ] **Step 1.6: Write `test_resume_async_missing_op_id_exits_6`**
 
-`thoth resume MISSING_ID --async` exits 6 (matches the existing default `resume` behavior at `cli_subcommands/resume.py:96`).
+`doxa-research resume MISSING_ID --async` exits 6 (matches the existing default `resume` behavior at `cli_subcommands/resume.py:96`).
 
 - [ ] **Step 1.7: Write `test_resume_async_already_completed_is_noop`**
 
@@ -114,9 +114,9 @@ Expected: 7 failures, all from missing `--async` flag / missing `async_check` pa
 ## Task 2: Wire the `--async` flag
 
 **Files:**
-- Modify: `src/thoth/cli_subcommands/resume.py`
+- Modify: `src/doxa_research/cli_subcommands/resume.py`
 
-This task is mechanical: add the Click option, add the parameter to the callback, thread it through to `resume_operation`. No business logic changes. After this task, `thoth resume <op-id> --async` should be a no-op that runs the existing polling loop (because `resume_operation` ignores the new kwarg until Task 3).
+This task is mechanical: add the Click option, add the parameter to the callback, thread it through to `resume_operation`. No business logic changes. After this task, `doxa-research resume <op-id> --async` should be a no-op that runs the existing polling loop (because `resume_operation` ignores the new kwarg until Task 3).
 
 - [ ] **Step 2.1: Add the flag declaration**
 
@@ -144,7 +144,7 @@ Add `async_check: bool` to the `resume(...)` callback parameters, just before `a
 
 - [ ] **Step 2.3: Pass through to `resume_operation`**
 
-In the bottom call to `_thoth_run.resume_operation(...)`, add `async_check=async_check` as a kwarg.
+In the bottom call to `_doxa_run.resume_operation(...)`, add `async_check=async_check` as a kwarg.
 
 - [ ] **Step 2.4: Confirm Task 1 tests still all FAIL**
 
@@ -155,7 +155,7 @@ The flag now exists, but `resume_operation` ignores it. The path-isolation test 
 ## Task 3: Implement the early-return async branch
 
 **Files:**
-- Modify: `src/thoth/run.py`
+- Modify: `src/doxa_research/run.py`
 
 This is the core behavior change. Extract a helper, branch in `resume_operation`, return early without polling.
 
@@ -187,7 +187,7 @@ async def _resume_one_tick(
     ctx: AppContext,
     verbose: bool,
 ) -> dict[str, Any]:
-    """Single status-check tick for `thoth resume --async`.
+    """Single status-check tick for `doxa-research resume --async`.
 
     For each provider currently in provider_instances (already reconnected),
     call check_status once. If a provider returns "completed", fetch and
@@ -278,7 +278,7 @@ Test 1.5 (JSON envelope) still fails — that's Task 4. Test 1.6 (missing-id) sh
 ## Task 4: JSON envelope + `newly_completed` field
 
 **Files:**
-- Modify: `src/thoth/cli_subcommands/resume.py`
+- Modify: `src/doxa_research/cli_subcommands/resume.py`
 
 This task wires the third combinator: `--async --json`. The existing `--json`-only path is a snapshot (no upstream calls). The new combination is "do one upstream tick, then emit the snapshot plus what just changed."
 
@@ -295,7 +295,7 @@ Refactor to a three-way:
 
 - [ ] **Step 4.2: Suppress prose output when `as_json and async_check`**
 
-Wrap the `_run_maybe_async(_thoth_run.resume_operation(...))` call in a `contextlib.redirect_stdout(io.StringIO())` block, mirroring the pattern at `cli_subcommands/ask.py:208-211`. The Rich console writes from `_resume_one_tick` must not pollute the JSON envelope on stdout.
+Wrap the `_run_maybe_async(_doxa_run.resume_operation(...))` call in a `contextlib.redirect_stdout(io.StringIO())` block, mirroring the pattern at `cli_subcommands/ask.py:208-211`. The Rich console writes from `_resume_one_tick` must not pollute the JSON envelope on stdout.
 
 Set `app_ctx.as_json = True` before the call so `_resume_one_tick`'s plain-text summary branch is skipped (the existing `not ctx.as_json` guard in Task 3 Step 3.4 already does this once we set the flag).
 
@@ -338,30 +338,30 @@ Expected: 7/7 green.
 After section O (the existing "User-mode missing-`kind` warn-once" section that we shipped earlier in P18), add:
 
 ```markdown
-### P. `thoth resume --async`
+### P. `doxa-research resume --async`
 
 > Drive-by progress check: one status tick per provider, downloads any
 > newly-completed results, exits without polling.
 
 ```bash
 # P1. Drive-by check on a still-running op
-OPID=$(uv run thoth ask "long topic" --mode deep_research --async --provider mock --json | jq -r .operation_id)
-uv run thoth resume "$OPID" --async
+OPID=$(uv run doxa-research ask "long topic" --mode deep_research --async --provider mock --json | jq -r .operation_id)
+uv run doxa-research resume "$OPID" --async
 # Expected: prints "No providers completed since last check." and exits 0.
 # NO new files written; checkpoint statuses unchanged.
 
 # P2. Partial-completion download (one provider done, one still running)
 # (use --combined openai,perplexity if you have keys; or simulate with mock)
-uv run thoth resume "$OPID" --async
+uv run doxa-research resume "$OPID" --async
 # Expected: prints "Saved results from: openai" (or whichever flipped).
 # That provider's result file is now on disk; the other is still pending.
 
 # P3. Already-completed op is a no-op
-uv run thoth resume "$COMPLETED_OPID" --async
+uv run doxa-research resume "$COMPLETED_OPID" --async
 # Expected: "Operation X already completed." Exits 0. Zero API calls.
 
 # P4. JSON envelope shape
-uv run thoth resume "$OPID" --async --json | jq
+uv run doxa-research resume "$OPID" --async --json | jq
 # Expected: {operation_id, status, mode, providers, newly_completed: [...]}
 # `newly_completed` is the list of provider names that flipped THIS tick.
 ```
@@ -374,9 +374,9 @@ Edit the row text minimally — just `[ ]` → `[x]`. Description stays as captu
 - [ ] **Step 5.3: Final commit through full lefthook gate**
 
 ```bash
-git add tests/test_resume_async.py src/thoth/cli_subcommands/resume.py src/thoth/run.py manual_testing_instructions.md PROJECTS.md
+git add tests/test_resume_async.py src/doxa_research/cli_subcommands/resume.py src/doxa_research/run.py manual_testing_instructions.md PROJECTS.md
 git commit -m "$(cat <<'EOF'
-feat(run): add `thoth resume --async` for non-blocking status check + ready-file download (P18-T38)
+feat(run): add `doxa-research resume --async` for non-blocking status check + ready-file download (P18-T38)
 
 Adds a third resume mode alongside default-resume (full polling loop)
 and resume --json (pure snapshot). The new --async flag does exactly
@@ -393,7 +393,7 @@ Locked design decisions:
 - Operation status stays as-is on partial completion (only flips to
   "completed" when every provider reports completed).
 - Failed providers are recorded but treated as partial success (exit 0;
-  re-run plain `thoth resume` to retry recoverable failures).
+  re-run plain `doxa-research resume` to retry recoverable failures).
 - Already-completed ops are no-ops with a message and exit 0.
 
 Refactor: extracts a `_resume_one_tick(...)` helper in run.py that the
@@ -406,17 +406,17 @@ EOF
 )"
 ```
 
-The lefthook pre-commit gate runs: ruff (format+lint), ty, codespell, gitleaks, and the full `./thoth_test` integration suite. Expect ~45s.
+The lefthook pre-commit gate runs: ruff (format+lint), ty, codespell, gitleaks, and the full `./doxa_test` integration suite. Expect ~45s.
 
 ---
 
 ## Acceptance criteria
 
 - [ ] All 7 tests in `tests/test_resume_async.py` pass.
-- [ ] `thoth resume <op-id> --async` against a running mock-provider op exits in <2s, prints a one-line summary, makes exactly one `check_status` call per non-completed provider, and does NOT call `_run_polling_loop`.
-- [ ] `thoth resume <op-id> --async --json` emits a single JSON envelope with the `newly_completed` field; nothing else on stdout.
-- [ ] `thoth resume <completed-op> --async` is a no-op with the existing "already completed" message; zero API calls.
-- [ ] Default `thoth resume <op-id>` (without `--async`) is byte-identical to today's behavior — full polling loop, same UX.
+- [ ] `doxa-research resume <op-id> --async` against a running mock-provider op exits in <2s, prints a one-line summary, makes exactly one `check_status` call per non-completed provider, and does NOT call `_run_polling_loop`.
+- [ ] `doxa-research resume <op-id> --async --json` emits a single JSON envelope with the `newly_completed` field; nothing else on stdout.
+- [ ] `doxa-research resume <completed-op> --async` is a no-op with the existing "already completed" message; zero API calls.
+- [ ] Default `doxa-research resume <op-id>` (without `--async`) is byte-identical to today's behavior — full polling loop, same UX.
 - [ ] `[P18-T38]` flipped to `[x]` in PROJECTS.md.
 - [ ] Manual section P added to `manual_testing_instructions.md`.
 
@@ -424,6 +424,6 @@ The lefthook pre-commit gate runs: ruff (format+lint), ty, codespell, gitleaks, 
 
 ## Notes
 
-- **No CLI inheritance for `--async`.** The cli-group's `--async / -A` flag (parameter `async_mode`) controls *initial* submissions. We deliberately do NOT add `async_mode` to `_RESUME_HONOR`; if a user types `thoth --async resume <op-id>`, validation rejects it cleanly with the standard "no such option for 'thoth resume'" message. The new local `--async` flag on `resume` is a different parameter (dest `async_check`) and means a different thing.
+- **No CLI inheritance for `--async`.** The cli-group's `--async / -A` flag (parameter `async_mode`) controls *initial* submissions. We deliberately do NOT add `async_mode` to `_RESUME_HONOR`; if a user types `doxa-research --async resume <op-id>`, validation rejects it cleanly with the standard "no such option for 'doxa-research resume'" message. The new local `--async` flag on `resume` is a different parameter (dest `async_check`) and means a different thing.
 - **No `signals.py` changes.** SIGINT during `--async` is uninteresting — the flag is a one-shot, by definition fast (single `check_status` round-trip per provider). If interrupted mid-tick, the user gets the existing local-checkpoint-cancelled UX from `handle_sigint`; no upstream cancel is plumbed because the tick is short.
 - **Reusing `OutputManager.save_result(operation, provider_name, result_content, output_dir=None, ...)`.** Passing `output_dir=None` mirrors the polling-loop call site (run.py:613) which uses the operation's own `output_paths` resolution. Verify this signature still accepts `None` before relying on it; if not, plumb the `output_dir` through `resume_operation` and forward.

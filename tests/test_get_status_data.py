@@ -28,15 +28,15 @@ def _write_checkpoint(checkpoint_dir: Path, op) -> None:
     (checkpoint_dir / f"{op.id}.json").write_text(json.dumps(payload))
 
 
-def test_get_status_data_returns_none_for_missing_operation(isolated_thoth_home, checkpoint_dir):
-    from thoth.commands import get_status_data
+def test_get_status_data_returns_none_for_missing_operation(isolated_doxa_home, checkpoint_dir):
+    from doxa_research.commands import get_status_data
 
     result = asyncio.run(get_status_data("not-a-real-op"))
     assert result is None
 
 
 def test_get_status_data_returns_dict_for_existing_operation(checkpoint_dir):
-    from thoth.commands import get_status_data
+    from doxa_research.commands import get_status_data
 
     op = make_operation("research-20260427-000000-aaaaaaaaaaaaaaaa", status="running")
     _write_checkpoint(checkpoint_dir, op)
@@ -49,9 +49,9 @@ def test_get_status_data_returns_dict_for_existing_operation(checkpoint_dir):
     assert data["prompt"] == "test prompt"
 
 
-def test_get_status_data_signature_excludes_as_json(isolated_thoth_home):
+def test_get_status_data_signature_excludes_as_json(isolated_doxa_home):
     """spec §7.2 critical invariant — `as_json` MUST NOT appear here."""
-    from thoth.commands import get_status_data
+    from doxa_research.commands import get_status_data
 
     params = inspect.signature(get_status_data).parameters
     assert "as_json" not in params

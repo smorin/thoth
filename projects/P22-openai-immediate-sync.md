@@ -5,7 +5,7 @@
 - **Predecessor:** P18 (`docs/superpowers/specs/2026-04-26-p18-immediate-vs-background-design.md`, `docs/superpowers/plans/2026-04-26-p18-immediate-vs-background.md`) — established the immediate-vs-background split, runtime mismatch error, and the immediate path validated here.
 - **Adjacent:** P20 (Extended Real-API Workflow Coverage — Mirror Mock Contracts) — validation evidence overlaps with P20-TS03 / TS04 / TS11 / TS26 / TS27. P22 reuses P20 tests where applicable rather than duplicating.
 - **Adjacent:** P25 (Architecture Review & Cleanup — Immediate Providers) — P22's refactor pre-analysis informs whether P25's scope expands, contracts, or is preempted.
-- **Code:** `src/thoth/providers/openai.py:393` (`OpenAIProvider.stream()`); `_validate_kind_for_model` defense in the same file; `src/thoth/run.py` `_execute_immediate` dispatcher; `src/thoth/cli_subcommands/ask.py`; `src/thoth/sinks.py` (`MultiSink`).
+- **Code:** `src/doxa_research/providers/openai.py:393` (`OpenAIProvider.stream()`); `_validate_kind_for_model` defense in the same file; `src/doxa_research/run.py` `_execute_immediate` dispatcher; `src/doxa_research/cli_subcommands/ask.py`; `src/doxa_research/sinks.py` (`MultiSink`).
 - **External (Responses API):** https://platform.openai.com/docs/api-reference/responses
 - **External (Chat Completions, comparison only):** https://platform.openai.com/docs/api-reference/chat
 - **External (Deep-research cookbook, for kind-boundary checks):** https://cookbook.openai.com/examples/deep_research_api/introduction_to_deep_research_api
@@ -66,19 +66,19 @@ Each row: what we expect "OpenAI synchronous LLM call works" to mean, and where 
 | 9 | Background + regular model legal | `kind="background"` + non-deep-research model does not raise | `✓` `test_mode_kind_mismatch.py::test_background_with_regular_model_does_not_raise` |
 | 10 | Immediate + regular model legal | `kind="immediate"` + non-deep-research model does not raise | `✓` `test_mode_kind_mismatch.py::test_immediate_with_regular_model_does_not_raise` |
 | 11 | No-kind declared is legal | Mode without `kind` declared does not raise (legacy compatibility) | `✓` `test_mode_kind_mismatch.py::test_no_kind_declared_does_not_raise` |
-| 12 | Mismatch error carries diagnostics | `ModeKindMismatchError` exposes `mode_name`, `model`, `declared_kind`, `required_kind`, `suggestion` | `✓` `test_mode_kind_mismatch.py::test_error_carries_user_facing_suggestion`, `::test_error_subclasses_thotherror` |
+| 12 | Mismatch error carries diagnostics | `ModeKindMismatchError` exposes `mode_name`, `model`, `declared_kind`, `required_kind`, `suggestion` | `✓` `test_mode_kind_mismatch.py::test_error_carries_user_facing_suggestion`, `::test_error_subclasses_doxaerror` |
 | 13 | Real-API kind agreement | Every `KNOWN_MODELS` entry's declared kind matches actual runtime behavior | `✓ live` `tests/extended/test_model_kind_runtime.py::test_model_kind_matches_runtime_behavior` |
 | 14 | `--out` / tee / append / repeatable / comma-list | `MultiSink` honors all five output-sink shapes | `✓` `test_output_sinks.py::test_stdout_only`, `::test_file_only_truncates_by_default`, `::test_file_appends_when_requested`, `::test_tee_to_stdout_and_file`, `::test_comma_list_parsing`, `::test_file_opened_lazily`, `::test_close_is_idempotent`, `::test_default_when_no_specs_is_stdout`, `::test_does_not_close_stdout` |
-| 15 | `thoth ask` end-to-end output sinks | `ask` forwards `--out`, comma-list, repeatable, append to the runner and writes streamed mock output to file | `✓` `test_p16_pr2_ask.py::test_ask_forwards_out_and_append_to_research_runner`, `::test_ask_out_file_writes_streamed_mock_response`, `::test_ask_out_comma_list_tees_to_stdout_and_file`, `::test_ask_out_repeatable_form_tees_to_stdout_and_file`, `::test_ask_out_append_concatenates_second_run` |
-| 16 | `thoth ask` real-API stream + tee | Live OpenAI immediate streaming with `--out -,FILE` writes both stdout and file | `✓ live` `tests/extended/test_openai_real_workflows.py::test_ext_oai_imm_stream_tee_writes_stdout_and_file` |
+| 15 | `doxa-research ask` end-to-end output sinks | `ask` forwards `--out`, comma-list, repeatable, append to the runner and writes streamed mock output to file | `✓` `test_p16_pr2_ask.py::test_ask_forwards_out_and_append_to_research_runner`, `::test_ask_out_file_writes_streamed_mock_response`, `::test_ask_out_comma_list_tees_to_stdout_and_file`, `::test_ask_out_repeatable_form_tees_to_stdout_and_file`, `::test_ask_out_append_concatenates_second_run` |
+| 16 | `doxa-research ask` real-API stream + tee | Live OpenAI immediate streaming with `--out -,FILE` writes both stdout and file | `✓ live` `tests/extended/test_openai_real_workflows.py::test_ext_oai_imm_stream_tee_writes_stdout_and_file` |
 | 17 | Prompt-source mutual exclusion | `ask` rejects positional+`--prompt`, positional+`--prompt-file`, `--prompt`+`--prompt-file`, and no-prompt | `✓` `test_p16_pr2_ask.py::test_ask_positional_and_prompt_flag_rejected`, `::test_ask_positional_and_prompt_file_rejected`, `::test_ask_prompt_and_prompt_file_rejected`, `::test_ask_no_prompt_at_all_rejected` |
 | 18 | Disallowed flags on immediate path | `ask` rejects `--interactive`, `--clarify`, `--pick-model` (background-only flags) | `✓` `test_p16_pr2_ask.py::test_ask_interactive_flag_rejected`, `::test_ask_clarify_flag_rejected`, `::test_ask_pick_model_flag_rejected` |
 | 19 | Mode resolution | `ask --mode X` resolves to mode X's config; subcommand-level `--mode` wins over group-level | `✓` `test_p16_pr2_ask.py::test_ask_with_explicit_mode`, `::test_ask_subcommand_mode_wins_over_group_mode` |
 | 20 | Prompt sources work | `ask` accepts positional, `--prompt`, `--prompt-file`, group-level flags | `✓` `test_p16_pr2_ask.py::test_ask_with_positional_prompt`, `::test_ask_with_prompt_flag`, `::test_ask_with_prompt_file`, `::test_ask_via_group_level_flags` |
-| 21 | Bare-prompt form with `--out` (leading + trailing) | Top-level CLI bare prompt form supports `thoth --out F "p" --provider openai` and `thoth "p" --provider openai --out F` | **gap**: not visible in mock tests; partially covered by P20-TS08/TS09 once landed |
+| 21 | Bare-prompt form with `--out` (leading + trailing) | Top-level CLI bare prompt form supports `doxa-research --out F "p" --provider openai` and `doxa-research "p" --provider openai --out F` | **gap**: not visible in mock tests; partially covered by P20-TS08/TS09 once landed |
 | 22 | `--quiet` suppresses progress UI but not answer | Immediate `--quiet` still streams the answer; suppresses progress / status lines | **gap**: covered by P20-TS11 once landed; no current mock test |
 | 23 | Secret masking on `--api-key-openai` end-to-end | CLI accepts `--api-key-openai sk-...`, runs without `OPENAI_API_KEY` in env, never leaks the key in stdout/stderr | **gap**: helper-level coverage exists (`test_secrets.py`); end-to-end CLI flag secret masking covered by P20-TS21 once landed |
-| 24 | No checkpoint side effects on default immediate run | Immediate mode without `--project` / `--out FILE` writes no checkpoint, emits no operation-ID, prints no `thoth resume` hint | **gap**: P18 spec TS08 / TS10 referenced but not visible in current `test_immediate_path.py`; P20-TS03 covers it for live API once landed |
+| 24 | No checkpoint side effects on default immediate run | Immediate mode without `--project` / `--out FILE` writes no checkpoint, emits no operation-ID, prints no `doxa-research resume` hint | **gap**: P18 spec TS08 / TS10 referenced but not visible in current `test_immediate_path.py`; P20-TS03 covers it for live API once landed |
 
 **Coverage summary (post-T01 verification):** 21 of 24 items are `✓` offline; 2 of those 24 are `✓ live` (covered by `extended` / `live_api` markers, run nightly / weekly via GitHub Actions). 3 items remain as gaps (`#22`, `#23`, `#24`) — all already in P20's planned scope. One sub-item under `#1` is a confirmed real gap: `OpenAIProvider.stream()` has no offline VCR cassette test (`tests/test_provider_stream_contract.py` docstring explicitly defers it to the extended suite; `tests/test_vcr_openai.py` cassettes only cover `submit`/`check_status`/`get_result`).
 
@@ -95,15 +95,15 @@ Validation surfaced four gaps. None block P22's close-out as `[x]`; all are rout
 | # | Gap | Severity | Blocks P23/P24? | Recommended owner |
 |---|---|---|---|---|
 | F1 | `OpenAIProvider.stream()` has no offline VCR cassette test (P18 spec referenced TS13 but it never landed; `test_provider_stream_contract.py` defers to the extended suite) | low | no — live coverage exists in `tests/extended/test_openai_real_workflows.py`; P23 / P24 can mirror the deferral pattern for their own `stream()` impls | **P20** — add a TS row to `projects/P20-...` (or PROJECTS.md P20 body) for the OpenAI cassette specifically, e.g. `[P20-TS28] Offline cassette for OpenAIProvider.stream() asserts SSE event translation into StreamEvent("text",...) terminated by StreamEvent("done","")`. If P20 stays paperwork-only and never lands, escalate to a new P##. |
-| F2 | `thoth ask --quiet` not directly tested on the immediate path offline | low | no | **P20-TS11** (already planned) |
-| F3 | `thoth ask --api-key-openai` not directly tested on the immediate path offline (helper-level secret masking is covered; flag-end-to-end with no env var is not) | low | no | **P20-TS21** (already planned) |
-| F4 | No explicit offline test confirming "default immediate run writes no checkpoint, emits no operation-ID, prints no `thoth resume` hint" — P18 spec named TS08 / TS10 but the current `test_immediate_path.py` only covers `_poll_display` / spinner gating; the absence of side effects on the runner is not asserted directly | low | no | **P20-TS03** (already planned, real-API form) — and consider adding an offline equivalent under P20 or as a small addition under a future test-hardening project |
+| F2 | `doxa-research ask --quiet` not directly tested on the immediate path offline | low | no | **P20-TS11** (already planned) |
+| F3 | `doxa-research ask --api-key-openai` not directly tested on the immediate path offline (helper-level secret masking is covered; flag-end-to-end with no env var is not) | low | no | **P20-TS21** (already planned) |
+| F4 | No explicit offline test confirming "default immediate run writes no checkpoint, emits no operation-ID, prints no `doxa-research resume` hint" — P18 spec named TS08 / TS10 but the current `test_immediate_path.py` only covers `_poll_display` / spinner gating; the absence of side effects on the runner is not asserted directly | low | no | **P20-TS03** (already planned, real-API form) — and consider adding an offline equivalent under P20 or as a small addition under a future test-hardening project |
 
 **No findings escalated to a new P##.** All four findings flow into P20's existing scope or remain as informational additions to P20.
 
 ### T03 — Cross-provider immediate-call shape survey (Part 3 input)
 
-Existing `ResearchProvider` contract (`src/thoth/providers/base.py`):
+Existing `ResearchProvider` contract (`src/doxa_research/providers/base.py`):
 
 ```python
 async def stream(prompt, mode, system_prompt=None, verbose=False) -> AsyncIterator[StreamEvent]:
@@ -122,7 +122,7 @@ class StreamEvent:
 | Translation to `StreamEvent` | `delta` → `StreamEvent("text", ...)`, terminal `StreamEvent("done", "")` (already implemented `providers/openai.py:393`) | translate `delta.content` → `text`; Sonar emits citation arrays — slot exists as `kind="citation"` | translate Interactions text chunks → `text`; reasoning chunks (if present) → `kind="reasoning"` |
 | Kind-mismatch defense | `_validate_kind_for_model` + `is_background_model` | needs equivalent: Perplexity's `sonar-deep-research` is background; `sonar` / `sonar-pro` are immediate | needs equivalent: Gemini's `deep-research-pro-preview-12-2025` is background; standard chat models are immediate |
 | Background `cancel` | `client.responses.cancel(response_id)` | per P18-T19 research — Perplexity does not expose cancel; orphan request_id | per P18-T20 research — Interactions API cancel/abort semantics |
-| Current state | Full `submit/check_status/get_result/stream/cancel` | Stub: `submit` raises `ProviderError`; `is_implemented()` returns `False` | No file in `src/thoth/providers/` |
+| Current state | Full `submit/check_status/get_result/stream/cancel` | Stub: `submit` raises `ProviderError`; `is_implemented()` returns `False` | No file in `src/doxa_research/providers/` |
 
 **Shape observations:**
 - The existing `ResearchProvider.stream()` + `StreamEvent` is already a thoughtful cross-provider abstraction. Its `kind` field deliberately enumerates `"text"`, `"reasoning"`, `"citation"`, `"done"` — those slots were named in P18 with multi-provider use cases in mind (Perplexity emits citations; reasoning-summary models emit reasoning chunks). The slots are unused in OpenAI's current impl but ready for use by P23 / P24.
@@ -156,4 +156,4 @@ P22 is ready to mark `[x]` per the project-level close-out criterion. The only f
 - The Findings section exists, even if the content is *"no gaps."*
 - The refactor pre-analysis produces an explicit (a) / (b) / (c) outcome with written rationale.
 - The Project Summary line for P22 reflects the close-out outcome label so a future `project-next` reader sees the result without opening the body.
-- No new code lands in `src/thoth/` as part of P22 unless Part 3 outcome (b) requires it (and even then scope is limited to a Protocol / ABC declaration, not provider implementation changes).
+- No new code lands in `src/doxa_research/` as part of P22 unless Part 3 outcome (b) requires it (and even then scope is limited to a Protocol / ABC declaration, not provider implementation changes).

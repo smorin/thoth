@@ -143,12 +143,12 @@ def live_cli_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> LiveCliEnv:
     monkeypatch.setenv("XDG_CONFIG_HOME", str(home / ".config"))
     monkeypatch.setenv("XDG_STATE_HOME", str(home / ".local" / "state"))
     monkeypatch.setenv("XDG_CACHE_HOME", str(home / ".cache"))
-    return LiveCliEnv(tmp_path=tmp_path, run=_run_thoth_factory(...))
+    return LiveCliEnv(tmp_path=tmp_path, run=_run_doxa_factory(...))
 ```
 
 The returned `LiveCliEnv` exposes:
 - `tmp_path: Path` — the test's tmp dir (output goes here by default).
-- `run(args: list[str], timeout: int = 60, env_overrides: dict[str, str] | None = None) -> CompletedProcess[str]` — runs `python -m thoth <args>` via subprocess; on non-zero exit, scrubs the API key from stdout/stderr before re-raising.
+- `run(args: list[str], timeout: int = 60, env_overrides: dict[str, str] | None = None) -> CompletedProcess[str]` — runs `python -m doxa-research <args>` via subprocess; on non-zero exit, scrubs the API key from stdout/stderr before re-raising.
 
 **Test:** `tests/extended/test_live_cli_env_fixture.py` (or add to existing `conftest.py` companion test file). Mock-only (no `live_api` marker — runs in default suite). Asserts:
 - Skip when `OPENAI_API_KEY` deleted (use `monkeypatch.delenv`).

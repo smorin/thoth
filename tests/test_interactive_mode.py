@@ -1,7 +1,7 @@
-"""Interactive-mode slash command + op-id wiring — migrated from thoth_test P07-M3-01/02.
+"""Interactive-mode slash command + op-id wiring — migrated from doxa_test P07-M3-01/02.
 
-Uses `monkeypatch.setattr` on the `thoth.__main__` shim; `_ShimModule.__setattr__`
-propagates rebinds to `thoth.interactive`, so the fakes are visible at call
+Uses `monkeypatch.setattr` on the `doxa_research.__main__` shim; `_ShimModule.__setattr__`
+propagates rebinds to `doxa_research.interactive`, so the fakes are visible at call
 sites inside `enter_interactive_mode` / `InteractiveSession`.
 """
 
@@ -13,7 +13,7 @@ from typing import Any, cast
 
 import pytest
 
-import thoth.__main__ as thoth_main
+import doxa_research.__main__ as doxa_main
 
 
 def test_basic_interactive_mode_stores_last_operation_id(
@@ -21,7 +21,7 @@ def test_basic_interactive_mode_stores_last_operation_id(
 ) -> None:
     """P07-M3-01: basic interactive mode stores the last operation ID after submission."""
     observed: dict[str, Any] = {}
-    original_registry = thoth_main.SlashCommandRegistry
+    original_registry = doxa_main.SlashCommandRegistry
 
     class RecordingRegistry(original_registry):
         last_created: RecordingRegistry | None = None
@@ -42,14 +42,14 @@ def test_basic_interactive_mode_stores_last_operation_id(
         except StopIteration as exc:
             raise EOFError("no more inputs") from exc
 
-    monkeypatch.setattr(thoth_main, "PROMPT_TOOLKIT_AVAILABLE", False)
-    monkeypatch.setattr(thoth_main, "run_research", cast(Any, fake_run_research))
-    monkeypatch.setattr(thoth_main, "SlashCommandRegistry", cast(Any, RecordingRegistry))
+    monkeypatch.setattr(doxa_main, "PROMPT_TOOLKIT_AVAILABLE", False)
+    monkeypatch.setattr(doxa_main, "run_research", cast(Any, fake_run_research))
+    monkeypatch.setattr(doxa_main, "SlashCommandRegistry", cast(Any, RecordingRegistry))
     monkeypatch.setattr(builtins, "input", cast(Any, fake_input))
 
     asyncio.run(
-        thoth_main.enter_interactive_mode(
-            initial_settings=thoth_main.InteractiveInitialSettings(provider="mock"),
+        doxa_main.enter_interactive_mode(
+            initial_settings=doxa_main.InteractiveInitialSettings(provider="mock"),
             project=None,
             output_dir=None,
             config_path=None,
@@ -85,7 +85,7 @@ def test_basic_interactive_mode_threads_profile_to_run_research(
         get_config_calls.append(profile)
         # Return a minimal stand-in with the attribute access the basic-input
         # branch makes: config.data["general"].get("default_mode", ...).
-        from thoth.config import ConfigManager
+        from doxa_research.config import ConfigManager
 
         cm = ConfigManager.__new__(ConfigManager)
         cm.data = {"general": {"default_mode": "default"}}
@@ -99,16 +99,16 @@ def test_basic_interactive_mode_threads_profile_to_run_research(
         except StopIteration as exc:
             raise EOFError("no more inputs") from exc
 
-    import thoth.interactive as _interactive
+    import doxa_research.interactive as _interactive
 
-    monkeypatch.setattr(thoth_main, "PROMPT_TOOLKIT_AVAILABLE", False)
-    monkeypatch.setattr(thoth_main, "run_research", cast(Any, fake_run_research))
+    monkeypatch.setattr(doxa_main, "PROMPT_TOOLKIT_AVAILABLE", False)
+    monkeypatch.setattr(doxa_main, "run_research", cast(Any, fake_run_research))
     monkeypatch.setattr(_interactive, "get_config", cast(Any, fake_get_config))
     monkeypatch.setattr(builtins, "input", cast(Any, fake_input))
 
     asyncio.run(
-        thoth_main.enter_interactive_mode(
-            initial_settings=thoth_main.InteractiveInitialSettings(provider="mock"),
+        doxa_main.enter_interactive_mode(
+            initial_settings=doxa_main.InteractiveInitialSettings(provider="mock"),
             project=None,
             output_dir=None,
             config_path=None,
@@ -130,7 +130,7 @@ def test_basic_interactive_mode_threads_profile_to_run_research(
 
 def test_slash_status_delegates_to_show_status(monkeypatch: pytest.MonkeyPatch) -> None:
     """P07-M3-02: prompt-toolkit /status delegates to show_status for the last operation."""
-    if not getattr(thoth_main, "PROMPT_TOOLKIT_AVAILABLE", False):
+    if not getattr(doxa_main, "PROMPT_TOOLKIT_AVAILABLE", False):
         pytest.skip("prompt_toolkit not available in this environment")
 
     captured: dict[str, Any] = {}
@@ -138,13 +138,13 @@ def test_slash_status_delegates_to_show_status(monkeypatch: pytest.MonkeyPatch) 
     async def fake_show_status(operation_id: str) -> None:
         captured["operation_id"] = operation_id
 
-    monkeypatch.setattr(thoth_main, "run_in_terminal", cast(Any, lambda fn: fn()))
-    monkeypatch.setattr(thoth_main, "show_status", cast(Any, fake_show_status))
+    monkeypatch.setattr(doxa_main, "run_in_terminal", cast(Any, lambda fn: fn()))
+    monkeypatch.setattr(doxa_main, "show_status", cast(Any, fake_show_status))
 
-    session = thoth_main.InteractiveSession(
-        thoth_main.console,
-        thoth_main.get_config(),
-        thoth_main.InteractiveInitialSettings(provider="mock"),
+    session = doxa_main.InteractiveSession(
+        doxa_main.console,
+        doxa_main.get_config(),
+        doxa_main.InteractiveInitialSettings(provider="mock"),
     )
     session.slash_registry.last_operation_id = "research-20260416-020202-fedcba9876543210"
     session._handle_slash_command("/status")

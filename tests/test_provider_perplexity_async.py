@@ -8,7 +8,7 @@ but against the Perplexity async API instead of OpenAI Responses.
 
 Test slices:
 - P27-T04: `_map_perplexity_error_async` covers 401/402/422/429/5xx and
-  httpx.TimeoutException / ConnectError → ThothError taxonomy.
+  httpx.TimeoutException / ConnectError → DoxaError taxonomy.
 - P27-TS01..TS05: lifecycle coverage (submit body shape, status mapping,
   get_result extraction, reconnect, cancel) — added as those lifecycle
   methods land.
@@ -23,14 +23,14 @@ from unittest.mock import AsyncMock
 import httpx
 import pytest
 
-from thoth.errors import (
+from doxa_research.errors import (
     APIKeyError,
     APIQuotaError,
     APIRateLimitError,
+    DoxaError,
     ProviderError,
-    ThothError,
 )
-from thoth.providers.perplexity import (
+from doxa_research.providers.perplexity import (
     PerplexityProvider,
     _map_perplexity_error_async,
 )
@@ -55,8 +55,8 @@ def test_async_map_401_returns_api_key_error() -> None:
     assert isinstance(result, APIKeyError)
 
 
-def test_async_map_401_with_invalid_key_body_returns_friendly_thoth_error() -> None:
-    """T04: 401 + invalid-key phrase in body → friendly invalid-key ThothError.
+def test_async_map_401_with_invalid_key_body_returns_friendly_doxa_error() -> None:
+    """T04: 401 + invalid-key phrase in body → friendly invalid-key DoxaError.
 
     Mirrors the sync path defense (perplexity.py:142–151): "key not found"
     and "key invalid" are different user actions, so the async mapper
@@ -66,7 +66,7 @@ def test_async_map_401_with_invalid_key_body_returns_friendly_thoth_error() -> N
         401, body='{"error": {"code": "invalid_api_key", "message": "API key is invalid"}}'
     )
     result = _map_perplexity_error_async(exc)
-    assert isinstance(result, ThothError)
+    assert isinstance(result, DoxaError)
     assert "invalid" in str(result).lower()
     # Specifically NOT the missing-key error (different remediation).
     assert not isinstance(result, APIKeyError) or "invalid" in str(result).lower()
@@ -94,7 +94,7 @@ def test_async_map_404_returns_model_not_found_error_with_models_hint() -> None:
     result = _map_perplexity_error_async(exc, model="sonar-deep-research")
     assert isinstance(result, ProviderError)
     assert "sonar-deep-research" in str(result)
-    assert "thoth providers models --provider perplexity" in str(result)
+    assert "doxa providers models --provider perplexity" in str(result)
 
 
 def test_async_map_422_unsupported_parameter_uses_specific_hint() -> None:
@@ -425,7 +425,7 @@ def test_async_submit_provider_init_creates_async_http_client() -> None:
 #
 # Mirrors OpenAI background's check_status contract (status, progress)
 # while mapping Perplexity's status enum (CREATED/IN_PROGRESS/COMPLETED/
-# FAILED) to Thoth's internal enum. Includes the OAI-BG-06/07 stale-cache
+# FAILED) to Doxa Research's internal enum. Includes the OAI-BG-06/07 stale-cache
 # cases so a transient poll error doesn't masquerade as completion (or
 # fail to honor a genuinely-completed cached result).
 
@@ -884,7 +884,7 @@ def test_get_result_immediate_path_unchanged() -> None:
 #
 # reconnect() re-attaches the in-process job table to a server-side
 # request_id after a fresh process start. The runner calls this in
-# `thoth resume <op_id>` before re-entering the polling loop.
+# `doxa resume <op_id>` before re-entering the polling loop.
 
 
 def test_reconnect_happy_path_repopulates_jobs() -> None:
@@ -957,7 +957,7 @@ def test_cancel_returns_upstream_unsupported_with_no_http_call() -> None:
 def test_cancel_works_for_unknown_job_id() -> None:
     """TS05: cancel() doesn't require the job to be in self.jobs.
 
-    A user can issue `thoth cancel <op_id>` after a process restart before
+    A user can issue `doxa cancel <op_id>` after a process restart before
     reconnect runs; cancel() should still return the unsupported sentinel
     rather than blowing up on KeyError.
     """
@@ -1041,7 +1041,7 @@ def test_full_resume_lifecycle_after_simulated_process_restart() -> None:
     persisted_request_id = returned_id
 
     # --- Phase 2: simulated process restart ---------------------------------
-    # Drop the original provider entirely; emulate a fresh `thoth resume`.
+    # Drop the original provider entirely; emulate a fresh `doxa resume`.
     del submit_provider
 
     fresh_provider = PerplexityProvider(
@@ -1108,7 +1108,7 @@ def test_full_resume_lifecycle_after_simulated_process_restart() -> None:
 def test_resume_after_404_raises_provider_error_with_ttl_message() -> None:
     """TS04b: resume of an expired (>7-day) job surfaces a clear error.
 
-    If the user attempts `thoth resume <op_id>` more than 7 days after the
+    If the user attempts `doxa resume <op_id>` more than 7 days after the
     original submit, the upstream returns 404. The runner must surface a
     ProviderError naming the TTL — not silently fall through to a
     "running" status.

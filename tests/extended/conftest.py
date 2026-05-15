@@ -96,7 +96,7 @@ def live_gemini_env(tmp_path: Path) -> tuple[dict[str, str], Path]:
     return env, tmp_path
 
 
-def run_thoth(
+def run_doxa(
     args: list[str],
     env: dict[str, str],
     *,
@@ -104,7 +104,7 @@ def run_thoth(
 ) -> tuple[subprocess.CompletedProcess[str], float]:
     start = time.monotonic()
     result = subprocess.run(
-        [sys.executable, "-m", "thoth", *args],
+        [sys.executable, "-m", "doxa_research", *args],
         cwd=REPO_ROOT,
         env=env,
         capture_output=True,
@@ -153,7 +153,7 @@ def assert_metadata_absent(path: Path) -> None:
 
 
 def checkpoint_path(state_root: Path, operation_id: str) -> Path:
-    return state_root / "state" / "thoth" / "checkpoints" / f"{operation_id}.json"
+    return state_root / "state" / "doxa" / "checkpoints" / f"{operation_id}.json"
 
 
 def load_checkpoint(state_root: Path, operation_id: str) -> dict[str, Any]:
@@ -188,7 +188,7 @@ def operation_completed(state_root: Path, operation_id: str | None) -> bool:
 def cancel_operation(operation_id: str | None, env: dict[str, str]) -> None:
     if not operation_id:
         return
-    run_thoth(["cancel", operation_id, "--json"], env, timeout=45)
+    run_doxa(["cancel", operation_id, "--json"], env, timeout=45)
 
 
 def cancel_openai_job_direct(job_id: str | None) -> None:
@@ -196,8 +196,8 @@ def cancel_openai_job_direct(job_id: str | None) -> None:
     if not job_id:
         return
 
-    from thoth.config import ConfigManager
-    from thoth.providers import create_provider
+    from doxa_research.config import ConfigManager
+    from doxa_research.providers import create_provider
 
     config = ConfigManager()
     config.load_all_layers({})
@@ -235,7 +235,9 @@ def read_until_operation_id(
         if proc.poll() is not None:
             remaining_out, remaining_err = proc.communicate(timeout=1)
             seen.extend([remaining_out, remaining_err])
-            pytest.fail("thoth exited before printing an operation id:\n" + "".join(seen)[-2000:])
+            pytest.fail(
+                "doxa_research exited before printing an operation id:\n" + "".join(seen)[-2000:]
+            )
 
         readable, _, _ = select.select(streams, [], [], 0.2)
         for stream in readable:

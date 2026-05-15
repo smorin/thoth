@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from thoth.config import BUILTIN_MODES, is_background_mode
+from doxa_research.config import BUILTIN_MODES, is_background_mode
 
 
 def test_thinking_mode_is_immediate() -> None:

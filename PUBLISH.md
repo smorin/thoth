@@ -1,6 +1,6 @@
-# Publishing Thoth to PyPI
+# Publishing Doxa Research to PyPI
 
-This guide walks through the one-time setup and recurring release process for publishing thoth to PyPI using OIDC trusted publishing (no API tokens required).
+This guide walks through the one-time setup and recurring release process for publishing doxa-research to PyPI using OIDC trusted publishing (no API tokens required).
 
 ---
 
@@ -28,9 +28,9 @@ Go to **Settings → Environments** in the GitHub repo and create two environmen
 1. Log in to https://test.pypi.org
 2. Go to **Account Settings → Publishing → Add a new pending publisher**
 3. Fill in:
-   - **PyPI Project Name**: `thoth`
+   - **PyPI Project Name**: `doxa-research`
    - **Owner**: `smorin` (your GitHub username/org)
-   - **Repository name**: `thoth`
+   - **Repository name**: `doxa-research`
    - **Workflow filename**: `publish.yml`
    - **Environment name**: `testpypi`
 
@@ -49,12 +49,12 @@ Confirm these fields are correct before first publish:
 
 ```toml
 [project]
-name = "thoth"
+name = "doxa-research"
 version = "2.5.0"          # Must match git tag: v2.5.0
 authors = [{ name = "Steve Morin", email = "steve.morin@gmail.com" }]
 
 [project.urls]
-Homepage = "https://github.com/smorin/thoth"
+Homepage = "https://github.com/smorin/doxa-research"
 ```
 
 ---
@@ -75,7 +75,7 @@ The local `commit-msg` lefthook and the `commitlint` CI job enforce the format.
 
 ### Step 2: Wait for / review the Release PR
 
-After each push to `main`, `release-please.yml` opens (or updates) a single PR titled `chore(main): release X.Y.Z`. Its diff bumps `pyproject.toml`, `src/thoth/__init__.py`, `.release-please-manifest.json`, and appends to `CHANGELOG.md`.
+After each push to `main`, `release-please.yml` opens (or updates) a single PR titled `chore(main): release X.Y.Z`. Its diff bumps `pyproject.toml`, `src/doxa_research/__init__.py`, `.release-please-manifest.json`, and appends to `CHANGELOG.md`.
 
 Verify:
 - The proposed version matches the semantic weight of the commits since the last tag.
@@ -91,21 +91,21 @@ Merge via the GitHub UI. release-please then:
 
 The tag push triggers **Actions → Publish**:
 1. **build** — wheel + sdist in `dist/`
-2. **publish-testpypi** — https://test.pypi.org/project/thoth/
-3. **publish-pypi** — https://pypi.org/project/thoth/
+2. **publish-testpypi** — https://test.pypi.org/project/doxa-research/
+3. **publish-pypi** — https://pypi.org/project/doxa-research/
 
 ### Step 5: Verify the release
 
 ```bash
 # Verify on TestPyPI
-pip install --index-url https://test.pypi.org/simple/ thoth==2.6.0
-thoth --version
+pip install --index-url https://test.pypi.org/simple/ doxa-research==2.6.0
+doxa --version
 
 # Verify on PyPI
-uvx thoth==2.6.0 --version
+uvx doxa-research==2.6.0 --version
 # or
-pip install thoth==2.6.0
-thoth --version
+pip install doxa-research==2.6.0
+doxa --version
 ```
 
 ---
@@ -114,9 +114,9 @@ thoth --version
 
 | Value | What to use |
 |-------|------------|
-| PyPI project name | `thoth` |
+| PyPI project name | `doxa-research` |
 | GitHub owner | `smorin` |
-| GitHub repo | `thoth` |
+| GitHub repo | `doxa-research` |
 | Workflow file | `publish.yml` |
 | TestPyPI environment | `testpypi` |
 | PyPI environment | `pypi` |
@@ -130,8 +130,8 @@ To build locally without publishing:
 ```bash
 make build
 ls dist/
-# thoth-2.6.0-py3-none-any.whl
-# thoth-2.6.0.tar.gz
+# doxa-research-2.6.0-py3-none-any.whl
+# doxa-research-2.6.0.tar.gz
 ```
 
 To publish manually (requires API token):

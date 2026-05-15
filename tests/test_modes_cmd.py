@@ -1,4 +1,4 @@
-"""Tests for thoth.modes_cmd.list_all_modes and ModeInfo."""
+"""Tests for doxa_research.modes_cmd.list_all_modes and ModeInfo."""
 
 from __future__ import annotations
 
@@ -7,9 +7,9 @@ from pathlib import Path
 
 import pytest
 
-from tests._fixture_helpers import run_thoth
-from thoth.config import ConfigManager
-from thoth.modes_cmd import ModeInfo, list_all_modes, modes_command
+from doxa_research.config import ConfigManager
+from doxa_research.modes_cmd import ModeInfo, list_all_modes, modes_command
+from tests._fixture_helpers import run_doxa
 
 
 @pytest.fixture(autouse=True)
@@ -21,9 +21,9 @@ def _wide_columns_for_table_tests(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("COLUMNS", "200")
 
 
-def _cm(isolated_thoth_home: Path, toml: str | None = None) -> ConfigManager:
+def _cm(isolated_doxa_home: Path, toml: str | None = None) -> ConfigManager:
     if toml is not None:
-        cfg = Path(isolated_thoth_home) / "config" / "thoth" / "thoth.config.toml"
+        cfg = Path(isolated_doxa_home) / "config" / "doxa" / "doxa.config.toml"
         cfg.parent.mkdir(parents=True, exist_ok=True)
         cfg.write_text(toml)
     cm = ConfigManager()
@@ -31,14 +31,14 @@ def _cm(isolated_thoth_home: Path, toml: str | None = None) -> ConfigManager:
     return cm
 
 
-def test_returns_all_builtin_modes(isolated_thoth_home: Path) -> None:
-    modes = list_all_modes(_cm(isolated_thoth_home))
+def test_returns_all_builtin_modes(isolated_doxa_home: Path) -> None:
+    modes = list_all_modes(_cm(isolated_doxa_home))
     names = {m.name for m in modes}
     assert {"default", "clarification", "thinking", "deep_research"} <= names
 
 
-def test_builtin_mode_fields_populated(isolated_thoth_home: Path) -> None:
-    modes = list_all_modes(_cm(isolated_thoth_home))
+def test_builtin_mode_fields_populated(isolated_doxa_home: Path) -> None:
+    modes = list_all_modes(_cm(isolated_doxa_home))
     default = next(m for m in modes if m.name == "default")
     assert default.source == "builtin"
     assert default.providers == ["openai"]
@@ -47,21 +47,21 @@ def test_builtin_mode_fields_populated(isolated_thoth_home: Path) -> None:
     assert default.overrides == {}
 
 
-def test_deep_research_mode_is_background(isolated_thoth_home: Path) -> None:
-    modes = list_all_modes(_cm(isolated_thoth_home))
+def test_deep_research_mode_is_background(isolated_doxa_home: Path) -> None:
+    modes = list_all_modes(_cm(isolated_doxa_home))
     dr = next(m for m in modes if m.name == "deep_research")
     assert dr.kind == "background"
 
 
-def test_providers_list_normalization(isolated_thoth_home: Path) -> None:
+def test_providers_list_normalization(isolated_doxa_home: Path) -> None:
     # deep_research uses `providers: ["openai"]` (list form) — must normalize.
-    modes = list_all_modes(_cm(isolated_thoth_home))
+    modes = list_all_modes(_cm(isolated_doxa_home))
     dr = next(m for m in modes if m.name == "deep_research")
     assert isinstance(dr.providers, list)
     assert dr.providers == ["openai"]
 
 
-def test_user_only_mode(isolated_thoth_home: Path) -> None:
+def test_user_only_mode(isolated_doxa_home: Path) -> None:
     toml = (
         'version = "2.0"\n'
         "[modes.my_brief]\n"
@@ -69,7 +69,7 @@ def test_user_only_mode(isolated_thoth_home: Path) -> None:
         'model = "gpt-4o-mini"\n'
         'description = "my user-only mode"\n'
     )
-    modes = list_all_modes(_cm(isolated_thoth_home, toml))
+    modes = list_all_modes(_cm(isolated_doxa_home, toml))
     mine = next(m for m in modes if m.name == "my_brief")
     assert mine.source == "user"
     assert mine.model == "gpt-4o-mini"
@@ -77,19 +77,19 @@ def test_user_only_mode(isolated_thoth_home: Path) -> None:
     assert mine.overrides == {}
 
 
-def test_overridden_mode_reports_diff(isolated_thoth_home: Path) -> None:
+def test_overridden_mode_reports_diff(isolated_doxa_home: Path) -> None:
     toml = 'version = "2.0"\n[modes.deep_research]\nparallel = false\n'
-    modes = list_all_modes(_cm(isolated_thoth_home, toml))
+    modes = list_all_modes(_cm(isolated_doxa_home, toml))
     dr = next(m for m in modes if m.name == "deep_research")
     assert dr.source == "overridden"
     assert "parallel" in dr.overrides
     assert dr.overrides["parallel"] == {"builtin": True, "effective": False}
 
 
-def test_malformed_user_mode_kind_unknown(isolated_thoth_home: Path) -> None:
+def test_malformed_user_mode_kind_unknown(isolated_doxa_home: Path) -> None:
     # No model, no provider — must NOT crash; must surface as unknown.
     toml = 'version = "2.0"\n[modes.broken]\ndescription = "missing model and provider"\n'
-    modes = list_all_modes(_cm(isolated_thoth_home, toml))
+    modes = list_all_modes(_cm(isolated_doxa_home, toml))
     broken = next(m for m in modes if m.name == "broken")
     assert broken.source == "user"
     assert broken.kind == "unknown"
@@ -115,7 +115,7 @@ def test_modeinfo_is_frozen_dataclass() -> None:
 
 
 def test_modes_command_list_default_prints_table(
-    isolated_thoth_home: Path, capsys: pytest.CaptureFixture[str]
+    isolated_doxa_home: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     rc = modes_command("list", [])
     out = capsys.readouterr().out
@@ -129,9 +129,9 @@ def test_modes_command_list_default_prints_table(
 
 
 def test_modes_command_default_op_is_list(
-    isolated_thoth_home: Path, capsys: pytest.CaptureFixture[str]
+    isolated_doxa_home: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    # `thoth modes` with no op should behave like `thoth modes list`.
+    # `doxa modes` with no op should behave like `doxa modes list`.
     rc = modes_command(None, [])
     out = capsys.readouterr().out
     assert rc == 0
@@ -139,14 +139,14 @@ def test_modes_command_default_op_is_list(
 
 
 def test_modes_command_unknown_op_returns_2(
-    isolated_thoth_home: Path, capsys: pytest.CaptureFixture[str]
+    isolated_doxa_home: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     rc = modes_command("bogus", [])
     assert rc == 2
 
 
 def test_modes_command_list_sort_order(
-    isolated_thoth_home: Path, capsys: pytest.CaptureFixture[str]
+    isolated_doxa_home: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     # Sort: source -> kind -> provider -> model -> name.
     # builtin + immediate modes (default, clarification, thinking) must appear
@@ -162,7 +162,7 @@ def test_modes_command_list_sort_order(
 
 
 def test_modes_list_json_shape(
-    isolated_thoth_home: Path, capsys: pytest.CaptureFixture[str]
+    isolated_doxa_home: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     rc = modes_command("list", ["--json"])
     out = capsys.readouterr().out
@@ -178,9 +178,9 @@ def test_modes_list_json_shape(
 
 
 def test_modes_list_masks_api_key_inside_mode(
-    isolated_thoth_home: Path, capsys: pytest.CaptureFixture[str]
+    isolated_doxa_home: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    cfg = Path(isolated_thoth_home) / "config" / "thoth" / "thoth.config.toml"
+    cfg = Path(isolated_doxa_home) / "config" / "doxa" / "doxa.config.toml"
     cfg.parent.mkdir(parents=True, exist_ok=True)
     cfg.write_text(
         'version = "2.0"\n'
@@ -201,9 +201,9 @@ def test_modes_list_masks_api_key_inside_mode(
 
 
 def test_modes_list_show_secrets_unmasks(
-    isolated_thoth_home: Path, capsys: pytest.CaptureFixture[str]
+    isolated_doxa_home: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    cfg = Path(isolated_thoth_home) / "config" / "thoth" / "thoth.config.toml"
+    cfg = Path(isolated_doxa_home) / "config" / "doxa" / "doxa.config.toml"
     cfg.parent.mkdir(parents=True, exist_ok=True)
     cfg.write_text(
         'version = "2.0"\n'
@@ -219,9 +219,9 @@ def test_modes_list_show_secrets_unmasks(
 
 
 def test_modes_list_source_filter_user(
-    isolated_thoth_home: Path, capsys: pytest.CaptureFixture[str]
+    isolated_doxa_home: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    cfg = Path(isolated_thoth_home) / "config" / "thoth" / "thoth.config.toml"
+    cfg = Path(isolated_doxa_home) / "config" / "doxa" / "doxa.config.toml"
     cfg.parent.mkdir(parents=True, exist_ok=True)
     cfg.write_text(
         'version = "2.0"\n[modes.my_brief]\nprovider = "openai"\nmodel = "gpt-4o-mini"\n'
@@ -235,9 +235,9 @@ def test_modes_list_source_filter_user(
 
 
 def test_modes_list_source_filter_overridden(
-    isolated_thoth_home: Path, capsys: pytest.CaptureFixture[str]
+    isolated_doxa_home: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    cfg = Path(isolated_thoth_home) / "config" / "thoth" / "thoth.config.toml"
+    cfg = Path(isolated_doxa_home) / "config" / "doxa" / "doxa.config.toml"
     cfg.parent.mkdir(parents=True, exist_ok=True)
     cfg.write_text('version = "2.0"\n[modes.deep_research]\nparallel = false\n')
     rc = modes_command("list", ["--json", "--source", "overridden"])
@@ -248,14 +248,14 @@ def test_modes_list_source_filter_overridden(
 
 
 def test_modes_list_invalid_source_returns_2(
-    isolated_thoth_home: Path, capsys: pytest.CaptureFixture[str]
+    isolated_doxa_home: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     rc = modes_command("list", ["--source", "bogus"])
     assert rc == 2
 
 
 def test_modes_detail_unknown_name_returns_0(
-    isolated_thoth_home: Path, capsys: pytest.CaptureFixture[str]
+    isolated_doxa_home: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """Q5-A row 11.i: --name X with no match is empty intersection, exit 0
     (not an error). JSON form returns `{"mode": null}`."""
@@ -266,9 +266,7 @@ def test_modes_detail_unknown_name_returns_0(
     assert data["mode"] is None
 
 
-def test_modes_detail_builtin(
-    isolated_thoth_home: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_modes_detail_builtin(isolated_doxa_home: Path, capsys: pytest.CaptureFixture[str]) -> None:
     rc = modes_command("list", ["--name", "default"])
     out = capsys.readouterr().out
     assert rc == 0
@@ -279,9 +277,9 @@ def test_modes_detail_builtin(
 
 
 def test_modes_detail_overridden_shows_diff(
-    isolated_thoth_home: Path, capsys: pytest.CaptureFixture[str]
+    isolated_doxa_home: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    cfg = Path(isolated_thoth_home) / "config" / "thoth" / "thoth.config.toml"
+    cfg = Path(isolated_doxa_home) / "config" / "doxa" / "doxa.config.toml"
     cfg.parent.mkdir(parents=True, exist_ok=True)
     cfg.write_text('version = "2.0"\n[modes.deep_research]\nparallel = false\n')
     rc = modes_command("list", ["--name", "deep_research"])
@@ -292,7 +290,7 @@ def test_modes_detail_overridden_shows_diff(
 
 
 def test_modes_detail_truncates_system_prompt_without_full(
-    isolated_thoth_home: Path, capsys: pytest.CaptureFixture[str]
+    isolated_doxa_home: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     rc = modes_command("list", ["--name", "deep_research"])
     out = capsys.readouterr().out
@@ -301,7 +299,7 @@ def test_modes_detail_truncates_system_prompt_without_full(
 
 
 def test_modes_detail_full_dumps_system_prompt(
-    isolated_thoth_home: Path, capsys: pytest.CaptureFixture[str]
+    isolated_doxa_home: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     rc = modes_command("list", ["--name", "deep_research", "--full"])
     out = capsys.readouterr().out
@@ -309,33 +307,33 @@ def test_modes_detail_full_dumps_system_prompt(
     assert "comprehensive research with citations" in out
 
 
-def test_thoth_modes_subprocess_lists_modes(isolated_thoth_home: Path) -> None:
-    """PR2 (Q5-A row 5): bare `thoth modes` exits 2; canonical leaf is
-    `thoth modes list`."""
-    rc, out, err = run_thoth(["modes", "list"])
+def test_doxa_modes_subprocess_lists_modes(isolated_doxa_home: Path) -> None:
+    """PR2 (Q5-A row 5): bare `doxa modes` exits 2; canonical leaf is
+    `doxa modes list`."""
+    rc, out, err = run_doxa(["modes", "list"])
     assert rc == 0, f"stderr: {err}"
     assert "default" in out
     assert "deep_research" in out
 
 
-def test_thoth_help_modes_subprocess(isolated_thoth_home: Path) -> None:
-    rc, out, err = run_thoth(["help", "modes"])
+def test_doxa_help_modes_subprocess(isolated_doxa_home: Path) -> None:
+    rc, out, err = run_doxa(["help", "modes"])
     assert rc == 0, f"stderr: {err}"
-    assert "thoth modes" in out
+    assert "doxa modes" in out
 
 
 def test_help_epilog_lists_mode_names(
-    isolated_thoth_home: Path,
+    isolated_doxa_home: Path,
 ) -> None:
-    rc, out, err = run_thoth(["--help"])
+    rc, out, err = run_doxa(["--help"])
     assert rc == 0, f"stderr: {err}"
-    assert "thoth modes" in out
+    assert "doxa modes" in out
     # Teaser still shows at least one mode name.
     assert "default" in out
 
 
 def test_interactive_and_help_use_list_all_modes(
-    isolated_thoth_home: Path,
+    isolated_doxa_home: Path,
 ) -> None:
     """Regression: direct `BUILTIN_MODES` iteration for LISTING (not validation)
     should no longer exist in interactive.py or help.py. Both must go through
@@ -348,8 +346,8 @@ def test_interactive_and_help_use_list_all_modes(
     """
     from pathlib import Path as _Path
 
-    interactive_src = _Path("src/thoth/interactive.py").read_text()
-    help_src = _Path("src/thoth/help.py").read_text()
+    interactive_src = _Path("src/doxa_research/interactive.py").read_text()
+    help_src = _Path("src/doxa_research/help.py").read_text()
 
     # Forbidden: iterating BUILTIN_MODES.items() for listing
     assert "BUILTIN_MODES.items()" not in interactive_src, (
@@ -362,16 +360,16 @@ def test_interactive_and_help_use_list_all_modes(
     assert "list_all_modes" in interactive_src
 
 
-def test_thoth_modes_subprocess_json_flag_reaches_subcommand(
-    isolated_thoth_home: Path,
+def test_doxa_modes_subprocess_json_flag_reaches_subcommand(
+    isolated_doxa_home: Path,
 ) -> None:
-    """PR2 canonical: `thoth modes list --json` (legacy `thoth modes --json`
+    """PR2 canonical: `doxa modes list --json` (legacy `doxa modes --json`
     is gated to exit 2 with a migration hint per Q6-PR2-C1).
 
     P16 PR3 T12 promotes `--json` to the canonical envelope contract
     (`{"status": "ok", "data": {schema_version, modes}}`).
     """
-    rc, out, err = run_thoth(["modes", "list", "--json"])
+    rc, out, err = run_doxa(["modes", "list", "--json"])
     assert rc == 0, f"stderr: {err}"
     payload = json.loads(out)
     assert payload["status"] == "ok"
@@ -383,16 +381,16 @@ def test_thoth_modes_subprocess_json_flag_reaches_subcommand(
     assert thinking["model"] == "o3"
 
 
-def test_thoth_modes_subprocess_name_flag(isolated_thoth_home: Path) -> None:
-    rc, out, err = run_thoth(["modes", "list", "--name", "thinking"])
+def test_doxa_modes_subprocess_name_flag(isolated_doxa_home: Path) -> None:
+    rc, out, err = run_doxa(["modes", "list", "--name", "thinking"])
     assert rc == 0, f"stderr: {err}"
     assert "Mode: thinking" in out
     assert "Model: o3" in out
     assert "Kind: immediate" in out
 
 
-def test_thoth_modes_subprocess_source_filter(isolated_thoth_home: Path) -> None:
-    rc, out, err = run_thoth(["modes", "list", "--source", "builtin", "--json"])
+def test_doxa_modes_subprocess_source_filter(isolated_doxa_home: Path) -> None:
+    rc, out, err = run_doxa(["modes", "list", "--source", "builtin", "--json"])
     assert rc == 0, f"stderr: {err}"
     payload = json.loads(out)
     sources = {m["source"] for m in payload["data"]["modes"]}

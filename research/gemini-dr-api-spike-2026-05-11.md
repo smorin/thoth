@@ -177,7 +177,7 @@ Literal['in_progress', 'requires_action', 'completed', 'failed', 'cancelled', 'i
 
 **Implication for `OperationStatus` mapping:**
 
-| Gemini status | Thoth `OperationStatus` |
+| Gemini status | Doxa Research `OperationStatus` |
 |---|---|
 | `in_progress` | `RUNNING` |
 | `requires_action` | `RUNNING` (treat as still running) |
@@ -375,7 +375,7 @@ google.genai._interactions.GeminiNextGenAPIClientError  <- Exception
 - Use `exc.status_code` (int) — NOT `exc.code` (always `None`)
 - Must import from `google.genai._interactions` (private module) OR catch broad `Exception`
   and discriminate by `exc.status_code`
-- The existing `_map_gemini_error` function in thoth uses `google.genai.errors` — interaction
+- The existing `_map_gemini_error` function in doxa-research uses `google.genai.errors` — interaction
   errors will NOT be caught by those handlers and will propagate as unhandled exceptions
 
 ### `_map_gemini_error` extension strategy

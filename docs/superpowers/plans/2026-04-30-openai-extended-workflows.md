@@ -6,7 +6,7 @@
 
 **Architecture:** Keep mock/unit tests as the broad contract surface and add only live tests for behavior that can drift at the OpenAI API boundary. Extract shared subprocess, checkpoint, and cleanup helpers into `tests/extended/conftest.py`. Every background test must cancel in `finally` unless the operation is already completed.
 
-**Tech Stack:** Python 3.11+, pytest, Click CLI subprocesses via `python -m thoth`, OpenAI Responses API, isolated XDG directories, `@pytest.mark.extended`, optional `@pytest.mark.extended_slow`.
+**Tech Stack:** Python 3.11+, pytest, Click CLI subprocesses via `python -m doxa-research`, OpenAI Responses API, isolated XDG directories, `@pytest.mark.extended`, optional `@pytest.mark.extended_slow`.
 
 ---
 
@@ -14,10 +14,10 @@
 
 | ID | Marker | Cost profile | Purpose |
 |---|---|---|---|
-| `EXT-OAI-IMM-STREAM-TEE` | `extended` | fast, immediate | Prove live OpenAI streaming emits text through Thoth's immediate path and tee sink. |
+| `EXT-OAI-IMM-STREAM-TEE` | `extended` | fast, immediate | Prove live OpenAI streaming emits text through Doxa Research's immediate path and tee sink. |
 | `EXT-OAI-BG-JSON-AUTO-ASYNC` | `extended` | fast, cancelled | Prove background `ask --json` auto-submits asynchronously without explicit `--async`. |
 | `EXT-OAI-BG-JSON-EXPLICIT-ASYNC` | `extended` | fast, cancelled | Prove explicit `--async --json` also returns a submit envelope quickly. |
-| `EXT-OAI-BG-CANCEL-CMD` | `extended` | fast, cancelled | Prove the user-facing `thoth cancel <op-id> --json` command works against a live OpenAI background job. |
+| `EXT-OAI-BG-CANCEL-CMD` | `extended` | fast, cancelled | Prove the user-facing `doxa-research cancel <op-id> --json` command works against a live OpenAI background job. |
 | `EXT-OAI-BG-ASYNC-BLOCKING-RESUME-COMPLETE` | `extended`, `extended_slow` | slow, completes | Prove full live lifecycle: async submit, fresh-process blocking resume, final result extraction, output file write, completed checkpoint. |
 
 ## File Structure
@@ -73,8 +73,8 @@ Expected: no selected tests, or all extended tests listed as deselected because 
 Recommended if implementing outside the main checkout:
 
 ```bash
-git worktree add /Users/stevemorin/c/thoth-worktrees/openai-extended-workflows -b test/openai-extended-workflows main
-cd /Users/stevemorin/c/thoth-worktrees/openai-extended-workflows
+git worktree add /Users/stevemorin/c/doxa-research-worktrees/openai-extended-workflows -b test/openai-extended-workflows main
+cd /Users/stevemorin/c/doxa-research-worktrees/openai-extended-workflows
 ```
 
 Expected: new worktree on a clean branch.
@@ -149,7 +149,7 @@ def scrub_secret(text: str, env: dict[str, str]) -> str:
     return text
 
 
-def run_thoth(
+def run_doxa(
     args: list[str],
     env: dict[str, str],
     *,
@@ -157,7 +157,7 @@ def run_thoth(
 ) -> tuple[subprocess.CompletedProcess[str], float]:
     start = time.monotonic()
     result = subprocess.run(
-        [sys.executable, "-m", "thoth", *args],
+        [sys.executable, "-m", "doxa-research", *args],
         cwd=REPO_ROOT,
         env=env,
         capture_output=True,
@@ -172,7 +172,7 @@ def payload(result: subprocess.CompletedProcess[str]) -> dict[str, Any]:
 
 
 def checkpoint_path(state_root: Path, operation_id: str) -> Path:
-    return state_root / "state" / "thoth" / "checkpoints" / f"{operation_id}.json"
+    return state_root / "state" / "doxa-research" / "checkpoints" / f"{operation_id}.json"
 
 
 def load_checkpoint(state_root: Path, operation_id: str) -> dict[str, Any]:
@@ -207,7 +207,7 @@ def operation_completed(state_root: Path, operation_id: str | None) -> bool:
 def cancel_operation(operation_id: str | None, env: dict[str, str]) -> None:
     if not operation_id:
         return
-    run_thoth(["cancel", operation_id, "--json"], env, timeout=45)
+    run_doxa(["cancel", operation_id, "--json"], env, timeout=45)
 
 
 def cancel_openai_job_direct(job_id: str | None) -> None:
@@ -215,8 +215,8 @@ def cancel_openai_job_direct(job_id: str | None) -> None:
     if not job_id:
         return
 
-    from thoth.config import ConfigManager
-    from thoth.providers import create_provider
+    from doxa-research.config import ConfigManager
+    from doxa-research.providers import create_provider
 
     config = ConfigManager()
     config.load_all_layers({})
@@ -254,7 +254,7 @@ def read_until_operation_id(
         if proc.poll() is not None:
             remaining_out, remaining_err = proc.communicate(timeout=1)
             seen.extend([remaining_out, remaining_err])
-            pytest.fail("thoth exited before printing an operation id:\n" + "".join(seen)[-2000:])
+            pytest.fail("doxa-research exited before printing an operation id:\n" + "".join(seen)[-2000:])
 
         readable, _, _ = select.select(streams, [], [], 0.2)
         for stream in readable:
@@ -322,7 +322,7 @@ _OP_ID_RE
 _OPENAI_BACKGROUND_MODE
 _require_openai_key
 live_cli_env
-_run_thoth
+_run_doxa
 _checkpoint_path
 _load_checkpoint
 _payload
@@ -342,7 +342,7 @@ from tests.extended.conftest import (
     load_checkpoint,
     payload,
     read_until_operation_id,
-    run_thoth,
+    run_doxa,
     wait_for_provider_job_id,
 )
 ```
@@ -351,7 +351,7 @@ Then update call sites:
 
 ```python
 # old
-submit, submit_elapsed = _run_thoth([...], env)
+submit, submit_elapsed = _run_doxa([...], env)
 submit_payload = _payload(submit)
 status_data = _payload(status)["data"]
 _cancel_operation(operation_id, env)
@@ -361,7 +361,7 @@ job_id = _wait_for_provider_job_id(state_root, operation_id)
 checkpoint = _load_checkpoint(state_root, operation_id)
 
 # new
-submit, submit_elapsed = run_thoth([...], env)
+submit, submit_elapsed = run_doxa([...], env)
 submit_payload = payload(submit)
 status_data = payload(status)["data"]
 cancel_background_operation(operation_id, env, state_root)
@@ -409,7 +409,7 @@ Change `[tool.pytest.ini_options]` in `pyproject.toml`:
 ```toml
 markers = [
     "extended: real-API contract tests; gated, not run by default",
-    "extended_slow: slow/costly real-API completion tests; require THOTH_EXTENDED_SLOW=1",
+    "extended_slow: slow/costly real-API completion tests; require DOXA_EXTENDED_SLOW=1",
 ]
 ```
 
@@ -448,7 +448,7 @@ Create `tests/extended/test_openai_real_workflows.py` with this content:
 
 These tests hit the live OpenAI API. Fast background tests submit only long-running
 jobs and cancel them in ``finally``. The single completion lifecycle test is
-marked ``extended_slow`` and requires ``THOTH_EXTENDED_SLOW=1``.
+marked ``extended_slow`` and requires ``DOXA_EXTENDED_SLOW=1``.
 """
 
 from __future__ import annotations
@@ -463,7 +463,7 @@ from tests.extended.conftest import (
     cancel_background_operation,
     load_checkpoint,
     payload,
-    run_thoth,
+    run_doxa,
 )
 
 pytestmark = pytest.mark.extended
@@ -495,7 +495,7 @@ def test_ext_oai_imm_stream_tee(live_cli_env: tuple[dict[str, str], Path]) -> No
     env, state_root = live_cli_env
     target = state_root / "answer.md"
 
-    result, elapsed = run_thoth(
+    result, elapsed = run_doxa(
         [
             "ask",
             "Return exactly these words: live stream tee probe",
@@ -529,7 +529,7 @@ def test_ext_oai_bg_json_auto_async(live_cli_env: tuple[dict[str, str], Path]) -
     env, state_root = live_cli_env
     operation_id: str | None = None
     try:
-        result, elapsed = run_thoth(
+        result, elapsed = run_doxa(
             [
                 "ask",
                 "Return exactly these words after starting: auto async probe",
@@ -553,7 +553,7 @@ def test_ext_oai_bg_json_explicit_async(live_cli_env: tuple[dict[str, str], Path
     env, state_root = live_cli_env
     operation_id: str | None = None
     try:
-        result, elapsed = run_thoth(
+        result, elapsed = run_doxa(
             [
                 "ask",
                 "Return exactly these words after starting: explicit async probe",
@@ -578,7 +578,7 @@ def test_ext_oai_bg_cancel_cmd(live_cli_env: tuple[dict[str, str], Path]) -> Non
     env, state_root = live_cli_env
     operation_id: str | None = None
     try:
-        submit, elapsed = run_thoth(
+        submit, elapsed = run_doxa(
             [
                 "ask",
                 "Start a cancellable live OpenAI background probe.",
@@ -594,7 +594,7 @@ def test_ext_oai_bg_cancel_cmd(live_cli_env: tuple[dict[str, str], Path]) -> Non
         )
         operation_id = _assert_submit_envelope(submit, max_elapsed=30, elapsed=elapsed)
 
-        cancel, _ = run_thoth(["cancel", operation_id, "--json"], env, timeout=45)
+        cancel, _ = run_doxa(["cancel", operation_id, "--json"], env, timeout=45)
         assert cancel.returncode == 0, cancel.stderr + cancel.stdout
         cancel_payload = payload(cancel)
         assert cancel_payload["status"] == "ok"
@@ -621,13 +621,13 @@ def test_ext_oai_bg_async_blocking_resume_complete(
     live_cli_env: tuple[dict[str, str], Path],
 ) -> None:
     """EXT-OAI-BG-ASYNC-BLOCKING-RESUME-COMPLETE: async submit then blocking resume."""
-    if os.environ.get("THOTH_EXTENDED_SLOW") != "1":
-        pytest.skip("set THOTH_EXTENDED_SLOW=1 to run live completion lifecycle")
+    if os.environ.get("DOXA_EXTENDED_SLOW") != "1":
+        pytest.skip("set DOXA_EXTENDED_SLOW=1 to run live completion lifecycle")
 
     env, state_root = live_cli_env
     output_root = state_root / "outputs"
     project = "extended-slow"
-    config_path = state_root / "thoth.config.toml"
+    config_path = state_root / "doxa-research.config.toml"
     config_path.write_text(
         'version = "2.0"\n'
         "[paths]\n"
@@ -636,7 +636,7 @@ def test_ext_oai_bg_async_blocking_resume_complete(
     )
     operation_id: str | None = None
     try:
-        submit, elapsed = run_thoth(
+        submit, elapsed = run_doxa(
             [
                 "ask",
                 "Write one concise sentence containing the exact phrase blocking resume probe.",
@@ -656,7 +656,7 @@ def test_ext_oai_bg_async_blocking_resume_complete(
         )
         operation_id = _assert_submit_envelope(submit, max_elapsed=30, elapsed=elapsed)
 
-        resume, _ = run_thoth(
+        resume, _ = run_doxa(
             ["resume", operation_id, "--config", str(config_path)],
             env,
             timeout=900,
@@ -805,10 +805,10 @@ git commit -m "test(extended): clarify OpenAI async resume lifecycle coverage"
 Run:
 
 ```bash
-THOTH_EXTENDED_SLOW=1 uv run pytest -m "extended and extended_slow" tests/extended/test_openai_real_workflows.py::test_ext_oai_bg_async_blocking_resume_complete -v
+DOXA_EXTENDED_SLOW=1 uv run pytest -m "extended and extended_slow" tests/extended/test_openai_real_workflows.py::test_ext_oai_bg_async_blocking_resume_complete -v
 ```
 
-Expected with `OPENAI_API_KEY` set: pass within the 900 second timeout. If it fails before completion, the `finally` cleanup attempts `thoth cancel <op-id> --json` and direct OpenAI cancel by job ID.
+Expected with `OPENAI_API_KEY` set: pass within the 900 second timeout. If it fails before completion, the `finally` cleanup attempts `doxa-research cancel <op-id> --json` and direct OpenAI cancel by job ID.
 
 - [ ] **Step 2: If the slow test flakes on exact stdout text, loosen only stdout assertion**
 
@@ -902,7 +902,7 @@ Expected with `OPENAI_API_KEY` set: fast extended tests pass. The slow lifecycle
 Run:
 
 ```bash
-THOTH_EXTENDED_SLOW=1 uv run pytest -m "extended and extended_slow" tests/extended/test_openai_real_workflows.py::test_ext_oai_bg_async_blocking_resume_complete -v
+DOXA_EXTENDED_SLOW=1 uv run pytest -m "extended and extended_slow" tests/extended/test_openai_real_workflows.py::test_ext_oai_bg_async_blocking_resume_complete -v
 ```
 
 Expected with `OPENAI_API_KEY` set: pass, completed checkpoint, one non-empty `_openai_` result file.
@@ -915,7 +915,7 @@ Run:
 make env-check
 just fix
 just check
-./thoth_test -r
+./doxa_test -r
 just test-fix
 just test-lint
 just test-typecheck
@@ -929,13 +929,13 @@ Expected: all pass. If `just fix` or `just test-fix` changes files, rerun the re
 
 - Every background test stores `operation_id` and calls `cancel_background_operation(operation_id, env, state_root)` in `finally`.
 - `cancel_background_operation` checks the local checkpoint first. It skips cancellation only when the operation is already `completed`.
-- If `thoth cancel <op-id> --json` fails or the checkpoint path is unavailable, it falls back to direct `OpenAIProvider.cancel(job_id)` when a provider job ID is present.
+- If `doxa-research cancel <op-id> --json` fails or the checkpoint path is unavailable, it falls back to direct `OpenAIProvider.cancel(job_id)` when a provider job ID is present.
 - If a test times out before an operation ID is captured, no job ID is known. That failure should be investigated before rerunning the whole suite.
 
 ## Completion Criteria
 
 - The extended suite has the five new scenario IDs above.
-- The slow lifecycle test is gated by both `extended_slow` and `THOTH_EXTENDED_SLOW=1`.
+- The slow lifecycle test is gated by both `extended_slow` and `DOXA_EXTENDED_SLOW=1`.
 - Fast background tests cancel live jobs after the contract assertion.
 - Default `uv run pytest -q` remains free of live OpenAI calls.
 - The final implementation preserves the current broad mock coverage and does not duplicate every mock-only flow as a live test.

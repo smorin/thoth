@@ -14,7 +14,7 @@ from tests.extended.conftest import (
     cancel_background_operation,
     load_checkpoint,
     payload,
-    run_thoth,
+    run_doxa,
     wait_for_provider_job_id,
 )
 
@@ -91,7 +91,7 @@ def _submit_background_json(
     if extra_args:
         args.extend(extra_args)
 
-    result, elapsed = run_thoth(args, env, timeout=90)
+    result, elapsed = run_doxa(args, env, timeout=90)
     operation_id = _assert_submit_envelope(result, elapsed, env)
     return operation_id, result, elapsed
 
@@ -119,7 +119,7 @@ def test_ext_oai_imm_stream_tee_writes_stdout_and_file(
     env, _state_root = live_cli_env
     target = tmp_path / "openai-stream-tee.md"
 
-    result, elapsed = run_thoth(
+    result, elapsed = run_doxa(
         [
             "ask",
             "Reply in one short sentence confirming that live streaming tee output works.",
@@ -149,7 +149,7 @@ def test_ext_oai_imm_openai_reasoning_completes_with_reasoning(
 
     diagnostics: list[str] = []
     for label, prompt in OPENAI_REASONING_PROMPTS:
-        result, elapsed = run_thoth(
+        result, elapsed = run_doxa(
             [
                 "ask",
                 prompt,
@@ -236,7 +236,7 @@ def test_ext_oai_bg_cancel_cmd_json_cancels_live_background_job(
         )
         assert wait_for_provider_job_id(state_root, operation_id)
 
-        cancel_result, cancel_elapsed = run_thoth(["cancel", operation_id, "--json"], env)
+        cancel_result, cancel_elapsed = run_doxa(["cancel", operation_id, "--json"], env)
         assert cancel_result.returncode == 0, cancel_result.stderr + cancel_result.stdout
         assert cancel_elapsed < 45
         assert_no_secret_leaked(cancel_result, env)
@@ -264,13 +264,13 @@ def test_ext_oai_bg_async_blocking_resume_complete_lifecycle(
     tmp_path: Path,
 ) -> None:
     """EXT-OAI-BG-ASYNC-BLOCKING-RESUME-COMPLETE: async submit then blocking resume."""
-    if os.environ.get("THOTH_EXTENDED_SLOW") != "1":
-        pytest.skip("set THOTH_EXTENDED_SLOW=1 to run the completion lifecycle test")
+    if os.environ.get("DOXA_EXTENDED_SLOW") != "1":
+        pytest.skip("set DOXA_EXTENDED_SLOW=1 to run the completion lifecycle test")
 
     env, state_root = live_cli_env
     project = "extended-slow"
     output_root = tmp_path / "outputs"
-    config_path = tmp_path / "thoth.config.toml"
+    config_path = tmp_path / "doxa.config.toml"
     _write_resume_config(config_path, output_root)
 
     operation_id: str | None = None
@@ -285,7 +285,7 @@ def test_ext_oai_bg_async_blocking_resume_complete_lifecycle(
             extra_args=["--config", str(config_path), "--project", project],
         )
 
-        resume_result, _resume_elapsed = run_thoth(
+        resume_result, _resume_elapsed = run_doxa(
             ["resume", operation_id, "--config", str(config_path), "--quiet"],
             env,
             timeout=900,

@@ -1,0 +1,819 @@
+"""Click CLI command definition and entry-point wiring.
+
+Houses the top-level `cli()` click command plus `main()` (the
+`[project.scripts] doxa_research` entry point). Also owns `handle_error`,
+the top-level exception presenter.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import inspect
+import os
+import signal
+import sys
+import warnings
+from collections.abc import Callable
+from pathlib import Path
+
+import click
+from rich.markup import escape as _rich_escape
+
+import doxa_research.config as _doxa_config
+import doxa_research.run as _doxa_run
+import doxa_research.signals as _doxa_signals
+from doxa_research.cli_subcommands._options import _research_options
+from doxa_research.config import DOXA_VERSION, ConfigManager
+from doxa_research.context import AppContext
+from doxa_research.errors import DoxaError
+from doxa_research.help import (
+    DoxaGroup,
+)
+from doxa_research.run import console
+from doxa_research.signals import handle_sigint
+
+
+def _read_prompt_input(path_or_dash: str, max_bytes: int) -> str:
+    """Read prompt text from a file path or '-' for stdin, capped at max_bytes."""
+    if path_or_dash == "-":
+        data = sys.stdin.read(max_bytes + 1)
+    else:
+        try:
+            size = Path(path_or_dash).stat().st_size
+        except FileNotFoundError as e:
+            raise click.BadParameter(f"Prompt file not found: {path_or_dash}") from e
+        if size > max_bytes:
+            raise click.BadParameter(f"Prompt file exceeds {max_bytes} bytes (size: {size})")
+        try:
+            with open(path_or_dash, encoding="utf-8") as f:
+                data = f.read(max_bytes + 1)
+        except UnicodeDecodeError as e:
+            raise click.BadParameter(f"Prompt file must be UTF-8: {path_or_dash}") from e
+    if len(data) > max_bytes:
+        raise click.BadParameter(f"Prompt input exceeds {max_bytes} bytes")
+    return data.strip()
+
+
+def _build_app_context(
+    verbose: bool,
+    *,
+    cancel_on_interrupt: bool | None = None,
+    as_json: bool = False,
+) -> AppContext:
+    """Construct the per-invocation AppContext.
+
+    The returned ctx shares its `interrupt_event` with `doxa_research.signals` so that
+    the cooperative SIGINT handler's `set()` is observable via `ctx`.
+    """
+    return AppContext(
+        config=ConfigManager(),
+        console=console,
+        interrupt_event=_doxa_signals._interrupt_event,
+        verbose=verbose,
+        cancel_on_interrupt_override=cancel_on_interrupt,
+        as_json=as_json,
+    )
+
+
+def _run_maybe_async(result) -> None:
+    if inspect.iscoroutine(result):
+        asyncio.run(result)
+
+
+def _click_remainder_args(ctx: click.Context) -> list[str]:
+    with warnings.catch_warnings():
+        warnings.filterwarnings(
+            "ignore",
+            message=r".*protected_args.*",
+            category=DeprecationWarning,
+        )
+        return list(ctx.protected_args) + list(ctx.args)
+
+
+def _apply_config_path(config_path: object) -> None:
+    if config_path:
+        _doxa_config._config_path = Path(str(config_path)).expanduser().resolve()
+
+
+def _apply_no_validate(no_validate: bool) -> None:
+    """Mirror of `_apply_config_path` for the `--no-validate` flag.
+
+    Sets the module-global `_no_validate` in `doxa_research.config_schema` so that
+    `ConfigSchema.validate()` short-circuits to an empty report. This is
+    *loader metadata*, NOT a config root key — it is never threaded into
+    `cli_args` and `ConfigManager.load_all_layers` rejects it as a config
+    root by virtue of the existing `allowed_top_level` defense in
+    `config.py:306`.
+    """
+    if no_validate:
+        from doxa_research import config_schema as _doxa_config_schema
+
+        _doxa_config_schema._no_validate = True
+
+
+def _has_supplied_value(value: object) -> bool:
+    return value is not None and value is not False
+
+
+def _version_conflicts(ctx: click.Context, opts: dict) -> list[str]:
+    conflicts: list[str] = []
+    if _click_remainder_args(ctx):
+        conflicts.append("arguments")
+
+    option_labels = {
+        "mode_opt": "--mode",
+        "prompt_opt": "--prompt",
+        "prompt_file": "--prompt-file",
+        "async_mode": "--async",
+        "project": "--project",
+        "output_dir": "--output-dir",
+        "provider": "--provider",
+        "input_file": "--input-file",
+        "auto": "--auto",
+        "verbose": "--verbose",
+        "api_key_openai": "--api-key-openai",
+        "api_key_perplexity": "--api-key-perplexity",
+        "api_key_gemini": "--api-key-gemini",
+        "api_key_mock": "--api-key-mock",
+        "config_path": "--config",
+        "profile": "--profile",
+        "combined": "--combined",
+        "quiet": "--quiet",
+        "no_metadata": "--no-metadata",
+        "timeout": "--timeout",
+        "interactive": "--interactive",
+        "clarify": "--clarify",
+        "pick_model": "--pick-model",
+        "model": "--model",
+    }
+    for key, label in option_labels.items():
+        if _has_supplied_value(opts.get(key)):
+            conflicts.append(label)
+    return conflicts
+
+
+def _invoke_group_callback(ctx: click.Context) -> None:
+    if ctx.meta.get("doxa_group_callback_invoked"):
+        return
+    if ctx.command.callback is not None:
+        ctx.invoke(ctx.command.callback, **ctx.params)
+    ctx.meta["doxa_group_callback_invoked"] = True
+
+
+def _prompt_max_bytes_from_config(config: ConfigManager) -> int:
+    raw = config.data.get("execution", {}).get("prompt_max_bytes", 1024 * 1024)
+    try:
+        max_bytes = int(raw)
+    except (TypeError, ValueError) as e:
+        raise click.BadParameter("execution.prompt_max_bytes must be an integer") from e
+    if max_bytes < 1:
+        raise click.BadParameter("execution.prompt_max_bytes must be positive")
+    return max_bytes
+
+
+def _prompt_max_bytes() -> int:
+    return _prompt_max_bytes_from_config(_doxa_config.get_config())
+
+
+def _config_default_mode(config: ConfigManager) -> str:
+    env = os.getenv("DOXA_DEFAULT_MODE")
+    if env:
+        return env
+
+    profile_layer = getattr(config, "active_profile", None)
+    if profile_layer is not None:
+        data = profile_layer.data if isinstance(profile_layer.data, dict) else {}
+        v = data.get("default_mode")
+        if isinstance(v, str) and v:
+            return v
+
+    raw = config.get("general.default_mode", "default")
+    return str(raw) if raw else "default"
+
+
+def _config_default_project(config: ConfigManager) -> str | None:
+    raw = config.get("general.default_project")
+    return str(raw) if raw else None
+
+
+def _has_positional_prompt(args: list[str], ctx: click.Context | None = None) -> bool:
+    """Return True if `args` carry prompt text (not just a mode word or subcommand)."""
+    if not args:
+        return False
+    first = args[0]
+    if first in _doxa_config.BUILTIN_MODES:
+        return len(args) > 1
+    if ctx is not None and first in getattr(ctx.command, "commands", {}):
+        return False
+    return True
+
+
+def _normalize_input_file_alias(
+    args: list[str],
+    opts: dict,
+    *,
+    ctx: click.Context | None = None,
+) -> None:
+    """P24-T25: rewrite `--input-file` to `--prompt-file` as a backward-compat alias.
+
+    Raises BadParameter on collisions with any other prompt source. After
+    rewrite, `opts["input_file"]` is cleared so the path is not propagated
+    into `OperationStatus.input_files` (and thus not into checkpoint or
+    output metadata).
+    """
+    input_file = opts.get("input_file")
+    if not input_file:
+        return
+    if opts.get("prompt_file"):
+        raise click.BadParameter(
+            "Cannot use --input-file with --prompt-file (--input-file is a deprecated alias)",
+            param_hint="--input-file",
+        )
+    if opts.get("prompt_opt"):
+        raise click.BadParameter(
+            "Cannot use --input-file with --prompt (--input-file is a deprecated alias)",
+            param_hint="--input-file",
+        )
+    if _has_positional_prompt(args, ctx):
+        raise click.BadParameter(
+            "Cannot use --input-file with positional prompt argument "
+            "(--input-file is a deprecated alias)",
+            param_hint="--input-file",
+        )
+    opts["prompt_file"] = input_file
+    opts["input_file"] = None
+
+
+def _resolve_mode_and_prompt(
+    args: list[str],
+    opts: dict,
+    *,
+    default_mode: str = "default",
+) -> tuple[str, str | None]:
+    mode_opt = opts.get("mode_opt")
+    prompt_opt = opts.get("prompt_opt")
+    prompt_file = opts.get("prompt_file")
+
+    if args:
+        first = args[0]
+        if first in _doxa_config.BUILTIN_MODES:
+            mode = first
+            prompt = " ".join(args[1:]) if len(args) > 1 else prompt_opt
+        elif (
+            len(args) >= 2
+            and not mode_opt
+            and not first.startswith("-")
+            and ("-" in first or "_" in first)
+        ):
+            console.print(f"[red]Error:[/red] Unknown mode: {first}")
+            sys.exit(1)
+        else:
+            mode = mode_opt or default_mode
+            prompt = " ".join(args)
+    else:
+        mode = mode_opt or default_mode
+        prompt = prompt_opt
+
+    if prompt_file:
+        prompt = _read_prompt_input(str(prompt_file), _prompt_max_bytes())
+
+    return str(mode), prompt
+
+
+def _extract_fallback_options(args: list[str], opts: dict) -> tuple[list[str], dict]:
+    """Parse global options Click left behind after positional research args."""
+    value_options = {
+        "--mode": "mode_opt",
+        "-m": "mode_opt",
+        "--prompt": "prompt_opt",
+        "-q": "prompt_opt",
+        "--prompt-file": "prompt_file",
+        "-F": "prompt_file",
+        "--project": "project",
+        "-p": "project",
+        "--output-dir": "output_dir",
+        "-o": "output_dir",
+        "--provider": "provider",
+        "-P": "provider",
+        "--input-file": "input_file",
+        "--api-key-openai": "api_key_openai",
+        "--api-key-perplexity": "api_key_perplexity",
+        "--api-key-gemini": "api_key_gemini",
+        "--api-key-mock": "api_key_mock",
+        "--config": "config_path",
+        "-c": "config_path",
+        "--profile": "profile",
+        "--timeout": "timeout",
+        "-T": "timeout",
+        "--out": "out",
+        "--model": "model",
+    }
+
+    def _validate_provider(value: str) -> None:
+        if value not in {"openai", "perplexity", "gemini", "mock"}:
+            raise click.BadParameter(
+                f"'{value}' is not one of 'openai', 'perplexity', 'gemini', 'mock'",
+                param_hint="'--provider' / '-P'",
+            )
+
+    def _coerce_value(option: str, key: str, value: str) -> object:
+        if key == "timeout":
+            try:
+                return float(value)
+            except ValueError as e:
+                raise click.BadParameter(
+                    f"{option} must be a floating-point number",
+                    param_hint=option,
+                ) from e
+        return value
+
+    flag_options = {
+        "--async": "async_mode",
+        "-A": "async_mode",
+        "--auto": "auto",
+        "--verbose": "verbose",
+        "-v": "verbose",
+        "--combined": "combined",
+        "--quiet": "quiet",
+        "-Q": "quiet",
+        "--no-metadata": "no_metadata",
+        "--interactive": "interactive",
+        "-i": "interactive",
+        "--clarify": "clarify",
+        "--pick-model": "pick_model",
+        "-M": "pick_model",
+        "--append": "append",
+        # P35 Layer 1: belt-and-suspenders. DoxaGroup.invoke already
+        # short-circuits --help/-h before reaching this fallback parser,
+        # but if anything routes here regardless we want them classified
+        # as flags (not positional prompt tokens).
+        "--help": "help",
+        "-h": "help",
+    }
+
+    parsed = dict(opts)
+    positional: list[str] = []
+    i = 0
+    while i < len(args):
+        arg = args[i]
+        if arg == "--":
+            positional.extend(args[i + 1 :])
+            break
+        if arg in value_options:
+            if i + 1 >= len(args):
+                raise click.BadParameter(f"{arg} requires a value")
+            key = value_options[arg]
+            value = args[i + 1]
+            if key == "provider":
+                _validate_provider(value)
+            coerced = _coerce_value(arg, key, value)
+            if key == "out":
+                parsed[key] = (*tuple(parsed.get(key) or ()), coerced)
+            else:
+                parsed[key] = coerced
+            i += 2
+            continue
+        if arg in flag_options:
+            parsed[flag_options[arg]] = True
+            i += 1
+            continue
+        matched_equals = False
+        for option, key in value_options.items():
+            prefix = f"{option}="
+            if arg.startswith(prefix):
+                value = arg[len(prefix) :]
+                if key == "provider":
+                    _validate_provider(value)
+                coerced = _coerce_value(option, key, value)
+                if key == "out":
+                    parsed[key] = (*tuple(parsed.get(key) or ()), coerced)
+                else:
+                    parsed[key] = coerced
+                matched_equals = True
+                break
+        if matched_equals:
+            i += 1
+            continue
+        positional.append(arg)
+        i += 1
+
+    return positional, parsed
+
+
+def _pick_model_override(mode: str, config: ConfigManager) -> str:
+    mode_cfg = config.get_mode_config(mode)
+    raw_model = mode_cfg.get("model")
+    model_name = raw_model if isinstance(raw_model, str) else None
+    # P18: gate on declared `kind` first (mode_cfg in scope here); falls back
+    # through `mode_kind` to the substring heuristic for legacy user modes.
+    if _doxa_config.mode_kind(mode_cfg) == "background":
+        raise click.BadParameter(
+            "--pick-model is only supported for modes with kind='immediate'. "
+            f"Mode '{mode}' uses {model_name} (kind='background')."
+        )
+
+    from doxa_research.interactive_picker import immediate_models_for_provider
+    from doxa_research.interactive_picker import pick_model as _pick
+
+    raw_provider = mode_cfg.get("provider", "openai")
+    provider_name = raw_provider if isinstance(raw_provider, str) else "openai"
+    return _pick(immediate_models_for_provider(provider_name, config))
+
+
+def _enter_interactive_from_options(
+    *,
+    mode: str | None,
+    prompt: str | None,
+    opts: dict,
+) -> None:
+    from doxa_research.interactive import enter_interactive_mode
+    from doxa_research.models import InteractiveInitialSettings
+
+    cli_api_keys = {
+        "openai": opts.get("api_key_openai"),
+        "perplexity": opts.get("api_key_perplexity"),
+        "gemini": opts.get("api_key_gemini"),
+        "mock": opts.get("api_key_mock"),
+    }
+    initial_settings = InteractiveInitialSettings(
+        mode=mode,
+        provider=opts.get("provider"),
+        prompt=prompt,
+        async_mode=bool(opts.get("async_mode")),
+        cli_api_keys=cli_api_keys,
+        clarify_mode=bool(opts.get("clarify")),
+    )
+    _run_maybe_async(
+        enter_interactive_mode(
+            initial_settings=initial_settings,
+            project=opts.get("project"),
+            output_dir=opts.get("output_dir"),
+            config_path=opts.get("config_path"),
+            verbose=bool(opts.get("verbose")),
+            quiet=bool(opts.get("quiet")),
+            no_metadata=bool(opts.get("no_metadata")),
+            timeout=opts.get("timeout"),
+            profile=opts.get("profile"),
+        )
+    )
+
+
+def _dispatch_click_fallback(
+    ctx: click.Context,
+    args: list[str],
+    research_runner: Callable[..., object],
+) -> None:
+    """Run research/resume/interactive fallback after Click has parsed globals."""
+    _invoke_group_callback(ctx)
+    opts = ctx.obj or {}
+    args, opts = _extract_fallback_options(args, opts)
+    _normalize_input_file_alias(args, opts, ctx=ctx)
+    _apply_config_path(opts.get("config_path"))
+
+    if opts.get("model") and opts.get("pick_model"):
+        raise click.UsageError(
+            "--model and --pick-model are mutually exclusive; use one or the other."
+        )
+
+    if opts.get("interactive"):
+        config = _doxa_config.get_config(profile=opts.get("profile"))
+        mode, prompt = _resolve_mode_and_prompt(
+            args,
+            opts,
+            default_mode=_config_default_mode(config),
+        )
+        _enter_interactive_from_options(mode=mode, prompt=prompt, opts=opts)
+        return
+
+    if not args and not opts.get("prompt_opt") and not opts.get("prompt_file"):
+        click.echo(ctx.get_help())
+        ctx.exit(0)
+
+    config = _doxa_config.get_config(profile=opts.get("profile"))
+    mode, prompt = _resolve_mode_and_prompt(
+        args,
+        opts,
+        default_mode=_config_default_mode(config),
+    )
+    if not prompt:
+        raise click.BadParameter("Prompt cannot be empty")
+
+    model_override = opts.get("model")
+    if opts.get("pick_model"):
+        model_override = _pick_model_override(mode, config)
+
+    project = opts.get("project")
+    if project is None:
+        project = _config_default_project(config)
+
+    cli_api_keys = {
+        "openai": opts.get("api_key_openai"),
+        "perplexity": opts.get("api_key_perplexity"),
+        "gemini": opts.get("api_key_gemini"),
+        "mock": opts.get("api_key_mock"),
+    }
+    research_runner(
+        mode=mode,
+        prompt=prompt,
+        async_mode=bool(opts.get("async_mode")),
+        project=project,
+        output_dir=opts.get("output_dir"),
+        provider=opts.get("provider"),
+        input_file=opts.get("input_file"),
+        auto=bool(opts.get("auto")),
+        verbose=bool(opts.get("verbose")),
+        cli_api_keys=cli_api_keys,
+        combined=bool(opts.get("combined")),
+        quiet=bool(opts.get("quiet")),
+        no_metadata=bool(opts.get("no_metadata")),
+        timeout_override=opts.get("timeout"),
+        model_override=model_override,
+        ctx_obj=None,
+        out=tuple(opts.get("out") or ()),
+        append=bool(opts.get("append")),
+        profile=opts.get("profile"),
+        cancel_on_interrupt=opts.get("cancel_on_interrupt"),
+    )
+
+
+def handle_error(error: Exception):
+    """Display error with appropriate formatting"""
+    if isinstance(error, DoxaError):
+        console.print(f"\n[red]Error:[/red] {error.message}")
+        if error.suggestion:
+            console.print(f"[yellow]Suggestion:[/yellow] {_rich_escape(error.suggestion)}")
+        sys.exit(error.exit_code)
+    elif isinstance(error, KeyboardInterrupt):
+        console.print("\n[yellow]Operation cancelled by user[/yellow]")
+        sys.exit(1)
+    else:
+        console.print(f"\n[red]Unexpected error:[/red] {str(error)}")
+        console.print("[dim]Please report this issue[/dim]")
+        if os.getenv("DOXA_DEBUG"):
+            console.print_exception()
+        sys.exit(127)
+
+
+def _argv_requests_json(argv: list[str] | None = None) -> bool:
+    """Return whether the raw process args asked for a JSON envelope."""
+    return "--json" in (sys.argv[1:] if argv is None else argv)
+
+
+def _run_research_default(
+    mode: str,
+    prompt: str,
+    *,
+    async_mode: bool = False,
+    project: str | None = None,
+    output_dir: str | None = None,
+    provider: str | None = None,
+    input_file: str | None = None,
+    auto: bool = False,
+    verbose: bool = False,
+    cli_api_keys: dict | None = None,
+    combined: bool = False,
+    quiet: bool = False,
+    no_metadata: bool = False,
+    timeout_override: float | None = None,
+    model_override: str | None = None,
+    ctx_obj=None,
+    out: tuple[str, ...] = (),
+    append: bool = False,
+    profile: str | None = None,
+    cancel_on_interrupt: bool | None = None,
+    as_json: bool = False,
+) -> None:
+    """Execute a research run with the given mode and prompt.
+
+    Extracted from the bare-prompt branch of the pre-refactor cli callback.
+    Called by DoxaGroup.invoke for both mode-positional and bare-prompt paths.
+
+    P18 Phase E: `out`/`append` are forwarded to `run_research` and only
+    consulted by the immediate-kind streaming path. Background runs ignore
+    them today (deferred to a future P18 follow-up).
+    """
+    if ctx_obj is None:
+        app_ctx = _build_app_context(
+            verbose, cancel_on_interrupt=cancel_on_interrupt, as_json=as_json
+        )
+    else:
+        app_ctx = ctx_obj
+        if cancel_on_interrupt is not None:
+            app_ctx.cancel_on_interrupt_override = cancel_on_interrupt
+        if as_json:
+            app_ctx.as_json = True
+    _result = _doxa_run.run_research(
+        mode=mode,
+        prompt=prompt,
+        async_mode=async_mode,
+        project=project,
+        output_dir=output_dir,
+        provider=provider,
+        input_file=input_file,
+        auto=auto,
+        verbose=verbose,
+        cli_api_keys=cli_api_keys or {},
+        combined=combined,
+        quiet=quiet,
+        no_metadata=no_metadata,
+        timeout_override=timeout_override,
+        ctx=app_ctx,
+        model_override=model_override,
+        out_specs=tuple(out or ()),
+        append=append,
+        profile=profile,
+    )
+    _run_maybe_async(_result)
+
+
+@click.group(
+    cls=DoxaGroup,
+    invoke_without_command=True,
+    context_settings={"help_option_names": ["-h", "--help"]},
+)
+@click.pass_context
+@_research_options
+@click.option("--version", "-V", is_flag=True, help="Show version and exit; must be used alone")
+def cli(
+    ctx,
+    mode_opt,
+    prompt_opt,
+    prompt_file,
+    async_mode,
+    project,
+    output_dir,
+    provider,
+    input_file,
+    auto,
+    verbose,
+    version,
+    api_key_openai,
+    api_key_perplexity,
+    api_key_gemini,
+    api_key_mock,
+    config_path,
+    profile,
+    combined,
+    quiet,
+    no_metadata,
+    timeout,
+    out,
+    append,
+    interactive,
+    clarify,
+    pick_model,
+    model,
+    cancel_on_interrupt,
+    no_validate,
+):
+    """doxa-research — research orchestration.
+
+    Quick usage: doxa "PROMPT"
+    Run research:    doxa ask "question" | doxa deep_research "topic" | doxa -m MODE -q PROMPT
+    Manage doxa-research:    doxa init | doxa status OP | doxa list | doxa config ... | doxa providers ...
+
+    For per-command help: doxa COMMAND --help
+    """
+    # Build shared context object that subcommands access via ctx.obj
+    ctx.ensure_object(dict)
+    # Store EVERY global option on ctx.obj so subcommands can read inherited state.
+    ctx.obj["mode_opt"] = mode_opt
+    ctx.obj["prompt_opt"] = prompt_opt
+    ctx.obj["prompt_file"] = prompt_file
+    ctx.obj["async_mode"] = async_mode
+    ctx.obj["project"] = project
+    ctx.obj["output_dir"] = output_dir
+    ctx.obj["provider"] = provider
+    ctx.obj["input_file"] = input_file
+    ctx.obj["auto"] = auto
+    ctx.obj["verbose"] = verbose
+    ctx.obj["version"] = version
+    ctx.obj["api_key_openai"] = api_key_openai
+    ctx.obj["api_key_perplexity"] = api_key_perplexity
+    ctx.obj["api_key_gemini"] = api_key_gemini
+    ctx.obj["api_key_mock"] = api_key_mock
+    ctx.obj["config_path"] = config_path
+    ctx.obj["profile"] = profile
+    ctx.obj["combined"] = combined
+    ctx.obj["quiet"] = quiet
+    ctx.obj["no_metadata"] = no_metadata
+    ctx.obj["timeout"] = timeout
+    ctx.obj["out"] = out
+    ctx.obj["append"] = append
+    ctx.obj["interactive"] = interactive
+    ctx.obj["clarify"] = clarify
+    ctx.obj["pick_model"] = pick_model
+    ctx.obj["model"] = model
+    ctx.obj["cancel_on_interrupt"] = cancel_on_interrupt
+    ctx.obj["no_validate"] = no_validate
+
+    if version:
+        conflicts = _version_conflicts(ctx, ctx.obj)
+        if conflicts:
+            raise click.BadParameter(
+                "--version must be used alone; remove other arguments/options: "
+                + ", ".join(conflicts),
+                param_hint="'--version' / '-V'",
+            )
+        console.print(f"Doxa Research v{DOXA_VERSION}")
+        sys.exit(0)
+
+    _apply_config_path(config_path)
+    _apply_no_validate(no_validate)
+
+    # Group-level mutex validators. These assume --async / --prompt-file /
+    # --prompt / --input-file / --auto remain top-level global options on
+    # the @click.group. If a subcommand later takes ownership of one of
+    # these flags, move the corresponding check to that subcommand's
+    # callback.
+    # --input-file is a deprecated alias for --prompt-file (see
+    # `_normalize_input_file_alias`); its mutex checks fire at the
+    # dispatch sites, not here.
+    if prompt_file and prompt_opt:
+        raise click.BadParameter("Cannot use --prompt-file with --prompt")
+
+    # Q5-A row 7: --clarify is meaningful only inside --interactive.
+    if clarify and not interactive:
+        raise click.BadParameter(
+            "--clarify requires --interactive",
+            param_hint="--clarify",
+        )
+
+    if model and pick_model:
+        raise click.UsageError(
+            "--model and --pick-model are mutually exclusive; use one or the other."
+        )
+
+    if pick_model:
+        args = _click_remainder_args(ctx)
+        first = args[0] if args else None
+        if interactive or (first in ctx.command.commands if first else False):
+            raise click.BadParameter("--pick-model only applies to research runs")
+        if not args and not prompt_opt and not prompt_file and not input_file:
+            raise click.BadParameter("--pick-model only applies to research runs with a prompt")
+
+
+# === Subcommand registrations ===
+# T5-T10 will append additional `cli.add_command(...)` lines below as each
+# admin subcommand migrates into `cli_subcommands/`. Keep imports here
+# (after the @click.group callback, before main()) so module-level import
+# order stays predictable.
+from doxa_research.cli_subcommands import ask as _ask_mod  # noqa: E402
+
+cli.add_command(_ask_mod.ask)
+
+from doxa_research.cli_subcommands import resume as _resume_mod  # noqa: E402
+
+cli.add_command(_resume_mod.resume)
+
+from doxa_research.cli_subcommands import cancel as _cancel_mod  # noqa: E402
+
+cli.add_command(_cancel_mod.cancel)
+
+from doxa_research.cli_subcommands import init as _init_mod  # noqa: E402
+
+cli.add_command(_init_mod.init)
+
+from doxa_research.cli_subcommands import status as _status_mod  # noqa: E402
+
+cli.add_command(_status_mod.status)
+
+from doxa_research.cli_subcommands import list_cmd as _list_mod  # noqa: E402
+
+cli.add_command(_list_mod.list_cmd)
+
+from doxa_research.cli_subcommands import providers as _providers_mod  # noqa: E402
+
+cli.add_command(_providers_mod.providers)
+
+from doxa_research.cli_subcommands import config as _config_mod  # noqa: E402
+
+cli.add_command(_config_mod.config)
+
+from doxa_research.cli_subcommands import modes as _modes_mod  # noqa: E402
+
+cli.add_command(_modes_mod.modes)
+
+from doxa_research.cli_subcommands import help_cmd as _help_mod  # noqa: E402
+
+cli.add_command(_help_mod.help_cmd)
+
+from doxa_research.cli_subcommands import completion as _completion_mod  # noqa: E402
+
+cli.add_command(_completion_mod.completion)
+
+
+def main():
+    signal.signal(signal.SIGINT, handle_sigint)
+
+    try:
+        cli()
+    except Exception as e:
+        if isinstance(e, DoxaError) and _argv_requests_json():
+            from doxa_research.json_output import emit_doxa_error
+
+            emit_doxa_error(e)
+        handle_error(e)
+
+
+__all__ = ["cli", "handle_error", "main"]

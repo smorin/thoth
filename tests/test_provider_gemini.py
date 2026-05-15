@@ -5,12 +5,12 @@ from __future__ import annotations
 
 def test_gemini_module_exists() -> None:
     """The Gemini provider module is importable."""
-    from thoth.providers import gemini  # noqa: F401
+    from doxa_research.providers import gemini  # noqa: F401
 
 
 def test_gemini_constants_use_suffix_naming() -> None:
     """Gemini module-level constants follow the cross-provider suffix convention."""
-    from thoth.providers import gemini
+    from doxa_research.providers import gemini
 
     assert hasattr(gemini, "_DIRECT_SDK_KEYS_GEMINI")
     assert hasattr(gemini, "_PROVIDER_NAME_GEMINI")
@@ -22,15 +22,15 @@ def test_gemini_constants_use_suffix_naming() -> None:
 
 def test_gemini_provider_class_exists_and_extends_research_provider() -> None:
     """GeminiProvider class extends ResearchProvider."""
-    from thoth.providers.base import ResearchProvider
-    from thoth.providers.gemini import GeminiProvider
+    from doxa_research.providers.base import ResearchProvider
+    from doxa_research.providers.gemini import GeminiProvider
 
     assert issubclass(GeminiProvider, ResearchProvider)
 
 
 def test_gemini_provider_default_model_is_flash_lite() -> None:
     """GeminiProvider defaults to gemini-2.5-flash-lite when no model configured."""
-    from thoth.providers.gemini import GeminiProvider
+    from doxa_research.providers.gemini import GeminiProvider
 
     provider = GeminiProvider(api_key="dummy", config={})
     assert provider.model == "gemini-2.5-flash-lite"
@@ -41,7 +41,7 @@ def test_gemini_client_receives_timeout_as_http_options() -> None:
 
     from google.genai import types
 
-    from thoth.providers.gemini import GeminiProvider
+    from doxa_research.providers.gemini import GeminiProvider
 
     with patch("google.genai.Client") as client_cls:
         GeminiProvider(api_key="dummy", config={"timeout": 12.5})
@@ -56,7 +56,7 @@ def test_gemini_client_receives_timeout_as_http_options() -> None:
 
 def test_gemini_provider_is_implemented() -> None:
     """is_implemented() returns True (explicit, not inherited)."""
-    from thoth.providers.gemini import GeminiProvider
+    from doxa_research.providers.gemini import GeminiProvider
 
     provider = GeminiProvider(api_key="dummy", config={})
     assert provider.is_implemented() is True
@@ -65,7 +65,7 @@ def test_gemini_provider_is_implemented() -> None:
 
 def test_gemini_built_in_modes_registered() -> None:
     """BUILTIN_MODES contains the three Gemini modes."""
-    from thoth.config import BUILTIN_MODES
+    from doxa_research.config import BUILTIN_MODES
 
     assert "gemini_quick" in BUILTIN_MODES
     assert "gemini_pro" in BUILTIN_MODES
@@ -90,7 +90,7 @@ def test_gemini_built_in_modes_registered() -> None:
 
 def test_gemini_build_messages_renders_user_prompt() -> None:
     """_build_messages_and_system creates contents=[Content(role='user', parts=[Part(text=prompt)])]."""
-    from thoth.providers.gemini import GeminiProvider
+    from doxa_research.providers.gemini import GeminiProvider
 
     provider = GeminiProvider(api_key="dummy", config={})
     contents, system = provider._build_messages_and_system("What is 2+2?", None)
@@ -105,7 +105,7 @@ def test_gemini_build_messages_renders_user_prompt() -> None:
 
 def test_gemini_build_messages_passes_through_system_prompt() -> None:
     """system_prompt becomes the system_instruction return value."""
-    from thoth.providers.gemini import GeminiProvider
+    from doxa_research.providers.gemini import GeminiProvider
 
     provider = GeminiProvider(api_key="dummy", config={})
     contents, system = provider._build_messages_and_system("Q?", "You are a math tutor.")
@@ -116,7 +116,7 @@ def test_gemini_build_tools_translates_google_search() -> None:
     """_build_tools(['google_search']) returns [Tool(google_search=GoogleSearch())]."""
     from google.genai import types as genai_types  # type: ignore[import-not-found]
 
-    from thoth.providers.gemini import GeminiProvider
+    from doxa_research.providers.gemini import GeminiProvider
 
     provider = GeminiProvider(api_key="dummy", config={})
     tools = provider._build_tools(["google_search"])
@@ -128,7 +128,7 @@ def test_gemini_build_tools_translates_google_search() -> None:
 
 def test_gemini_build_tools_skips_unknown_names() -> None:
     """Unknown tool names are skipped (forward-compat for future tool families)."""
-    from thoth.providers.gemini import GeminiProvider
+    from doxa_research.providers.gemini import GeminiProvider
 
     provider = GeminiProvider(api_key="dummy", config={})
     tools = provider._build_tools(["google_search", "future_unknown_tool"])
@@ -137,8 +137,8 @@ def test_gemini_build_tools_skips_unknown_names() -> None:
 
 def test_gemini_build_generate_content_config_quick_mode() -> None:
     """gemini_quick mode produces tools=[GoogleSearch()], thinking_config.thinking_budget=0."""
-    from thoth.config import BUILTIN_MODES
-    from thoth.providers.gemini import GeminiProvider
+    from doxa_research.config import BUILTIN_MODES
+    from doxa_research.providers.gemini import GeminiProvider
 
     config = {**BUILTIN_MODES["gemini_quick"], "kind": "immediate"}
     provider = GeminiProvider(api_key="dummy", config=config)
@@ -155,8 +155,8 @@ def test_gemini_build_generate_content_config_quick_mode() -> None:
 
 def test_gemini_build_generate_content_config_reasoning_mode() -> None:
     """gemini_reasoning mode sets include_thoughts=True."""
-    from thoth.config import BUILTIN_MODES
-    from thoth.providers.gemini import GeminiProvider
+    from doxa_research.config import BUILTIN_MODES
+    from doxa_research.providers.gemini import GeminiProvider
 
     config = {**BUILTIN_MODES["gemini_reasoning"], "kind": "immediate"}
     provider = GeminiProvider(api_key="dummy", config=config)
@@ -170,7 +170,7 @@ def test_gemini_build_generate_content_config_reasoning_mode() -> None:
 
 def test_gemini_build_generate_content_config_passthrough_temperature() -> None:
     """Direct SDK key (e.g. temperature) under [modes.X.gemini] passes through to GenerateContentConfig.temperature."""
-    from thoth.providers.gemini import GeminiProvider
+    from doxa_research.providers.gemini import GeminiProvider
 
     config = {"gemini": {"temperature": 0.42}, "kind": "immediate"}
     provider = GeminiProvider(api_key="dummy", config=config)
@@ -182,7 +182,7 @@ def test_gemini_build_generate_content_config_passthrough_temperature() -> None:
 
 def test_gemini_build_generate_content_config_returns_none_when_empty() -> None:
     """No [modes.X.gemini] keys -> returns None (caller falls back to no config kwarg)."""
-    from thoth.providers.gemini import GeminiProvider
+    from doxa_research.providers.gemini import GeminiProvider
 
     provider = GeminiProvider(api_key="dummy", config={})
     gen_config = provider._build_generate_content_config()
@@ -198,7 +198,7 @@ def test_gemini_build_generate_content_config_include_thoughts_only_defaults_thi
     thinking-related output, so 'dynamic' (-1) is the most useful default.
     Locked by this test; change requires changing the policy and the test together.
     """
-    from thoth.providers.gemini import GeminiProvider
+    from doxa_research.providers.gemini import GeminiProvider
 
     config = {"gemini": {"include_thoughts": True}, "kind": "immediate"}
     provider = GeminiProvider(api_key="dummy", config=config)
@@ -257,7 +257,7 @@ def _make_gemini_server_error(code: int, status: str = "INTERNAL", message: str 
             401,
             "UNAUTHENTICATED",
             "API key not valid. Please pass a valid API key.",
-            "ThothError",
+            "DoxaError",
             "key is invalid",
         ),
         # Auth-missing (different phrasing)
@@ -285,19 +285,19 @@ def _make_gemini_server_error(code: int, status: str = "INTERNAL", message: str 
     ],
 )
 def test_gemini_error_mapping_table(code, status, message, expected_cls, expected_substr) -> None:
-    from thoth.errors import (
+    from doxa_research.errors import (
         APIKeyError,
         APIQuotaError,
         APIRateLimitError,
+        DoxaError,
         ProviderError,
-        ThothError,
     )
-    from thoth.providers.gemini import _map_gemini_error
+    from doxa_research.providers.gemini import _map_gemini_error
 
     fake_exc = _make_gemini_client_error(code, status, message)
     mapped = _map_gemini_error(fake_exc, "gemini-2.5-flash-lite", verbose=False)
     expected = {
-        "ThothError": ThothError,
+        "DoxaError": DoxaError,
         "APIKeyError": APIKeyError,
         "APIRateLimitError": APIRateLimitError,
         "APIQuotaError": APIQuotaError,
@@ -311,8 +311,8 @@ def test_gemini_error_mapping_table(code, status, message, expected_cls, expecte
 
 def test_gemini_quota_per_day_maps_to_apiquotaerror() -> None:
     """429 with 'per day' in message maps to APIQuotaError, not APIRateLimitError."""
-    from thoth.errors import APIQuotaError
-    from thoth.providers.gemini import _map_gemini_error
+    from doxa_research.errors import APIQuotaError
+    from doxa_research.providers.gemini import _map_gemini_error
 
     fake_exc = _make_gemini_client_error(
         429,
@@ -325,8 +325,8 @@ def test_gemini_quota_per_day_maps_to_apiquotaerror() -> None:
 
 def test_gemini_quota_free_tier_maps_to_apiquotaerror() -> None:
     """429 with FREE_TIER_LIMIT_EXCEEDED reason maps to APIQuotaError."""
-    from thoth.errors import APIQuotaError
-    from thoth.providers.gemini import _map_gemini_error
+    from doxa_research.errors import APIQuotaError
+    from doxa_research.providers.gemini import _map_gemini_error
 
     fake_exc = _make_gemini_client_error(
         429,
@@ -338,21 +338,21 @@ def test_gemini_quota_free_tier_maps_to_apiquotaerror() -> None:
     assert isinstance(mapped, APIQuotaError)
 
 
-def test_gemini_invalid_key_thotherror_has_exit_code_2() -> None:
-    """The shared _invalid_key_thotherror helper guarantees exit_code=2 with brand-correct casing."""
-    from thoth.errors import ThothError
-    from thoth.providers.gemini import _map_gemini_error
+def test_gemini_invalid_key_doxaerror_has_exit_code_2() -> None:
+    """The shared _invalid_key_doxaerror helper guarantees exit_code=2 with brand-correct casing."""
+    from doxa_research.errors import DoxaError
+    from doxa_research.providers.gemini import _map_gemini_error
 
     fake_exc = _make_gemini_client_error(401, "UNAUTHENTICATED", "API key not valid")
     mapped = _map_gemini_error(fake_exc, "gemini-2.5-pro", verbose=False)
-    assert isinstance(mapped, ThothError)
+    assert isinstance(mapped, DoxaError)
     assert mapped.exit_code == 2
     assert "Gemini" in str(mapped)  # capitalized brand name
 
 
 def test_gemini_invalid_argument_extracts_offending_param() -> None:
     """400 INVALID_ARGUMENT with 'parameter X' extracts X via the shared helper."""
-    from thoth.providers.gemini import _map_gemini_error
+    from doxa_research.providers.gemini import _map_gemini_error
 
     fake_exc = _make_gemini_client_error(
         400,
@@ -364,8 +364,8 @@ def test_gemini_invalid_argument_extracts_offending_param() -> None:
 
 
 def test_gemini_server_error_5xx_maps_to_provider_error() -> None:
-    from thoth.errors import ProviderError
-    from thoth.providers.gemini import _map_gemini_error
+    from doxa_research.errors import ProviderError
+    from doxa_research.providers.gemini import _map_gemini_error
 
     fake_exc = _make_gemini_server_error(500)
     mapped = _map_gemini_error(fake_exc, "gemini-2.5-pro", verbose=False)
@@ -376,8 +376,8 @@ def test_gemini_server_error_5xx_maps_to_provider_error() -> None:
 def test_gemini_httpx_timeout_maps_to_provider_error() -> None:
     import httpx
 
-    from thoth.errors import ProviderError
-    from thoth.providers.gemini import _map_gemini_error
+    from doxa_research.errors import ProviderError
+    from doxa_research.providers.gemini import _map_gemini_error
 
     fake_exc = httpx.TimeoutException("Request timed out")
     mapped = _map_gemini_error(fake_exc, "gemini-2.5-pro", verbose=False)
@@ -388,8 +388,8 @@ def test_gemini_httpx_timeout_maps_to_provider_error() -> None:
 def test_gemini_httpx_connect_error_maps_to_provider_error() -> None:
     import httpx
 
-    from thoth.errors import ProviderError
-    from thoth.providers.gemini import _map_gemini_error
+    from doxa_research.errors import ProviderError
+    from doxa_research.providers.gemini import _map_gemini_error
 
     fake_exc = httpx.ConnectError("Connection refused")
     mapped = _map_gemini_error(fake_exc, "gemini-2.5-pro", verbose=False)
@@ -397,8 +397,8 @@ def test_gemini_httpx_connect_error_maps_to_provider_error() -> None:
 
 
 def test_gemini_unknown_exception_maps_to_provider_error() -> None:
-    from thoth.errors import ProviderError
-    from thoth.providers.gemini import _map_gemini_error
+    from doxa_research.errors import ProviderError
+    from doxa_research.providers.gemini import _map_gemini_error
 
     mapped = _map_gemini_error(RuntimeError("???"), "gemini-2.5-pro", verbose=False)
     assert isinstance(mapped, ProviderError)
@@ -410,12 +410,12 @@ def test_gemini_retry_classifier_retries_transient_raw_exceptions_and_429() -> N
 
     Wrapping into APIRateLimitError happens AFTER retry classification, so the
     classifier must inspect the raw genai_errors.ClientError(code=429) — not
-    the post-mapping ThothError subclass.
+    the post-mapping DoxaError subclass.
     """
     import httpx
     from google.genai import errors as genai_errors
 
-    from thoth.providers.gemini import (
+    from doxa_research.providers.gemini import (
         _GEMINI_RETRY_CLASSES,
         _is_retryable_gemini_exception,
     )
@@ -445,8 +445,8 @@ def test_gemini_retry_classifier_retries_transient_raw_exceptions_and_429() -> N
 
 def test_gemini_retry_classes_excludes_quota_error() -> None:
     """APIQuotaError is NOT in the retry set (quota is permanent until reset)."""
-    from thoth.errors import APIQuotaError
-    from thoth.providers.gemini import _GEMINI_RETRY_CLASSES
+    from doxa_research.errors import APIQuotaError
+    from doxa_research.providers.gemini import _GEMINI_RETRY_CLASSES
 
     assert APIQuotaError not in _GEMINI_RETRY_CLASSES
 
@@ -492,7 +492,7 @@ def _make_gemini_provider_with_chunks(chunks: list):
     here: the outer function is async (returns a coroutine) that resolves
     to an async generator over the fake chunks.
     """
-    from thoth.providers.gemini import GeminiProvider
+    from doxa_research.providers.gemini import GeminiProvider
 
     async def _async_iter():
         for c in chunks:
@@ -587,7 +587,7 @@ def test_gemini_stream_emits_citations_from_terminal_grounding_chunks() -> None:
 
     citations = [e for e in events if e.kind == "citation"]
     assert len(citations) == 2  # deduped
-    from thoth.providers.base import Citation
+    from doxa_research.providers.base import Citation
 
     assert all(isinstance(e.citation, Citation) for e in citations)
     assert citations[0].citation.url.startswith("https://vertexaisearch")
@@ -678,7 +678,7 @@ def test_gemini_stream_mid_iteration_error_maps_to_provider_error() -> None:
     """A ClientError raised mid-iteration is mapped via _map_gemini_error."""
     from google.genai import errors as genai_errors
 
-    from thoth.errors import ProviderError
+    from doxa_research.errors import ProviderError
 
     fake_response = MagicMock()
     fake_response.status_code = 400
@@ -696,7 +696,7 @@ def test_gemini_stream_mid_iteration_error_maps_to_provider_error() -> None:
     async def fake_stream_raises_mid_iter(**kw):
         return _iter_raises_mid()
 
-    from thoth.providers.gemini import GeminiProvider
+    from doxa_research.providers.gemini import GeminiProvider
 
     mock_client = SimpleNamespace()
     mock_client.aio = SimpleNamespace()
@@ -713,7 +713,7 @@ def test_gemini_stream_mid_iteration_error_maps_to_provider_error() -> None:
 
 def test_gemini_stream_retries_transient_server_error_before_first_event() -> None:
     """A transient stream startup 503 is retried before any output is emitted."""
-    from thoth.providers.gemini import GeminiProvider
+    from doxa_research.providers.gemini import GeminiProvider
 
     attempts = {"n": 0}
     chunks = [_make_chunk(parts=[{"text": "Recovered."}])]
@@ -739,7 +739,7 @@ def test_gemini_stream_retries_transient_server_error_before_first_event() -> No
 
     with (
         patch("google.genai.Client", return_value=mock_client),
-        patch("thoth.providers.gemini.asyncio.sleep", fake_sleep),
+        patch("doxa_research.providers.gemini.asyncio.sleep", fake_sleep),
     ):
         provider = GeminiProvider(api_key="dummy", config={"kind": "immediate"})
 
@@ -761,7 +761,7 @@ def test_gemini_submit_returns_job_id_and_stashes_response() -> None:
     from types import SimpleNamespace
     from unittest.mock import patch
 
-    from thoth.providers.gemini import GeminiProvider
+    from doxa_research.providers.gemini import GeminiProvider
 
     fake_response = SimpleNamespace(
         candidates=[
@@ -795,7 +795,7 @@ def test_gemini_check_status_returns_completed_for_known_job() -> None:
     """check_status returns {'status': 'completed', 'progress': 1.0} for known immediate jobs."""
     import asyncio
 
-    from thoth.providers.gemini import GeminiProvider
+    from doxa_research.providers.gemini import GeminiProvider
 
     provider = GeminiProvider(api_key="dummy", config={})
     provider.jobs["test-job"] = {"response": object(), "created_at": 0}
@@ -809,7 +809,7 @@ def test_gemini_check_status_returns_not_found_for_unknown_job() -> None:
     """check_status returns 'not_found' for unknown job_ids."""
     import asyncio
 
-    from thoth.providers.gemini import GeminiProvider
+    from doxa_research.providers.gemini import GeminiProvider
 
     provider = GeminiProvider(api_key="dummy", config={})
     status = asyncio.run(provider.check_status("nonexistent"))
@@ -822,7 +822,7 @@ def test_gemini_get_result_renders_text_only_when_no_reasoning_or_sources() -> N
     import asyncio
     from types import SimpleNamespace
 
-    from thoth.providers.gemini import GeminiProvider
+    from doxa_research.providers.gemini import GeminiProvider
 
     fake_response = SimpleNamespace(
         candidates=[
@@ -847,7 +847,7 @@ def test_gemini_get_result_renders_reasoning_section_when_thoughts_present() -> 
     import asyncio
     from types import SimpleNamespace
 
-    from thoth.providers.gemini import GeminiProvider
+    from doxa_research.providers.gemini import GeminiProvider
 
     fake_response = SimpleNamespace(
         candidates=[
@@ -877,7 +877,7 @@ def test_gemini_get_result_renders_sources_section_with_sanitized_links() -> Non
     import asyncio
     from types import SimpleNamespace
 
-    from thoth.providers.gemini import GeminiProvider
+    from doxa_research.providers.gemini import GeminiProvider
 
     grounding = SimpleNamespace(
         grounding_chunks=[
@@ -906,7 +906,7 @@ def test_gemini_get_result_sanitizes_adversarial_citation() -> None:
     import asyncio
     from types import SimpleNamespace
 
-    from thoth.providers.gemini import GeminiProvider
+    from doxa_research.providers.gemini import GeminiProvider
 
     grounding = SimpleNamespace(
         grounding_chunks=[
@@ -938,8 +938,8 @@ def test_gemini_get_result_unknown_job_raises() -> None:
 
     import pytest
 
-    from thoth.errors import ProviderError
-    from thoth.providers.gemini import GeminiProvider
+    from doxa_research.errors import ProviderError
+    from doxa_research.providers.gemini import GeminiProvider
 
     provider = GeminiProvider(api_key="dummy", config={})
     with pytest.raises(ProviderError) as excinfo:
@@ -952,7 +952,7 @@ def test_gemini_get_result_dedupes_sources_by_url() -> None:
     import asyncio
     from types import SimpleNamespace
 
-    from thoth.providers.gemini import GeminiProvider
+    from doxa_research.providers.gemini import GeminiProvider
 
     grounding = SimpleNamespace(
         grounding_chunks=[
@@ -985,7 +985,7 @@ def test_gemini_get_result_empty_content_with_verbose_emits_debug(capsys) -> Non
     import asyncio
     from types import SimpleNamespace
 
-    from thoth.providers.gemini import GeminiProvider
+    from doxa_research.providers.gemini import GeminiProvider
 
     fake_response = SimpleNamespace(
         candidates=[
@@ -1014,7 +1014,7 @@ def test_gemini_submit_retry_decorator_retries_transient_errors() -> None:
 
     import httpx
 
-    from thoth.providers.gemini import GeminiProvider
+    from doxa_research.providers.gemini import GeminiProvider
 
     call_count = {"n": 0}
     fake_response = SimpleNamespace(
@@ -1063,8 +1063,8 @@ def test_gemini_kind_mismatch_rejects_deep_research_in_immediate_submit() -> Non
 
     import pytest
 
-    from thoth.errors import ModeKindMismatchError
-    from thoth.providers.gemini import GeminiProvider
+    from doxa_research.errors import ModeKindMismatchError
+    from doxa_research.providers.gemini import GeminiProvider
 
     mock_client = SimpleNamespace()
     mock_client.aio = SimpleNamespace()
@@ -1087,8 +1087,8 @@ def test_gemini_kind_mismatch_rejects_deep_research_in_immediate_stream() -> Non
 
     import pytest
 
-    from thoth.errors import ModeKindMismatchError
-    from thoth.providers.gemini import GeminiProvider
+    from doxa_research.errors import ModeKindMismatchError
+    from doxa_research.providers.gemini import GeminiProvider
 
     captured = {"called": False}
 
@@ -1122,7 +1122,7 @@ def test_gemini_kind_mismatch_rejects_deep_research_in_immediate_stream() -> Non
 
 def test_gemini_kind_mismatch_allows_regular_models() -> None:
     """gemini-2.5-pro / gemini-2.5-flash-lite with kind=immediate are allowed (validate is no-op)."""
-    from thoth.providers.gemini import GeminiProvider
+    from doxa_research.providers.gemini import GeminiProvider
 
     for model in ("gemini-2.5-pro", "gemini-2.5-flash-lite"):
         provider = GeminiProvider(
@@ -1135,7 +1135,7 @@ def test_gemini_kind_mismatch_allows_regular_models() -> None:
 
 def test_gemini_kind_mismatch_allows_when_kind_is_background() -> None:
     """deep-research model with kind=background is allowed (this is P28's territory)."""
-    from thoth.providers.gemini import GeminiProvider
+    from doxa_research.providers.gemini import GeminiProvider
 
     provider = GeminiProvider(
         api_key="dummy",
@@ -1147,7 +1147,7 @@ def test_gemini_kind_mismatch_allows_when_kind_is_background() -> None:
 
 def test_gemini_kind_mismatch_no_kind_in_config_no_op() -> None:
     """When kind is missing from config, the guard is a no-op (silent passthrough)."""
-    from thoth.providers.gemini import GeminiProvider
+    from doxa_research.providers.gemini import GeminiProvider
 
     provider = GeminiProvider(
         api_key="dummy",
@@ -1170,7 +1170,7 @@ class TestMapGeminiErrorInteractionsSpecific:
         import httpx
         from google.genai._interactions import NotFoundError  # type: ignore[import-not-found]
 
-        from thoth.providers.gemini import _map_gemini_error
+        from doxa_research.providers.gemini import _map_gemini_error
 
         req = self._make_interactions_request()
         resp = httpx.Response(404, content=b"", request=req)
@@ -1189,16 +1189,16 @@ class TestMapGeminiErrorInteractionsSpecific:
         import httpx
         from google.genai._interactions import BadRequestError  # type: ignore[import-not-found]
 
-        from thoth.errors import APIKeyError, ThothError
-        from thoth.providers.gemini import _map_gemini_error
+        from doxa_research.errors import APIKeyError, DoxaError
+        from doxa_research.providers.gemini import _map_gemini_error
 
         req = self._make_interactions_request()
         resp = httpx.Response(400, content=b"", request=req)
         exc = BadRequestError("API key not valid", response=resp, body=None)
         result = _map_gemini_error(exc, model="deep-research-preview-04-2026")
-        assert isinstance(result, (APIKeyError, ThothError))
+        assert isinstance(result, (APIKeyError, DoxaError))
         if not isinstance(result, APIKeyError):
-            # ThothError stores the URL in .suggestion, not in str() / message
+            # DoxaError stores the URL in .suggestion, not in str() / message
             suggestion = getattr(result, "suggestion", "") or ""
             assert "aistudio.google.com" in suggestion
 
@@ -1207,8 +1207,8 @@ class TestMapGeminiErrorInteractionsSpecific:
         import httpx
         from google.genai._interactions import InternalServerError  # type: ignore[import-not-found]
 
-        from thoth.errors import ProviderError
-        from thoth.providers.gemini import _map_gemini_error
+        from doxa_research.errors import ProviderError
+        from doxa_research.providers.gemini import _map_gemini_error
 
         req = self._make_interactions_request()
         resp = httpx.Response(500, content=b"", request=req)
@@ -1226,8 +1226,8 @@ class TestMapGeminiErrorInteractionsSpecific:
         import httpx
         from google.genai._interactions import RateLimitError  # type: ignore[import-not-found]
 
-        from thoth.errors import APIRateLimitError
-        from thoth.providers.gemini import _map_gemini_error
+        from doxa_research.errors import APIRateLimitError
+        from doxa_research.providers.gemini import _map_gemini_error
 
         req = httpx.Request("POST", "https://example.com")
         resp = httpx.Response(429, request=req)
@@ -1242,8 +1242,8 @@ class TestMapGeminiErrorInteractionsSpecific:
             PermissionDeniedError,  # type: ignore[import-not-found]
         )
 
-        from thoth.errors import ProviderError
-        from thoth.providers.gemini import _map_gemini_error
+        from doxa_research.errors import ProviderError
+        from doxa_research.providers.gemini import _map_gemini_error
 
         req = httpx.Request("POST", "https://example.com")
         resp = httpx.Response(403, request=req)
@@ -1259,7 +1259,7 @@ class TestMapGeminiErrorInteractionsSpecific:
             PermissionDeniedError,  # type: ignore[import-not-found]
         )
 
-        from thoth.providers.gemini import _map_gemini_error
+        from doxa_research.providers.gemini import _map_gemini_error
 
         req = httpx.Request("POST", "https://example.com")
         resp = httpx.Response(403, request=req)
@@ -1269,18 +1269,18 @@ class TestMapGeminiErrorInteractionsSpecific:
         assert "ai.google.dev/pricing" not in str(result)
 
     def test_interactions_401_invalid_key_produces_api_key_error(self):
-        """401 with key-related message routes via _invalid_key_thotherror or APIKeyError."""
+        """401 with key-related message routes via _invalid_key_doxaerror or APIKeyError."""
         import httpx
         from google.genai._interactions import AuthenticationError  # type: ignore[import-not-found]
 
-        from thoth.errors import APIKeyError, ThothError
-        from thoth.providers.gemini import _map_gemini_error
+        from doxa_research.errors import APIKeyError, DoxaError
+        from doxa_research.providers.gemini import _map_gemini_error
 
         req = httpx.Request("POST", "https://example.com")
         resp = httpx.Response(401, request=req)
         exc = AuthenticationError("api key not valid", response=resp, body=None)
         result = _map_gemini_error(exc, model="deep-research-preview-04-2026")
-        assert isinstance(result, (APIKeyError, ThothError))
+        assert isinstance(result, (APIKeyError, DoxaError))
         if not isinstance(result, APIKeyError):
             assert "aistudio.google.com" in getattr(result, "suggestion", "")
 
@@ -1289,8 +1289,8 @@ class TestMapGeminiErrorInteractionsSpecific:
         import httpx
         from google.genai._interactions import AuthenticationError  # type: ignore[import-not-found]
 
-        from thoth.errors import APIKeyError
-        from thoth.providers.gemini import _map_gemini_error
+        from doxa_research.errors import APIKeyError
+        from doxa_research.providers.gemini import _map_gemini_error
 
         req = httpx.Request("POST", "https://example.com")
         resp = httpx.Response(401, request=req)
@@ -1300,8 +1300,8 @@ class TestMapGeminiErrorInteractionsSpecific:
 
     def test_duck_type_fallback_when_isinstance_misses(self, monkeypatch):
         """If _InteractionsAPIError isinstance check fails, duck-type still catches."""
-        from thoth.errors import ProviderError
-        from thoth.providers.gemini import _map_gemini_error
+        from doxa_research.errors import ProviderError
+        from doxa_research.providers.gemini import _map_gemini_error
 
         class _FakeInteractionsError(Exception):
             status_code: int
@@ -1319,7 +1319,7 @@ class TestGeminiProviderRouting:
     def test_submit_routes_to_immediate_for_chat_model(self, monkeypatch):
         import asyncio
 
-        from thoth.providers.gemini import GeminiProvider
+        from doxa_research.providers.gemini import GeminiProvider
 
         provider = GeminiProvider(api_key="dummy", config={"model": "gemini-2.5-flash-lite"})
         called = {"immediate": False, "deep_research": False}
@@ -1341,7 +1341,7 @@ class TestGeminiProviderRouting:
     def test_submit_routes_to_dr_for_deep_research_model(self, monkeypatch):
         import asyncio
 
-        from thoth.providers.gemini import GeminiProvider
+        from doxa_research.providers.gemini import GeminiProvider
 
         provider = GeminiProvider(
             api_key="dummy", config={"model": "deep-research-preview-04-2026"}
@@ -1370,7 +1370,7 @@ class TestGeminiJobsSchema:
         import asyncio
         from unittest.mock import AsyncMock, MagicMock, patch
 
-        from thoth.providers.gemini import GeminiProvider
+        from doxa_research.providers.gemini import GeminiProvider
 
         provider = GeminiProvider(api_key="dummy", config={"model": "gemini-2.5-flash-lite"})
         fake_response = MagicMock(id="fake-resp-id")
@@ -1389,7 +1389,7 @@ class TestGeminiDeepResearchSubmit:
             import asyncio  # noqa: F401
             from unittest.mock import AsyncMock, MagicMock
 
-            from thoth.providers.gemini import GeminiProvider
+            from doxa_research.providers.gemini import GeminiProvider
 
             provider = GeminiProvider(
                 api_key="dummy", config={"model": "deep-research-preview-04-2026"}
@@ -1419,7 +1419,7 @@ class TestGeminiDeepResearchSubmit:
         async def _run():
             from unittest.mock import AsyncMock, MagicMock
 
-            from thoth.providers.gemini import GeminiProvider
+            from doxa_research.providers.gemini import GeminiProvider
 
             provider = GeminiProvider(
                 api_key="dummy", config={"model": "deep-research-preview-04-2026"}
@@ -1438,7 +1438,7 @@ class TestGeminiDeepResearchCheckStatus:
     """Task 6: _deep_research_check_status polls interactions.get and maps status."""
 
     @pytest.mark.parametrize(
-        "live_status,expected_thoth_status,expected_failure_type",
+        "live_status,expected_doxa_status,expected_failure_type",
         [
             ("in_progress", "in_progress", None),
             ("requires_action", "permanent_error", "requires_action"),
@@ -1448,11 +1448,11 @@ class TestGeminiDeepResearchCheckStatus:
             ("incomplete", "permanent_error", "permanent"),
         ],
     )
-    def test_status_mapping(self, live_status, expected_thoth_status, expected_failure_type):
+    def test_status_mapping(self, live_status, expected_doxa_status, expected_failure_type):
         async def _run():
             from unittest.mock import AsyncMock, MagicMock
 
-            from thoth.providers.gemini import GeminiProvider
+            from doxa_research.providers.gemini import GeminiProvider
 
             provider = GeminiProvider(
                 api_key="dummy", config={"model": "deep-research-preview-04-2026"}
@@ -1466,7 +1466,7 @@ class TestGeminiDeepResearchCheckStatus:
             provider.client = MagicMock()
             provider.client.aio.interactions.get = fake_get
             result = await provider._deep_research_check_status("interactions/abc")
-            assert result["status"] == expected_thoth_status
+            assert result["status"] == expected_doxa_status
             if expected_failure_type is None:
                 assert "failure_type" not in result or result["failure_type"] is None
             else:
@@ -1479,7 +1479,7 @@ class TestGeminiDeepResearchCheckStatus:
         async def _run():
             from unittest.mock import AsyncMock, MagicMock
 
-            from thoth.providers.gemini import GeminiProvider
+            from doxa_research.providers.gemini import GeminiProvider
 
             provider = GeminiProvider(
                 api_key="dummy", config={"model": "deep-research-preview-04-2026"}
@@ -1501,7 +1501,7 @@ class TestGeminiDeepResearchCheckStatus:
         async def _run():
             from unittest.mock import AsyncMock, MagicMock
 
-            from thoth.providers.gemini import GeminiProvider
+            from doxa_research.providers.gemini import GeminiProvider
 
             provider = GeminiProvider(
                 api_key="dummy", config={"model": "deep-research-preview-04-2026"}
@@ -1520,7 +1520,7 @@ class TestGeminiDeepResearchCheckStatus:
 
     def test_unknown_job_id(self):
         async def _run():
-            from thoth.providers.gemini import GeminiProvider
+            from doxa_research.providers.gemini import GeminiProvider
 
             provider = GeminiProvider(
                 api_key="dummy", config={"model": "deep-research-preview-04-2026"}
@@ -1538,7 +1538,7 @@ class TestGeminiDeepResearchGetResult:
         async def _run():
             from unittest.mock import MagicMock
 
-            from thoth.providers.gemini import GeminiProvider
+            from doxa_research.providers.gemini import GeminiProvider
 
             provider = GeminiProvider(
                 api_key="dummy", config={"model": "deep-research-preview-04-2026"}
@@ -1560,7 +1560,7 @@ class TestGeminiDeepResearchGetResult:
         async def _run():
             from unittest.mock import MagicMock
 
-            from thoth.providers.gemini import GeminiProvider
+            from doxa_research.providers.gemini import GeminiProvider
 
             provider = GeminiProvider(
                 api_key="dummy", config={"model": "deep-research-preview-04-2026"}
@@ -1592,7 +1592,9 @@ class TestGeminiDeepResearchGetResult:
             async def fake_resolve(urls, **kwargs):
                 return {u: "https://www.usenix.org/paper.pdf" for u in urls}
 
-            monkeypatch.setattr("thoth.providers.gemini._resolve_dr_redirects", fake_resolve)
+            monkeypatch.setattr(
+                "doxa_research.providers.gemini._resolve_dr_redirects", fake_resolve
+            )
 
             result = await provider._deep_research_get_result("interactions/abc", False)
             assert "## Sources" in result
@@ -1605,7 +1607,7 @@ class TestGeminiDeepResearchGetResult:
         async def _run():
             from unittest.mock import MagicMock
 
-            from thoth.providers.gemini import GeminiProvider
+            from doxa_research.providers.gemini import GeminiProvider
 
             provider = GeminiProvider(
                 api_key="dummy", config={"model": "deep-research-preview-04-2026"}
@@ -1630,7 +1632,9 @@ class TestGeminiDeepResearchGetResult:
             async def fake_resolve(urls, **kwargs):
                 return {u: None for u in urls}
 
-            monkeypatch.setattr("thoth.providers.gemini._resolve_dr_redirects", fake_resolve)
+            monkeypatch.setattr(
+                "doxa_research.providers.gemini._resolve_dr_redirects", fake_resolve
+            )
 
             result = await provider._deep_research_get_result("interactions/abc", False)
             assert "## Sources" in result
@@ -1642,7 +1646,7 @@ class TestGeminiDeepResearchGetResult:
         async def _run():
             from unittest.mock import MagicMock
 
-            from thoth.providers.gemini import GeminiProvider
+            from doxa_research.providers.gemini import GeminiProvider
 
             provider = GeminiProvider(
                 api_key="dummy", config={"model": "deep-research-preview-04-2026"}
@@ -1664,7 +1668,7 @@ class TestGeminiDeepResearchGetResult:
         async def _run():
             from unittest.mock import MagicMock
 
-            from thoth.providers.gemini import GeminiProvider
+            from doxa_research.providers.gemini import GeminiProvider
 
             provider = GeminiProvider(
                 api_key="dummy", config={"model": "deep-research-preview-04-2026"}
@@ -1695,7 +1699,9 @@ class TestGeminiDeepResearchGetResult:
             async def fake_resolve(urls, **kwargs):
                 return {u: "https://www.usenix.org/paper.pdf" for u in urls}
 
-            monkeypatch.setattr("thoth.providers.gemini._resolve_dr_redirects", fake_resolve)
+            monkeypatch.setattr(
+                "doxa_research.providers.gemini._resolve_dr_redirects", fake_resolve
+            )
 
             result = await provider._deep_research_get_result("interactions/abc", False)
             assert result.count("https://www.usenix.org/paper.pdf") == 1
@@ -1708,7 +1714,7 @@ class TestGeminiDeepResearchGetResult:
         async def _run():
             from unittest.mock import MagicMock
 
-            from thoth.providers.gemini import GeminiProvider
+            from doxa_research.providers.gemini import GeminiProvider
 
             provider = GeminiProvider(
                 api_key="dummy", config={"model": "deep-research-preview-04-2026"}
@@ -1738,7 +1744,9 @@ class TestGeminiDeepResearchGetResult:
                 urls_received_by_resolver.append(list(urls))
                 return {u: "https://www.usenix.org/paper.pdf" for u in urls}
 
-            monkeypatch.setattr("thoth.providers.gemini._resolve_dr_redirects", fake_resolve)
+            monkeypatch.setattr(
+                "doxa_research.providers.gemini._resolve_dr_redirects", fake_resolve
+            )
             await provider._deep_research_get_result("interactions/abc", False)
             # Even though 5 annotations have the same URL, the resolver was called with ONE URL
             assert len(urls_received_by_resolver) == 1
@@ -1754,7 +1762,7 @@ class TestGeminiReconnect:
         async def _run():
             from unittest.mock import AsyncMock, MagicMock
 
-            from thoth.providers.gemini import GeminiProvider
+            from doxa_research.providers.gemini import GeminiProvider
 
             provider = GeminiProvider(
                 api_key="dummy", config={"model": "deep-research-preview-04-2026"}
@@ -1786,8 +1794,8 @@ class TestGeminiReconnect:
             import httpx
             from google.genai._interactions import NotFoundError
 
-            from thoth.errors import ProviderError
-            from thoth.providers.gemini import GeminiProvider
+            from doxa_research.errors import ProviderError
+            from doxa_research.providers.gemini import GeminiProvider
 
             provider = GeminiProvider(
                 api_key="dummy", config={"model": "deep-research-preview-04-2026"}
@@ -1823,13 +1831,13 @@ class TestGeminiDeepResearchModes:
     )
 
     def test_all_modes_present(self):
-        from thoth.config import BUILTIN_MODES as KNOWN_MODELS
+        from doxa_research.config import BUILTIN_MODES as KNOWN_MODELS
 
         for mode in self.EXPECTED:
             assert mode in KNOWN_MODELS, f"Missing mode {mode!r}"
 
     def test_all_modes_use_dr_agent_and_background_kind(self):
-        from thoth.config import BUILTIN_MODES as KNOWN_MODELS
+        from doxa_research.config import BUILTIN_MODES as KNOWN_MODELS
 
         for mode in self.EXPECTED:
             entry = KNOWN_MODELS[mode]
@@ -1845,7 +1853,7 @@ class TestGeminiCancel:
         async def _run():
             from unittest.mock import AsyncMock, MagicMock
 
-            from thoth.providers.gemini import GeminiProvider
+            from doxa_research.providers.gemini import GeminiProvider
 
             provider = GeminiProvider(
                 api_key="dummy", config={"model": "deep-research-preview-04-2026"}
@@ -1874,7 +1882,7 @@ class TestGeminiCancel:
             import httpx
             from google.genai._interactions import InternalServerError
 
-            from thoth.providers.gemini import GeminiProvider
+            from doxa_research.providers.gemini import GeminiProvider
 
             provider = GeminiProvider(
                 api_key="dummy", config={"model": "deep-research-preview-04-2026"}
@@ -1904,7 +1912,7 @@ class TestGeminiCancel:
         async def _run():
             from unittest.mock import MagicMock
 
-            from thoth.providers.gemini import GeminiProvider
+            from doxa_research.providers.gemini import GeminiProvider
 
             provider = GeminiProvider(api_key="dummy", config={"model": "gemini-2.5-flash-lite"})
             provider.jobs["job-imm"] = {"kind": "immediate", "response": MagicMock()}
@@ -1923,7 +1931,7 @@ class TestGeminiCancel:
             import httpx
             from google.genai._interactions import NotFoundError
 
-            from thoth.providers.gemini import GeminiProvider
+            from doxa_research.providers.gemini import GeminiProvider
 
             provider = GeminiProvider(
                 api_key="dummy", config={"model": "deep-research-preview-04-2026"}
@@ -1941,12 +1949,12 @@ class TestGeminiCancel:
         asyncio.run(_run())
 
     def test_cancel_unknown_dr_job_attempts_upstream(self):
-        """thoth cancel after process restart: jobs dict is empty but we still try."""
+        """doxa cancel after process restart: jobs dict is empty but we still try."""
 
         async def _run():
             from unittest.mock import AsyncMock, MagicMock
 
-            from thoth.providers.gemini import GeminiProvider
+            from doxa_research.providers.gemini import GeminiProvider
 
             provider = GeminiProvider(
                 api_key="dummy", config={"model": "deep-research-preview-04-2026"}

@@ -13,11 +13,11 @@ from __future__ import annotations
 import warnings
 from pathlib import Path
 
-from thoth.config import ConfigManager
+from doxa_research.config import ConfigManager
 
 
 def _write_user_toml(tmp: Path, content: str) -> Path:
-    p = tmp / "thoth.config.toml"
+    p = tmp / "doxa.config.toml"
     p.write_text(content)
     return p
 

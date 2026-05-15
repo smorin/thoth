@@ -24,13 +24,13 @@ hitting any live API. Following the repo convention, async tests are
 sync-wrapped with `asyncio.run(coro)`.
 
 See:
-  - `src/thoth/providers/__init__.py:create_provider` — provider_config
+  - `src/doxa_research/providers/__init__.py:create_provider` — provider_config
     construction
-  - `src/thoth/providers/parameter_config.py` — shared provider parameter
+  - `src/doxa_research/providers/parameter_config.py` — shared provider parameter
     normalization
-  - `src/thoth/providers/openai.py:OpenAIProvider.submit` — config
+  - `src/doxa_research/providers/openai.py:OpenAIProvider.submit` — config
     consumption
-  - `src/thoth/providers/perplexity.py:_build_request_params /
+  - `src/doxa_research/providers/perplexity.py:_build_request_params /
     _build_extra_body` — config consumption
 """
 
@@ -63,7 +63,7 @@ def test_openai_provider_level_organization_reaches_runtime() -> None:
     constructor, so any modeled OpenAIConfig field (including
     `organization`) reaches `self.config`.
     """
-    from thoth.providers import create_provider
+    from doxa_research.providers import create_provider
 
     cfg = _fake_config_manager(
         {"openai": {"api_key": "sk-test", "organization": "org-acme", "model": "gpt-4o-mini"}}
@@ -76,7 +76,7 @@ def test_openai_provider_level_organization_reaches_runtime() -> None:
 
 def test_openai_provider_level_max_tool_calls_reaches_request() -> None:
     """`[providers.openai] max_tool_calls = 50` ends up in request_params."""
-    from thoth.providers import create_provider
+    from doxa_research.providers import create_provider
 
     cfg = _fake_config_manager({"openai": {"api_key": "sk-test", "max_tool_calls": 50}})
     provider = create_provider(
@@ -104,7 +104,7 @@ def test_openai_provider_level_max_tool_calls_reaches_request() -> None:
 
 def test_openai_mode_level_overrides_provider_level() -> None:
     """Mode-level `temperature` overrides `[providers.openai] temperature`."""
-    from thoth.providers import create_provider
+    from doxa_research.providers import create_provider
 
     cfg = _fake_config_manager({"openai": {"api_key": "sk-test", "temperature": 0.1}})
     provider = create_provider(
@@ -135,7 +135,7 @@ def test_openai_mode_level_overrides_provider_level() -> None:
 
 def test_perplexity_provider_level_top_p_reaches_request() -> None:
     """`[providers.perplexity] top_p = 0.9` flows through `_DIRECT_SDK_KEYS`."""
-    from thoth.providers import create_provider
+    from doxa_research.providers import create_provider
 
     cfg = _fake_config_manager({"perplexity": {"api_key": "pplx-test", "top_p": 0.9}})
     provider = create_provider(
@@ -167,7 +167,7 @@ def test_perplexity_provider_level_nested_namespace_reaches_extra_body() -> None
     """`[providers.perplexity.perplexity.web_search_options]` content
     forwards through `_build_extra_body` into the SDK's `extra_body`.
     """
-    from thoth.providers import create_provider
+    from doxa_research.providers import create_provider
 
     cfg = _fake_config_manager(
         {
@@ -211,7 +211,7 @@ def test_perplexity_mode_namespace_deep_merges_with_provider_namespace() -> None
     """Mode-level `[modes.x.perplexity]` deep-merges with provider-level
     `[providers.perplexity.perplexity]` — mode wins on key collisions.
     """
-    from thoth.providers import create_provider
+    from doxa_research.providers import create_provider
 
     cfg = _fake_config_manager(
         {
@@ -269,7 +269,7 @@ def test_perplexity_root_nested_namespace_accepts_legacy_unknown_sdk_keys() -> N
     but the schema keeps root `[providers.perplexity.perplexity]` permissive
     for existing configs.
     """
-    from thoth.config_schema import ConfigSchema, PerplexityConfig
+    from doxa_research.config_schema import ConfigSchema, PerplexityConfig
 
     # Schema acceptance
     PerplexityConfig(
@@ -296,7 +296,7 @@ def test_perplexity_root_nested_namespace_accepts_legacy_unknown_sdk_keys() -> N
 def test_unknown_top_level_provider_field_warns() -> None:
     """A typo at the well-known provider-config tier still produces a
     warning — schema discipline is preserved for the modeled surface."""
-    from thoth.config_schema import ConfigSchema
+    from doxa_research.config_schema import ConfigSchema
 
     report = ConfigSchema.validate(
         {
@@ -314,7 +314,7 @@ def test_gemini_placeholder_accepts_provider_config_base_fields() -> None:
     that already accepts the full ProviderConfigBase surface. When P28
     lands, runtime hookup is the only delta — schema is ready.
     """
-    from thoth.config_schema import GeminiConfig
+    from doxa_research.config_schema import GeminiConfig
 
     cfg = GeminiConfig(
         api_key="${GEMINI_API_KEY}",
@@ -333,7 +333,7 @@ def test_mode_provider_namespace_validates_for_each_provider() -> None:
     `[modes.<name>.gemini]` all pass schema validation — each is
     `dict[str, Any]` so SDK options can vary independently per provider.
     """
-    from thoth.config_schema import ConfigSchema
+    from doxa_research.config_schema import ConfigSchema
 
     report = ConfigSchema.validate(
         {

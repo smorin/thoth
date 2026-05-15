@@ -2,13 +2,13 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add Gemini Deep Research background operations on top of the existing P24 `GeminiProvider`. Wire `client.aio.interactions.create(agent="deep-research-preview-04-2026", background=True, store=True)` through the provider-agnostic runtime (`_run_polling_loop`, `OperationStatus`, SIGINT cancel, `OutputManager`), enabling `thoth ask --mode gemini_*_research "..."`, `thoth resume <op-id>`, `thoth cancel <op-id>`.
+**Goal:** Add Gemini Deep Research background operations on top of the existing P24 `GeminiProvider`. Wire `client.aio.interactions.create(agent="deep-research-preview-04-2026", background=True, store=True)` through the provider-agnostic runtime (`_run_polling_loop`, `OperationStatus`, SIGINT cancel, `OutputManager`), enabling `doxa-research ask --mode gemini_*_research "..."`, `doxa-research resume <op-id>`, `doxa-research cancel <op-id>`.
 
-**Architecture:** **Hybrid `GeminiProvider`, one class, internal routing.** P24 shipped the immediate path (`client.aio.models.generate_content_*` against chat models). P28 adds the Deep Research background path (`client.aio.interactions.*` against the deep-research agents). The public methods `submit/check_status/get_result/cancel/reconnect` become 5-line routers that branch on `is_background_model(self.model)` and delegate to `_immediate_*` (P24's existing methods, renamed) or `_deep_research_*` (new). Shared at the class level: `__init__`, `_map_gemini_error` (extended), `_invalid_key_thotherror`, `_validate_kind_for_model`, retry helpers.
+**Architecture:** **Hybrid `GeminiProvider`, one class, internal routing.** P24 shipped the immediate path (`client.aio.models.generate_content_*` against chat models). P28 adds the Deep Research background path (`client.aio.interactions.*` against the deep-research agents). The public methods `submit/check_status/get_result/cancel/reconnect` become 5-line routers that branch on `is_background_model(self.model)` and delegate to `_immediate_*` (P24's existing methods, renamed) or `_deep_research_*` (new). Shared at the class level: `__init__`, `_map_gemini_error` (extended), `_invalid_key_doxaerror`, `_validate_kind_for_model`, retry helpers.
 
 **Architectural delta vs P26/P27:** P26 and P27 each route immediate vs background within a single SDK method (`responses.create` for OpenAI, `chat/completions` for Perplexity) — the branch flips params. **P28's branch uses two completely different SDK surfaces** (`models.generate_content` vs `interactions.create`). This is intentional, not an oversight to consolidate; the P29 cross-provider refactor needs to know this is a real Gemini API constraint, not a style inconsistency.
 
-**Tech Stack:** Python 3.11+, `google-genai>=1.74.0` (already pinned by P24), `httpx`, `tenacity`, `pytest`, existing Thoth runtime. Tests use `unittest.mock.patch` + `AsyncMock` per P24 convention (`tests/test_provider_gemini.py`); VCR is not used for Gemini and is not required for P28.
+**Tech Stack:** Python 3.11+, `google-genai>=1.74.0` (already pinned by P24), `httpx`, `tenacity`, `pytest`, existing Doxa Research runtime. Tests use `unittest.mock.patch` + `AsyncMock` per P24 convention (`tests/test_provider_gemini.py`); VCR is not used for Gemini and is not required for P28.
 
 **Spec:** `projects/P28-gemini-background-deep-research.md`. The "Conventions to carry forward from P26 + P27" section in the spec is the source of truth for cross-provider conventions. Open Question #6 (single vs bifurcated agents) is resolved — v1 ships the speed-efficiency tier only.
 
@@ -20,18 +20,18 @@
 
 | Component | Location | Notes |
 |---|---|---|
-| `GeminiProvider` class shell + `__init__` | `src/thoth/providers/gemini.py:227-251` | Lazy-imports `google.genai`; takes timeout via `HttpOptions(timeout=ms)`. |
-| `_PROVIDER_NAME_GEMINI = "gemini"` constant | `src/thoth/providers/gemini.py:42` | P27 convention (suffix-naming variant). |
-| `_map_gemini_error` | `src/thoth/providers/gemini.py:103-192` | Covers 401/403/404/429/400/5xx + httpx errors. P28 extends for interactions-specific cases (Task 2). |
-| `_invalid_key_thotherror` usage | imported from `providers/_helpers.py` | Already used in the 401 branch. |
-| `_is_retryable_gemini_exception` + `_gemini_stream_retry_delay` | `src/thoth/providers/gemini.py:209-224` | Reuse unchanged for DR retry. |
-| `_validate_kind_for_model` | `src/thoth/providers/gemini.py:259-274` | Substring-matches `deep-research`; covers P28's `deep-research-preview-04-2026` automatically. |
-| Provider registry | `src/thoth/providers/__init__.py:17,31,38,45` | `GeminiProvider`, `gemini`→class, `GEMINI_API_KEY`, `--api-key-gemini`. |
-| CLI flag `--api-key-gemini` | `src/thoth/cli_subcommands/_options.py:75` | Already wired. |
-| `GeminiConfig` placeholder | `src/thoth/config_schema.py:240-269` | Has `api_key="${GEMINI_API_KEY}"`. P28 extends for DR tunables (Task 12). |
-| Immediate `submit/check_status/get_result/stream` | `src/thoth/providers/gemini.py:352-559` | Chat-completion path. P28 renames to `_immediate_*` and adds router. |
+| `GeminiProvider` class shell + `__init__` | `src/doxa_research/providers/gemini.py:227-251` | Lazy-imports `google.genai`; takes timeout via `HttpOptions(timeout=ms)`. |
+| `_PROVIDER_NAME_GEMINI = "gemini"` constant | `src/doxa_research/providers/gemini.py:42` | P27 convention (suffix-naming variant). |
+| `_map_gemini_error` | `src/doxa_research/providers/gemini.py:103-192` | Covers 401/403/404/429/400/5xx + httpx errors. P28 extends for interactions-specific cases (Task 2). |
+| `_invalid_key_doxaerror` usage | imported from `providers/_helpers.py` | Already used in the 401 branch. |
+| `_is_retryable_gemini_exception` + `_gemini_stream_retry_delay` | `src/doxa_research/providers/gemini.py:209-224` | Reuse unchanged for DR retry. |
+| `_validate_kind_for_model` | `src/doxa_research/providers/gemini.py:259-274` | Substring-matches `deep-research`; covers P28's `deep-research-preview-04-2026` automatically. |
+| Provider registry | `src/doxa_research/providers/__init__.py:17,31,38,45` | `GeminiProvider`, `gemini`→class, `GEMINI_API_KEY`, `--api-key-gemini`. |
+| CLI flag `--api-key-gemini` | `src/doxa_research/cli_subcommands/_options.py:75` | Already wired. |
+| `GeminiConfig` placeholder | `src/doxa_research/config_schema.py:240-269` | Has `api_key="${GEMINI_API_KEY}"`. P28 extends for DR tunables (Task 12). |
+| Immediate `submit/check_status/get_result/stream` | `src/doxa_research/providers/gemini.py:352-559` | Chat-completion path. P28 renames to `_immediate_*` and adds router. |
 | `tests/test_provider_gemini.py` | 1157 lines | Monkeypatch pattern (`unittest.mock`). Run after every P28 refactor to catch regressions. |
-| `is_background_model("deep-research-...")` | `src/thoth/config.py:254-261` | Substring-matches "deep-research". |
+| `is_background_model("deep-research-...")` | `src/doxa_research/config.py:254-261` | Substring-matches "deep-research". |
 
 ## What P28 v1 ships
 
@@ -55,9 +55,9 @@ Total estimated lines: ~400 new code in `gemini.py`, ~300 new unit tests, ~150 l
 
 | Action | Path | Responsibility |
 |---|---|---|
-| Modify | `src/thoth/providers/gemini.py` | Add DR internal helpers; refactor existing methods to routers; extend error mapper. |
-| Modify | `src/thoth/config.py` | Add 9 `gemini_*_research` mode entries to `KNOWN_MODELS`. |
-| Modify | `src/thoth/config_schema.py` | Add DR-specific fields to `GeminiConfig` (`poll_interval`, `max_wait_minutes`). |
+| Modify | `src/doxa_research/providers/gemini.py` | Add DR internal helpers; refactor existing methods to routers; extend error mapper. |
+| Modify | `src/doxa_research/config.py` | Add 9 `gemini_*_research` mode entries to `KNOWN_MODELS`. |
+| Modify | `src/doxa_research/config_schema.py` | Add DR-specific fields to `GeminiConfig` (`poll_interval`, `max_wait_minutes`). |
 | Create | `scripts/spike/p28/spike_gemini_dr_*.py` | Five spike scripts for live-API validation. |
 | Create | `research/gemini-dr-api-spike-2026-05-11.md` | Spike findings, drives Task 8 citation strategy. |
 | Modify | `tests/test_provider_gemini.py` | Add DR-path test classes. Existing immediate-path tests should still pass after Task 3 refactor. |
@@ -519,7 +519,7 @@ Required sections (each must cite concrete spike output):
 - [ ] **Step 7: Commit spike scripts + findings**
 
 ```bash
-cd /Users/stevemorin/c/thoth-worktrees/p28-gemini-background-deep-research
+cd /Users/stevemorin/c/doxa-research-worktrees/p28-gemini-background-deep-research
 git add scripts/spike/p28/ research/gemini-dr-api-spike-2026-05-11.md
 git commit -m "spike(p28): validate Gemini Deep Research API surface
 
@@ -543,12 +543,12 @@ two-tier DR agent ID listing (Task 11 gate)."
 **Convention reference (P26+P27):** the error mapper stays a single function — no sync/async split since the Interactions API surface is async-only.
 
 **Files:**
-- Modify: `src/thoth/providers/gemini.py` (top-of-module imports + `_map_gemini_error`)
+- Modify: `src/doxa_research/providers/gemini.py` (top-of-module imports + `_map_gemini_error`)
 - Modify: `tests/test_provider_gemini.py` (add test class)
 
 - [ ] **Step 1: Add try-import + helper at module top**
 
-In `src/thoth/providers/gemini.py`, just below the existing `from google.genai import errors as genai_errors` line, add:
+In `src/doxa_research/providers/gemini.py`, just below the existing `from google.genai import errors as genai_errors` line, add:
 
 ```python
 # DR-specific exceptions live in a PRIVATE module (google.genai._interactions)
@@ -591,7 +591,7 @@ class TestMapGeminiErrorInteractionsSpecific:
         """interactions.get(bad-id) raises NotFoundError with status_code=404."""
         from google.genai._interactions import NotFoundError  # type: ignore[import-not-found]
 
-        from thoth.providers.gemini import _map_gemini_error
+        from doxa-research.providers.gemini import _map_gemini_error
 
         # Construct a real NotFoundError as the spike observed it.
         # The exact constructor signature is documented in
@@ -611,13 +611,13 @@ class TestMapGeminiErrorInteractionsSpecific:
         """interactions.create with bad key raises BadRequestError with status_code=400."""
         from google.genai._interactions import BadRequestError  # type: ignore[import-not-found]
 
-        from thoth.errors import APIKeyError, ThothError
-        from thoth.providers.gemini import _map_gemini_error
+        from doxa-research.errors import APIKeyError, DoxaError
+        from doxa-research.providers.gemini import _map_gemini_error
 
         exc = BadRequestError(status_code=400, message="API key not valid")
         result = _map_gemini_error(exc, model="deep-research-preview-04-2026")
-        # Either APIKeyError or a ThothError mentioning the AI Studio URL
-        assert isinstance(result, (APIKeyError, ThothError))
+        # Either APIKeyError or a DoxaError mentioning the AI Studio URL
+        assert isinstance(result, (APIKeyError, DoxaError))
         if not isinstance(result, APIKeyError):
             assert "aistudio.google.com" in str(result)
 
@@ -625,8 +625,8 @@ class TestMapGeminiErrorInteractionsSpecific:
         """interactions.{create,get,cancel} 5xx raises InternalServerError."""
         from google.genai._interactions import InternalServerError  # type: ignore[import-not-found]
 
-        from thoth.errors import ProviderError
-        from thoth.providers.gemini import _map_gemini_error
+        from doxa-research.errors import ProviderError
+        from doxa-research.providers.gemini import _map_gemini_error
 
         exc = InternalServerError(
             status_code=500, message="Internal server error processing interaction"
@@ -641,8 +641,8 @@ class TestMapGeminiErrorInteractionsSpecific:
         Simulates an SDK rename: forge an exception whose module is
         google.genai._interactions but doesn't inherit from our captured class.
         """
-        from thoth.errors import ProviderError
-        from thoth.providers.gemini import _map_gemini_error
+        from doxa-research.errors import ProviderError
+        from doxa-research.providers.gemini import _map_gemini_error
 
         class _FakeInteractionsError(Exception):
             pass
@@ -666,10 +666,10 @@ Expected: 4 FAIL — `_map_gemini_error` doesn't catch `_interactions` exception
 
 - [ ] **Step 4: Add the `_is_interactions_error` branch to `_map_gemini_error`**
 
-In `src/thoth/providers/gemini.py:_map_gemini_error`, add a NEW first conditional BEFORE the existing `isinstance(exc, genai_errors.ClientError)` block:
+In `src/doxa_research/providers/gemini.py:_map_gemini_error`, add a NEW first conditional BEFORE the existing `isinstance(exc, genai_errors.ClientError)` block:
 
 ```python
-def _map_gemini_error(exc: Exception, model: str | None, verbose: bool = False) -> ThothError:
+def _map_gemini_error(exc: Exception, model: str | None, verbose: bool = False) -> DoxaError:
     # NEW: DR (Interactions API) exceptions are a separate hierarchy.
     if _is_interactions_error(exc):
         status_code = getattr(exc, "status_code", None)
@@ -680,7 +680,7 @@ def _map_gemini_error(exc: Exception, model: str | None, verbose: bool = False) 
             # Invalid-key paths come through as 400 BadRequest from the
             # interactions endpoint (the chat-completion endpoint returns 401).
             if any(p in msg_lower for p in _INVALID_KEY_PHRASES_GEMINI):
-                return _invalid_key_thotherror(
+                return _invalid_key_doxaerror(
                     "Gemini",
                     "https://aistudio.google.com/app/apikey",
                 )
@@ -742,8 +742,8 @@ Expected: all existing tests still pass.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add src/thoth/providers/gemini.py tests/test_provider_gemini.py
-git commit -m "feat(p28): map google.genai._interactions exceptions to ThothError types
+git add src/doxa_research/providers/gemini.py tests/test_provider_gemini.py
+git commit -m "feat(p28): map google.genai._interactions exceptions to DoxaError types
 
 Per spike findings (research/gemini-dr-api-spike-2026-05-11.md §7), DR
 exceptions raise from google.genai._interactions, a private module that
@@ -766,7 +766,7 @@ ClientError/ServerError/httpx branches remain unchanged.
 **Convention reference (P26+P27):** the public class methods become 5-line routers that delegate based on `is_background_model(self.model)`. P24's existing method bodies are renamed to `_immediate_*` with no behavioral change — this is a pure refactor.
 
 **Files:**
-- Modify: `src/thoth/providers/gemini.py:GeminiProvider`
+- Modify: `src/doxa_research/providers/gemini.py:GeminiProvider`
 - Modify: `tests/test_provider_gemini.py` (add router tests)
 
 - [ ] **Step 1: Write router tests (will pass trivially after refactor)**
@@ -779,7 +779,7 @@ class TestGeminiProviderRouting:
 
     @pytest.mark.asyncio
     async def test_submit_routes_to_immediate_for_chat_model(self, monkeypatch):
-        from thoth.providers.gemini import GeminiProvider
+        from doxa-research.providers.gemini import GeminiProvider
 
         provider = GeminiProvider(api_key="dummy", config={"model": "gemini-2.5-flash-lite"})
         called = {"immediate": False, "deep_research": False}
@@ -800,7 +800,7 @@ class TestGeminiProviderRouting:
 
     @pytest.mark.asyncio
     async def test_submit_routes_to_dr_for_deep_research_model(self, monkeypatch):
-        from thoth.providers.gemini import GeminiProvider
+        from doxa-research.providers.gemini import GeminiProvider
 
         provider = GeminiProvider(
             api_key="dummy", config={"model": "deep-research-preview-04-2026"}
@@ -832,7 +832,7 @@ Expected: FAIL — `_immediate_submit` and `_deep_research_submit` don't exist y
 
 - [ ] **Step 3: Rename existing methods to `_immediate_*` and add routers**
 
-In `src/thoth/providers/gemini.py:GeminiProvider`:
+In `src/doxa_research/providers/gemini.py:GeminiProvider`:
 
 1. Rename `async def submit(...)` → `async def _immediate_submit(...)` (body unchanged)
 2. Rename `async def check_status(...)` → `async def _immediate_check_status(...)`
@@ -881,7 +881,7 @@ Expected: all existing tests still pass + the two new routing tests pass.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/thoth/providers/gemini.py tests/test_provider_gemini.py
+git add src/doxa_research/providers/gemini.py tests/test_provider_gemini.py
 git commit -m "refactor(p28): split GeminiProvider into immediate/DR routers
 
 submit/check_status/get_result are now 5-line routers that branch on
@@ -898,7 +898,7 @@ Pure refactor — no behavioral change for chat-completion paths."
 ### Task 4: `self.jobs` schema migration with discriminator
 
 **Files:**
-- Modify: `src/thoth/providers/gemini.py:GeminiProvider`
+- Modify: `src/doxa_research/providers/gemini.py:GeminiProvider`
 - Modify: `tests/test_provider_gemini.py`
 
 - [ ] **Step 1: Failing test**
@@ -909,7 +909,7 @@ class TestGeminiJobsSchema:
 
     @pytest.mark.asyncio
     async def test_immediate_submit_stashes_kind_immediate(self, monkeypatch):
-        from thoth.providers.gemini import GeminiProvider
+        from doxa-research.providers.gemini import GeminiProvider
 
         provider = GeminiProvider(api_key="dummy", config={"model": "gemini-2.5-flash-lite"})
         fake_response = MagicMock(id="fake-resp-id")
@@ -955,7 +955,7 @@ git add -A && git commit -m "refactor(p28): add 'kind' discriminator to self.job
 **Pre-condition:** Task 1 spike step 2 has completed and the response-shape evidence is in `research/gemini-dr-api-spike-2026-05-11.md` §2. If not, do that first.
 
 **Files:**
-- Modify: `src/thoth/providers/gemini.py:GeminiProvider`
+- Modify: `src/doxa_research/providers/gemini.py:GeminiProvider`
 - Modify: `tests/test_provider_gemini.py`
 
 - [ ] **Step 1: Write failing tests**
@@ -966,7 +966,7 @@ class TestGeminiDeepResearchSubmit:
 
     @pytest.mark.asyncio
     async def test_submit_calls_interactions_create_with_agent_background_store(self):
-        from thoth.providers.gemini import GeminiProvider
+        from doxa-research.providers.gemini import GeminiProvider
 
         provider = GeminiProvider(
             api_key="dummy", config={"model": "deep-research-preview-04-2026"}
@@ -989,7 +989,7 @@ class TestGeminiDeepResearchSubmit:
     async def test_submit_does_not_cache_response_body(self):
         """DR submit returns immediately; the response body is not yet available.
         self.jobs entry must NOT contain a 'response' key (only metadata)."""
-        from thoth.providers.gemini import GeminiProvider
+        from doxa-research.providers.gemini import GeminiProvider
 
         provider = GeminiProvider(
             api_key="dummy", config={"model": "deep-research-preview-04-2026"}
@@ -1080,7 +1080,7 @@ and same tenacity policy as P24's _submit_with_retry."
 
 **Spike-driven correction (2026-05-12):** the SDK declares **6** status values, not 4: the type hint on `interaction.status` is `Literal['in_progress', 'requires_action', 'completed', 'failed', 'cancelled', 'incomplete']`. Per spike §5. The mapping decision for `requires_action` and `incomplete` is locked at the v1-conservative defaults below; **Tasks 6a + 6b run follow-up spikes to investigate**, **Task 6c revises the mapping if those spikes find better answers.**
 
-**Failure-type discriminator strategy (locked 2026-05-12):** rather than adding new top-level OperationStatus values (invasive — touches state machine + 7 consumer modules), the provider returns a new failure-type discriminator in the status dict. The runtime translates this into `OperationStatus.failure_type` (existing field at `src/thoth/models.py:125` with `"recoverable" | "permanent" | None`). v1 adds `"requires_action"` as a third failure_type value.
+**Failure-type discriminator strategy (locked 2026-05-12):** rather than adding new top-level OperationStatus values (invasive — touches state machine + 7 consumer modules), the provider returns a new failure-type discriminator in the status dict. The runtime translates this into `OperationStatus.failure_type` (existing field at `src/doxa_research/models.py:125` with `"recoverable" | "permanent" | None`). v1 adds `"requires_action"` as a third failure_type value.
 
 **Baseline mapping table:**
 
@@ -1094,7 +1094,7 @@ and same tenacity policy as P24's _submit_with_retry."
 | `incomplete` | `{"status": "permanent_error", "failure_type": "permanent"}` | `failed` | `permanent` (v1 conservative) | Task 6b |
 
 **Files:**
-- Modify: `src/thoth/providers/gemini.py:GeminiProvider`
+- Modify: `src/doxa_research/providers/gemini.py:GeminiProvider`
 - Modify: `tests/test_provider_gemini.py`
 
 - [ ] **Step 1: Failing tests (6 status values)**
@@ -1105,7 +1105,7 @@ class TestGeminiDeepResearchCheckStatus:
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize(
-        "live_status,expected_thoth_status,expected_failure_type",
+        "live_status,expected_doxa_status,expected_failure_type",
         [
             ("in_progress",     "in_progress",     None),
             ("requires_action", "permanent_error", "requires_action"),
@@ -1115,8 +1115,8 @@ class TestGeminiDeepResearchCheckStatus:
             ("incomplete",      "permanent_error", "permanent"),
         ],
     )
-    async def test_status_mapping(self, live_status, expected_thoth_status, expected_failure_type):
-        from thoth.providers.gemini import GeminiProvider
+    async def test_status_mapping(self, live_status, expected_doxa_status, expected_failure_type):
+        from doxa-research.providers.gemini import GeminiProvider
 
         provider = GeminiProvider(
             api_key="dummy", config={"model": "deep-research-preview-04-2026"}
@@ -1126,7 +1126,7 @@ class TestGeminiDeepResearchCheckStatus:
         provider.client.aio.interactions = MagicMock()
         provider.client.aio.interactions.get = fake_get
         result = await provider._deep_research_check_status("interactions/abc")
-        assert result["status"] == expected_thoth_status
+        assert result["status"] == expected_doxa_status
         if expected_failure_type is None:
             assert "failure_type" not in result or result["failure_type"] is None
         else:
@@ -1138,7 +1138,7 @@ class TestGeminiDeepResearchCheckStatus:
     async def test_requires_action_error_message_explains_v1_unsupported(self):
         """requires_action is rare for the 9 gemini_*_research modes; if it fires,
         the user needs a clear message about what happened."""
-        from thoth.providers.gemini import GeminiProvider
+        from doxa-research.providers.gemini import GeminiProvider
 
         provider = GeminiProvider(
             api_key="dummy", config={"model": "deep-research-preview-04-2026"}
@@ -1155,7 +1155,7 @@ class TestGeminiDeepResearchCheckStatus:
     async def test_incomplete_error_message_documents_v1_limitation(self):
         """incomplete may be refetchable (Task 6b spike investigates).
         v1 treats as permanent failure; document this in the error message."""
-        from thoth.providers.gemini import GeminiProvider
+        from doxa-research.providers.gemini import GeminiProvider
 
         provider = GeminiProvider(
             api_key="dummy", config={"model": "deep-research-preview-04-2026"}
@@ -1169,7 +1169,7 @@ class TestGeminiDeepResearchCheckStatus:
 
     @pytest.mark.asyncio
     async def test_unknown_job_id(self):
-        from thoth.providers.gemini import GeminiProvider
+        from doxa-research.providers.gemini import GeminiProvider
 
         provider = GeminiProvider(
             api_key="dummy", config={"model": "deep-research-preview-04-2026"}
@@ -1215,7 +1215,7 @@ _DR_STATUS_MAPPING: dict[str, dict[str, Any]] = {
 
 
 async def _deep_research_check_status(self, job_id: str) -> dict[str, Any]:
-    """Poll interactions.get; map Gemini status to Thoth status + failure_type.
+    """Poll interactions.get; map Gemini status to Doxa Research status + failure_type.
 
     SDK declares 6 statuses (spike §5). v1 mapping is conservative for
     requires_action and incomplete; Tasks 6a/6b spike + 6c revise.
@@ -1248,7 +1248,7 @@ uv run pytest tests/test_provider_gemini.py::TestGeminiDeepResearchCheckStatus -
 git add -A && git commit -m "feat(p28): implement _deep_research_check_status with 6-value mapping
 
 Maps the SDK's 6 status values (in_progress, requires_action, completed,
-failed, cancelled, incomplete) to Thoth provider-status + failure_type
+failed, cancelled, incomplete) to Doxa Research provider-status + failure_type
 discriminator. v1 conservatively treats requires_action and incomplete
 as permanent_error; Tasks 6a/6b spike further to determine if better
 handling is warranted (Task 6c may revise the mapping)."
@@ -1591,7 +1591,7 @@ git commit -m "spike(p28): investigate incomplete recoverability"
 
 - [ ] **Step 1: Apply mapping revisions per findings**
 
-Update `_DR_STATUS_MAPPING` in `src/thoth/providers/gemini.py` and the corresponding test parametrize values in `tests/test_provider_gemini.py`. Diff size depends on findings.
+Update `_DR_STATUS_MAPPING` in `src/doxa_research/providers/gemini.py` and the corresponding test parametrize values in `tests/test_provider_gemini.py`. Diff size depends on findings.
 
 - [ ] **Step 2: Run tests until green**
 
@@ -1630,7 +1630,7 @@ git add -A && git commit -m "feat(p28): revise DR status mapping per 6a/6b spike
 5. **Failure modes:** if SDK Sources block parse fails, fall through to `urlparse(source).netloc`; if all redirects time out, citations still render with the redirect URLs as both title and link target.
 
 **Files:**
-- Modify: `src/thoth/providers/gemini.py:GeminiProvider` (add helpers + method)
+- Modify: `src/doxa_research/providers/gemini.py:GeminiProvider` (add helpers + method)
 - Modify: `tests/test_provider_gemini.py` (add test class)
 
 - [ ] **Step 1: Add helper functions at module bottom (below GeminiProvider class)**
@@ -1730,7 +1730,7 @@ class TestGeminiDeepResearchGetResult:
 
     @pytest.mark.asyncio
     async def test_renders_model_output_text(self):
-        from thoth.providers.gemini import GeminiProvider
+        from doxa-research.providers.gemini import GeminiProvider
 
         provider = GeminiProvider(
             api_key="dummy", config={"model": "deep-research-preview-04-2026"}
@@ -1749,7 +1749,7 @@ class TestGeminiDeepResearchGetResult:
     @pytest.mark.asyncio
     async def test_extracts_annotations_from_first_model_output_step(self, monkeypatch):
         """Citation extraction follows the spike-validated path."""
-        from thoth.providers.gemini import GeminiProvider
+        from doxa-research.providers.gemini import GeminiProvider
 
         provider = GeminiProvider(
             api_key="dummy", config={"model": "deep-research-preview-04-2026"}
@@ -1781,7 +1781,7 @@ class TestGeminiDeepResearchGetResult:
         async def fake_resolve(urls, **kwargs):
             return {u: "https://www.usenix.org/paper.pdf" for u in urls}
 
-        monkeypatch.setattr("thoth.providers.gemini._resolve_dr_redirects", fake_resolve)
+        monkeypatch.setattr("doxa-research.providers.gemini._resolve_dr_redirects", fake_resolve)
 
         result = await provider._deep_research_get_result("interactions/abc", False)
         assert "## Sources" in result
@@ -1792,7 +1792,7 @@ class TestGeminiDeepResearchGetResult:
     @pytest.mark.asyncio
     async def test_falls_back_to_redirect_url_when_follow_fails(self, monkeypatch):
         """If redirect-follow returns None, render the redirect URL as link target."""
-        from thoth.providers.gemini import GeminiProvider
+        from doxa-research.providers.gemini import GeminiProvider
 
         provider = GeminiProvider(
             api_key="dummy", config={"model": "deep-research-preview-04-2026"}
@@ -1810,7 +1810,7 @@ class TestGeminiDeepResearchGetResult:
         async def fake_resolve(urls, **kwargs):
             return {u: None for u in urls}  # simulate redirect-follow failures
 
-        monkeypatch.setattr("thoth.providers.gemini._resolve_dr_redirects", fake_resolve)
+        monkeypatch.setattr("doxa-research.providers.gemini._resolve_dr_redirects", fake_resolve)
 
         result = await provider._deep_research_get_result("interactions/abc", False)
         assert "## Sources" in result
@@ -1819,7 +1819,7 @@ class TestGeminiDeepResearchGetResult:
 
     @pytest.mark.asyncio
     async def test_no_sources_block_when_no_annotations(self):
-        from thoth.providers.gemini import GeminiProvider
+        from doxa-research.providers.gemini import GeminiProvider
 
         provider = GeminiProvider(
             api_key="dummy", config={"model": "deep-research-preview-04-2026"}
@@ -1838,7 +1838,7 @@ class TestGeminiDeepResearchGetResult:
     @pytest.mark.asyncio
     async def test_dedupes_by_resolved_url(self, monkeypatch):
         """Two redirects pointing to the same source dedupe to one entry."""
-        from thoth.providers.gemini import GeminiProvider
+        from doxa-research.providers.gemini import GeminiProvider
 
         provider = GeminiProvider(
             api_key="dummy", config={"model": "deep-research-preview-04-2026"}
@@ -1865,7 +1865,7 @@ class TestGeminiDeepResearchGetResult:
             # Both redirects resolve to the SAME source — should dedupe
             return {u: "https://www.usenix.org/paper.pdf" for u in urls}
 
-        monkeypatch.setattr("thoth.providers.gemini._resolve_dr_redirects", fake_resolve)
+        monkeypatch.setattr("doxa-research.providers.gemini._resolve_dr_redirects", fake_resolve)
 
         result = await provider._deep_research_get_result("interactions/abc", False)
         # The single deduplicated source appears exactly once in the Sources block
@@ -2186,7 +2186,7 @@ git commit -m "spike(p28): re-verify cancel() with Goldilocks prompt + wait-poll
 **Pre-condition:** Task 8a has populated §6 in `research/gemini-dr-api-spike-2026-05-11.md` with the verified cancel behavior. The implementation below is the **defensive baseline** — adjust if Task 8a reveals different behavior.
 
 **Files:**
-- Modify: `src/thoth/providers/gemini.py:GeminiProvider` (add `cancel` method)
+- Modify: `src/doxa_research/providers/gemini.py:GeminiProvider` (add `cancel` method)
 - Modify: `tests/test_provider_gemini.py`
 
 - [ ] **Step 1: Failing tests**
@@ -2197,7 +2197,7 @@ class TestGeminiCancel:
 
     @pytest.mark.asyncio
     async def test_cancel_calls_interactions_cancel(self):
-        from thoth.providers.gemini import GeminiProvider
+        from doxa-research.providers.gemini import GeminiProvider
 
         provider = GeminiProvider(
             api_key="dummy", config={"model": "deep-research-preview-04-2026"}
@@ -2218,7 +2218,7 @@ class TestGeminiCancel:
         """Per spike §6: cancel may return 5xx in edge cases; treat as best-effort."""
         from google.genai._interactions import InternalServerError  # type: ignore[import-not-found]
 
-        from thoth.providers.gemini import GeminiProvider
+        from doxa-research.providers.gemini import GeminiProvider
 
         provider = GeminiProvider(
             api_key="dummy", config={"model": "deep-research-preview-04-2026"}
@@ -2241,7 +2241,7 @@ class TestGeminiCancel:
     @pytest.mark.asyncio
     async def test_cancel_noop_for_immediate_jobs(self):
         """Immediate jobs (chat completion) don't support upstream cancel."""
-        from thoth.providers.gemini import GeminiProvider
+        from doxa-research.providers.gemini import GeminiProvider
 
         provider = GeminiProvider(api_key="dummy", config={"model": "gemini-2.5-flash-lite"})
         provider.jobs["job-imm"] = {"kind": "immediate", "response": MagicMock()}
@@ -2307,7 +2307,7 @@ actual state on next poll. Immediate jobs: no-op (already complete)."
 ### Task 9: `reconnect()` — failing tests + implementation
 
 **Files:**
-- Modify: `src/thoth/providers/gemini.py:GeminiProvider`
+- Modify: `src/doxa_research/providers/gemini.py:GeminiProvider`
 - Modify: `tests/test_provider_gemini.py`
 
 - [ ] **Step 1: Failing tests**
@@ -2318,7 +2318,7 @@ class TestGeminiReconnect:
 
     @pytest.mark.asyncio
     async def test_reconnect_repopulates_jobs_entry(self):
-        from thoth.providers.gemini import GeminiProvider
+        from doxa-research.providers.gemini import GeminiProvider
 
         provider = GeminiProvider(
             api_key="dummy", config={"model": "deep-research-preview-04-2026"}
@@ -2378,12 +2378,12 @@ jobs cannot reconnect (responses were process-local)."
 **Pre-condition:** Task 1 spike step 1 confirmed `deep-research-preview-04-2026` is listed by the live API.
 
 **Files:**
-- Modify: `src/thoth/config.py`
+- Modify: `src/doxa_research/config.py`
 - Modify: `tests/test_provider_gemini.py` (mode-presence assertion)
 
 - [ ] **Step 1: Add the 9 entries**
 
-In `src/thoth/config.py:KNOWN_MODELS`, after the existing `gemini_reasoning` entry, append (preserving the OpenAI mode-name parallels):
+In `src/doxa_research/config.py:KNOWN_MODELS`, after the existing `gemini_reasoning` entry, append (preserving the OpenAI mode-name parallels):
 
 ```python
 "gemini_quick_research": {
@@ -2482,13 +2482,13 @@ class TestGeminiDeepResearchModes:
     )
 
     def test_all_modes_present(self):
-        from thoth.config import KNOWN_MODELS
+        from doxa-research.config import KNOWN_MODELS
 
         for mode in self.EXPECTED:
             assert mode in KNOWN_MODELS, f"Missing mode {mode!r}"
 
     def test_all_modes_use_dr_agent_and_background_kind(self):
-        from thoth.config import KNOWN_MODELS
+        from doxa-research.config import KNOWN_MODELS
 
         for mode in self.EXPECTED:
             entry = KNOWN_MODELS[mode]
@@ -2514,14 +2514,14 @@ cross-provider chain compatibility (e.g. 'exploration' -> 'gemini_deep_dive')."
 ### Task 11: Extend `[providers.gemini]` schema with DR tunables
 
 **Files:**
-- Modify: `src/thoth/config_schema.py:GeminiConfig`
+- Modify: `src/doxa_research/config_schema.py:GeminiConfig`
 - Modify: `tests/test_config_schema.py` (or wherever GeminiConfig is tested)
 
 - [ ] **Step 1: Failing test**
 
 ```python
 def test_gemini_config_has_dr_tunables():
-    from thoth.config_schema import GeminiConfig
+    from doxa-research.config_schema import GeminiConfig
 
     cfg = GeminiConfig()
     assert hasattr(cfg, "poll_interval")
@@ -2532,7 +2532,7 @@ def test_gemini_config_has_dr_tunables():
 
 - [ ] **Step 2: Implement — add fields to `GeminiConfig`**
 
-In `src/thoth/config_schema.py:GeminiConfig`, add:
+In `src/doxa_research/config_schema.py:GeminiConfig`, add:
 
 ```python
 poll_interval: int = Field(
@@ -2565,13 +2565,13 @@ gemini mode."
 **Pre-condition:** verify how `_run_polling_loop` currently picks up provider-specific tunables for OpenAI and Perplexity. Mirror that wiring; do not invent a new mechanism.
 
 **Files:**
-- Modify: `src/thoth/run.py` (if needed — possibly already provider-agnostic via config lookup)
+- Modify: `src/doxa_research/run.py` (if needed — possibly already provider-agnostic via config lookup)
 - Modify: tests as appropriate
 
 - [ ] **Step 1: Inspect runtime tunable resolution**
 
 ```bash
-grep -n "poll_interval\|max_wait_minutes" src/thoth/run.py src/thoth/config.py src/thoth/config_schema.py
+grep -n "poll_interval\|max_wait_minutes" src/doxa_research/run.py src/doxa_research/config.py src/doxa_research/config_schema.py
 ```
 
 Verify whether the polling loop reads tunables from `providers.<name>.poll_interval` automatically (likely yes — P26/P27 use the same mechanism). If yes, this task is config-validation only.
@@ -2597,7 +2597,7 @@ git add -A && git commit -m "test(p28): verify _run_polling_loop reads gemini DR
 just check                        # ruff + ty
 uv run ruff format --check src/ tests/
 uv run pytest -q                  # all default tests
-./thoth_test -r --skip-interactive -q  # integration tests
+./doxa_test -r --skip-interactive -q  # integration tests
 ```
 
 Expected: all green. Fix any regression introduced by the refactor in Tasks 3-9.
@@ -2670,12 +2670,12 @@ requires_key = pytest.mark.skipif(
 
 @pytest.mark.live_api
 @requires_key
-def test_thoth_ask_gemini_quick_research_end_to_end(tmp_path):
-    """thoth ask --mode gemini_quick_research submits, polls, returns text."""
+def test_doxa_ask_gemini_quick_research_end_to_end(tmp_path):
+    """doxa-research ask --mode gemini_quick_research submits, polls, returns text."""
     out_file = tmp_path / "out.md"
     result = subprocess.run(
         [
-            "thoth", "ask",
+            "doxa-research", "ask",
             "--mode", "gemini_quick_research",
             "--out", str(out_file),
             "What is the difference between Paxos and Raft? Brief.",
@@ -2694,8 +2694,8 @@ def test_thoth_ask_gemini_quick_research_end_to_end(tmp_path):
 
 @pytest.mark.live_api
 @requires_key
-def test_thoth_resume_gemini_dr(tmp_path):
-    """thoth ask then thoth resume re-attaches and completes."""
+def test_doxa_resume_gemini_dr(tmp_path):
+    """doxa-research ask then doxa-research resume re-attaches and completes."""
     # Submit then immediately Ctrl-C-equivalent stop, get the op_id from output,
     # then resume. Test marshalling depends on existing live-test patterns.
     pytest.skip("Wire up via existing live-test resume helper")
@@ -2703,8 +2703,8 @@ def test_thoth_resume_gemini_dr(tmp_path):
 
 @pytest.mark.live_api
 @requires_key
-def test_thoth_cancel_gemini_dr():
-    """thoth cancel transitions a running DR interaction to cancelled."""
+def test_doxa_cancel_gemini_dr():
+    """doxa-research cancel transitions a running DR interaction to cancelled."""
     pytest.skip("Wire up via existing live-test cancel helper")
 
 
@@ -2715,7 +2715,7 @@ def test_invalid_gemini_key_useful_error():
     env = os.environ.copy()
     env["GEMINI_API_KEY"] = "invalid-key-live-test"
     result = subprocess.run(
-        ["thoth", "ask", "--mode", "gemini_quick_research", "hi"],
+        ["doxa-research", "ask", "--mode", "gemini_quick_research", "hi"],
         capture_output=True,
         text=True,
         env=env,
@@ -2792,7 +2792,7 @@ just fix
 just check
 uv run ruff format --check src/ tests/
 uv run pytest -q
-./thoth_test -r --skip-interactive -q
+./doxa_test -r --skip-interactive -q
 ```
 
 All green.
@@ -2819,10 +2819,10 @@ docs/superpowers/plans/2026-05-11-p28-gemini-deep-research-background.md
 
 ## Test plan
 - [x] uv run pytest -q
-- [x] ./thoth_test -r --skip-interactive -q
+- [x] ./doxa_test -r --skip-interactive -q
 - [x] just check
-- [ ] Manual: thoth ask --mode gemini_quick_research "test" — completes end-to-end
-- [ ] Manual: thoth cancel during a running DR operation transitions cleanly
+- [ ] Manual: doxa-research ask --mode gemini_quick_research "test" — completes end-to-end
+- [ ] Manual: doxa-research cancel during a running DR operation transitions cleanly
 EOF
 )"
 ```
@@ -2831,10 +2831,10 @@ EOF
 
 ## Acceptance criteria (mirror of P28 spec, v2)
 
-- `thoth ask --mode gemini_quick_research "test query"` submits, polls, writes the result to the project directory.
-- `thoth resume <op-id>` re-attaches to a Gemini DR interaction after process restart.
-- `thoth cancel <op-id>` transitions the interaction to `cancelled` via `client.aio.interactions.cancel(id)`.
-- All 9 `gemini_*_research` modes appear in `thoth modes` and pass `tests/extended/test_model_kind_runtime.py`.
+- `doxa-research ask --mode gemini_quick_research "test query"` submits, polls, writes the result to the project directory.
+- `doxa-research resume <op-id>` re-attaches to a Gemini DR interaction after process restart.
+- `doxa-research cancel <op-id>` transitions the interaction to `cancelled` via `client.aio.interactions.cancel(id)`.
+- All 9 `gemini_*_research` modes appear in `doxa-research modes` and pass `tests/extended/test_model_kind_runtime.py`.
 - `_map_gemini_error` discriminates interactions-namespace 404 (gives "interaction expired" hint) from chat-model 404.
 - Default test suite green; gated `live_api` workflow green when run manually with `GEMINI_API_KEY`.
 - README documents the DR cost callout + 9 new modes.

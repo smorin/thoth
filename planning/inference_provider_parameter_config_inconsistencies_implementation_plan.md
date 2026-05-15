@@ -6,7 +6,7 @@
 
 **Architecture:** Add one shared provider-parameter normalization layer between config/mode resolution and provider adapters. `create_provider()` should build a normalized structure once, then OpenAI, Perplexity, and Gemini adapters should translate that structure into their SDK request shapes without rediscovering layer semantics.
 
-**Tech Stack:** Python, pytest, Pydantic config schema, existing Thoth provider adapters, `ConfigManager`, `create_provider()`.
+**Tech Stack:** Python, pytest, Pydantic config schema, existing Doxa Research provider adapters, `ConfigManager`, `create_provider()`.
 
 ---
 
@@ -15,12 +15,12 @@
 - Desired state: `planning/inference_provider_parameter_config_matrix.md`
 - Backlog IDs: `planning/inference_provider_parameter_config_inconsistencies.md`
 - Current punt/tracker: `projects/P24-gemini-immediate-sync.md` (`P24-T26`)
-- Main routing point: `src/thoth/providers/__init__.py`
-- Mode overlay: `src/thoth/config.py::ConfigManager.get_mode_config`
+- Main routing point: `src/doxa_research/providers/__init__.py`
+- Mode overlay: `src/doxa_research/config.py::ConfigManager.get_mode_config`
 - Provider adapters:
-  - `src/thoth/providers/openai.py`
-  - `src/thoth/providers/perplexity.py`
-  - `src/thoth/providers/gemini.py`
+  - `src/doxa_research/providers/openai.py`
+  - `src/doxa_research/providers/perplexity.py`
+  - `src/doxa_research/providers/gemini.py`
 
 ## Scope
 
@@ -72,20 +72,20 @@ Precedence is lowest to highest:
 ## Checkpoint Verification Log
 
 - [x] **Checkpoint 1:** Documentation consistency verified with `rg` and `git diff --check`.
-- [x] **Checkpoint 2:** Red-state pytest failure was expected because `thoth.providers.parameter_config` did not exist; `thoth_test` still passed, preserving core functionality.
-- [x] **Checkpoint 3:** `uv run pytest tests/test_provider_parameter_normalization.py -q` passed (`6 passed`); `uv run pytest -m extended -q` passed (`3 passed, 17 skipped, 1433 deselected`); `./thoth_test -r --skip-interactive -q` passed (`75 passed, 12 skipped`); `uv run pytest -q` passed (`1401 passed, 4 skipped, 48 deselected`).
+- [x] **Checkpoint 2:** Red-state pytest failure was expected because `doxa-research.providers.parameter_config` did not exist; `doxa_test` still passed, preserving core functionality.
+- [x] **Checkpoint 3:** `uv run pytest tests/test_provider_parameter_normalization.py -q` passed (`6 passed`); `uv run pytest -m extended -q` passed (`3 passed, 17 skipped, 1433 deselected`); `./doxa_test -r --skip-interactive -q` passed (`75 passed, 12 skipped`); `uv run pytest -q` passed (`1401 passed, 4 skipped, 48 deselected`).
 - [x] **Checkpoint 4 focused:** Initial red tests failed for the expected reasons (`[providers.defaults]` missing, OpenAI root defaults warning, Perplexity `extra_body` bridge missing). After wiring, focused tests passed (`12 passed, 30 deselected`) and targeted provider suites passed (`62 passed`).
-- [x] **Checkpoint 4:** `uv run pytest -m extended -q` passed (`3 passed, 17 skipped, 1441 deselected`); `./thoth_test -r --skip-interactive -q` passed (`75 passed, 12 skipped`); `uv run pytest -q` passed (`1413 passed, 48 deselected`).
+- [x] **Checkpoint 4:** `uv run pytest -m extended -q` passed (`3 passed, 17 skipped, 1441 deselected`); `./doxa_test -r --skip-interactive -q` passed (`75 passed, 12 skipped`); `uv run pytest -q` passed (`1413 passed, 48 deselected`).
 - [x] **Checkpoint 5 focused:** Deep-merge test failed for the expected reason, then passed after replacing shallow `mode_config.update()` overlays; focused mode suite passed (`35 passed`).
-- [x] **Checkpoint 5:** `uv run pytest -m extended -q` passed (`3 passed, 17 skipped, 1442 deselected`); `./thoth_test -r --skip-interactive -q` passed (`75 passed, 12 skipped`); `uv run pytest -q` passed (`1414 passed, 48 deselected`).
+- [x] **Checkpoint 5:** `uv run pytest -m extended -q` passed (`3 passed, 17 skipped, 1442 deselected`); `./doxa_test -r --skip-interactive -q` passed (`75 passed, 12 skipped`); `uv run pytest -q` passed (`1414 passed, 48 deselected`).
 - [x] **Checkpoint 6 focused:** Perplexity sync/async response-format and `extra_body` tests already passed; Gemini timeout failed for the expected reason, then passed after wiring `HttpOptions(timeout=...)`; adapter suite passed (`148 passed`) and normalization/passthrough suite passed (`21 passed`).
-- [x] **Checkpoint 6:** `uv run pytest -m extended -q` passed (`3 passed, 17 skipped, 1445 deselected`); `./thoth_test -r --skip-interactive -q` passed (`75 passed, 12 skipped`); `uv run pytest -q` passed (`1417 passed, 48 deselected`).
+- [x] **Checkpoint 6:** `uv run pytest -m extended -q` passed (`3 passed, 17 skipped, 1445 deselected`); `./doxa_test -r --skip-interactive -q` passed (`75 passed, 12 skipped`); `uv run pytest -q` passed (`1417 passed, 48 deselected`).
 - [x] **Checkpoint 7 focused:** Unknown root/default/provider-namespace tests failed for the expected reason, then passed after strict normalizer validation; normalizer suite passed (`16 passed`) and P33/extra-body compatibility passed (`11 passed`).
-- [x] **Checkpoint 7:** `uv run pytest -m extended -q` passed (`3 passed, 17 skipped, 1450 deselected`); `./thoth_test -r --skip-interactive -q` passed (`75 passed, 12 skipped`); first `uv run pytest -q` failure was expected because `test_root_providers_namespace_unknown_keys_passed_through_or_filtered` still asserted the old placeholder contract, then the test was updated to assert strict rejection and `uv run pytest -q` passed (`1422 passed, 48 deselected`).
+- [x] **Checkpoint 7:** `uv run pytest -m extended -q` passed (`3 passed, 17 skipped, 1450 deselected`); `./doxa_test -r --skip-interactive -q` passed (`75 passed, 12 skipped`); first `uv run pytest -q` failure was expected because `test_root_providers_namespace_unknown_keys_passed_through_or_filtered` still asserted the old placeholder contract, then the test was updated to assert strict rejection and `uv run pytest -q` passed (`1422 passed, 48 deselected`).
 - [x] **Checkpoint 8 focused:** Docs/statuses/migration notes were aligned with the implementation, `P24-T26` was marked complete, stale P33 passthrough wording was updated, `git diff --check` passed, focused provider config/normalizer tests passed (`58 passed`), and ruff check/format-check passed for touched Python files.
-- [x] **Checkpoint 8:** `uv run pytest -m extended -q` passed (`3 passed, 17 skipped, 1450 deselected`); `./thoth_test -r --skip-interactive -q` passed (`75 passed, 12 skipped`); `uv run pytest -q` passed (`1422 passed, 48 deselected`).
-- [x] **Checkpoint 9 focused:** Targeted provider normalization/provider suites passed (`187 passed`); `just check`, `make env-check`, `just fix`, final `just check`, full `./thoth_test -r`, `just test-fix`, `just test-lint`, and `just test-typecheck` all passed. Full `./thoth_test -r` reported `91 passed, 13 skipped`; skips were expected because live OpenAI/Perplexity API keys were not set.
-- [x] **Checkpoint 9:** `uv run pytest -m extended -q` passed (`3 passed, 17 skipped, 1450 deselected`); `./thoth_test -r --skip-interactive -q` passed (`75 passed, 12 skipped`); `uv run pytest -q` passed (`1422 passed, 48 deselected`).
+- [x] **Checkpoint 8:** `uv run pytest -m extended -q` passed (`3 passed, 17 skipped, 1450 deselected`); `./doxa_test -r --skip-interactive -q` passed (`75 passed, 12 skipped`); `uv run pytest -q` passed (`1422 passed, 48 deselected`).
+- [x] **Checkpoint 9 focused:** Targeted provider normalization/provider suites passed (`187 passed`); `just check`, `make env-check`, `just fix`, final `just check`, full `./doxa_test -r`, `just test-fix`, `just test-lint`, and `just test-typecheck` all passed. Full `./doxa_test -r` reported `91 passed, 13 skipped`; skips were expected because live OpenAI/Perplexity API keys were not set.
+- [x] **Checkpoint 9:** `uv run pytest -m extended -q` passed (`3 passed, 17 skipped, 1450 deselected`); `./doxa_test -r --skip-interactive -q` passed (`75 passed, 12 skipped`); `uv run pytest -q` passed (`1422 passed, 48 deselected`).
 
 ---
 
@@ -144,7 +144,7 @@ Expected: references exist, and `git diff --check` prints no output.
 
 **Files:**
 - Create: `tests/test_provider_parameter_normalization.py`
-- Create: `src/thoth/providers/parameter_config.py`
+- Create: `src/doxa_research/providers/parameter_config.py`
 
 - [x] **Step 1: Write failing tests for layer precedence**
 
@@ -156,8 +156,8 @@ from typing import Any, cast
 
 import pytest
 
-from thoth.config import ConfigManager
-from thoth.providers.parameter_config import build_provider_runtime_config
+from doxa-research.config import ConfigManager
+from doxa-research.providers.parameter_config import build_provider_runtime_config
 
 
 def _config(data: dict[str, Any]) -> ConfigManager:
@@ -282,7 +282,7 @@ Run:
 uv run pytest tests/test_provider_parameter_normalization.py -q
 ```
 
-Expected: fail with `ModuleNotFoundError: No module named 'thoth.providers.parameter_config'`.
+Expected: fail with `ModuleNotFoundError: No module named 'doxa-research.providers.parameter_config'`.
 
 ---
 
@@ -291,13 +291,13 @@ Expected: fail with `ModuleNotFoundError: No module named 'thoth.providers.param
 **Backlog IDs:** `GAP-003`
 
 **Files:**
-- Create: `src/thoth/providers/parameter_config.py`
-- Modify: `src/thoth/providers/__init__.py`
+- Create: `src/doxa_research/providers/parameter_config.py`
+- Modify: `src/doxa_research/providers/__init__.py`
 - Test: `tests/test_provider_parameter_normalization.py`
 
 - [x] **Step 1: Create the normalized dataclasses and field registry**
 
-Create `src/thoth/providers/parameter_config.py`:
+Create `src/doxa_research/providers/parameter_config.py`:
 
 ```python
 from __future__ import annotations
@@ -472,7 +472,7 @@ Expected: all tests in this file pass.
 **Backlog IDs:** `GAP-001`, `GAP-002`, `INC-001`, `INC-002`
 
 **Files:**
-- Modify: `src/thoth/providers/__init__.py`
+- Modify: `src/doxa_research/providers/__init__.py`
 - Test: `tests/test_provider_config.py`
 - Test: `tests/test_provider_parameter_normalization.py`
 
@@ -484,8 +484,8 @@ In `tests/test_provider_config.py`, unskip or duplicate the existing P24-T17 des
 def test_providers_defaults_temperature_flows_to_openai_without_deprecation() -> None:
     from types import SimpleNamespace
 
-    from thoth.config import ConfigManager
-    from thoth.providers import create_provider
+    from doxa-research.config import ConfigManager
+    from doxa-research.providers import create_provider
 
     config = cast(
         ConfigManager,
@@ -516,8 +516,8 @@ In `tests/test_provider_parameter_normalization.py`, add:
 
 ```python
 def test_perplexity_extra_body_survives_runtime_to_legacy_request_shapes() -> None:
-    from thoth.providers.parameter_config import build_provider_runtime_config
-    from thoth.providers.perplexity import PerplexityProvider
+    from doxa-research.providers.parameter_config import build_provider_runtime_config
+    from doxa-research.providers.perplexity import PerplexityProvider
 
     config = _config(
         {
@@ -555,8 +555,8 @@ Add the L9 profile-scoped sibling:
 
 ```python
 def test_profile_perplexity_extra_body_survives_runtime_to_legacy_request_shapes() -> None:
-    from thoth.providers.parameter_config import build_provider_runtime_config
-    from thoth.providers.perplexity import PerplexityProvider
+    from doxa-research.providers.parameter_config import build_provider_runtime_config
+    from doxa-research.providers.perplexity import PerplexityProvider
 
     config = _config(
         {
@@ -612,7 +612,7 @@ Expected: tests fail because `[providers.defaults]` is not merged and current Op
 
 - [x] **Step 4: Update `create_provider()` to call the normalizer**
 
-In `src/thoth/providers/__init__.py`:
+In `src/doxa_research/providers/__init__.py`:
 
 1. Import `build_provider_runtime_config`.
 2. Build `runtime_config` before API key resolution.
@@ -637,7 +637,7 @@ Expected: focused tests pass.
 **Backlog IDs:** `INC-004`, `DEC-006`
 
 **Files:**
-- Modify: `src/thoth/config.py`
+- Modify: `src/doxa_research/config.py`
 - Test: `tests/test_provider_parameter_normalization.py` or `tests/test_config_modes.py`
 
 - [x] **Step 1: Write failing deep-merge test**
@@ -648,7 +648,7 @@ Add:
 def test_builtin_mode_provider_namespace_user_override_deep_merges() -> None:
     from types import SimpleNamespace
 
-    from thoth.config import ConfigManager
+    from doxa-research.config import ConfigManager
 
     manager = ConfigManager.__new__(ConfigManager)
     manager.data = {
@@ -678,7 +678,7 @@ Expected: fail because `mode_config.update(user_mode)` replaces the nested `gemi
 
 - [x] **Step 3: Replace shallow mode overlay with deep merge**
 
-In `src/thoth/config.py::get_mode_config()`, replace both `mode_config.update(user_mode)` calls with `self._deep_merge(mode_config, user_mode)`.
+In `src/doxa_research/config.py::get_mode_config()`, replace both `mode_config.update(user_mode)` calls with `self._deep_merge(mode_config, user_mode)`.
 
 - [x] **Step 4: Run focused tests**
 
@@ -697,9 +697,9 @@ Expected: pass.
 **Backlog IDs:** `GAP-003`, `INC-001`, `INC-011`, `INC-010`
 
 **Files:**
-- Modify: `src/thoth/providers/openai.py`
-- Modify: `src/thoth/providers/perplexity.py`
-- Modify: `src/thoth/providers/gemini.py`
+- Modify: `src/doxa_research/providers/openai.py`
+- Modify: `src/doxa_research/providers/perplexity.py`
+- Modify: `src/doxa_research/providers/gemini.py`
 - Test: `tests/test_provider_config.py`
 - Test: `tests/test_provider_perplexity.py`
 - Test: `tests/test_provider_gemini.py`
@@ -758,7 +758,7 @@ Expected: at least the async Perplexity assertion fails until normalized request
 
 - [x] **Step 3: Update OpenAI adapter**
 
-In `src/thoth/providers/openai.py`:
+In `src/doxa_research/providers/openai.py`:
 
 1. Keep `_resolve_provider_config_value()` only as a backward-compatible read path for legacy flat config.
 2. Prefer `self.config["openai"]` provider request values and normalized common request values already copied there by `create_provider()`.
@@ -766,7 +766,7 @@ In `src/thoth/providers/openai.py`:
 
 - [x] **Step 4: Update Perplexity adapter**
 
-In `src/thoth/providers/perplexity.py`:
+In `src/doxa_research/providers/perplexity.py`:
 
 1. Make sync and async request builders both read provider request keys from `self.config["perplexity"]`.
 2. Stop relying on flat root fallback for direct SDK keys after the normalizer has moved defaults into the provider namespace.
@@ -774,7 +774,7 @@ In `src/thoth/providers/perplexity.py`:
 
 - [x] **Step 5: Update Gemini adapter**
 
-In `src/thoth/providers/gemini.py`:
+In `src/doxa_research/providers/gemini.py`:
 
 1. Ensure normalized common request fields are available under `self.config["gemini"]`.
 2. Keep `_DIRECT_SDK_KEYS_GEMINI` as the allowlist for typed SDK config.
@@ -797,8 +797,8 @@ Expected: pass.
 **Backlog IDs:** `INC-003`, `DEC-004`
 
 **Files:**
-- Modify: `src/thoth/providers/parameter_config.py`
-- Modify: `src/thoth/config_schema.py`
+- Modify: `src/doxa_research/providers/parameter_config.py`
+- Modify: `src/doxa_research/config_schema.py`
 - Test: `tests/test_provider_parameter_normalization.py`
 
 - [x] **Step 1: Write failing tests for extension bags**
@@ -905,7 +905,7 @@ Expected: fail until validation policy exists.
 
 - [x] **Step 3: Implement validation**
 
-In `src/thoth/providers/parameter_config.py`:
+In `src/doxa_research/providers/parameter_config.py`:
 
 1. Reject unknown keys in `[providers.defaults]`.
 2. Reject unknown top-level keys in `[providers.NAME]` unless the key is a recognized auth/client/common/provider-native key.
@@ -1014,7 +1014,7 @@ Expected: pass.
 Run:
 
 ```bash
-./thoth_test -r --skip-interactive -q
+./doxa_test -r --skip-interactive -q
 ```
 
 Expected: pass.
@@ -1027,7 +1027,7 @@ Run the repository-required final gate:
 make env-check
 just fix
 just check
-./thoth_test -r
+./doxa_test -r
 just test-fix
 just test-lint
 just test-typecheck
@@ -1040,7 +1040,7 @@ Expected: all commands pass.
 Commit after the full gate passes:
 
 ```bash
-git add src/thoth/providers/parameter_config.py src/thoth/providers/__init__.py src/thoth/providers/openai.py src/thoth/providers/perplexity.py src/thoth/providers/gemini.py src/thoth/config.py src/thoth/config_schema.py tests/test_provider_parameter_normalization.py tests/test_provider_config.py tests/test_provider_perplexity.py tests/test_provider_gemini.py planning/inference_provider_parameter_config_matrix.md planning/inference_provider_parameter_config_inconsistencies.md projects/P24-gemini-immediate-sync.md
+git add src/doxa_research/providers/parameter_config.py src/doxa_research/providers/__init__.py src/doxa_research/providers/openai.py src/doxa_research/providers/perplexity.py src/doxa_research/providers/gemini.py src/doxa_research/config.py src/doxa_research/config_schema.py tests/test_provider_parameter_normalization.py tests/test_provider_config.py tests/test_provider_perplexity.py tests/test_provider_gemini.py planning/inference_provider_parameter_config_matrix.md planning/inference_provider_parameter_config_inconsistencies.md projects/P24-gemini-immediate-sync.md
 git commit -m "Normalize provider parameter configuration layers"
 ```
 

@@ -42,7 +42,7 @@ def test_perplexity_models_in_known_models_registry() -> None:
     `perplexity_deep_research` built-in mode, so the original negative guard
     has been flipped to a positive assertion.
     """
-    from thoth.models import KNOWN_MODELS
+    from doxa_research.models import KNOWN_MODELS
 
     perp_ids = {m.id for m in KNOWN_MODELS if m.provider == "perplexity"}
     assert "sonar" in perp_ids
@@ -53,8 +53,8 @@ def test_perplexity_models_in_known_models_registry() -> None:
 
 def test_perplexity_deep_research_runtime_check_runs_in_extended() -> None:
     """P27/P24: sonar-deep-research participates in the extended runtime check."""
+    from doxa_research.models import ModelSpec
     from tests.extended import test_model_kind_runtime as runtime
-    from thoth.models import ModelSpec
 
     skip_reason = getattr(runtime, "_runtime_check_skip_reason", None)
     assert callable(skip_reason), (

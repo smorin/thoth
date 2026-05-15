@@ -5,11 +5,11 @@
 
 **Status:** `[x]` Completed (v2.6.0).
 
-**Goal**: Add pytest-based VCR cassette replay tests that exercise OpenAIProvider against recorded API traffic, using Option B (separate pytest test file) from thoth_vcr.md.
+**Goal**: Add pytest-based VCR cassette replay tests that exercise OpenAIProvider against recorded API traffic, using Option B (separate pytest test file) from doxa_vcr.md.
 
 **Out of Scope**
 - Gemini/Perplexity cassettes (blocked on deepresearch_replay P03/P04)
-- Integration into thoth_test runner (Option A rejected)
+- Integration into doxa_test runner (Option A rejected)
 
 ### Tests & Tasks
 - [x] [P05-T01] Add pytest and vcrpy to dev dependencies
@@ -30,5 +30,5 @@
 - `just all` completes without errors
 
 ### Regression Test Status
-- [x] All existing thoth_test tests still pass
+- [x] All existing doxa_test tests still pass
 - [x] VCR tests run in `record_mode="none"` — no live API calls

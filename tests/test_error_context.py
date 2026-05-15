@@ -1,11 +1,11 @@
 from pathlib import Path
 
-from thoth.config_legacy import LEGACY_PROJECT_PATHS
-from thoth.errors import APIKeyError, format_config_context
+from doxa_research.config_legacy import LEGACY_PROJECT_PATHS
+from doxa_research.errors import APIKeyError, format_config_context
 
 
 def test_context_path_exists_env_set(tmp_path, monkeypatch):
-    cfg = tmp_path / "thoth.config.toml"
+    cfg = tmp_path / "doxa.config.toml"
     cfg.write_text("")
     monkeypatch.setenv("OPENAI_API_KEY", "sk-x")
     out = format_config_context(cfg, env_vars=["OPENAI_API_KEY"])
@@ -43,7 +43,7 @@ def test_api_key_error_includes_config_path(tmp_path, monkeypatch):
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     err = APIKeyError("openai")
     assert err.suggestion is not None
-    assert "thoth.config.toml" in err.suggestion
+    assert "doxa.config.toml" in err.suggestion
     assert "OPENAI_API_KEY" in err.suggestion
     assert "(unset)" in err.suggestion
     assert "Detected legacy" not in err.suggestion
@@ -63,4 +63,4 @@ def test_api_key_error_includes_legacy_config_guidance(tmp_path, monkeypatch):
     assert err.suggestion is not None
     assert f"Detected legacy file: {legacy_path}" in err.suggestion
     assert "These filenames are no longer read" in err.suggestion
-    assert "Rename to thoth.config.toml" in err.suggestion
+    assert "Rename to doxa.config.toml" in err.suggestion

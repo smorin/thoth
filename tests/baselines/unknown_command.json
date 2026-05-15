@@ -4,6 +4,6 @@
   ],
   "exit_code": 2,
   "label": "unknown_command",
-  "stderr": "Error: unknown command 'nonexistentword'\n\nAvailable top-level commands:\n  Run research:  ask, resume, cancel, status, list\n  Manage thoth:  init, config, modes, providers, completion, help\n\nRun `thoth --help` for the full command list and options.\n",
+  "stderr": "Error: unknown command 'nonexistentword'\n\nAvailable top-level commands:\n  Run research:  ask, resume, cancel, status, list\n  Manage doxa-research:  init, config, modes, providers, completion, help\n\nRun `doxa --help` for the full command list and options.\n",
   "stdout": ""
 }

@@ -17,7 +17,7 @@ def _make_ctx_param():
 
 
 def test_operation_ids_returns_stems_of_checkpoint_files(checkpoint_dir):
-    from thoth.completion.sources import operation_ids
+    from doxa_research.completion.sources import operation_ids
 
     op1 = make_operation("research-20260427-000000-aaaaaaaaaaaaaaaa")
     op2 = make_operation("research-20260427-000001-bbbbbbbbbbbbbbbb")
@@ -49,7 +49,7 @@ def test_operation_ids_returns_stems_of_checkpoint_files(checkpoint_dir):
 
 
 def test_operation_ids_filters_by_incomplete_prefix(checkpoint_dir):
-    from thoth.completion.sources import operation_ids
+    from doxa_research.completion.sources import operation_ids
 
     target = make_operation("research-20260427-000000-aaaaaaaaaaaaaaaa")
     other = make_operation("research-20260428-000000-bbbbbbbbbbbbbbbb")
@@ -80,15 +80,15 @@ def test_operation_ids_filters_by_incomplete_prefix(checkpoint_dir):
     assert other.id not in out
 
 
-def test_operation_ids_returns_empty_when_no_checkpoints(isolated_thoth_home):
-    from thoth.completion.sources import operation_ids
+def test_operation_ids_returns_empty_when_no_checkpoints(isolated_doxa_home):
+    from doxa_research.completion.sources import operation_ids
 
     ctx, param = _make_ctx_param()
     assert operation_ids(ctx, param, "") == []
 
 
 def test_mode_names_includes_default_and_other_builtins():
-    from thoth.completion.sources import mode_names
+    from doxa_research.completion.sources import mode_names
 
     ctx, param = _make_ctx_param()
     out = mode_names(ctx, param, "")
@@ -96,23 +96,23 @@ def test_mode_names_includes_default_and_other_builtins():
 
 
 def test_mode_names_filters_by_incomplete_prefix():
-    from thoth.completion.sources import mode_names
+    from doxa_research.completion.sources import mode_names
 
     ctx, param = _make_ctx_param()
     out = mode_names(ctx, param, "deep")
     assert all(name.startswith("deep") for name in out)
 
 
-def test_config_keys_returns_dotted_keys_from_defaults(isolated_thoth_home):
-    from thoth.completion.sources import config_keys
+def test_config_keys_returns_dotted_keys_from_defaults(isolated_doxa_home):
+    from doxa_research.completion.sources import config_keys
 
     ctx, param = _make_ctx_param()
     out = config_keys(ctx, param, "")
     assert any("." in key for key in out)
 
 
-def test_config_keys_filters_by_incomplete_prefix(isolated_thoth_home):
-    from thoth.completion.sources import config_keys
+def test_config_keys_filters_by_incomplete_prefix(isolated_doxa_home):
+    from doxa_research.completion.sources import config_keys
 
     ctx, param = _make_ctx_param()
     out = config_keys(ctx, param, "providers.")
@@ -120,7 +120,7 @@ def test_config_keys_filters_by_incomplete_prefix(isolated_thoth_home):
 
 
 def test_provider_names_returns_known_providers():
-    from thoth.completion.sources import provider_names
+    from doxa_research.completion.sources import provider_names
 
     ctx, param = _make_ctx_param()
     out = provider_names(ctx, param, "")
@@ -128,7 +128,7 @@ def test_provider_names_returns_known_providers():
 
 
 def test_provider_names_filters_by_incomplete_prefix():
-    from thoth.completion.sources import provider_names
+    from doxa_research.completion.sources import provider_names
 
     ctx, param = _make_ctx_param()
     out = provider_names(ctx, param, "open")
@@ -138,7 +138,7 @@ def test_provider_names_filters_by_incomplete_prefix():
 
 def test_mode_kind_returns_immediate_and_background_choices():
     """P18 forward-compat — currently dead code per spec §6.4."""
-    from thoth.completion.sources import mode_kind
+    from doxa_research.completion.sources import mode_kind
 
     ctx, param = _make_ctx_param()
     out = mode_kind(ctx, param, "")
@@ -146,40 +146,40 @@ def test_mode_kind_returns_immediate_and_background_choices():
 
 
 def test_resume_op_id_argument_has_operation_ids_completer():
-    from thoth.cli_subcommands.resume import resume
-    from thoth.completion.sources import operation_ids
+    from doxa_research.cli_subcommands.resume import resume
+    from doxa_research.completion.sources import operation_ids
 
     op_id_param = next(p for p in resume.params if p.name == "operation_id")
     assert op_id_param._custom_shell_complete is operation_ids
 
 
 def test_status_op_id_argument_has_operation_ids_completer():
-    from thoth.cli_subcommands.status import status
-    from thoth.completion.sources import operation_ids
+    from doxa_research.cli_subcommands.status import status
+    from doxa_research.completion.sources import operation_ids
 
     op_id_param = next(p for p in status.params if p.name == "operation_id")
     assert op_id_param._custom_shell_complete is operation_ids
 
 
 def test_config_get_key_argument_has_config_keys_completer():
-    from thoth.cli_subcommands.config import config_get
-    from thoth.completion.sources import config_keys
+    from doxa_research.cli_subcommands.config import config_get
+    from doxa_research.completion.sources import config_keys
 
     key_param = next(p for p in config_get.params if p.name == "key")
     assert key_param._custom_shell_complete is config_keys
 
 
 def test_modes_list_name_option_has_mode_names_completer():
-    from thoth.cli_subcommands.modes import modes_list
-    from thoth.completion.sources import mode_names
+    from doxa_research.cli_subcommands.modes import modes_list
+    from doxa_research.completion.sources import mode_names
 
     name_param = next(p for p in modes_list.params if p.name == "name")
     assert name_param._custom_shell_complete is mode_names
 
 
 def test_providers_list_provider_option_has_provider_names_completer():
-    from thoth.cli_subcommands.providers import providers_list_cmd
-    from thoth.completion.sources import provider_names
+    from doxa_research.cli_subcommands.providers import providers_list_cmd
+    from doxa_research.completion.sources import provider_names
 
     provider_param = next(p for p in providers_list_cmd.params if p.name == "filter_provider")
     assert provider_param._custom_shell_complete is provider_names

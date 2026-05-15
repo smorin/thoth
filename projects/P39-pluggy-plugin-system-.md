@@ -10,8 +10,8 @@ Pluggy-based plugin discovery so external packages extend providers and commands
 
 ### Notes
 - Design inspiration: Simon Willison's [`llm`](https://github.com/simonw/llm) — Pluggy-based plugin architecture, setuptools entry points, plugin hook groups. Study its hook specs and plugin-discovery patterns when scoping.
-- Plugins should be able to hook into thoth's configuration (extend schema, add defaults, override resolution) — study how `llm` exposes config to its plugins for inspiration.
-- Reuses thoth's existing provider registry from [P09](P09-decompose-main-appcontext-di.md) and schema-driven config defaults from [P33](P33-schema-driven-config-defaults.md).
+- Plugins should be able to hook into doxa-research's configuration (extend schema, add defaults, override resolution) — study how `llm` exposes config to its plugins for inspiration.
+- Reuses doxa-research's existing provider registry from [P09](P09-decompose-main-appcontext-di.md) and schema-driven config defaults from [P33](P33-schema-driven-config-defaults.md).
 
 <!-- Idea state. Minimal by convention.
      Promote with `project-refine P39` when ready. -->

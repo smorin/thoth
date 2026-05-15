@@ -1,9 +1,9 @@
-# P35 — `thoth modes set-default` / `unset-default`
+# P35 — `doxa-research modes set-default` / `unset-default`
 
 ## Summary
 
 Add CLI commands to manage the default research mode, parallel to the
-existing `thoth config profiles set-default` / `unset-default`. Two
+existing `doxa-research config profiles set-default` / `unset-default`. Two
 scopes: a base default written to `general.default_mode`, and an active
 profile override written to `profiles.<X>.default_mode`. Extend the
 runtime resolution path so a per-profile `default_mode` actually takes
@@ -12,13 +12,13 @@ effect when its profile is active.
 ## Motivation
 
 Setting the default mode today requires the generic
-`thoth config set general.default_mode NAME`, which:
+`doxa-research config set general.default_mode NAME`, which:
 
 - Exposes a TOML key path users shouldn't need to know.
 - Performs no validation — typos silently create dangling defaults.
 - Has no per-profile equivalent.
 
-The existing `thoth config profiles set-default NAME` proved out the
+The existing `doxa-research config profiles set-default NAME` proved out the
 "set-the-pointer" UX for profiles. P35 ports that pattern to modes and
 adds the per-profile dimension that's natural for modes but absent for
 profile selection.
@@ -26,13 +26,13 @@ profile selection.
 ## Surface
 
 ```
-thoth [--config PATH] [--profile X] modes set-default NAME [--project] [--config PATH] [--profile X] [--json]
-thoth [--config PATH] [--profile X] modes unset-default      [--project] [--config PATH] [--profile X] [--json]
+doxa [--config PATH] [--profile X] modes set-default NAME [--project] [--config PATH] [--profile X] [--json]
+doxa [--config PATH] [--profile X] modes unset-default      [--project] [--config PATH] [--profile X] [--json]
 ```
 
 `--config PATH` and `--profile X` are accepted both as root-level
 inherited options before `modes` and as inline target flags after the
-leaf, matching the shared `thoth modes` mutator parser. Inline target
+leaf, matching the shared `doxa-research modes` mutator parser. Inline target
 flags override inherited root values. `--project` and `--json` are
 leaf-local flags on `set-default` / `unset-default`. JSON envelope
 mirrors `config profiles set-default` shape.
@@ -100,8 +100,8 @@ absent. See `unset-default` rules below.
      `[modes.*]` (across user + project).
    - Profile scope (`--profile X`): NAME ∈ builtins ∪ base
      `[modes.*]` ∪ `[profiles.X.modes.*]`.
-   - On miss → "mode not found" `ThothError` including the
-     available list. Exit 1 (matches `ThothError` default).
+   - On miss → "mode not found" `DoxaError` including the
+     available list. Exit 1 (matches `DoxaError` default).
 
 Exit-code summary:
 
@@ -132,29 +132,29 @@ Exit-code summary:
 Given:
 
 ```
-~/.config/thoth/config.toml          (user)
+~/.config/doxa-research/config.toml          (user)
   [profiles.work]
   api_key = "..."
 
-./.thoth/config.toml                 (project)
+./.doxa-research/config.toml                 (project)
   [modes.deep-with-stats]
   model = "..."
 ```
 
 | Command | Outcome |
 |---|---|
-| `thoth modes set-default deep-with-stats` | ✓ writes `general.default_mode = "deep-with-stats"` to user. NAME resolvable cross-tier (defined in project base modes). |
-| `thoth --profile work modes set-default deep-with-stats` | ✓ writes `profiles.work.default_mode = "deep-with-stats"` to user. Profile `work` exists in user (target tier). |
-| `thoth --profile work modes set-default deep-with-stats --project` | ✗ exit 1. Profile `work` not in project config. Error: "Profile 'work' not found in project config; pass `--project` only if work is defined there, or run `thoth config profiles add work --project` first." |
-| `thoth --profile demo modes set-default deep-with-stats` | ✗ exit 1. Profile `demo` not in user config. Error lists profiles found in user config. |
-| `thoth --profile work modes set-default deep_research` | ✓ writes `profiles.work.default_mode = "deep_research"` to user. NAME `deep_research` is a builtin. |
-| `thoth modes set-default not-a-mode` | ✗ exit 1. Mode `not-a-mode` not found. Error lists resolvable modes. |
-| `thoth --profile work modes unset-default --project` | ✓ no-op. Returns `removed=False, reason="NOT_FOUND"` (or `NO_FILE`). No same-tier check on unset. |
-| `thoth --profile demo modes unset-default` | ✓ no-op. Returns `removed=False, reason="NOT_FOUND"`. Profile `demo` doesn't exist anywhere; unset is idempotent. |
+| `doxa-research modes set-default deep-with-stats` | ✓ writes `general.default_mode = "deep-with-stats"` to user. NAME resolvable cross-tier (defined in project base modes). |
+| `doxa-research --profile work modes set-default deep-with-stats` | ✓ writes `profiles.work.default_mode = "deep-with-stats"` to user. Profile `work` exists in user (target tier). |
+| `doxa-research --profile work modes set-default deep-with-stats --project` | ✗ exit 1. Profile `work` not in project config. Error: "Profile 'work' not found in project config; pass `--project` only if work is defined there, or run `doxa-research config profiles add work --project` first." |
+| `doxa-research --profile demo modes set-default deep-with-stats` | ✗ exit 1. Profile `demo` not in user config. Error lists profiles found in user config. |
+| `doxa-research --profile work modes set-default deep_research` | ✓ writes `profiles.work.default_mode = "deep_research"` to user. NAME `deep_research` is a builtin. |
+| `doxa-research modes set-default not-a-mode` | ✗ exit 1. Mode `not-a-mode` not found. Error lists resolvable modes. |
+| `doxa-research --profile work modes unset-default --project` | ✓ no-op. Returns `removed=False, reason="NOT_FOUND"` (or `NO_FILE`). No same-tier check on unset. |
+| `doxa-research --profile demo modes unset-default` | ✓ no-op. Returns `removed=False, reason="NOT_FOUND"`. Profile `demo` doesn't exist anywhere; unset is idempotent. |
 
 ## Resolution change
 
-Today (`src/thoth/cli.py:159-161`):
+Today (`src/doxa_research/cli.py:159-161`):
 
 ```python
 def _config_default_mode(config: ConfigManager) -> str:
@@ -166,7 +166,7 @@ After P35, the precedence chain (highest → lowest):
 
 1. CLI positional builtin name (handled in `_resolve_mode_and_prompt`)
 2. `--mode` / `-m` flag (handled in `_resolve_mode_and_prompt`)
-3. `THOTH_DEFAULT_MODE` env var
+3. `DOXA_DEFAULT_MODE` env var
 4. `profiles.<active>.default_mode` (when a profile is active)
 5. `general.default_mode`
 6. Hardcoded `"default"`
@@ -175,7 +175,7 @@ Slots 3-6 live inside `_config_default_mode`:
 
 ```python
 def _config_default_mode(config: ConfigManager) -> str:
-    env = os.getenv("THOTH_DEFAULT_MODE")
+    env = os.getenv("DOXA_DEFAULT_MODE")
     if env:
         return env
 
@@ -190,9 +190,9 @@ def _config_default_mode(config: ConfigManager) -> str:
     return str(raw) if raw else "default"
 ```
 
-The existing `THOTH_DEFAULT_MODE → general.default_mode` mapping in
-`_env_overrides` (`src/thoth/config.py:425`) is left in place so other
-read paths (`thoth config show`, `--debug` dumps) keep seeing the
+The existing `DOXA_DEFAULT_MODE → general.default_mode` mapping in
+`_env_overrides` (`src/doxa_research/config.py:425`) is left in place so other
+read paths (`doxa-research config show`, `--debug` dumps) keep seeing the
 env-promoted value. Reading the env explicitly here ensures the
 precedence holds even when other code paths short-circuit
 `general.default_mode`.
@@ -201,13 +201,13 @@ precedence holds even when other code paths short-circuit
 
 | File | Change |
 |---|---|
-| `src/thoth/config_document.py` | New methods `set_default_mode(name, *, profile=None)`, `unset_default_mode(*, profile=None)`, `default_mode_name(*, profile=None)`. Symmetric with `set_default_profile` / `unset_default_profile` / `default_profile_name`. |
-| `src/thoth/config_cmd.py` | New pure-data functions `get_modes_set_default_data(name, *, project, profile, config_path)` and `get_modes_unset_default_data(*, project, profile, config_path)`. Envelope shape mirrors `get_config_profile_set_default_data`. Exported in `__all__`. |
-| `src/thoth/cli_subcommands/modes.py` / `src/thoth/modes_cmd.py` | Register `set-default` and `unset-default` in the shared modes mutator dispatch, generate leaves via `_make_modes_leaf`, and update `_MODES_EPILOG` to mention them. |
-| `src/thoth/cli.py` | Update `_config_default_mode()` per resolution change above. Add `import os` if not already present (it is). |
+| `src/doxa_research/config_document.py` | New methods `set_default_mode(name, *, profile=None)`, `unset_default_mode(*, profile=None)`, `default_mode_name(*, profile=None)`. Symmetric with `set_default_profile` / `unset_default_profile` / `default_profile_name`. |
+| `src/doxa_research/config_cmd.py` | New pure-data functions `get_modes_set_default_data(name, *, project, profile, config_path)` and `get_modes_unset_default_data(*, project, profile, config_path)`. Envelope shape mirrors `get_config_profile_set_default_data`. Exported in `__all__`. |
+| `src/doxa_research/cli_subcommands/modes.py` / `src/doxa_research/modes_cmd.py` | Register `set-default` and `unset-default` in the shared modes mutator dispatch, generate leaves via `_make_modes_leaf`, and update `_MODES_EPILOG` to mention them. |
+| `src/doxa_research/cli.py` | Update `_config_default_mode()` per resolution change above. Add `import os` if not already present (it is). |
 | `tests/test_modes_set_default.py` | TDD test file (new) covering validation + matrix + idempotency + JSON envelope. |
 | `tests/test_default_mode_resolution.py` | TDD test file (new) covering the precedence chain. |
-| `thoth_test/specs/...` | One integration test per command (mock provider) for end-to-end verification. |
+| `doxa_test/specs/...` | One integration test per command (mock provider) for end-to-end verification. |
 | `projects/P35-modes-set-default.md` | New per-project file with task list. Trunk row added to `PROJECTS.md`. |
 
 ## TDD test plan
@@ -274,7 +274,7 @@ Each case uses an isolated `ConfigManager` fixture:
   `default_mode` → `"deep_research"`.
 - `general.default_mode = "deep_research"`, active profile with
   `default_mode = "quick_research"` → `"quick_research"`.
-- `THOTH_DEFAULT_MODE = "thinking"` + active profile with
+- `DOXA_DEFAULT_MODE = "thinking"` + active profile with
   `default_mode = "quick_research"` + `general.default_mode =
   "deep_research"` → `"thinking"`.
 - Active profile not loaded (selection.source = `"none"`) but
@@ -300,17 +300,17 @@ Errors emit `{"error": "<CODE>", "message": "..."}` via
 
 ## Out of scope
 
-- New `thoth modes default` / `thoth modes show-default` inspector. The
+- New `doxa-research modes default` / `doxa-research modes show-default` inspector. The
   resolved value already surfaces via `--debug` config dumps and
-  `thoth config show`; per-profile entries surface via
-  `thoth config profiles list`.
-- Deprecating `THOTH_DEFAULT_MODE`. Env retains its current
+  `doxa-research config show`; per-profile entries surface via
+  `doxa-research config profiles list`.
+- Deprecating `DOXA_DEFAULT_MODE`. Env retains its current
   highest-non-CLI slot.
 - Changing the schema default `"default"` for `general.default_mode`.
 - Auto-routing `--profile X` (without `--project`) to whichever tier
   defines profile X. Orthogonal flags only; users opt into project
   tier explicitly with `--project`.
-- A `thoth profiles set-default` shorthand alias (the `config profiles`
+- A `doxa-research profiles set-default` shorthand alias (the `config profiles`
   surface stays as-is).
 
 ## Risks and mitigations
@@ -318,7 +318,7 @@ Errors emit `{"error": "<CODE>", "message": "..."}` via
 - **Behavior change for users with `[profiles.X.default_mode]` already
   set.** None: today nothing reads that key, so users haven't been
   setting it. New behavior is purely additive on first set.
-- **Env precedence change.** `THOTH_DEFAULT_MODE` keeps its current
+- **Env precedence change.** `DOXA_DEFAULT_MODE` keeps its current
   effective rank (highest non-CLI). The resolution refactor preserves
   that by reading env first inside `_config_default_mode`.
 - **Validation false negatives** if a mode is added in one tier and
@@ -327,7 +327,7 @@ Errors emit `{"error": "<CODE>", "message": "..."}` via
 - **Same-tier rule causes friction for users** who expect partial
   cross-tier writes to "just work". Mitigated by error messages
   that include both fix paths (switch tier flag, or
-  `thoth config profiles add X --project` first). The friction is
+  `doxa-research config profiles add X --project` first). The friction is
   intentional: it surfaces an ambiguous intent rather than silently
   picking one tier.
 - **`unset-default` on a profile that doesn't exist.** Same as
@@ -340,7 +340,7 @@ Errors emit `{"error": "<CODE>", "message": "..."}` via
 | Question | Choice | Rationale |
 |---|---|---|
 | Write-only or also resolve? | Resolve (scope A) | Don't ship a key nothing reads. |
-| Env vs profile precedence | Env beats profile | Mirrors `THOTH_PROFILE` beating `general.default_profile`. Scripts setting env keep working regardless of active profile. |
+| Env vs profile precedence | Env beats profile | Mirrors `DOXA_PROFILE` beating `general.default_profile`. Scripts setting env keep working regardless of active profile. |
 | Validation strictness | Validate against the resolvable set for the target tier | Prevents dangling defaults. Matches `profiles set-default`. |
 | Profile-existence check on `set-default --profile X` | Yes | Symmetric with `profiles set-default` validating profile names. |
 | Flag orthogonality (tier vs key path) | Orthogonal | Consistent with existing modes mutators (`add`/`set`/...). User opts into project tier explicitly. |
@@ -350,15 +350,15 @@ Errors emit `{"error": "<CODE>", "message": "..."}` via
 
 ## Acceptance
 
-- `thoth modes set-default NAME` writes `general.default_mode` to user
-  config and is reflected in subsequent `thoth ask` invocations
+- `doxa-research modes set-default NAME` writes `general.default_mode` to user
+  config and is reflected in subsequent `doxa-research ask` invocations
   (resolution test).
-- `thoth modes set-default NAME --profile X` writes
+- `doxa-research modes set-default NAME --profile X` writes
   `profiles.X.default_mode` and overrides the base when X is the
   active profile.
-- `thoth modes unset-default` removes the key and leaves the
+- `doxa-research modes unset-default` removes the key and leaves the
   surrounding table intact.
-- All new commands appear in `thoth modes --help` and the
+- All new commands appear in `doxa-research modes --help` and the
   `_MODES_EPILOG`.
 - `make env-check`, `just check`, `just test-lint`,
-  `just test-typecheck`, `pytest`, and `./thoth_test -r` all pass.
+  `just test-typecheck`, `pytest`, and `./doxa_test -r` all pass.

@@ -12,7 +12,7 @@ Currently `[providers.X]` is documented (in `render_auth_help`) only as carrying
 
 ## Current state — survey findings
 
-### `create_provider` (`src/thoth/providers/__init__.py:154-216`)
+### `create_provider` (`src/doxa_research/providers/__init__.py:154-216`)
 
 The factory copies the *entire* `[providers.<name>]` table verbatim:
 
@@ -22,7 +22,7 @@ provider_config = config.data["providers"].get(provider_name, {}).copy()
 
 It then layers mode-level config on top via `_apply_mode_provider_config` and a few targeted overrides (`model`, `kind`, `timeout`, `background`). **There is no schema-level filter on which keys are allowed under `[providers.X]` — anything the user puts there is copied through unchanged.**
 
-### `OpenAIProvider._resolve_provider_config_value` (`src/thoth/providers/openai.py:195-230`)
+### `OpenAIProvider._resolve_provider_config_value` (`src/doxa_research/providers/openai.py:195-230`)
 
 The OpenAI provider's per-call resolver chain is:
 
@@ -32,11 +32,11 @@ The OpenAI provider's per-call resolver chain is:
 
 `_FRAMEWORK_FLAT_KEYS_OPENAI = {"openai", "kind", "model", "timeout", "background"}` — `temperature`, `max_tool_calls`, `code_interpreter`, etc. are NOT in this set.
 
-### Schema (`src/thoth/config.py`)
+### Schema (`src/doxa_research/config.py`)
 
 `ConfigSchema.get_defaults()["providers"]` declares only `api_key` for each provider. `_validate_config` checks that the `providers` top-level key exists but does **not** validate the keys *inside* each provider's table. Unknown keys pass through silently.
 
-### `render_auth_help` (`src/thoth/help.py:335-352`)
+### `render_auth_help` (`src/doxa_research/help.py:335-352`)
 
 Documents `[providers.openai]`, `[providers.perplexity]`, and `[providers.gemini]` as carrying *only* `api_key`. No mention of other defaults.
 
@@ -107,4 +107,4 @@ Recommended successor project (not auto-created here — owner can register via 
 - `tests/test_provider_config.py` — adds four `@pytest.mark.skip(...)` tests with real assertion bodies that pin the desired contract for the successor project.
 - `projects/P24-gemini-immediate-sync.md` — flips P24-TS16 and P24-T17 to `[-]` (decided not to do here) with a one-liner pointing here.
 
-No production code changes (`src/thoth/providers/__init__.py`, `src/thoth/config.py`, `src/thoth/providers/openai.py` untouched).
+No production code changes (`src/doxa_research/providers/__init__.py`, `src/doxa_research/config.py`, `src/doxa_research/providers/openai.py` untouched).

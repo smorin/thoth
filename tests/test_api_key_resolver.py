@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from thoth.__main__ import (
+from doxa_research.__main__ import (
     PROVIDER_ENV_VARS,
     APIKeyError,
     resolve_api_key,

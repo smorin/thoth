@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import warnings
 
-from thoth.config import BUILTIN_MODES, ConfigManager
+from doxa_research.config import BUILTIN_MODES, ConfigManager
 
 
 def test_quick_research_is_a_real_builtin() -> None:

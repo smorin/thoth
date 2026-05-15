@@ -1,4 +1,4 @@
-# Thoth v10 PRD Review - Logical Consistency Analysis
+# Doxa Research v10 PRD Review - Logical Consistency Analysis
 
 ## 1. Functional Requirements Gap
 

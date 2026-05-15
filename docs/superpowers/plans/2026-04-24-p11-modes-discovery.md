@@ -1,28 +1,28 @@
-# P11: `thoth modes` Discovery Command — Implementation Plan
+# P11: `doxa-research modes` Discovery Command — Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add a single authoritative `thoth modes` command so users can see every research mode (built-in + user-defined) with provider, model, kind (immediate vs background), and origin source — without reading source or guessing from mode descriptions.
+**Goal:** Add a single authoritative `doxa-research modes` command so users can see every research mode (built-in + user-defined) with provider, model, kind (immediate vs background), and origin source — without reading source or guessing from mode descriptions.
 
-**Architecture:** One `ModeInfo` dataclass + one `list_all_modes(cm)` helper in a new `src/thoth/modes_cmd.py` become the single source of truth. `help.py` and `interactive.py` stop iterating `BUILTIN_MODES` directly and call the helper instead. A new `is_background_mode()` helper in `config.py` replaces the ad-hoc `"deep-research" in model` checks in the OpenAI provider and is reused by the new command. CLI dispatch in `cli.py` gains a `modes` branch that parallels the existing `config` branch.
+**Architecture:** One `ModeInfo` dataclass + one `list_all_modes(cm)` helper in a new `src/doxa_research/modes_cmd.py` become the single source of truth. `help.py` and `interactive.py` stop iterating `BUILTIN_MODES` directly and call the helper instead. A new `is_background_mode()` helper in `config.py` replaces the ad-hoc `"deep-research" in model` checks in the OpenAI provider and is reused by the new command. CLI dispatch in `cli.py` gains a `modes` branch that parallels the existing `config` branch.
 
-**Tech Stack:** Python 3.11+, click, rich, tomlkit, pytest. Existing pytest fixtures `isolated_thoth_home` and `stub_config` in `tests/conftest.py`.
+**Tech Stack:** Python 3.11+, click, rich, tomlkit, pytest. Existing pytest fixtures `isolated_doxa_home` and `stub_config` in `tests/conftest.py`.
 
 ---
 
 ## File Structure
 
 **Create:**
-- `src/thoth/modes_cmd.py` — new module: `ModeInfo` dataclass, `list_all_modes()`, `modes_command()` dispatch, table/JSON/detail renderers.
+- `src/doxa_research/modes_cmd.py` — new module: `ModeInfo` dataclass, `list_all_modes()`, `modes_command()` dispatch, table/JSON/detail renderers.
 - `tests/test_is_background_mode.py` — unit tests for the new helper.
 - `tests/test_modes_cmd.py` — unit + subprocess tests for the new command.
 
 **Modify:**
-- `src/thoth/config.py` — add `is_background_mode()` helper near `BUILTIN_MODES`; change `BUILTIN_MODES["thinking"]["model"]` from `"o3-deep-research"` to `"o3"`.
-- `src/thoth/providers/openai.py:175,182` — call `is_background_mode()` instead of inline `"deep-research" in self.model`.
-- `src/thoth/cli.py:158,223,294` — add `"modes"` to the command list, dispatch to `modes_command()`, and handle `thoth help modes`.
-- `src/thoth/help.py:12,58-91,254-288` — import + call `list_all_modes()` in the epilog and general-help mode listing; add `show_modes_help()`.
-- `src/thoth/interactive.py:27,117-144,680-685,777-789` — route `BUILTIN_MODES` enumeration through `list_all_modes()`.
+- `src/doxa_research/config.py` — add `is_background_mode()` helper near `BUILTIN_MODES`; change `BUILTIN_MODES["thinking"]["model"]` from `"o3-deep-research"` to `"o3"`.
+- `src/doxa_research/providers/openai.py:175,182` — call `is_background_mode()` instead of inline `"deep-research" in self.model`.
+- `src/doxa_research/cli.py:158,223,294` — add `"modes"` to the command list, dispatch to `modes_command()`, and handle `doxa-research help modes`.
+- `src/doxa_research/help.py:12,58-91,254-288` — import + call `list_all_modes()` in the epilog and general-help mode listing; add `show_modes_help()`.
+- `src/doxa_research/interactive.py:27,117-144,680-685,777-789` — route `BUILTIN_MODES` enumeration through `list_all_modes()`.
 
 **Test paths:**
 - `tests/test_is_background_mode.py`
@@ -34,7 +34,7 @@
 
 **Files:**
 - Create: `tests/test_is_background_mode.py`
-- Modify: `src/thoth/config.py` (add helper near line 155, after `BUILTIN_MODES`)
+- Modify: `src/doxa_research/config.py` (add helper near line 155, after `BUILTIN_MODES`)
 
 - [ ] **Step 1.1: Write the failing test file**
 
@@ -45,7 +45,7 @@ Create `tests/test_is_background_mode.py`:
 
 from __future__ import annotations
 
-from thoth.config import is_background_mode
+from doxa-research.config import is_background_mode
 
 
 def test_explicit_async_true_overrides_missing_model() -> None:
@@ -79,9 +79,9 @@ def test_model_none_is_immediate() -> None:
 - [ ] **Step 1.2: Run the test to confirm it fails**
 
 Run: `uv run pytest tests/test_is_background_mode.py -x -v`
-Expected: `ImportError: cannot import name 'is_background_mode' from 'thoth.config'`
+Expected: `ImportError: cannot import name 'is_background_mode' from 'doxa-research.config'`
 
-- [ ] **Step 1.3: Add the helper to `src/thoth/config.py`**
+- [ ] **Step 1.3: Add the helper to `src/doxa_research/config.py`**
 
 Insert directly after the closing brace of `BUILTIN_MODES` (before `class ConfigSchema`), around line 155:
 
@@ -106,7 +106,7 @@ Expected: 7 passed.
 - [ ] **Step 1.5: Commit**
 
 ```bash
-git add tests/test_is_background_mode.py src/thoth/config.py
+git add tests/test_is_background_mode.py src/doxa_research/config.py
 git commit -m "feat(config): add is_background_mode helper for mode-kind derivation"
 ```
 
@@ -115,11 +115,11 @@ git commit -m "feat(config): add is_background_mode helper for mode-kind derivat
 ## Task 2: Refactor OpenAI provider to use the helper
 
 **Files:**
-- Modify: `src/thoth/providers/openai.py:175,182`
+- Modify: `src/doxa_research/providers/openai.py:175,182`
 
 - [ ] **Step 2.1: Replace the two inline checks**
 
-In `src/thoth/providers/openai.py`, change lines 175 and 182.
+In `src/doxa_research/providers/openai.py`, change lines 175 and 182.
 
 Find (line 175):
 ```python
@@ -143,15 +143,15 @@ Replace with:
 
 - [ ] **Step 2.2: Add the import**
 
-At the top of `src/thoth/providers/openai.py`, find the existing `from thoth.config import` line. If none exists, add:
+At the top of `src/doxa_research/providers/openai.py`, find the existing `from doxa-research.config import` line. If none exists, add:
 
 ```python
-from thoth.config import is_background_mode
+from doxa-research.config import is_background_mode
 ```
 
 Verify by grepping:
 ```bash
-grep -n "from thoth.config" src/thoth/providers/openai.py
+grep -n "from doxa-research.config" src/doxa_research/providers/openai.py
 ```
 
 - [ ] **Step 2.3: Run the existing OpenAI suite to confirm no regression**
@@ -162,7 +162,7 @@ Expected: all pass (same counts as before).
 - [ ] **Step 2.4: Commit**
 
 ```bash
-git add src/thoth/providers/openai.py
+git add src/doxa_research/providers/openai.py
 git commit -m "refactor(openai): route background detection through is_background_mode"
 ```
 
@@ -171,7 +171,7 @@ git commit -m "refactor(openai): route background detection through is_backgroun
 ## Task 3: Fix `thinking` mode to actually be immediate
 
 **Files:**
-- Modify: `src/thoth/config.py` (inside `BUILTIN_MODES["thinking"]`)
+- Modify: `src/doxa_research/config.py` (inside `BUILTIN_MODES["thinking"]`)
 - Create: `tests/test_modes_thinking_kind.py`
 
 - [ ] **Step 3.1: Write a failing test**
@@ -183,7 +183,7 @@ Create `tests/test_modes_thinking_kind.py`:
 
 from __future__ import annotations
 
-from thoth.config import BUILTIN_MODES, is_background_mode
+from doxa-research.config import BUILTIN_MODES, is_background_mode
 
 
 def test_thinking_mode_is_immediate() -> None:
@@ -202,7 +202,7 @@ Expected: FAIL with `AssertionError: ... model must be a non-deep-research model
 
 - [ ] **Step 3.3: Update `BUILTIN_MODES["thinking"]`**
 
-In `src/thoth/config.py`, find:
+In `src/doxa_research/config.py`, find:
 
 ```python
     "thinking": {
@@ -228,7 +228,7 @@ Expected: 1 passed.
 - [ ] **Step 3.5: Commit**
 
 ```bash
-git add tests/test_modes_thinking_kind.py src/thoth/config.py
+git add tests/test_modes_thinking_kind.py src/doxa_research/config.py
 git commit -m "fix(modes): thinking mode uses o3 not o3-deep-research (matches description)"
 ```
 
@@ -237,7 +237,7 @@ git commit -m "fix(modes): thinking mode uses o3 not o3-deep-research (matches d
 ## Task 4: `ModeInfo` dataclass + `list_all_modes` helper (TDD)
 
 **Files:**
-- Create: `src/thoth/modes_cmd.py`
+- Create: `src/doxa_research/modes_cmd.py`
 - Create: `tests/test_modes_cmd.py`
 
 - [ ] **Step 4.1: Write failing tests for `list_all_modes`**
@@ -245,7 +245,7 @@ git commit -m "fix(modes): thinking mode uses o3 not o3-deep-research (matches d
 Create `tests/test_modes_cmd.py`:
 
 ```python
-"""Tests for thoth.modes_cmd.list_all_modes and ModeInfo."""
+"""Tests for doxa-research.modes_cmd.list_all_modes and ModeInfo."""
 
 from __future__ import annotations
 
@@ -253,13 +253,13 @@ from pathlib import Path
 
 import pytest
 
-from thoth.config import ConfigManager
-from thoth.modes_cmd import ModeInfo, list_all_modes
+from doxa-research.config import ConfigManager
+from doxa-research.modes_cmd import ModeInfo, list_all_modes
 
 
-def _cm(isolated_thoth_home: Path, toml: str | None = None) -> ConfigManager:
+def _cm(isolated_doxa_home: Path, toml: str | None = None) -> ConfigManager:
     if toml is not None:
-        cfg = Path(isolated_thoth_home) / "config" / "thoth" / "config.toml"
+        cfg = Path(isolated_doxa_home) / "config" / "doxa-research" / "config.toml"
         cfg.parent.mkdir(parents=True, exist_ok=True)
         cfg.write_text(toml)
     cm = ConfigManager()
@@ -267,14 +267,14 @@ def _cm(isolated_thoth_home: Path, toml: str | None = None) -> ConfigManager:
     return cm
 
 
-def test_returns_all_builtin_modes(isolated_thoth_home: Path) -> None:
-    modes = list_all_modes(_cm(isolated_thoth_home))
+def test_returns_all_builtin_modes(isolated_doxa_home: Path) -> None:
+    modes = list_all_modes(_cm(isolated_doxa_home))
     names = {m.name for m in modes}
     assert {"default", "clarification", "thinking", "deep_research"} <= names
 
 
-def test_builtin_mode_fields_populated(isolated_thoth_home: Path) -> None:
-    modes = list_all_modes(_cm(isolated_thoth_home))
+def test_builtin_mode_fields_populated(isolated_doxa_home: Path) -> None:
+    modes = list_all_modes(_cm(isolated_doxa_home))
     default = next(m for m in modes if m.name == "default")
     assert default.source == "builtin"
     assert default.providers == ["openai"]
@@ -283,21 +283,21 @@ def test_builtin_mode_fields_populated(isolated_thoth_home: Path) -> None:
     assert default.overrides == {}
 
 
-def test_deep_research_mode_is_background(isolated_thoth_home: Path) -> None:
-    modes = list_all_modes(_cm(isolated_thoth_home))
+def test_deep_research_mode_is_background(isolated_doxa_home: Path) -> None:
+    modes = list_all_modes(_cm(isolated_doxa_home))
     dr = next(m for m in modes if m.name == "deep_research")
     assert dr.kind == "background"
 
 
-def test_providers_list_normalization(isolated_thoth_home: Path) -> None:
+def test_providers_list_normalization(isolated_doxa_home: Path) -> None:
     # deep_research uses `providers: ["openai"]` (list form) — must normalize.
-    modes = list_all_modes(_cm(isolated_thoth_home))
+    modes = list_all_modes(_cm(isolated_doxa_home))
     dr = next(m for m in modes if m.name == "deep_research")
     assert isinstance(dr.providers, list)
     assert dr.providers == ["openai"]
 
 
-def test_user_only_mode(isolated_thoth_home: Path) -> None:
+def test_user_only_mode(isolated_doxa_home: Path) -> None:
     toml = (
         'version = "2.0"\n'
         "[modes.my_brief]\n"
@@ -305,7 +305,7 @@ def test_user_only_mode(isolated_thoth_home: Path) -> None:
         'model = "gpt-4o-mini"\n'
         'description = "my user-only mode"\n'
     )
-    modes = list_all_modes(_cm(isolated_thoth_home, toml))
+    modes = list_all_modes(_cm(isolated_doxa_home, toml))
     mine = next(m for m in modes if m.name == "my_brief")
     assert mine.source == "user"
     assert mine.model == "gpt-4o-mini"
@@ -313,27 +313,27 @@ def test_user_only_mode(isolated_thoth_home: Path) -> None:
     assert mine.overrides == {}
 
 
-def test_overridden_mode_reports_diff(isolated_thoth_home: Path) -> None:
+def test_overridden_mode_reports_diff(isolated_doxa_home: Path) -> None:
     toml = (
         'version = "2.0"\n'
         "[modes.deep_research]\n"
         "parallel = false\n"
     )
-    modes = list_all_modes(_cm(isolated_thoth_home, toml))
+    modes = list_all_modes(_cm(isolated_doxa_home, toml))
     dr = next(m for m in modes if m.name == "deep_research")
     assert dr.source == "overridden"
     assert "parallel" in dr.overrides
     assert dr.overrides["parallel"] == {"builtin": True, "effective": False}
 
 
-def test_malformed_user_mode_kind_unknown(isolated_thoth_home: Path) -> None:
+def test_malformed_user_mode_kind_unknown(isolated_doxa_home: Path) -> None:
     # No model, no provider — must NOT crash; must surface as unknown.
     toml = (
         'version = "2.0"\n'
         "[modes.broken]\n"
         'description = "missing model and provider"\n'
     )
-    modes = list_all_modes(_cm(isolated_thoth_home, toml))
+    modes = list_all_modes(_cm(isolated_doxa_home, toml))
     broken = next(m for m in modes if m.name == "broken")
     assert broken.source == "user"
     assert broken.kind == "unknown"
@@ -359,12 +359,12 @@ def test_modeinfo_is_frozen_dataclass() -> None:
 - [ ] **Step 4.2: Run tests to confirm they fail**
 
 Run: `uv run pytest tests/test_modes_cmd.py -x -v`
-Expected: `ImportError: No module named 'thoth.modes_cmd'` (all collection errors).
+Expected: `ImportError: No module named 'doxa-research.modes_cmd'` (all collection errors).
 
-- [ ] **Step 4.3: Create `src/thoth/modes_cmd.py` with `ModeInfo` and `list_all_modes`**
+- [ ] **Step 4.3: Create `src/doxa_research/modes_cmd.py` with `ModeInfo` and `list_all_modes`**
 
 ```python
-"""CLI surface for the `thoth modes` subcommand.
+"""CLI surface for the `doxa-research modes` subcommand.
 
 Single source of truth for mode enumeration: `list_all_modes(cm)` returns a
 list of `ModeInfo` objects covering built-in modes (from `BUILTIN_MODES`),
@@ -377,7 +377,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
-from thoth.config import BUILTIN_MODES, ConfigManager, is_background_mode
+from doxa-research.config import BUILTIN_MODES, ConfigManager, is_background_mode
 
 Source = Literal["builtin", "user", "overridden"]
 Kind = Literal["immediate", "background", "unknown"]
@@ -424,7 +424,7 @@ def _compute_overrides(
 
 
 def list_all_modes(cm: ConfigManager) -> list[ModeInfo]:
-    """Enumerate every research mode known to Thoth.
+    """Enumerate every research mode known to Doxa Research.
 
     Merges `BUILTIN_MODES` with user `[modes.*]` tables exposed by the
     ConfigManager. Each `ModeInfo` carries enough data for table, JSON, or
@@ -480,7 +480,7 @@ Expected: 8 passed.
 - [ ] **Step 4.5: Commit**
 
 ```bash
-git add src/thoth/modes_cmd.py tests/test_modes_cmd.py
+git add src/doxa_research/modes_cmd.py tests/test_modes_cmd.py
 git commit -m "feat(modes): add ModeInfo + list_all_modes enumeration helper"
 ```
 
@@ -489,7 +489,7 @@ git commit -m "feat(modes): add ModeInfo + list_all_modes enumeration helper"
 ## Task 5: Table rendering + `modes_command("list", [])` dispatch
 
 **Files:**
-- Modify: `src/thoth/modes_cmd.py`
+- Modify: `src/doxa_research/modes_cmd.py`
 - Modify: `tests/test_modes_cmd.py` (append)
 
 - [ ] **Step 5.1: Append table-rendering tests**
@@ -497,11 +497,11 @@ git commit -m "feat(modes): add ModeInfo + list_all_modes enumeration helper"
 Append to `tests/test_modes_cmd.py`:
 
 ```python
-from thoth.modes_cmd import modes_command
+from doxa-research.modes_cmd import modes_command
 
 
 def test_modes_command_list_default_prints_table(
-    isolated_thoth_home: Path, capsys: pytest.CaptureFixture[str]
+    isolated_doxa_home: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     rc = modes_command("list", [])
     out = capsys.readouterr().out
@@ -515,9 +515,9 @@ def test_modes_command_list_default_prints_table(
 
 
 def test_modes_command_default_op_is_list(
-    isolated_thoth_home: Path, capsys: pytest.CaptureFixture[str]
+    isolated_doxa_home: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    # `thoth modes` with no op should behave like `thoth modes list`.
+    # `doxa-research modes` with no op should behave like `doxa-research modes list`.
     rc = modes_command(None, [])
     out = capsys.readouterr().out
     assert rc == 0
@@ -525,14 +525,14 @@ def test_modes_command_default_op_is_list(
 
 
 def test_modes_command_unknown_op_returns_2(
-    isolated_thoth_home: Path, capsys: pytest.CaptureFixture[str]
+    isolated_doxa_home: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     rc = modes_command("bogus", [])
     assert rc == 2
 
 
 def test_modes_command_list_sort_order(
-    isolated_thoth_home: Path, capsys: pytest.CaptureFixture[str]
+    isolated_doxa_home: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     # Sort: source -> kind -> provider -> model -> name.
     # builtin + immediate modes (default, clarification, thinking) must appear
@@ -552,9 +552,9 @@ def test_modes_command_list_sort_order(
 Run: `uv run pytest tests/test_modes_cmd.py -x -v -k "modes_command"`
 Expected: `ImportError: cannot import name 'modes_command'`.
 
-- [ ] **Step 5.3: Extend `src/thoth/modes_cmd.py` with table renderer + dispatch**
+- [ ] **Step 5.3: Extend `src/doxa_research/modes_cmd.py` with table renderer + dispatch**
 
-Append to `src/thoth/modes_cmd.py` (after `list_all_modes`):
+Append to `src/doxa_research/modes_cmd.py` (after `list_all_modes`):
 
 ```python
 from rich.console import Console
@@ -610,7 +610,7 @@ def _op_list(args: list[str]) -> int:
 
 
 def modes_command(op: str | None, args: list[str]) -> int:
-    """Dispatch `thoth modes <op>`. Returns a process exit code."""
+    """Dispatch `doxa-research modes <op>`. Returns a process exit code."""
     if op is None:
         return _op_list(args)
     ops = {"list": _op_list}
@@ -633,7 +633,7 @@ Expected: all tests pass (prior 8 + 4 new = 12).
 - [ ] **Step 5.5: Commit**
 
 ```bash
-git add src/thoth/modes_cmd.py tests/test_modes_cmd.py
+git add src/doxa_research/modes_cmd.py tests/test_modes_cmd.py
 git commit -m "feat(modes): render modes as a sorted Rich table via modes_command"
 ```
 
@@ -642,7 +642,7 @@ git commit -m "feat(modes): render modes as a sorted Rich table via modes_comman
 ## Task 6: JSON output + secret masking
 
 **Files:**
-- Modify: `src/thoth/modes_cmd.py`
+- Modify: `src/doxa_research/modes_cmd.py`
 - Modify: `tests/test_modes_cmd.py` (append)
 
 - [ ] **Step 6.1: Append tests for `--json`, `--show-secrets`, and masking**
@@ -654,7 +654,7 @@ import json
 
 
 def test_modes_list_json_shape(
-    isolated_thoth_home: Path, capsys: pytest.CaptureFixture[str]
+    isolated_doxa_home: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     rc = modes_command("list", ["--json"])
     out = capsys.readouterr().out
@@ -670,9 +670,9 @@ def test_modes_list_json_shape(
 
 
 def test_modes_list_masks_api_key_inside_mode(
-    isolated_thoth_home: Path, capsys: pytest.CaptureFixture[str]
+    isolated_doxa_home: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    cfg = Path(isolated_thoth_home) / "config" / "thoth" / "config.toml"
+    cfg = Path(isolated_doxa_home) / "config" / "doxa-research" / "config.toml"
     cfg.parent.mkdir(parents=True, exist_ok=True)
     cfg.write_text(
         'version = "2.0"\n'
@@ -693,9 +693,9 @@ def test_modes_list_masks_api_key_inside_mode(
 
 
 def test_modes_list_show_secrets_unmasks(
-    isolated_thoth_home: Path, capsys: pytest.CaptureFixture[str]
+    isolated_doxa_home: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    cfg = Path(isolated_thoth_home) / "config" / "thoth" / "config.toml"
+    cfg = Path(isolated_doxa_home) / "config" / "doxa-research" / "config.toml"
     cfg.parent.mkdir(parents=True, exist_ok=True)
     cfg.write_text(
         'version = "2.0"\n'
@@ -717,7 +717,7 @@ Expected: `KeyError` / assertion failures — `--json` not implemented yet.
 
 - [ ] **Step 6.3: Extend `modes_cmd.py` with JSON + masking**
 
-In `src/thoth/modes_cmd.py`, replace the `_op_list` function and add helpers above it:
+In `src/doxa_research/modes_cmd.py`, replace the `_op_list` function and add helpers above it:
 
 ```python
 import json
@@ -793,7 +793,7 @@ Expected: all pass.
 - [ ] **Step 6.5: Commit**
 
 ```bash
-git add src/thoth/modes_cmd.py tests/test_modes_cmd.py
+git add src/doxa_research/modes_cmd.py tests/test_modes_cmd.py
 git commit -m "feat(modes): add --json output with schema_version and secret masking"
 ```
 
@@ -802,7 +802,7 @@ git commit -m "feat(modes): add --json output with schema_version and secret mas
 ## Task 7: `--source` filter + `list` arg validation
 
 **Files:**
-- Modify: `src/thoth/modes_cmd.py`
+- Modify: `src/doxa_research/modes_cmd.py`
 - Modify: `tests/test_modes_cmd.py` (append)
 
 - [ ] **Step 7.1: Append filter tests**
@@ -811,9 +811,9 @@ Append to `tests/test_modes_cmd.py`:
 
 ```python
 def test_modes_list_source_filter_user(
-    isolated_thoth_home: Path, capsys: pytest.CaptureFixture[str]
+    isolated_doxa_home: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    cfg = Path(isolated_thoth_home) / "config" / "thoth" / "config.toml"
+    cfg = Path(isolated_doxa_home) / "config" / "doxa-research" / "config.toml"
     cfg.parent.mkdir(parents=True, exist_ok=True)
     cfg.write_text(
         'version = "2.0"\n'
@@ -830,9 +830,9 @@ def test_modes_list_source_filter_user(
 
 
 def test_modes_list_source_filter_overridden(
-    isolated_thoth_home: Path, capsys: pytest.CaptureFixture[str]
+    isolated_doxa_home: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    cfg = Path(isolated_thoth_home) / "config" / "thoth" / "config.toml"
+    cfg = Path(isolated_doxa_home) / "config" / "doxa-research" / "config.toml"
     cfg.parent.mkdir(parents=True, exist_ok=True)
     cfg.write_text(
         'version = "2.0"\n'
@@ -847,7 +847,7 @@ def test_modes_list_source_filter_overridden(
 
 
 def test_modes_list_invalid_source_returns_2(
-    isolated_thoth_home: Path, capsys: pytest.CaptureFixture[str]
+    isolated_doxa_home: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     rc = modes_command("list", ["--source", "bogus"])
     assert rc == 2
@@ -860,7 +860,7 @@ Expected: FAIL — `--source` ignored.
 
 - [ ] **Step 7.3: Extend flag parsing and filtering**
 
-In `src/thoth/modes_cmd.py`, replace `_parse_list_flags` and `_op_list`:
+In `src/doxa_research/modes_cmd.py`, replace `_parse_list_flags` and `_op_list`:
 
 ```python
 _VALID_SOURCES = ("builtin", "user", "overridden", "all")
@@ -929,7 +929,7 @@ Expected: all pass.
 - [ ] **Step 7.5: Commit**
 
 ```bash
-git add src/thoth/modes_cmd.py tests/test_modes_cmd.py
+git add src/doxa_research/modes_cmd.py tests/test_modes_cmd.py
 git commit -m "feat(modes): add --source filter with validation"
 ```
 
@@ -938,7 +938,7 @@ git commit -m "feat(modes): add --source filter with validation"
 ## Task 8: `--name` detail view + `--full`
 
 **Files:**
-- Modify: `src/thoth/modes_cmd.py`
+- Modify: `src/doxa_research/modes_cmd.py`
 - Modify: `tests/test_modes_cmd.py` (append)
 
 - [ ] **Step 8.1: Append detail-view tests**
@@ -947,7 +947,7 @@ Append to `tests/test_modes_cmd.py`:
 
 ```python
 def test_modes_detail_unknown_name_returns_1(
-    isolated_thoth_home: Path, capsys: pytest.CaptureFixture[str]
+    isolated_doxa_home: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     rc = modes_command("list", ["--name", "no_such_mode"])
     err = capsys.readouterr().out + capsys.readouterr().err
@@ -955,7 +955,7 @@ def test_modes_detail_unknown_name_returns_1(
 
 
 def test_modes_detail_builtin(
-    isolated_thoth_home: Path, capsys: pytest.CaptureFixture[str]
+    isolated_doxa_home: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     rc = modes_command("list", ["--name", "default"])
     out = capsys.readouterr().out
@@ -967,9 +967,9 @@ def test_modes_detail_builtin(
 
 
 def test_modes_detail_overridden_shows_diff(
-    isolated_thoth_home: Path, capsys: pytest.CaptureFixture[str]
+    isolated_doxa_home: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    cfg = Path(isolated_thoth_home) / "config" / "thoth" / "config.toml"
+    cfg = Path(isolated_doxa_home) / "config" / "doxa-research" / "config.toml"
     cfg.parent.mkdir(parents=True, exist_ok=True)
     cfg.write_text(
         'version = "2.0"\n'
@@ -984,7 +984,7 @@ def test_modes_detail_overridden_shows_diff(
 
 
 def test_modes_detail_truncates_system_prompt_without_full(
-    isolated_thoth_home: Path, capsys: pytest.CaptureFixture[str]
+    isolated_doxa_home: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     rc = modes_command("list", ["--name", "deep_research"])
     out = capsys.readouterr().out
@@ -993,7 +993,7 @@ def test_modes_detail_truncates_system_prompt_without_full(
 
 
 def test_modes_detail_full_dumps_system_prompt(
-    isolated_thoth_home: Path, capsys: pytest.CaptureFixture[str]
+    isolated_doxa_home: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     rc = modes_command("list", ["--name", "deep_research", "--full"])
     out = capsys.readouterr().out
@@ -1008,7 +1008,7 @@ Expected: FAIL — `--name` not implemented.
 
 - [ ] **Step 8.3: Extend parsing + add detail renderer**
 
-In `src/thoth/modes_cmd.py`, replace `_parse_list_flags` signature and `_op_list`, and add `_render_detail`:
+In `src/doxa_research/modes_cmd.py`, replace `_parse_list_flags` signature and `_op_list`, and add `_render_detail`:
 
 ```python
 def _parse_list_flags(
@@ -1137,17 +1137,17 @@ Expected: all pass.
 - [ ] **Step 8.5: Commit**
 
 ```bash
-git add src/thoth/modes_cmd.py tests/test_modes_cmd.py
+git add src/doxa_research/modes_cmd.py tests/test_modes_cmd.py
 git commit -m "feat(modes): add --name detail view with override diff and --full flag"
 ```
 
 ---
 
-## Task 9: Wire `modes` into the CLI + `thoth help modes`
+## Task 9: Wire `modes` into the CLI + `doxa-research help modes`
 
 **Files:**
-- Modify: `src/thoth/cli.py:158,223,294`
-- Modify: `src/thoth/help.py` (add `show_modes_help`, import `list_all_modes`, update epilog)
+- Modify: `src/doxa_research/cli.py:158,223,294`
+- Modify: `src/doxa_research/help.py` (add `show_modes_help`, import `list_all_modes`, update epilog)
 - Append: `tests/test_modes_cmd.py`
 
 - [ ] **Step 9.1: Append end-to-end subprocess test**
@@ -1155,29 +1155,29 @@ git commit -m "feat(modes): add --name detail view with override diff and --full
 Append to `tests/test_modes_cmd.py`:
 
 ```python
-from tests._fixture_helpers import run_thoth
+from tests._fixture_helpers import run_doxa
 
 
-def test_thoth_modes_subprocess_lists_modes(isolated_thoth_home: Path) -> None:
-    rc, out, err = run_thoth(["modes"])
+def test_doxa_modes_subprocess_lists_modes(isolated_doxa_home: Path) -> None:
+    rc, out, err = run_doxa(["modes"])
     assert rc == 0, f"stderr: {err}"
     assert "default" in out
     assert "deep_research" in out
 
 
-def test_thoth_help_modes_subprocess(isolated_thoth_home: Path) -> None:
-    rc, out, err = run_thoth(["help", "modes"])
+def test_doxa_help_modes_subprocess(isolated_doxa_home: Path) -> None:
+    rc, out, err = run_doxa(["help", "modes"])
     assert rc == 0, f"stderr: {err}"
-    assert "thoth modes" in out
+    assert "doxa-research modes" in out
     assert "schema_version" in out  # JSON schema snippet in help
 ```
 
 - [ ] **Step 9.2: Confirm failure**
 
 Run: `uv run pytest tests/test_modes_cmd.py -x -v -k "subprocess"`
-Expected: FAIL — `thoth modes` not dispatched, `thoth help modes` unknown.
+Expected: FAIL — `doxa-research modes` not dispatched, `doxa-research help modes` unknown.
 
-- [ ] **Step 9.3: Update `src/thoth/cli.py` command list (line 158)**
+- [ ] **Step 9.3: Update `src/doxa_research/cli.py` command list (line 158)**
 
 Find:
 ```python
@@ -1197,13 +1197,13 @@ Replace with:
     if args and args[0] in ["init", "status", "list", "help", "providers", "config", "modes"]:
 ```
 
-- [ ] **Step 9.4: Add `modes` dispatch branch in `src/thoth/cli.py`**
+- [ ] **Step 9.4: Add `modes` dispatch branch in `src/doxa_research/cli.py`**
 
 In the `elif command == "config":` block (around line 281-293), directly after the `sys.exit(rc)` line that closes the `config` branch, add:
 
 ```python
         elif command == "modes":
-            from thoth.modes_cmd import modes_command
+            from doxa-research.modes_cmd import modes_command
 
             op = args[1] if len(args) >= 2 else None
             rest = list(args[2:]) + list(ctx.args)
@@ -1235,22 +1235,22 @@ Replace with:
                     )
 ```
 
-Add `show_modes_help` to the imports at the top of `src/thoth/cli.py`. Find the existing `from thoth.help import` line and add `show_modes_help` to the list.
+Add `show_modes_help` to the imports at the top of `src/doxa_research/cli.py`. Find the existing `from doxa-research.help import` line and add `show_modes_help` to the list.
 
-- [ ] **Step 9.6: Add `show_modes_help` + epilog pointer in `src/thoth/help.py`**
+- [ ] **Step 9.6: Add `show_modes_help` + epilog pointer in `src/doxa_research/help.py`**
 
-In `src/thoth/help.py`, append the following function before the `__all__` block:
+In `src/doxa_research/help.py`, append the following function before the `__all__` block:
 
 ```python
 def show_modes_help():
     """Show detailed help for the modes command."""
-    console.print("\n[bold]thoth modes[/bold] - List research modes with provider, model, and kind")
+    console.print("\n[bold]doxa-research modes[/bold] - List research modes with provider, model, and kind")
     console.print("\n[bold]Description:[/bold]")
-    console.print("  Shows every research mode Thoth knows about: built-in modes,")
+    console.print("  Shows every research mode Doxa Research knows about: built-in modes,")
     console.print("  user-defined modes from `[modes.*]` in your config TOML, and")
     console.print("  modes that override a built-in.")
     console.print("\n[bold]Usage:[/bold]")
-    console.print("  thoth modes [list] [OPTIONS]")
+    console.print("  doxa-research modes [list] [OPTIONS]")
     console.print("\n[bold]Options:[/bold]")
     console.print("  --json                    Emit machine-readable JSON")
     console.print("  --source builtin|user|overridden|all   Filter by origin")
@@ -1265,13 +1265,13 @@ def show_modes_help():
     console.print("      overrides, warnings, raw } ] }")
     console.print("\n[bold]Kind vs. --async flag:[/bold]")
     console.print("  The Kind column describes the mode's default submit style.")
-    console.print("  The per-invocation `thoth --async` flag is orthogonal — it")
+    console.print("  The per-invocation `doxa-research --async` flag is orthogonal — it")
     console.print("  controls whether the CLI waits for results, not how the job")
     console.print("  is submitted.")
     console.print("\n[bold]Examples:[/bold]")
-    console.print("  $ thoth modes")
-    console.print("  $ thoth modes --json | jq '.modes[] | select(.kind == \"background\") | .name'")
-    console.print("  $ thoth modes --name deep_research --full")
+    console.print("  $ doxa modes")
+    console.print("  $ doxa modes --json | jq '.modes[] | select(.kind == \"background\") | .name'")
+    console.print("  $ doxa modes --name deep_research --full")
 ```
 
 Add `show_modes_help` to the `__all__` tuple at the bottom of the file.
@@ -1292,7 +1292,7 @@ Replace with:
 ```python
     console.print("\n[bold]Research Modes:[/bold]")
     console.print(f"  {', '.join(BUILTIN_MODES.keys())}")
-    console.print("  Run [bold]thoth modes[/bold] for provider, model, and kind per mode.")
+    console.print("  Run [bold]doxa-research modes[/bold] for provider, model, and kind per mode.")
 ```
 
 Do the same replacement in `build_epilog()` (lines 70-76). Find:
@@ -1309,7 +1309,7 @@ Replace with:
 ```python
     lines.append("Research Modes:")
     lines.append(f"  {', '.join(BUILTIN_MODES.keys())}")
-    lines.append("  Run `thoth modes` for provider, model, and kind per mode.")
+    lines.append("  Run `doxa-research modes` for provider, model, and kind per mode.")
     lines.append("")
 ```
 
@@ -1326,8 +1326,8 @@ Expected: all pass.
 - [ ] **Step 9.9: Commit**
 
 ```bash
-git add src/thoth/cli.py src/thoth/help.py tests/test_modes_cmd.py
-git commit -m "feat(cli): wire `thoth modes` + `thoth help modes` dispatch"
+git add src/doxa_research/cli.py src/doxa_research/help.py tests/test_modes_cmd.py
+git commit -m "feat(cli): wire `doxa-research modes` + `doxa-research help modes` dispatch"
 ```
 
 ---
@@ -1335,10 +1335,10 @@ git commit -m "feat(cli): wire `thoth modes` + `thoth help modes` dispatch"
 ## Task 10: Route `interactive.py` and `help.py` through `list_all_modes`
 
 **Files:**
-- Modify: `src/thoth/interactive.py:27,113-146,677-685,777-789`
-- Modify: `src/thoth/help.py` — `BUILTIN_MODES` import stays (for the names-only teaser) but remove the per-mode description iteration.
+- Modify: `src/doxa_research/interactive.py:27,113-146,677-685,777-789`
+- Modify: `src/doxa_research/help.py` — `BUILTIN_MODES` import stays (for the names-only teaser) but remove the per-mode description iteration.
 
-**Design decision:** `interactive.py` currently treats `BUILTIN_MODES` as both the listing source AND the validation source (for `/mode <name>`). We keep validation against `BUILTIN_MODES` (fast membership test), but switch the listing to `list_all_modes()` so the description/kind match the `thoth modes` table.
+**Design decision:** `interactive.py` currently treats `BUILTIN_MODES` as both the listing source AND the validation source (for `/mode <name>`). We keep validation against `BUILTIN_MODES` (fast membership test), but switch the listing to `list_all_modes()` so the description/kind match the `doxa-research modes` table.
 
 - [ ] **Step 10.1: Add a coverage test**
 
@@ -1346,11 +1346,11 @@ Append to `tests/test_modes_cmd.py`:
 
 ```python
 def test_help_epilog_lists_mode_names(
-    isolated_thoth_home: Path, capsys: pytest.CaptureFixture[str]
+    isolated_doxa_home: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    rc, out, err = run_thoth(["--help"])
+    rc, out, err = run_doxa(["--help"])
     assert rc == 0, f"stderr: {err}"
-    assert "thoth modes" in out
+    assert "doxa-research modes" in out
     # Teaser still shows at least one mode name.
     assert "default" in out
 ```
@@ -1362,7 +1362,7 @@ Expected: PASS.
 
 - [ ] **Step 10.3: Update `interactive.py` `set_mode` listing**
 
-In `src/thoth/interactive.py`, replace the body of `set_mode` (lines 113-146) — keep validation, switch listing:
+In `src/doxa_research/interactive.py`, replace the body of `set_mode` (lines 113-146) — keep validation, switch listing:
 
 Find:
 ```python
@@ -1384,7 +1384,7 @@ Replace with:
 ```python
     def set_mode(self, args: str) -> str:
         """Set research mode"""
-        from thoth.modes_cmd import list_all_modes
+        from doxa-research.modes_cmd import list_all_modes
 
         if not args:
             self.console.print("[cyan]Available modes:[/cyan]")
@@ -1439,7 +1439,7 @@ Replace with:
 ```python
     def _show_mode_selection(self):
         """Show available modes for selection"""
-        from thoth.modes_cmd import list_all_modes
+        from doxa-research.modes_cmd import list_all_modes
 
         def print_modes():
             cm = get_config()
@@ -1453,9 +1453,9 @@ Replace with:
             print()
 ```
 
-Check `from thoth.config import ... get_config ...` is already imported at the top of `interactive.py` (line 27). If not, add it.
+Check `from doxa-research.config import ... get_config ...` is already imported at the top of `interactive.py` (line 27). If not, add it.
 
-Run: `grep -n "from thoth.config import" src/thoth/interactive.py`
+Run: `grep -n "from doxa-research.config import" src/doxa_research/interactive.py`
 Expected: the line should include `get_config`; if not, add it.
 
 - [ ] **Step 10.5: Remove unused `BUILTIN_MODES` iteration imports (optional cleanup)**
@@ -1464,7 +1464,7 @@ Leave `BUILTIN_MODES` imported in `interactive.py` — still used for `/mode <na
 
 No action needed; just verify with:
 ```bash
-grep -n "BUILTIN_MODES" src/thoth/interactive.py src/thoth/help.py
+grep -n "BUILTIN_MODES" src/doxa_research/interactive.py src/doxa_research/help.py
 ```
 Expected: each file has <= 3 remaining references (validation / teaser only).
 
@@ -1476,7 +1476,7 @@ Expected: same pass count as before (no regression).
 - [ ] **Step 10.7: Commit**
 
 ```bash
-git add src/thoth/interactive.py tests/test_modes_cmd.py
+git add src/doxa_research/interactive.py tests/test_modes_cmd.py
 git commit -m "refactor(interactive): route /mode listing through list_all_modes"
 ```
 
@@ -1496,29 +1496,29 @@ If ruff complains about import ordering in `modes_cmd.py`, run `just fix` and re
 Run: `uv run pytest tests/ -x`
 Expected: all green.
 
-- [ ] **Step 11.3: thoth_test integration suite**
+- [ ] **Step 11.3: doxa_test integration suite**
 
-Run: `./thoth_test -r --provider mock --skip-interactive 2>&1 | tail -40`
-Expected: same baseline as pre-change (no regressions; new command does not appear in thoth_test scope).
+Run: `./doxa_test -r --provider mock --skip-interactive 2>&1 | tail -40`
+Expected: same baseline as pre-change (no regressions; new command does not appear in doxa_test scope).
 
 - [ ] **Step 11.4: Manual smoke checks**
 
 Run each and eyeball the output:
 
 ```bash
-./thoth modes
-./thoth modes --json | jq '.modes[] | select(.kind == "background") | .name'
-./thoth modes --source builtin
-./thoth modes --name thinking
-./thoth modes --name deep_research --full
-./thoth help modes
-./thoth --help | tail -20
+./doxa modes
+./doxa modes --json | jq '.modes[] | select(.kind == "background") | .name'
+./doxa modes --source builtin
+./doxa modes --name thinking
+./doxa modes --name deep_research --full
+./doxa help modes
+./doxa --help | tail -20
 ```
 
 Expected:
 - Table is sorted by source → kind → provider → model → name.
 - `thinking` shows `Kind: immediate` and `Model: o3`.
-- `--help` now shows `Run \`thoth modes\` for provider, model, and kind per mode.` instead of per-mode descriptions.
+- `--help` now shows `Run \`doxa-research modes\` for provider, model, and kind per mode.` instead of per-mode descriptions.
 - `--json` validates against the documented schema (`schema_version: "1"`).
 
 - [ ] **Step 11.5: Final commit (if anything touched during verification)**

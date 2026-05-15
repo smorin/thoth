@@ -8,15 +8,15 @@ from pathlib import Path
 import pytest
 from click.testing import CliRunner
 
-from thoth.cli import cli
+from doxa_research.cli import cli
 
 
 @pytest.fixture(autouse=True)
 def _reset_config_path(monkeypatch: pytest.MonkeyPatch) -> None:
     """Keep the process-wide --config override from leaking between tests."""
-    from thoth import config as thoth_config
+    from doxa_research import config as doxa_config
 
-    monkeypatch.setattr(thoth_config, "_config_path", None)
+    monkeypatch.setattr(doxa_config, "_config_path", None)
 
 
 def _write_profile_config(path: Path) -> None:
@@ -38,10 +38,10 @@ api_key = "test"
 
 
 def test_root_profile_applies_prompt_prefix_to_ask_research(
-    isolated_thoth_home: Path,
+    isolated_doxa_home: Path,
     tmp_path: Path,
 ) -> None:
-    cfg = tmp_path / "thoth.config.toml"
+    cfg = tmp_path / "doxa.config.toml"
     out = tmp_path / "out.txt"
     _write_profile_config(cfg)
 
@@ -72,10 +72,10 @@ def test_root_profile_applies_prompt_prefix_to_ask_research(
 
 
 def test_missing_root_profile_fails_research_before_provider(
-    isolated_thoth_home: Path,
+    isolated_doxa_home: Path,
     tmp_path: Path,
 ) -> None:
-    cfg = tmp_path / "thoth.config.toml"
+    cfg = tmp_path / "doxa.config.toml"
     out = tmp_path / "out.txt"
     _write_profile_config(cfg)
 
@@ -107,10 +107,10 @@ def test_missing_root_profile_fails_research_before_provider(
 
 
 def test_profile_default_mode_used_for_bare_prompt(
-    isolated_thoth_home: Path,
+    isolated_doxa_home: Path,
     tmp_path: Path,
 ) -> None:
-    cfg = tmp_path / "thoth.config.toml"
+    cfg = tmp_path / "doxa.config.toml"
     out = tmp_path / "out.txt"
     _write_profile_config(cfg)
 
@@ -142,10 +142,10 @@ def test_profile_default_mode_used_for_bare_prompt(
 
 
 def test_providers_check_honors_root_profile_provider_key(
-    isolated_thoth_home: Path,
+    isolated_doxa_home: Path,
     tmp_path: Path,
 ) -> None:
-    cfg = tmp_path / "thoth.config.toml"
+    cfg = tmp_path / "doxa.config.toml"
     _write_profile_config(cfg)
 
     result = CliRunner().invoke(
@@ -169,10 +169,10 @@ def test_providers_check_honors_root_profile_provider_key(
 
 
 def test_config_get_json_missing_profile_emits_json_error(
-    isolated_thoth_home: Path,
+    isolated_doxa_home: Path,
     tmp_path: Path,
 ) -> None:
-    cfg = tmp_path / "thoth.config.toml"
+    cfg = tmp_path / "doxa.config.toml"
     _write_profile_config(cfg)
 
     result = CliRunner().invoke(

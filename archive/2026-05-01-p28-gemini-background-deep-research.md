@@ -2,11 +2,11 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add a `GeminiProvider` to Thoth that mirrors the OpenAI (P26) and Perplexity (P27) background Deep Research surface (submit → poll → get_result → cancel/reconnect), wired into the existing provider-agnostic runtime.
+**Goal:** Add a `GeminiProvider` to Doxa Research that mirrors the OpenAI (P26) and Perplexity (P27) background Deep Research surface (submit → poll → get_result → cancel/reconnect), wired into the existing provider-agnostic runtime.
 
-**Architecture:** New `src/thoth/providers/gemini.py` module implementing `ResearchProvider` against the `google-genai>=1.55.0` SDK using the Interactions API. As of 2026-05-04 the upstream Gemini docs list **two** Deep Research agent IDs — `deep-research-preview-04-2026` (speed/efficiency) and `deep-research-max-preview-04-2026` (max comprehensiveness) — replacing the single `deep-research-pro-preview-12-2025` referenced when this plan was first written. P28 v1 ships the speed-efficiency tier across all 9 modes; the max tier is deferred to a successor project (mirrors how OpenAI's P26 lets users opt into a larger model per-mode rather than baking it into v1's default mode set). The exact create() API shape (`agent=` vs `model=` parameter, sync vs async client surface, `background=True` flag), the cancel-method's existence, and the §10 known-bug behaviors are all validated empirically in **Task 2 (Pre-implementation API spike)** before any framework code is written. All polling, checkpointing, SIGINT cancel, and output-sink integration is inherited unchanged from the runtime; P28 only adds the provider class, error mapper, mode entries, CLI flag, and config defaults. Tests follow the OpenAI three-layer pattern: monkeypatched-SDK unit tests + VCR cassette replays + gated `live_api` (weekly) + gated `extended` (nightly).
+**Architecture:** New `src/doxa_research/providers/gemini.py` module implementing `ResearchProvider` against the `google-genai>=1.55.0` SDK using the Interactions API. As of 2026-05-04 the upstream Gemini docs list **two** Deep Research agent IDs — `deep-research-preview-04-2026` (speed/efficiency) and `deep-research-max-preview-04-2026` (max comprehensiveness) — replacing the single `deep-research-pro-preview-12-2025` referenced when this plan was first written. P28 v1 ships the speed-efficiency tier across all 9 modes; the max tier is deferred to a successor project (mirrors how OpenAI's P26 lets users opt into a larger model per-mode rather than baking it into v1's default mode set). The exact create() API shape (`agent=` vs `model=` parameter, sync vs async client surface, `background=True` flag), the cancel-method's existence, and the §10 known-bug behaviors are all validated empirically in **Task 2 (Pre-implementation API spike)** before any framework code is written. All polling, checkpointing, SIGINT cancel, and output-sink integration is inherited unchanged from the runtime; P28 only adds the provider class, error mapper, mode entries, CLI flag, and config defaults. Tests follow the OpenAI three-layer pattern: monkeypatched-SDK unit tests + VCR cassette replays + gated `live_api` (weekly) + gated `extended` (nightly).
 
-**Tech Stack:** Python 3.11+, `google-genai>=1.55.0,<2`, `httpx`, `tenacity`, `pytest`, `pytest-vcr`, `rich`, existing Thoth runtime.
+**Tech Stack:** Python 3.11+, `google-genai>=1.55.0,<2`, `httpx`, `tenacity`, `pytest`, `pytest-vcr`, `rich`, existing Doxa Research runtime.
 
 **Spec:** `projects/P28-gemini-background-deep-research.md` (committed in `b173538`). Read it first — every task here references concrete decisions and parity rows from that file. The "Conventions to carry forward from P26 + P27" section in the spec is the source of truth for cross-provider conventions threaded through these tasks.
 
@@ -18,13 +18,13 @@
 
 | Action | Path | Responsibility |
 |---|---|---|
-| Create | `src/thoth/providers/gemini.py` | `GeminiProvider` class + `_map_gemini_error` + agent ID constant |
-| Modify | `src/thoth/providers/__init__.py` | Add `GeminiProvider` to `PROVIDERS` dict + `PROVIDER_ENV_VARS` + `__all__` |
-| Modify | `src/thoth/config.py` | Add `[providers.gemini]` defaults; add 9 `gemini_*` mode entries to `KNOWN_MODELS` |
-| Modify | `src/thoth/cli_subcommands/_options.py` | Add `--api-key-gemini` flag tuple |
+| Create | `src/doxa_research/providers/gemini.py` | `GeminiProvider` class + `_map_gemini_error` + agent ID constant |
+| Modify | `src/doxa_research/providers/__init__.py` | Add `GeminiProvider` to `PROVIDERS` dict + `PROVIDER_ENV_VARS` + `__all__` |
+| Modify | `src/doxa_research/config.py` | Add `[providers.gemini]` defaults; add 9 `gemini_*` mode entries to `KNOWN_MODELS` |
+| Modify | `src/doxa_research/cli_subcommands/_options.py` | Add `--api-key-gemini` flag tuple |
 | Create | `tests/test_gem_background.py` | Unit tests with monkeypatched `google.genai.Client` for the 6 provider methods |
 | Create | `tests/test_vcr_gemini.py` | Cassette replay tests (mirrors `tests/test_vcr_openai.py` shape) |
-| Create | `thoth_test_cassettes/gemini/happy-path.yaml` | Recorded happy-path cassette (created in Task 22) |
+| Create | `doxa_test_cassettes/gemini/happy-path.yaml` | Recorded happy-path cassette (created in Task 22) |
 | Create | `tests/extended/test_gemini_real_workflows.py` | Live-API CLI workflow tests (`@pytest.mark.live_api`) |
 | Modify | `pyproject.toml` | Add `google-genai>=1.55.0,<2` dependency |
 | Modify | `.github/workflows/live-api.yml` | Add `GEMINI_API_KEY` to secrets/env block |
@@ -45,7 +45,7 @@ Total new code: ~600 lines provider + ~400 lines unit tests + ~200 lines VCR rep
 - [ ] **Step 1: Add dependency via uv**
 
 ```bash
-cd /Users/stevemorin/c/thoth
+cd /Users/stevemorin/c/doxa-research
 uv add 'google-genai>=1.55.0,<2'
 ```
 
@@ -559,7 +559,7 @@ Edit the project file's Open Questions section to mark resolutions. Format:
 - [ ] **Step 8: Commit spike scripts + findings**
 
 ```bash
-cd /Users/stevemorin/c/thoth-worktrees/p28-gemini-background-deep-research
+cd /Users/stevemorin/c/doxa-research-worktrees/p28-gemini-background-deep-research
 git add scripts/spike/p28/ research/gemini-api-spike-2026-05-04.md projects/P28-gemini-background-deep-research.md
 git commit -m "spike(p28): validate Gemini Interactions API before framework code
 
@@ -584,12 +584,12 @@ tests)."
 
 ### Task 3: Stub GeminiProvider module skeleton
 
-Lay down the file with imports and a class that can be imported without errors. No methods yet — just enough that `from thoth.providers.gemini import GeminiProvider` succeeds.
+Lay down the file with imports and a class that can be imported without errors. No methods yet — just enough that `from doxa-research.providers.gemini import GeminiProvider` succeeds.
 
 **Convention reference (P26+P27):** the skeleton must define a module-level `_PROVIDER_NAME = "gemini"` constant near the top (P27 convention — see project file's "Conventions to carry forward from P26 + P27" table). Every `ProviderError(_PROVIDER_NAME, ...)` raise downstream uses this constant rather than a string literal. Provider-specific helpers (citation extraction, Sources block formatting) go *below* the `GeminiProvider` class, matching the Perplexity layout (`perplexity.py:873-979`).
 
 **Files:**
-- Create: `src/thoth/providers/gemini.py`
+- Create: `src/doxa_research/providers/gemini.py`
 
 - [ ] **Step 1: Create the file**
 
@@ -621,9 +621,9 @@ from tenacity import (
     wait_exponential,
 )
 
-from thoth.errors import APIKeyError, APIQuotaError, ProviderError, ThothError
-from thoth.models import ModelCache
-from thoth.providers.base import ResearchProvider
+from doxa-research.errors import APIKeyError, APIQuotaError, ProviderError, DoxaError
+from doxa-research.models import ModelCache
+from doxa-research.providers.base import ResearchProvider
 
 DEEP_RESEARCH_AGENT_ID = "deep-research-preview-04-2026"
 """Only built-in Gemini Deep Research agent as of 2026-04 (research doc §3)."""
@@ -641,8 +641,8 @@ _console = Console()
 
 def _map_gemini_error(
     exc: BaseException, model: str | None = None, verbose: bool = False
-) -> ThothError:
-    """Map a google-genai SDK exception or HTTP error to a Thoth error type.
+) -> DoxaError:
+    """Map a google-genai SDK exception or HTTP error to a Doxa Research error type.
 
     To be filled in by Task 5. Stub raises NotImplementedError so any
     accidental call surfaces clearly.
@@ -691,7 +691,7 @@ class GeminiProvider(ResearchProvider):
 - [ ] **Step 2: Verify import succeeds**
 
 ```bash
-uv run python -c "from thoth.providers.gemini import GeminiProvider, DEEP_RESEARCH_AGENT_ID; print(DEEP_RESEARCH_AGENT_ID)"
+uv run python -c "from doxa-research.providers.gemini import GeminiProvider, DEEP_RESEARCH_AGENT_ID; print(DEEP_RESEARCH_AGENT_ID)"
 ```
 
 Expected: prints `deep-research-preview-04-2026`.
@@ -699,9 +699,9 @@ Expected: prints `deep-research-preview-04-2026`.
 - [ ] **Step 3: Run lint and typecheck**
 
 ```bash
-uv run ruff check src/thoth/providers/gemini.py
-uv run ruff format --check src/thoth/providers/gemini.py
-uv run ty check src/thoth/providers/gemini.py
+uv run ruff check src/doxa_research/providers/gemini.py
+uv run ruff format --check src/doxa_research/providers/gemini.py
+uv run ty check src/doxa_research/providers/gemini.py
 ```
 
 Expected: all three pass.
@@ -709,7 +709,7 @@ Expected: all three pass.
 - [ ] **Step 4: Commit**
 
 ```bash
-git add src/thoth/providers/gemini.py
+git add src/doxa_research/providers/gemini.py
 git commit -m "feat(gemini): scaffold GeminiProvider module skeleton"
 ```
 
@@ -717,11 +717,11 @@ git commit -m "feat(gemini): scaffold GeminiProvider module skeleton"
 
 ### Task 4: Register GeminiProvider in PROVIDERS dict (test-first)
 
-The `PROVIDERS` dict in `src/thoth/providers/__init__.py` is the single source of truth for name → class dispatch. Adding `gemini` here is what makes the provider discoverable to the runtime. Test-first per CLAUDE.md TDD bias.
+The `PROVIDERS` dict in `src/doxa_research/providers/__init__.py` is the single source of truth for name → class dispatch. Adding `gemini` here is what makes the provider discoverable to the runtime. Test-first per CLAUDE.md TDD bias.
 
 **Files:**
 - Test: `tests/test_provider_registry.py:<existing>` (extend) OR `tests/test_gem_background.py` (new, append)
-- Modify: `src/thoth/providers/__init__.py`
+- Modify: `src/doxa_research/providers/__init__.py`
 
 - [ ] **Step 1: Write the failing test**
 
@@ -745,15 +745,15 @@ class TestGeminiProviderRegistration:
 
     def test_gemini_in_providers_dict(self):
         """PROVIDERS["gemini"] must point to GeminiProvider class."""
-        from thoth.providers import PROVIDERS
-        from thoth.providers.gemini import GeminiProvider
+        from doxa-research.providers import PROVIDERS
+        from doxa-research.providers.gemini import GeminiProvider
 
         assert "gemini" in PROVIDERS
         assert PROVIDERS["gemini"] is GeminiProvider
 
     def test_gemini_in_provider_env_vars(self):
         """PROVIDER_ENV_VARS["gemini"] must declare GEMINI_API_KEY."""
-        from thoth.providers import PROVIDER_ENV_VARS
+        from doxa-research.providers import PROVIDER_ENV_VARS
 
         assert PROVIDER_ENV_VARS["gemini"] == "GEMINI_API_KEY"
 ```
@@ -768,11 +768,11 @@ Expected: FAIL with `KeyError: 'gemini'` or assertion failure on the dict member
 
 - [ ] **Step 3: Add GeminiProvider to the registry**
 
-In `src/thoth/providers/__init__.py`, modify two areas:
+In `src/doxa_research/providers/__init__.py`, modify two areas:
 
 ```python
 # Add import alongside existing OpenAI/Perplexity imports
-from thoth.providers.gemini import GeminiProvider
+from doxa-research.providers.gemini import GeminiProvider
 
 # Modify PROVIDERS dict — add gemini line:
 PROVIDERS: dict[str, type[ResearchProvider]] = {
@@ -816,7 +816,7 @@ Expected: 2 PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add tests/test_gem_background.py src/thoth/providers/__init__.py
+git add tests/test_gem_background.py src/doxa_research/providers/__init__.py
 git commit -m "feat(gemini): register GeminiProvider in PROVIDERS dict"
 ```
 
@@ -826,7 +826,7 @@ git commit -m "feat(gemini): register GeminiProvider in PROVIDERS dict"
 
 Per spec parity row 4 + provider-specific deltas. The mapper handles google-genai SDK exception classes plus the doc §10 known bugs. Test cases enumerate each branch.
 
-**Convention reference (P26+P27):** Gemini's Interactions API surface is async-only (`client.aio.interactions.*`), so P28 ships a single `_map_gemini_error` (async form), NOT the sync+async split P27 ships for Perplexity. Document this divergence in the module docstring so the future P29 cross-provider refactor understands it. The invalid-key branch must use the shared `_invalid_key_thotherror(provider, settings_url)` helper (P27 convention — `perplexity.py:143`) with `provider="gemini"` and the AI Studio API-key URL. **Block-if-blocked:** finalize the SDK exception classes the test fixtures import from `google.genai.errors` only AFTER Task 2 step 5 completes — those classes are the spike's deliverable, not assumptions.
+**Convention reference (P26+P27):** Gemini's Interactions API surface is async-only (`client.aio.interactions.*`), so P28 ships a single `_map_gemini_error` (async form), NOT the sync+async split P27 ships for Perplexity. Document this divergence in the module docstring so the future P29 cross-provider refactor understands it. The invalid-key branch must use the shared `_invalid_key_doxaerror(provider, settings_url)` helper (P27 convention — `perplexity.py:143`) with `provider="gemini"` and the AI Studio API-key URL. **Block-if-blocked:** finalize the SDK exception classes the test fixtures import from `google.genai.errors` only AFTER Task 2 step 5 completes — those classes are the spike's deliverable, not assumptions.
 
 **Files:**
 - Test: `tests/test_gem_background.py` (append)
@@ -843,27 +843,27 @@ class TestMapGeminiError:
         """401 / authentication failures → APIKeyError."""
         from google.genai import errors as genai_errors
 
-        from thoth.errors import APIKeyError
-        from thoth.providers.gemini import _map_gemini_error
+        from doxa-research.errors import APIKeyError
+        from doxa-research.providers.gemini import _map_gemini_error
 
         exc = genai_errors.ClientError(401, {"error": {"message": "invalid api key"}})
         result = _map_gemini_error(exc)
         assert isinstance(result, APIKeyError)
         assert "gemini" in str(result).lower() or "api key" in str(result).lower()
 
-    def test_free_tier_403_maps_to_thotherror_with_pricing_url(self):
-        """Free tier 403 → ThothError with pricing URL (research doc §8)."""
+    def test_free_tier_403_maps_to_doxaerror_with_pricing_url(self):
+        """Free tier 403 → DoxaError with pricing URL (research doc §8)."""
         from google.genai import errors as genai_errors
 
-        from thoth.errors import ThothError
-        from thoth.providers.gemini import _map_gemini_error
+        from doxa-research.errors import DoxaError
+        from doxa-research.providers.gemini import _map_gemini_error
 
         exc = genai_errors.ClientError(
             403,
             {"error": {"message": "Deep Research requires paid tier"}},
         )
         result = _map_gemini_error(exc)
-        assert isinstance(result, ThothError)
+        assert isinstance(result, DoxaError)
         # Suggestion must mention paid tier and pricing URL
         suggestion = result.suggestion or ""
         assert "paid tier" in suggestion.lower() or "tier 1" in suggestion.lower()
@@ -873,8 +873,8 @@ class TestMapGeminiError:
         """429 RESOURCE_EXHAUSTED → APIQuotaError when insufficient quota, else ProviderError."""
         from google.genai import errors as genai_errors
 
-        from thoth.errors import APIQuotaError
-        from thoth.providers.gemini import _map_gemini_error
+        from doxa-research.errors import APIQuotaError
+        from doxa-research.providers.gemini import _map_gemini_error
 
         exc = genai_errors.ClientError(
             429,
@@ -887,8 +887,8 @@ class TestMapGeminiError:
         """400 INVALID_ARGUMENT → ProviderError with explanation."""
         from google.genai import errors as genai_errors
 
-        from thoth.errors import ProviderError
-        from thoth.providers.gemini import _map_gemini_error
+        from doxa-research.errors import ProviderError
+        from doxa-research.providers.gemini import _map_gemini_error
 
         exc = genai_errors.ClientError(
             400,
@@ -901,8 +901,8 @@ class TestMapGeminiError:
         """500/503 → ProviderError (caller's job to retry via tenacity)."""
         from google.genai import errors as genai_errors
 
-        from thoth.errors import ProviderError
-        from thoth.providers.gemini import _map_gemini_error
+        from doxa-research.errors import ProviderError
+        from doxa-research.providers.gemini import _map_gemini_error
 
         exc = genai_errors.ServerError(503, {"error": {"message": "high traffic"}})
         result = _map_gemini_error(exc)
@@ -912,8 +912,8 @@ class TestMapGeminiError:
         """httpx.TimeoutException → ProviderError."""
         import httpx
 
-        from thoth.errors import ProviderError
-        from thoth.providers.gemini import _map_gemini_error
+        from doxa-research.errors import ProviderError
+        from doxa-research.providers.gemini import _map_gemini_error
 
         exc = httpx.TimeoutException("request timed out")
         result = _map_gemini_error(exc)
@@ -923,8 +923,8 @@ class TestMapGeminiError:
         """httpx.ConnectError → ProviderError."""
         import httpx
 
-        from thoth.errors import ProviderError
-        from thoth.providers.gemini import _map_gemini_error
+        from doxa-research.errors import ProviderError
+        from doxa-research.providers.gemini import _map_gemini_error
 
         exc = httpx.ConnectError("connection refused")
         result = _map_gemini_error(exc)
@@ -932,8 +932,8 @@ class TestMapGeminiError:
 
     def test_unknown_exception_maps_to_provider_error(self):
         """Catch-all: any other exception → ProviderError so callers don't see raw exceptions."""
-        from thoth.errors import ProviderError
-        from thoth.providers.gemini import _map_gemini_error
+        from doxa-research.errors import ProviderError
+        from doxa-research.providers.gemini import _map_gemini_error
 
         result = _map_gemini_error(RuntimeError("unexpected"))
         assert isinstance(result, ProviderError)
@@ -958,20 +958,20 @@ git commit -m "test(gemini): add failing tests for _map_gemini_error 8-branch ma
 
 ### Task 6: Implement `_map_gemini_error`
 
-**Convention reference (P26+P27):** mirror the 12-branch shape of `_map_openai_error` (`openai.py:75-126`) and the helper-extraction pattern of `_map_perplexity_error_async` (`perplexity.py:246-378`). Reuse `_invalid_key_thotherror`. If the `_rate_limit_error_is_quota` 429-quota-vs-rate-limit distinction applies (verify against spike step 5 output), replicate the helper at module top.
+**Convention reference (P26+P27):** mirror the 12-branch shape of `_map_openai_error` (`openai.py:75-126`) and the helper-extraction pattern of `_map_perplexity_error_async` (`perplexity.py:246-378`). Reuse `_invalid_key_doxaerror`. If the `_rate_limit_error_is_quota` 429-quota-vs-rate-limit distinction applies (verify against spike step 5 output), replicate the helper at module top.
 
 **Files:**
-- Modify: `src/thoth/providers/gemini.py:_map_gemini_error`
+- Modify: `src/doxa_research/providers/gemini.py:_map_gemini_error`
 
 - [ ] **Step 1: Replace the stub with the real implementation**
 
-In `src/thoth/providers/gemini.py`, replace the `_map_gemini_error` stub with:
+In `src/doxa_research/providers/gemini.py`, replace the `_map_gemini_error` stub with:
 
 ```python
 def _map_gemini_error(
     exc: BaseException, model: str | None = None, verbose: bool = False
-) -> ThothError:
-    """Map a google-genai SDK exception or HTTP error to a Thoth error type.
+) -> DoxaError:
+    """Map a google-genai SDK exception or HTTP error to a Doxa Research error type.
 
     Branches mirror _map_openai_error in providers/openai.py:35-126, adapted
     for google-genai's ClientError/ServerError shape and the Gemini-specific
@@ -1003,7 +1003,7 @@ def _map_gemini_error(
         if code == 403:
             # Deep Research is not available on the free tier (research doc §8).
             # Tier 1+ requires a billing account. Surface a useful suggestion.
-            return ThothError(
+            return DoxaError(
                 "Gemini Deep Research requires a paid tier",
                 "Link a billing account to your Google Cloud project (Tier 1+). "
                 "See https://ai.google.dev/pricing for tier requirements.",
@@ -1078,8 +1078,8 @@ Expected: 8 PASS.
 - [ ] **Step 3: Run lint and typecheck**
 
 ```bash
-uv run ruff check src/thoth/providers/gemini.py
-uv run ty check src/thoth/providers/gemini.py
+uv run ruff check src/doxa_research/providers/gemini.py
+uv run ty check src/doxa_research/providers/gemini.py
 ```
 
 Expected: pass.
@@ -1087,7 +1087,7 @@ Expected: pass.
 - [ ] **Step 4: Commit**
 
 ```bash
-git add src/thoth/providers/gemini.py
+git add src/doxa_research/providers/gemini.py
 git commit -m "feat(gemini): implement _map_gemini_error 8-branch error mapping"
 ```
 
@@ -1167,7 +1167,7 @@ class _FakeClient:
 @pytest.fixture
 def fake_client(monkeypatch):
     """Patch genai.Client to return a _FakeClient instance, return that instance."""
-    from thoth.providers import gemini
+    from doxa-research.providers import gemini
 
     fake = _FakeClient(api_key="test-key")
     monkeypatch.setattr(gemini.genai, "Client", lambda **kw: fake)
@@ -1177,7 +1177,7 @@ def fake_client(monkeypatch):
 @pytest.fixture
 def provider(fake_client):
     """Return a GeminiProvider wired to the fake client."""
-    from thoth.providers.gemini import GeminiProvider
+    from doxa-research.providers.gemini import GeminiProvider
 
     p = GeminiProvider(api_key="test-key", config={})
     # Force lazy client to instantiate so fake_client is captured
@@ -1262,11 +1262,11 @@ git commit -m "test(gemini): add failing tests for submit() happy path"
 ### Task 8: submit() — implement to make tests pass
 
 **Files:**
-- Modify: `src/thoth/providers/gemini.py:GeminiProvider`
+- Modify: `src/doxa_research/providers/gemini.py:GeminiProvider`
 
 - [ ] **Step 1: Add the submit() method**
 
-In `src/thoth/providers/gemini.py`, inside the `GeminiProvider` class, add:
+In `src/doxa_research/providers/gemini.py`, inside the `GeminiProvider` class, add:
 
 ```python
     @retry(
@@ -1317,7 +1317,7 @@ In `src/thoth/providers/gemini.py`, inside the `GeminiProvider` class, add:
             self._cancel_requested[interaction_id] = False
             return interaction_id
 
-        except (ThothError, ProviderError):
+        except (DoxaError, ProviderError):
             raise
         except Exception as e:
             raise _map_gemini_error(e, model=self.model, verbose=verbose) from e
@@ -1334,7 +1334,7 @@ Expected: 3 PASS.
 - [ ] **Step 3: Commit**
 
 ```bash
-git add src/thoth/providers/gemini.py
+git add src/doxa_research/providers/gemini.py
 git commit -m "feat(gemini): implement submit() against client.aio.interactions.create"
 ```
 
@@ -1355,7 +1355,7 @@ Append to the `TestGeminiSubmit` class in `tests/test_gem_background.py`:
         """401 from create() must surface as APIKeyError."""
         from google.genai import errors as genai_errors
 
-        from thoth.errors import APIKeyError
+        from doxa-research.errors import APIKeyError
 
         async def raise_401(**kwargs):
             raise genai_errors.ClientError(401, {"error": {"message": "invalid"}})
@@ -1366,18 +1366,18 @@ Append to the `TestGeminiSubmit` class in `tests/test_gem_background.py`:
             await provider.submit(prompt="p", mode="gemini_quick_research")
 
     @pytest.mark.asyncio
-    async def test_submit_free_tier_403_maps_to_thotherror(self, provider, fake_client):
-        """403 from create() must surface as ThothError mentioning paid tier."""
+    async def test_submit_free_tier_403_maps_to_doxaerror(self, provider, fake_client):
+        """403 from create() must surface as DoxaError mentioning paid tier."""
         from google.genai import errors as genai_errors
 
-        from thoth.errors import ThothError
+        from doxa-research.errors import DoxaError
 
         async def raise_403(**kwargs):
             raise genai_errors.ClientError(403, {"error": {"message": "free tier"}})
 
         fake_client._fake_interactions.create = raise_403
 
-        with pytest.raises(ThothError) as exc_info:
+        with pytest.raises(DoxaError) as exc_info:
             await provider.submit(prompt="p", mode="gemini_quick_research")
         suggestion = exc_info.value.suggestion or ""
         assert "tier" in suggestion.lower() or "pricing" in suggestion.lower()
@@ -1387,7 +1387,7 @@ Append to the `TestGeminiSubmit` class in `tests/test_gem_background.py`:
         """429 RESOURCE_EXHAUSTED → APIQuotaError."""
         from google.genai import errors as genai_errors
 
-        from thoth.errors import APIQuotaError
+        from doxa-research.errors import APIQuotaError
 
         async def raise_429(**kwargs):
             raise genai_errors.ClientError(
@@ -1544,11 +1544,11 @@ git commit -m "test(gemini): add failing tests for check_status() status mapping
 ### Task 11: check_status() — implement to make tests pass
 
 **Files:**
-- Modify: `src/thoth/providers/gemini.py:GeminiProvider`
+- Modify: `src/doxa_research/providers/gemini.py:GeminiProvider`
 
 - [ ] **Step 1: Add the check_status() method**
 
-In `src/thoth/providers/gemini.py`, inside `GeminiProvider`, add:
+In `src/doxa_research/providers/gemini.py`, inside `GeminiProvider`, add:
 
 ```python
     async def check_status(self, job_id: str) -> dict[str, Any]:
@@ -1657,7 +1657,7 @@ Expected: 7 PASS.
 - [ ] **Step 3: Commit**
 
 ```bash
-git add src/thoth/providers/gemini.py
+git add src/doxa_research/providers/gemini.py
 git commit -m "feat(gemini): implement check_status() with 403-quirk + cancel disambiguation"
 ```
 
@@ -1778,11 +1778,11 @@ git commit -m "test(gemini): add failing tests for get_result() + citation extra
 **Convention reference (P26+P27):** annotation parsing + Sources-block formatting helpers (`_format_gemini_sources_block` etc.) live *below* the `GeminiProvider` class at module bottom, matching P27's layout (`perplexity.py:917,952`). Public `get_result()` delegates to `_get_async_result()` (P27 internal-helper convention). Mirror the empty-annotations conditional rendering pattern from `openai.py:599-606`.
 
 **Files:**
-- Modify: `src/thoth/providers/gemini.py:GeminiProvider`
+- Modify: `src/doxa_research/providers/gemini.py:GeminiProvider`
 
 - [ ] **Step 1: Add get_result() method**
 
-In `src/thoth/providers/gemini.py`, inside `GeminiProvider`, add:
+In `src/doxa_research/providers/gemini.py`, inside `GeminiProvider`, add:
 
 ```python
     async def get_result(self, job_id: str, verbose: bool = False) -> str:
@@ -1874,7 +1874,7 @@ Expected: 4 PASS.
 - [ ] **Step 3: Commit**
 
 ```bash
-git add src/thoth/providers/gemini.py
+git add src/doxa_research/providers/gemini.py
 git commit -m "feat(gemini): implement get_result() with citation extraction + empty-OK"
 ```
 
@@ -1960,11 +1960,11 @@ git commit -m "test(gemini): add failing tests for cancel() + reconnect-on-unkno
 ### Task 15: cancel() and reconnect() — implement
 
 **Files:**
-- Modify: `src/thoth/providers/gemini.py:GeminiProvider`
+- Modify: `src/doxa_research/providers/gemini.py:GeminiProvider`
 
 - [ ] **Step 1: Add reconnect() and cancel() methods**
 
-In `src/thoth/providers/gemini.py`, inside `GeminiProvider`, add:
+In `src/doxa_research/providers/gemini.py`, inside `GeminiProvider`, add:
 
 ```python
     async def reconnect(self, job_id: str) -> None:
@@ -2021,7 +2021,7 @@ Expected: 3 PASS.
 - [ ] **Step 3: Commit**
 
 ```bash
-git add src/thoth/providers/gemini.py
+git add src/doxa_research/providers/gemini.py
 git commit -m "feat(gemini): implement cancel() + reconnect() with disambiguation flag"
 ```
 
@@ -2033,7 +2033,7 @@ Per parity row 3 (sub-bullet). Gemini exposes only the one DR agent currently, s
 
 **Files:**
 - Test: `tests/test_gem_background.py` (append)
-- Modify: `src/thoth/providers/gemini.py:GeminiProvider`
+- Modify: `src/doxa_research/providers/gemini.py:GeminiProvider`
 
 - [ ] **Step 1: Add test**
 
@@ -2052,7 +2052,7 @@ class TestGeminiListModels:
 
     @pytest.mark.asyncio
     async def test_list_models_cached_uses_cache(self, provider, monkeypatch, tmp_path):
-        from thoth.models import ModelCache
+        from doxa-research.models import ModelCache
 
         # Force the cache directory into tmp so this test is hermetic.
         cache = ModelCache("gemini")
@@ -2074,7 +2074,7 @@ Expected: 2 FAIL.
 
 - [ ] **Step 3: Implement list_models() + list_models_cached()**
 
-Append to `GeminiProvider` in `src/thoth/providers/gemini.py`:
+Append to `GeminiProvider` in `src/doxa_research/providers/gemini.py`:
 
 ```python
     async def list_models(self) -> list[dict[str, Any]]:
@@ -2123,7 +2123,7 @@ Expected: 2 PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add tests/test_gem_background.py src/thoth/providers/gemini.py
+git add tests/test_gem_background.py src/doxa_research/providers/gemini.py
 git commit -m "feat(gemini): implement list_models() + list_models_cached()"
 ```
 
@@ -2135,7 +2135,7 @@ Per spec parity row 2.
 
 **Files:**
 - Test: `tests/test_gem_background.py` (append)
-- Modify: `src/thoth/config.py:KNOWN_MODELS`
+- Modify: `src/doxa_research/config.py:KNOWN_MODELS`
 
 - [ ] **Step 1: Add test asserting all 9 modes exist**
 
@@ -2160,7 +2160,7 @@ class TestGeminiModes:
         ],
     )
     def test_gemini_mode_exists_in_known_models(self, mode_name):
-        from thoth.config import KNOWN_MODELS
+        from doxa-research.config import KNOWN_MODELS
 
         assert mode_name in KNOWN_MODELS, f"{mode_name} missing from KNOWN_MODELS"
 
@@ -2180,7 +2180,7 @@ Expected: 9 FAIL with `AssertionError: gemini_quick_research missing from KNOWN_
 
 - [ ] **Step 3: Add mode entries**
 
-In `src/thoth/config.py`, find the existing `KNOWN_MODELS` dict (around line 53). Just before the closing `}`, add 9 new entries. Each mirrors the OpenAI counterpart's `system_prompt` / `description` (purpose is provider-independent), changing only `provider` and `model`:
+In `src/doxa_research/config.py`, find the existing `KNOWN_MODELS` dict (around line 53). Just before the closing `}`, add 9 new entries. Each mirrors the OpenAI counterpart's `system_prompt` / `description` (purpose is provider-independent), changing only `provider` and `model`:
 
 ```python
     "gemini_quick_research": {
@@ -2261,7 +2261,7 @@ In `src/thoth/config.py`, find the existing `KNOWN_MODELS` dict (around line 53)
     },
 ```
 
-The exact `system_prompt` text should mirror the OpenAI counterpart — open `src/thoth/config.py` and copy each prompt string from the matching `quick_research` / `exploration` / etc. mode, swapping only `provider` and `model`. The text above is approximate; use the existing prompts verbatim if they differ.
+The exact `system_prompt` text should mirror the OpenAI counterpart — open `src/doxa_research/config.py` and copy each prompt string from the matching `quick_research` / `exploration` / etc. mode, swapping only `provider` and `model`. The text above is approximate; use the existing prompts verbatim if they differ.
 
 - [ ] **Step 4: Run tests to verify pass**
 
@@ -2274,7 +2274,7 @@ Expected: 9 PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add tests/test_gem_background.py src/thoth/config.py
+git add tests/test_gem_background.py src/doxa_research/config.py
 git commit -m "feat(gemini): add 9 gemini_* modes to KNOWN_MODELS"
 ```
 
@@ -2285,11 +2285,11 @@ git commit -m "feat(gemini): add 9 gemini_* modes to KNOWN_MODELS"
 Per spec parity row 1.
 
 **Files:**
-- Modify: `src/thoth/cli_subcommands/_options.py`
+- Modify: `src/doxa_research/cli_subcommands/_options.py`
 
 - [ ] **Step 1: Add the flag tuple**
 
-In `src/thoth/cli_subcommands/_options.py`, find the existing block:
+In `src/doxa_research/cli_subcommands/_options.py`, find the existing block:
 
 ```python
     (
@@ -2326,7 +2326,7 @@ Add a new tuple between the perplexity and mock entries:
 - [ ] **Step 2: Verify the flag is wired through to commands**
 
 ```bash
-uv run thoth ask --help 2>&1 | grep -i 'api-key-gemini'
+uv run doxa-research ask --help 2>&1 | grep -i 'api-key-gemini'
 ```
 
 Expected: line showing `--api-key-gemini TEXT` in the output.
@@ -2334,7 +2334,7 @@ Expected: line showing `--api-key-gemini TEXT` in the output.
 - [ ] **Step 3: Verify resume subcommand also picks it up**
 
 ```bash
-uv run thoth resume --help 2>&1 | grep -i 'api-key-gemini'
+uv run doxa-research resume --help 2>&1 | grep -i 'api-key-gemini'
 ```
 
 Expected: line showing `--api-key-gemini TEXT`. (If absent, check whether resume.py applies the same option group; it should, per the existing pattern.)
@@ -2342,7 +2342,7 @@ Expected: line showing `--api-key-gemini TEXT`. (If absent, check whether resume
 - [ ] **Step 4: Commit**
 
 ```bash
-git add src/thoth/cli_subcommands/_options.py
+git add src/doxa_research/cli_subcommands/_options.py
 git commit -m "feat(gemini): add --api-key-gemini CLI flag"
 ```
 
@@ -2352,7 +2352,7 @@ git commit -m "feat(gemini): add --api-key-gemini CLI flag"
 
 **Files:**
 - Test: `tests/test_provider_config.py:<existing>` (extend)
-- Modify: `src/thoth/config.py:ConfigSchema.get_defaults`
+- Modify: `src/doxa_research/config.py:ConfigSchema.get_defaults`
 
 - [ ] **Step 1: Add test asserting defaults exist**
 
@@ -2363,14 +2363,14 @@ class TestGeminiConfigDefaults:
     """[providers.gemini] block must exist with default api_key placeholder."""
 
     def test_gemini_provider_in_default_config(self):
-        from thoth.config import ConfigSchema
+        from doxa-research.config import ConfigSchema
 
         defaults = ConfigSchema.get_defaults()
         assert "gemini" in defaults["providers"]
         assert defaults["providers"]["gemini"]["api_key"] == "${GEMINI_API_KEY}"
 
     def test_gemini_provider_has_polling_tunables(self):
-        from thoth.config import ConfigSchema
+        from doxa-research.config import ConfigSchema
 
         defaults = ConfigSchema.get_defaults()
         gem = defaults["providers"]["gemini"]
@@ -2388,7 +2388,7 @@ Expected: 2 FAIL.
 
 - [ ] **Step 3: Add the defaults block**
 
-In `src/thoth/config.py`, find the `providers:` block inside `ConfigSchema.get_defaults()` (around line 254):
+In `src/doxa_research/config.py`, find the `providers:` block inside `ConfigSchema.get_defaults()` (around line 254):
 
 ```python
             "providers": {
@@ -2422,7 +2422,7 @@ Expected: 2 PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add tests/test_gem_background.py src/thoth/config.py
+git add tests/test_gem_background.py src/doxa_research/config.py
 git commit -m "feat(gemini): add [providers.gemini] defaults with 10s/20min polling"
 ```
 
@@ -2434,12 +2434,12 @@ The runtime's `_run_polling_loop` already reads `config["execution"]["poll_inter
 
 **Files:**
 - Test: existing `tests/test_polling_interval.py` (extend) OR `tests/test_gem_background.py`
-- Modify: possibly `src/thoth/run.py` (only if runtime doesn't already honor per-provider config)
+- Modify: possibly `src/doxa_research/run.py` (only if runtime doesn't already honor per-provider config)
 
 - [ ] **Step 1: Check current polling config wiring**
 
 ```bash
-grep -n "poll_interval\|max_wait" /Users/stevemorin/c/thoth/src/thoth/run.py | head -20
+grep -n "poll_interval\|max_wait" /Users/stevemorin/c/doxa-research/src/doxa_research/run.py | head -20
 ```
 
 Read the output. If `_run_polling_loop` reads from `config["providers"][name].get("poll_interval", config["execution"]["poll_interval"])`, the per-provider override already works — proceed to step 4 (no code change). If it only reads `config["execution"]["poll_interval"]`, do step 2-3.
@@ -2472,7 +2472,7 @@ In `tests/test_gem_background.py`, append:
 class TestGeminiPollingTunables:
     def test_provider_uses_gemini_poll_interval(self):
         """When provider=gemini, runtime should respect [providers.gemini] poll_interval=10."""
-        from thoth.config import ConfigManager
+        from doxa-research.config import ConfigManager
 
         # Smoke test against ConfigManager — assert gemini block reads as expected.
         # Full runtime integration is covered in test_polling_interval.py / VCR tests.
@@ -2493,7 +2493,7 @@ Expected: PASS (or skip the test if the existing runtime already covers the path
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/thoth/run.py tests/test_gem_background.py
+git add src/doxa_research/run.py tests/test_gem_background.py
 git commit -m "feat(gemini): per-provider polling tunables (10s/20min override)"
 ```
 
@@ -2513,7 +2513,7 @@ Before recording cassettes (which requires real API access), confirm all monkeyp
 - [ ] **Step 1: Run the full pytest suite**
 
 ```bash
-cd /Users/stevemorin/c/thoth
+cd /Users/stevemorin/c/doxa-research
 uv run pytest -v 2>&1 | tail -20
 ```
 
@@ -2529,10 +2529,10 @@ uv run ty check src/
 
 Expected: all three pass.
 
-- [ ] **Step 3: Run the thoth_test integration suite**
+- [ ] **Step 3: Run the doxa_test integration suite**
 
 ```bash
-./thoth_test -r --provider mock --skip-interactive -q
+./doxa_test -r --provider mock --skip-interactive -q
 ```
 
 Expected: pass (no Gemini-specific tests added there yet; mock provider should still pass).
@@ -2560,7 +2560,7 @@ git commit -m "style(gemini): apply ruff formatting after provider implementatio
 Per spec test strategy. Requires `GEMINI_API_KEY` in the environment.
 
 **Files:**
-- Create: `thoth_test_cassettes/gemini/happy-path.yaml`
+- Create: `doxa_test_cassettes/gemini/happy-path.yaml`
 
 ⚠ **This task incurs real API cost (~$2-3 for one Deep Research call)**.
 
@@ -2581,9 +2581,9 @@ Create `/tmp/record_gemini_cassette.py`:
 import asyncio
 import os
 import vcr
-from thoth.providers.gemini import GeminiProvider
+from doxa-research.providers.gemini import GeminiProvider
 
-CASSETTE_PATH = "thoth_test_cassettes/gemini/happy-path.yaml"
+CASSETTE_PATH = "doxa_test_cassettes/gemini/happy-path.yaml"
 PROMPT = "Briefly summarize what an LLM is in two paragraphs."
 
 
@@ -2621,19 +2621,19 @@ with vcr.use_cassette(
 - [ ] **Step 3: Run the recording**
 
 ```bash
-mkdir -p thoth_test_cassettes/gemini
+mkdir -p doxa_test_cassettes/gemini
 uv run python /tmp/record_gemini_cassette.py
 ```
 
-Expected: ~10-20 min runtime. Final output: `Done.`. The file `thoth_test_cassettes/gemini/happy-path.yaml` is created.
+Expected: ~10-20 min runtime. Final output: `Done.`. The file `doxa_test_cassettes/gemini/happy-path.yaml` is created.
 
 ⚠ If VCR cannot intercept the google-genai SDK's transport (Open Question #1 from the spec), this script fails or produces an empty cassette. In that case, abandon VCR for this provider and add `pytest.skip("google-genai not VCR-compatible; relies on monkeypatched-SDK tests instead")` to `tests/test_vcr_gemini.py`. The unit tests already cover the contract.
 
 - [ ] **Step 4: Inspect the cassette to verify it captured the interactions**
 
 ```bash
-head -50 thoth_test_cassettes/gemini/happy-path.yaml
-wc -l thoth_test_cassettes/gemini/happy-path.yaml
+head -50 doxa_test_cassettes/gemini/happy-path.yaml
+wc -l doxa_test_cassettes/gemini/happy-path.yaml
 ```
 
 Expected: YAML with `interactions:` block, several requests (one POST to `/interactions`, multiple GETs to `/interactions/{id}`), responses with status codes 200.
@@ -2643,14 +2643,14 @@ Expected: YAML with `interactions:` block, several requests (one POST to `/inter
 The cassette will have the real API key in headers. Sanitize by replacing it:
 
 ```bash
-sed -i.bak "s|${GEMINI_API_KEY}|gemini-replay-dummy|g" thoth_test_cassettes/gemini/happy-path.yaml
-rm thoth_test_cassettes/gemini/happy-path.yaml.bak
+sed -i.bak "s|${GEMINI_API_KEY}|gemini-replay-dummy|g" doxa_test_cassettes/gemini/happy-path.yaml
+rm doxa_test_cassettes/gemini/happy-path.yaml.bak
 ```
 
 - [ ] **Step 6: Verify gitleaks pass**
 
 ```bash
-gitleaks detect --no-git --source thoth_test_cassettes/gemini/happy-path.yaml
+gitleaks detect --no-git --source doxa_test_cassettes/gemini/happy-path.yaml
 ```
 
 Expected: no leaks reported.
@@ -2659,7 +2659,7 @@ Expected: no leaks reported.
 
 ```bash
 rm /tmp/record_gemini_cassette.py
-git add thoth_test_cassettes/gemini/happy-path.yaml
+git add doxa_test_cassettes/gemini/happy-path.yaml
 git commit -m "test(gemini): record happy-path VCR cassette"
 ```
 
@@ -2679,7 +2679,7 @@ from __future__ import annotations
 
 import asyncio
 
-from tests.conftest import CASSETTE_DIR, thoth_vcr
+from tests.conftest import CASSETTE_DIR, doxa_vcr
 
 GEMINI_CASSETTE = str(CASSETTE_DIR / "gemini" / "happy-path.yaml")
 
@@ -2689,7 +2689,7 @@ def _run(coro):
 
 
 def _make_provider():
-    from thoth.providers.gemini import GeminiProvider
+    from doxa-research.providers.gemini import GeminiProvider
 
     return GeminiProvider(
         api_key="gemini-replay-dummy",
@@ -2700,7 +2700,7 @@ def _make_provider():
 class TestGeminiSubmit:
     """Replay the happy-path cassette through GeminiProvider.submit()."""
 
-    @thoth_vcr(GEMINI_CASSETTE)
+    @doxa_vcr(GEMINI_CASSETTE)
     def test_submit_returns_interaction_id(self):
         provider = _make_provider()
         job_id = _run(provider.submit(
@@ -2712,7 +2712,7 @@ class TestGeminiSubmit:
 
 
 class TestGeminiCheckStatus:
-    @thoth_vcr(GEMINI_CASSETTE)
+    @doxa_vcr(GEMINI_CASSETTE)
     def test_check_status_replay_completes(self):
         provider = _make_provider()
         job_id = _run(provider.submit(
@@ -2732,7 +2732,7 @@ class TestGeminiCheckStatus:
 
 
 class TestGeminiGetResult:
-    @thoth_vcr(GEMINI_CASSETTE)
+    @doxa_vcr(GEMINI_CASSETTE)
     def test_get_result_returns_text(self):
         provider = _make_provider()
         job_id = _run(provider.submit(
@@ -2806,16 +2806,16 @@ requires_gemini_key = pytest.mark.skipif(
 @pytest.mark.live_api
 @requires_gemini_key
 class TestGeminiLiveCLIWorkflows:
-    """End-to-end thoth ask --provider gemini against live API."""
+    """End-to-end doxa-research ask --provider gemini against live API."""
 
     def test_ask_gemini_quick_research_writes_output(self, tmp_path):
-        """Smoke test: thoth ask --mode gemini_quick_research writes a file."""
+        """Smoke test: doxa-research ask --mode gemini_quick_research writes a file."""
         out_dir = tmp_path / "out"
         out_dir.mkdir()
 
         result = subprocess.run(
             [
-                "uv", "run", "thoth", "ask",
+                "uv", "run", "doxa-research", "ask",
                 "--mode", "gemini_quick_research",
                 "--output-dir", str(out_dir),
                 "--project", "test-live",
@@ -2840,7 +2840,7 @@ class TestGeminiLiveCLIWorkflows:
 
         result = subprocess.run(
             [
-                "uv", "run", "thoth", "ask",
+                "uv", "run", "doxa-research", "ask",
                 "--mode", "gemini_quick_research",
                 "What are LLMs?",
             ],
@@ -2887,7 +2887,7 @@ Same edit shape — add the env var for `extended.yml`'s test step. The `tests/e
 
 - [ ] **Step 5: Note: configure the GitHub repo secret**
 
-Manually (not in code): add `GEMINI_API_KEY` as a repo secret at https://github.com/smorin/thoth/settings/secrets/actions. This is documented in the commit message but cannot be done from this plan.
+Manually (not in code): add `GEMINI_API_KEY` as a repo secret at https://github.com/smorin/doxa-research/settings/secrets/actions. This is documented in the commit message but cannot be done from this plan.
 
 - [ ] **Step 6: Commit**
 
@@ -2896,7 +2896,7 @@ git add tests/extended/test_gemini_real_workflows.py .github/workflows/live-api.
 git commit -m "test(gemini): add live_api workflow tests + extended/live-api YAML wiring
 
 Repo secret GEMINI_API_KEY must be configured at
-https://github.com/smorin/thoth/settings/secrets/actions before the
+https://github.com/smorin/doxa-research/settings/secrets/actions before the
 nightly extended and weekly live-api workflows include Gemini coverage.
 The workflows have continue-on-error: true (informational), so missing
 secrets fail the job non-blocking until configured."
@@ -2914,7 +2914,7 @@ Per spec out-of-scope item #8 and provider-specific delta #10 — surface costs 
 - [ ] **Step 1: Find the existing provider section in README**
 
 ```bash
-grep -n "OpenAI\|Perplexity\|providers" /Users/stevemorin/c/thoth/README.md | head -20
+grep -n "OpenAI\|Perplexity\|providers" /Users/stevemorin/c/doxa-research/README.md | head -20
 ```
 
 Identify where providers are listed. Add a Gemini section near the OpenAI listing.
@@ -2926,7 +2926,7 @@ In `README.md`, after the OpenAI provider description (find by grep), insert:
 ```markdown
 ### Gemini Deep Research
 
-`thoth` supports Google Gemini Deep Research as an asynchronous (background) provider via the Interactions API.
+`doxa-research` supports Google Gemini Deep Research as an asynchronous (background) provider via the Interactions API.
 
 - **Default model:** `deep-research-preview-04-2026` (the only built-in Deep Research agent currently available)
 - **API key:** set `GEMINI_API_KEY` env var or pass `--api-key-gemini`
@@ -2937,8 +2937,8 @@ In `README.md`, after the OpenAI provider description (find by grep), insert:
 Available modes (mirror of the OpenAI mode set):
 
 ```bash
-thoth ask --mode gemini_quick_research "What is X?"      # ~10-15 min, ~$2-3
-thoth ask --mode gemini_deep_research "Comprehensive Y"  # ~20+ min, ~$4-6
+doxa ask --mode gemini_quick_research "What is X?"      # ~10-15 min, ~$2-3
+doxa ask --mode gemini_deep_research "Comprehensive Y"  # ~20+ min, ~$4-6
 # also: gemini_exploration, gemini_deep_dive, gemini_tutorial,
 # gemini_solution, gemini_prd, gemini_tdd, gemini_comparison
 ```
@@ -2949,7 +2949,7 @@ Cross-provider mode chaining is supported — you can run `exploration → gemin
 - [ ] **Step 3: Run a manual smoke test (optional, requires API key)**
 
 ```bash
-GEMINI_API_KEY=<your-key> uv run thoth ask --mode gemini_quick_research --project gemini-smoke "What are the three core principles of REST?"
+GEMINI_API_KEY=<your-key> uv run doxa-research ask --mode gemini_quick_research --project gemini-smoke "What are the three core principles of REST?"
 ```
 
 Expected (after ~10-20 min): output file written under `research-outputs/gemini-smoke/<timestamp>_gemini_quick_research_gemini_*.md` containing a multi-paragraph answer with `## Sources` if annotations were returned.
@@ -2970,28 +2970,28 @@ Full-gate run. The committed-state should be clean and ready to PR.
 - [ ] **Step 1: Run the lefthook-equivalent full gate**
 
 ```bash
-cd /Users/stevemorin/c/thoth
+cd /Users/stevemorin/c/doxa-research
 uv run ruff check src/ tests/
 uv run ruff format --check src/ tests/
 uv run ty check src/
 uv run pytest -q
-./thoth_test -r --skip-interactive -q
+./doxa_test -r --skip-interactive -q
 ```
 
 Expected: all 5 pass.
 
-- [ ] **Step 2: Verify `thoth modes` lists the 9 new gemini modes**
+- [ ] **Step 2: Verify `doxa-research modes` lists the 9 new gemini modes**
 
 ```bash
-uv run thoth modes 2>&1 | grep -i gemini
+uv run doxa-research modes 2>&1 | grep -i gemini
 ```
 
 Expected: 9 lines, one per gemini_* mode.
 
-- [ ] **Step 3: Verify `thoth providers --models --provider gemini` works**
+- [ ] **Step 3: Verify `doxa-research providers --models --provider gemini` works**
 
 ```bash
-uv run thoth providers --models --provider gemini
+uv run doxa-research providers --models --provider gemini
 ```
 
 Expected: lists `deep-research-preview-04-2026` (no API call required for hardcoded model).
@@ -2999,7 +2999,7 @@ Expected: lists `deep-research-preview-04-2026` (no API call required for hardco
 - [ ] **Step 4: Verify provider error message for missing key is helpful**
 
 ```bash
-GEMINI_API_KEY= uv run thoth ask --mode gemini_quick_research "test"
+GEMINI_API_KEY= uv run doxa-research ask --mode gemini_quick_research "test"
 ```
 
 Expected: error message mentioning `GEMINI_API_KEY` env var or `--api-key-gemini`, exit code 2.
@@ -3026,12 +3026,12 @@ P28 implementation is complete. Mark `[P28-T02]`, `[P28-T03]`, `[P28-T04]` as `[
 
 ## Acceptance criteria (mirror of P28 spec)
 
-- [ ] `thoth ask --mode gemini_deep_research "test query"` submits and polls a Gemini Deep Research interaction end-to-end, writes the result to the project directory.
-- [ ] `thoth resume <op-id>` re-attaches to a Gemini interaction after process restart.
-- [ ] `thoth cancel <op-id>` calls `client.aio.interactions.cancel()` and marks the operation cancelled.
+- [ ] `doxa-research ask --mode gemini_deep_research "test query"` submits and polls a Gemini Deep Research interaction end-to-end, writes the result to the project directory.
+- [ ] `doxa-research resume <op-id>` re-attaches to a Gemini interaction after process restart.
+- [ ] `doxa-research cancel <op-id>` calls `client.aio.interactions.cancel()` and marks the operation cancelled.
 - [ ] Ctrl-C during a running Gemini operation cooperatively cancels and writes a resume hint.
-- [ ] `thoth providers --models --provider gemini` lists the available Deep Research agent.
-- [ ] All 9 `gemini_*` modes appear in `thoth modes` and pass the existing `tests/extended/test_model_kind_runtime.py` model-kind drift check.
+- [ ] `doxa-research providers --models --provider gemini` lists the available Deep Research agent.
+- [ ] All 9 `gemini_*` modes appear in `doxa-research modes` and pass the existing `tests/extended/test_model_kind_runtime.py` model-kind drift check.
 - [ ] VCR cassette replay tests pass with no real API calls (or are explicitly skipped if VCR-vs-SDK incompatible — see Task 22 / Open Question #1).
 - [ ] Default test suite (`uv run pytest`) green; gated `live_api` and `extended` workflows green when run manually with secrets configured.
 - [ ] `_map_gemini_error` covers all 8 error classes documented in research doc §10 + standard HTTP error codes.

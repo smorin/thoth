@@ -23,7 +23,7 @@ from tests.extended.conftest import (
     load_checkpoint,
     payload,
     read_until_operation_id,
-    run_thoth,
+    run_doxa,
     wait_for_provider_job_id,
 )
 
@@ -37,7 +37,7 @@ def test_openai_resume_async_cli_one_tick_after_explicit_async_submit(
     env, state_root = live_cli_env
     operation_id: str | None = None
     try:
-        submit, submit_elapsed = run_thoth(
+        submit, submit_elapsed = run_doxa(
             [
                 "ask",
                 "Return exactly these three words: async resume probe",
@@ -58,7 +58,7 @@ def test_openai_resume_async_cli_one_tick_after_explicit_async_submit(
         assert operation_id
         assert submit_elapsed < 30
 
-        resume_json, resume_elapsed = run_thoth(
+        resume_json, resume_elapsed = run_doxa(
             ["resume", operation_id, "--async", "--json"],
             env,
         )
@@ -78,7 +78,7 @@ def test_openai_resume_async_cli_one_tick_after_explicit_async_submit(
             "completed",
         }
 
-        resume_text, text_elapsed = run_thoth(["resume", operation_id, "--async"], env)
+        resume_text, text_elapsed = run_doxa(["resume", operation_id, "--async"], env)
         assert resume_text.returncode == 0, resume_text.stderr + resume_text.stdout
         assert text_elapsed < 20
         assert (
@@ -87,7 +87,7 @@ def test_openai_resume_async_cli_one_tick_after_explicit_async_submit(
             or "already completed" in resume_text.stdout
         )
 
-        status, _ = run_thoth(["status", operation_id, "--json"], env)
+        status, _ = run_doxa(["status", operation_id, "--json"], env)
         assert status.returncode == 0, status.stderr + status.stdout
         status_data = payload(status)["data"]
         assert status_data["providers"]["openai"]["status"] in {
@@ -108,7 +108,7 @@ def test_openai_ctrl_c_sync_background_cancels_upstream(
         [
             sys.executable,
             "-m",
-            "thoth",
+            "doxa_research",
             "ask",
             "Start a short live cancellation probe. Keep the response concise.",
             "--mode",
@@ -137,7 +137,7 @@ def test_openai_ctrl_c_sync_background_cancels_upstream(
         combined = "".join(prefix_output) + stdout + stderr
 
         assert proc.returncode == 1, combined[-2000:]
-        assert "Checkpoint saved. Resume with: thoth resume" in combined
+        assert "Checkpoint saved. Resume with: doxa resume" in combined
         assert "Cancelled upstream: openai" in combined
         assert "Aborted!" in combined
 

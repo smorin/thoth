@@ -16,7 +16,7 @@
 - [x] [P01-T02] Add `update-snapshots` Makefile target
 - [-] [P01-TS03] Validate `.github/dependabot.yml` with `uvx yamllint` — won't fix; yamllint runs in lefthook + CI
 - [x] [P01-T03] Create `.github/dependabot.yml`
-- [-] [P01-TS04] Verify `uvx bandit -r src/thoth/ -ll -q` exits 0 — won't fix; bandit runs in lefthook on every commit
+- [-] [P01-TS04] Verify `uvx bandit -r src/doxa_research/ -ll -q` exits 0 — won't fix; bandit runs in lefthook on every commit
 - [x] [P01-T04] Add bandit hook to `lefthook.yml`
 - [x] [P01-T05] Create `.github/PULL_REQUEST_TEMPLATE.md`
 - [x] [P01-T06] Create `.github/ISSUE_TEMPLATE/bug_report.yml`

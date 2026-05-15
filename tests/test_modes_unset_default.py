@@ -1,23 +1,23 @@
-"""Tests for `thoth modes unset-default` — data layer (P35)."""
+"""Tests for `doxa modes unset-default` — data layer (P35)."""
 
 from __future__ import annotations
 
 import tomllib
 from pathlib import Path
 
-from thoth.config_cmd import (
+from doxa_research.config_cmd import (
     get_config_profile_add_data,
     get_modes_set_default_data,
     get_modes_unset_default_data,
 )
 
 
-def test_unset_default_general_removes_key(isolated_thoth_home: Path) -> None:
+def test_unset_default_general_removes_key(isolated_doxa_home: Path) -> None:
     get_modes_set_default_data("deep_research", project=False, profile=None, config_path=None)
     out = get_modes_unset_default_data(project=False, profile=None, config_path=None)
     assert out["removed"] is True
 
-    from thoth.paths import user_config_file
+    from doxa_research.paths import user_config_file
 
     data = tomllib.loads(user_config_file().read_text())
     assert "default_mode" not in data.get("general", {})
@@ -33,11 +33,11 @@ def test_unset_default_general_no_file_returns_no_file(tmp_path: Path) -> None:
 
 
 def test_unset_default_general_key_absent_returns_not_found(
-    isolated_thoth_home: Path,
+    isolated_doxa_home: Path,
 ) -> None:
     # Pre-create user config without default_mode.
-    from thoth.config_document import ConfigDocument
-    from thoth.paths import user_config_file
+    from doxa_research.config_document import ConfigDocument
+    from doxa_research.paths import user_config_file
 
     doc = ConfigDocument.load(user_config_file())
     doc.save()  # writes empty doc
@@ -46,7 +46,7 @@ def test_unset_default_general_key_absent_returns_not_found(
     assert out["reason"] == "NOT_FOUND"
 
 
-def test_unset_default_profile_removes_key(isolated_thoth_home: Path) -> None:
+def test_unset_default_profile_removes_key(isolated_doxa_home: Path) -> None:
     get_config_profile_add_data("work", project=False, config_path=None)
     get_modes_set_default_data("deep_research", project=False, profile="work", config_path=None)
     out = get_modes_unset_default_data(project=False, profile="work", config_path=None)
@@ -55,7 +55,7 @@ def test_unset_default_profile_removes_key(isolated_thoth_home: Path) -> None:
 
 
 def test_unset_default_profile_idempotent_without_profile_check(
-    isolated_thoth_home: Path,
+    isolated_doxa_home: Path,
 ) -> None:
     """δ: unset does NOT enforce same-tier profile-existence."""
     out = get_modes_unset_default_data(project=False, profile="never-existed", config_path=None)
@@ -78,10 +78,10 @@ import json  # noqa: E402
 
 from click.testing import CliRunner  # noqa: E402
 
-from thoth.cli import cli  # noqa: E402
+from doxa_research.cli import cli  # noqa: E402
 
 
-def test_cli_modes_unset_default_human(isolated_thoth_home: Path) -> None:
+def test_cli_modes_unset_default_human(isolated_doxa_home: Path) -> None:
     runner = CliRunner()
     runner.invoke(cli, ["modes", "set-default", "deep_research"])
     result = runner.invoke(cli, ["modes", "unset-default"])
@@ -89,7 +89,7 @@ def test_cli_modes_unset_default_human(isolated_thoth_home: Path) -> None:
 
 
 def test_cli_modes_unset_default_accepts_inline_profile_target(
-    isolated_thoth_home: Path,
+    isolated_doxa_home: Path,
 ) -> None:
     runner = CliRunner()
     assert runner.invoke(cli, ["config", "profiles", "add", "work"]).exit_code == 0
@@ -102,13 +102,13 @@ def test_cli_modes_unset_default_accepts_inline_profile_target(
 
     assert result.exit_code == 0, result.output
 
-    from thoth.paths import user_config_file
+    from doxa_research.paths import user_config_file
 
     data = tomllib.loads(user_config_file().read_text())
     assert "default_mode" not in data["profiles"]["work"]
 
 
-def test_cli_modes_unset_default_json_when_absent(isolated_thoth_home: Path) -> None:
+def test_cli_modes_unset_default_json_when_absent(isolated_doxa_home: Path) -> None:
     runner = CliRunner()
     result = runner.invoke(cli, ["modes", "unset-default", "--json"])
     assert result.exit_code == 0, result.output

@@ -4,9 +4,9 @@
 
 **Goal:** Replace the "Interactive setup wizard not yet implemented" placeholder in `init_command()` with a real wizard that collects providers, API-key strategy, and default mode, then writes the resulting TOML config — preserving unknown sections on `--force` round-trips.
 
-**Architecture:** A new `src/thoth/init_wizard.py` module owns all interactive prompting and returns a frozen `WizardAnswers` dataclass. `init_command()` in `commands.py` becomes a dispatcher that picks between the existing static-starter path (non-interactive / JSON) and the wizard path. The wizard accepts an injected `prompt_fn` and `env` mapping so unit tests never touch real stdin or `os.environ`. A new `_apply_wizard_answers(doc, answers)` helper merges answers into a `tomlkit` document, used by both fresh-doc and `--force` round-trip writes.
+**Architecture:** A new `src/doxa_research/init_wizard.py` module owns all interactive prompting and returns a frozen `WizardAnswers` dataclass. `init_command()` in `commands.py` becomes a dispatcher that picks between the existing static-starter path (non-interactive / JSON) and the wizard path. The wizard accepts an injected `prompt_fn` and `env` mapping so unit tests never touch real stdin or `os.environ`. A new `_apply_wizard_answers(doc, answers)` helper merges answers into a `tomlkit` document, used by both fresh-doc and `--force` round-trip writes.
 
-**Tech Stack:** Python 3.11+, Click (CLI), `rich.prompt` (text prompts), `tomlkit` (round-trip TOML), `pytest`, `pexpect` (thoth_test integration).
+**Tech Stack:** Python 3.11+, Click (CLI), `rich.prompt` (text prompts), `tomlkit` (round-trip TOML), `pytest`, `pexpect` (doxa_test integration).
 
 **Spec:** [docs/superpowers/specs/2026-05-03-p31-interactive-init-design.md](../specs/2026-05-03-p31-interactive-init-design.md)
 
@@ -16,11 +16,11 @@
 
 | File | Status | Responsibility |
 |---|---|---|
-| `src/thoth/init_wizard.py` | **new** | `WizardAnswers` and `ProviderChoice` dataclasses. `run()` entry point. Q1/Q2/Q3 prompt helpers. Numbered-list helper. Review-and-confirm loop. `ScriptedPrompts` test harness lives next to it but is exported under a `_testing` submodule path so production imports don't pull it in. |
-| `src/thoth/commands.py` | **modify** | `init_command` becomes a dispatcher. Add `_apply_wizard_answers(doc, answers)` and `_load_or_build_doc(target, force)` helpers. Replace lines 217–224 (placeholder + write) with a branch that calls the wizard or falls through to the static path. |
+| `src/doxa_research/init_wizard.py` | **new** | `WizardAnswers` and `ProviderChoice` dataclasses. `run()` entry point. Q1/Q2/Q3 prompt helpers. Numbered-list helper. Review-and-confirm loop. `ScriptedPrompts` test harness lives next to it but is exported under a `_testing` submodule path so production imports don't pull it in. |
+| `src/doxa_research/commands.py` | **modify** | `init_command` becomes a dispatcher. Add `_apply_wizard_answers(doc, answers)` and `_load_or_build_doc(target, force)` helpers. Replace lines 217–224 (placeholder + write) with a branch that calls the wizard or falls through to the static path. |
 | `tests/test_init_wizard.py` | **new** | Unit-tests for the wizard module: TS01-a through TS01-k (the wizard-internal cases). Uses a deterministic `ScriptedPrompts` stub. |
 | `tests/test_init_command_dispatch.py` | **new** | Dispatcher-level tests: TS01-l (`--non-interactive` skips wizard), TS01-m (`--json` envelope regression), `--force` round-trip preserves unknown sections. |
-| `thoth_test` | **modify** | Add one `pexpect`-driven case `M2T-INTERACTIVE-INIT` that scripts the wizard against the real binary. |
+| `doxa_test` | **modify** | Add one `pexpect`-driven case `M2T-INTERACTIVE-INIT` that scripts the wizard against the real binary. |
 | `projects/P31-interactive-init-command.md` | **modify** | Flip TS01/T01/T02 status as work lands. |
 | `PROJECTS.md` | **modify** | Update P31 trunk row glyph from `[ ]` to `[~]` (in progress) and to `[x]` at the end. |
 
@@ -80,7 +80,7 @@ git commit -m "chore(p31): flip to in-progress, link spec + plan"
 Define the dataclasses and the test stub. No prompt logic yet. This task delivers the contract every later task relies on.
 
 **Files:**
-- Create: `src/thoth/init_wizard.py`
+- Create: `src/doxa_research/init_wizard.py`
 - Create: `tests/test_init_wizard.py`
 
 - [ ] **Step 1: Write failing test for `WizardAnswers` shape**
@@ -88,7 +88,7 @@ Define the dataclasses and the test stub. No prompt logic yet. This task deliver
 Create `tests/test_init_wizard.py`:
 
 ```python
-"""Unit tests for src/thoth/init_wizard.py — P31."""
+"""Unit tests for src/doxa_research/init_wizard.py — P31."""
 
 from __future__ import annotations
 
@@ -96,7 +96,7 @@ from pathlib import Path
 
 import pytest
 
-from thoth.init_wizard import ProviderChoice, ScriptedPrompts, WizardAnswers
+from doxa-research.init_wizard import ProviderChoice, ScriptedPrompts, WizardAnswers
 
 
 def test_provider_choice_is_frozen() -> None:
@@ -109,7 +109,7 @@ def test_wizard_answers_is_frozen(tmp_path: Path) -> None:
     a = WizardAnswers(
         providers=(ProviderChoice("openai", "env_ref", None),),
         default_mode="thinking",
-        target_path=tmp_path / "thoth.config.toml",
+        target_path=tmp_path / "doxa-research.config.toml",
     )
     with pytest.raises(Exception):
         a.default_mode = "default"  # type: ignore[misc]
@@ -132,14 +132,14 @@ def test_scripted_prompts_raises_when_exhausted() -> None:
 - [ ] **Step 2: Run test to confirm it fails**
 
 Run: `uv run pytest tests/test_init_wizard.py -v`
-Expected: `ImportError` / `ModuleNotFoundError` for `thoth.init_wizard`.
+Expected: `ImportError` / `ModuleNotFoundError` for `doxa-research.init_wizard`.
 
 - [ ] **Step 3: Create the wizard module skeleton**
 
-Create `src/thoth/init_wizard.py`:
+Create `src/doxa_research/init_wizard.py`:
 
 ```python
-"""Interactive `thoth init` wizard — P31.
+"""Interactive `doxa-research init` wizard — P31.
 
 Module is intentionally I/O-free. `run()` returns `WizardAnswers`; the
 caller in `commands.py` is responsible for merging answers into a
@@ -201,7 +201,7 @@ Expected: 4 tests pass.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/thoth/init_wizard.py tests/test_init_wizard.py
+git add src/doxa_research/init_wizard.py tests/test_init_wizard.py
 git commit -m "feat(p31): add WizardAnswers/ProviderChoice + ScriptedPrompts harness"
 ```
 
@@ -212,7 +212,7 @@ git commit -m "feat(p31): add WizardAnswers/ProviderChoice + ScriptedPrompts har
 A small reusable primitive used by Q1, Q2 (per-provider 3-way choice), and Q3. Test it independently because the failure modes (malformed input, empty input, retry exhaustion) live here.
 
 **Files:**
-- Modify: `src/thoth/init_wizard.py`
+- Modify: `src/doxa_research/init_wizard.py`
 - Modify: `tests/test_init_wizard.py`
 
 - [ ] **Step 1: Write failing tests**
@@ -220,8 +220,8 @@ A small reusable primitive used by Q1, Q2 (per-provider 3-way choice), and Q3. T
 Append to `tests/test_init_wizard.py`:
 
 ```python
-from thoth.init_wizard import pick_one, pick_many
-from thoth.errors import ThothError
+from doxa-research.init_wizard import pick_one, pick_many
+from doxa-research.errors import DoxaError
 
 
 def test_pick_one_returns_indexed_value() -> None:
@@ -236,7 +236,7 @@ def test_pick_one_default_on_empty_input() -> None:
 
 def test_pick_one_retries_then_errors_on_garbage() -> None:
     sp = ScriptedPrompts(["x", "0", "99"])  # 3 bad answers
-    with pytest.raises(ThothError, match="invalid selection"):
+    with pytest.raises(DoxaError, match="invalid selection"):
         pick_one(["a", "b"], prompt_fn=sp, default_index=0)
 
 
@@ -265,12 +265,12 @@ def test_pick_many_empty_returns_empty_list() -> None:
 Run: `uv run pytest tests/test_init_wizard.py -v -k "pick_"`
 Expected: ImportError for `pick_one` / `pick_many`.
 
-- [ ] **Step 3: Implement helpers in `src/thoth/init_wizard.py`**
+- [ ] **Step 3: Implement helpers in `src/doxa_research/init_wizard.py`**
 
-Add to `src/thoth/init_wizard.py`:
+Add to `src/doxa_research/init_wizard.py`:
 
 ```python
-from thoth.errors import ThothError
+from doxa-research.errors import DoxaError
 
 _MAX_RETRIES = 3
 
@@ -304,7 +304,7 @@ def pick_one(
             continue
         if 1 <= n <= len(options):
             return options[n - 1]
-    raise ThothError("invalid selection")
+    raise DoxaError("invalid selection")
 
 
 def pick_many(
@@ -345,7 +345,7 @@ def pick_many(
         if valid and picked:
             return picked
         # garbage → loop again as if empty (but consume retry budget)
-    raise ThothError("invalid selection")
+    raise DoxaError("invalid selection")
 ```
 
 - [ ] **Step 4: Run tests**
@@ -356,7 +356,7 @@ Expected: 7 tests pass.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/thoth/init_wizard.py tests/test_init_wizard.py
+git add src/doxa_research/init_wizard.py tests/test_init_wizard.py
 git commit -m "feat(p31): add pick_one/pick_many numbered-list helpers"
 ```
 
@@ -365,7 +365,7 @@ git commit -m "feat(p31): add pick_one/pick_many numbered-list helpers"
 ## Task 3: Q1 — provider multi-select
 
 **Files:**
-- Modify: `src/thoth/init_wizard.py`
+- Modify: `src/doxa_research/init_wizard.py`
 - Modify: `tests/test_init_wizard.py`
 
 - [ ] **Step 1: Write failing tests**
@@ -373,7 +373,7 @@ git commit -m "feat(p31): add pick_one/pick_many numbered-list helpers"
 Append to `tests/test_init_wizard.py`:
 
 ```python
-from thoth.init_wizard import prompt_providers
+from doxa-research.init_wizard import prompt_providers
 
 
 def test_prompt_providers_picks_openai_only() -> None:
@@ -405,7 +405,7 @@ Expected: ImportError.
 
 - [ ] **Step 3: Implement**
 
-Add to `src/thoth/init_wizard.py`:
+Add to `src/doxa_research/init_wizard.py`:
 
 ```python
 PROVIDER_OPTIONS: tuple[ProviderName, ...] = ("openai", "perplexity", "gemini")
@@ -439,7 +439,7 @@ Expected: 4 pass.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/thoth/init_wizard.py tests/test_init_wizard.py
+git add src/doxa_research/init_wizard.py tests/test_init_wizard.py
 git commit -m "feat(p31): add Q1 provider multi-select prompt"
 ```
 
@@ -448,7 +448,7 @@ git commit -m "feat(p31): add Q1 provider multi-select prompt"
 ## Task 4: Q2 — per-provider key storage
 
 **Files:**
-- Modify: `src/thoth/init_wizard.py`
+- Modify: `src/doxa_research/init_wizard.py`
 - Modify: `tests/test_init_wizard.py`
 
 - [ ] **Step 1: Write failing tests**
@@ -456,7 +456,7 @@ git commit -m "feat(p31): add Q1 provider multi-select prompt"
 Append to `tests/test_init_wizard.py`:
 
 ```python
-from thoth.init_wizard import prompt_key_for_provider
+from doxa-research.init_wizard import prompt_key_for_provider
 
 
 def test_key_env_detected_user_accepts() -> None:
@@ -536,7 +536,7 @@ Expected: ImportError.
 
 - [ ] **Step 3: Implement**
 
-Add to `src/thoth/init_wizard.py`:
+Add to `src/doxa_research/init_wizard.py`:
 
 ```python
 def _last4(value: str) -> str:
@@ -583,7 +583,7 @@ Expected: 7 pass.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/thoth/init_wizard.py tests/test_init_wizard.py
+git add src/doxa_research/init_wizard.py tests/test_init_wizard.py
 git commit -m "feat(p31): add Q2 per-provider key storage prompt"
 ```
 
@@ -592,7 +592,7 @@ git commit -m "feat(p31): add Q2 per-provider key storage prompt"
 ## Task 5: Q3 — default-mode pick
 
 **Files:**
-- Modify: `src/thoth/init_wizard.py`
+- Modify: `src/doxa_research/init_wizard.py`
 - Modify: `tests/test_init_wizard.py`
 
 - [ ] **Step 1: Write failing tests**
@@ -600,7 +600,7 @@ git commit -m "feat(p31): add Q2 per-provider key storage prompt"
 Append to `tests/test_init_wizard.py`:
 
 ```python
-from thoth.init_wizard import prompt_default_mode
+from doxa-research.init_wizard import prompt_default_mode
 
 
 def test_default_mode_pick_thinking() -> None:
@@ -625,7 +625,7 @@ Expected: ImportError.
 
 - [ ] **Step 3: Implement**
 
-Add to `src/thoth/init_wizard.py`:
+Add to `src/doxa_research/init_wizard.py`:
 
 ```python
 DEFAULT_MODE_OPTIONS: tuple[DefaultMode, ...] = (
@@ -662,7 +662,7 @@ Expected: 3 pass.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/thoth/init_wizard.py tests/test_init_wizard.py
+git add src/doxa_research/init_wizard.py tests/test_init_wizard.py
 git commit -m "feat(p31): add Q3 default-mode pick"
 ```
 
@@ -673,7 +673,7 @@ git commit -m "feat(p31): add Q3 default-mode pick"
 Pulls Q1–Q3 together with the review screen and the cancel/edit/write loop. This is the wizard's public entry point.
 
 **Files:**
-- Modify: `src/thoth/init_wizard.py`
+- Modify: `src/doxa_research/init_wizard.py`
 - Modify: `tests/test_init_wizard.py`
 
 - [ ] **Step 1: Write failing tests**
@@ -681,12 +681,12 @@ Pulls Q1–Q3 together with the review screen and the cancel/edit/write loop. Th
 Append to `tests/test_init_wizard.py`:
 
 ```python
-from thoth.init_wizard import run
+from doxa-research.init_wizard import run
 
 
 def test_run_happy_path_openai_only(tmp_path: Path) -> None:
     answers = run(
-        target=tmp_path / "thoth.config.toml",
+        target=tmp_path / "doxa-research.config.toml",
         prefill=None,
         prompt_fn=ScriptedPrompts(
             [
@@ -705,7 +705,7 @@ def test_run_happy_path_openai_only(tmp_path: Path) -> None:
 
 def test_run_review_cancel_returns_none(tmp_path: Path) -> None:
     result = run(
-        target=tmp_path / "thoth.config.toml",
+        target=tmp_path / "doxa-research.config.toml",
         prefill=None,
         prompt_fn=ScriptedPrompts(["4", "1", "n"]),  # skip all, mode default, cancel
         env={},
@@ -715,7 +715,7 @@ def test_run_review_cancel_returns_none(tmp_path: Path) -> None:
 
 def test_run_review_edit_reprompts(tmp_path: Path) -> None:
     answers = run(
-        target=tmp_path / "thoth.config.toml",
+        target=tmp_path / "doxa-research.config.toml",
         prefill=None,
         prompt_fn=ScriptedPrompts(
             [
@@ -746,7 +746,7 @@ def test_run_keyboard_interrupt_aborts(tmp_path: Path) -> None:
 
     with pytest.raises(click.Abort):
         run(
-            target=tmp_path / "thoth.config.toml",
+            target=tmp_path / "doxa-research.config.toml",
             prefill=None,
             prompt_fn=boom,
             env={},
@@ -755,7 +755,7 @@ def test_run_keyboard_interrupt_aborts(tmp_path: Path) -> None:
 
 def test_run_skip_all_zero_providers(tmp_path: Path) -> None:
     answers = run(
-        target=tmp_path / "thoth.config.toml",
+        target=tmp_path / "doxa-research.config.toml",
         prefill=None,
         prompt_fn=ScriptedPrompts(["4", "1", "y"]),  # skip all, default, write
         env={},
@@ -771,7 +771,7 @@ Expected: ImportError for `run`.
 
 - [ ] **Step 3: Implement**
 
-Add to `src/thoth/init_wizard.py`:
+Add to `src/doxa_research/init_wizard.py`:
 
 ```python
 import click
@@ -867,7 +867,7 @@ Expected: 5 pass.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/thoth/init_wizard.py tests/test_init_wizard.py
+git add src/doxa_research/init_wizard.py tests/test_init_wizard.py
 git commit -m "feat(p31): add run() entry with review-and-confirm loop"
 ```
 
@@ -878,7 +878,7 @@ git commit -m "feat(p31): add run() entry with review-and-confirm loop"
 This is the bridge between the wizard and the file. Pure function operating on a `tomlkit` doc.
 
 **Files:**
-- Modify: `src/thoth/commands.py`
+- Modify: `src/doxa_research/commands.py`
 - Create: `tests/test_init_command_dispatch.py`
 
 - [ ] **Step 1: Write failing tests**
@@ -886,7 +886,7 @@ This is the bridge between the wizard and the file. Pure function operating on a
 Create `tests/test_init_command_dispatch.py`:
 
 ```python
-"""Dispatcher + merge tests for `thoth init` — P31."""
+"""Dispatcher + merge tests for `doxa-research init` — P31."""
 
 from __future__ import annotations
 
@@ -894,8 +894,8 @@ from pathlib import Path
 
 import tomlkit
 
-from thoth.commands import _apply_wizard_answers, _build_starter_document
-from thoth.init_wizard import ProviderChoice, WizardAnswers
+from doxa-research.commands import _apply_wizard_answers, _build_starter_document
+from doxa-research.init_wizard import ProviderChoice, WizardAnswers
 
 
 def _make(answers: tuple[ProviderChoice, ...], mode: str = "default") -> WizardAnswers:
@@ -968,7 +968,7 @@ Expected: ImportError for `_apply_wizard_answers`.
 
 - [ ] **Step 3: Implement**
 
-Add to `src/thoth/commands.py` (above the `CommandHandler` class, after the existing `_build_starter_document`):
+Add to `src/doxa_research/commands.py` (above the `CommandHandler` class, after the existing `_build_starter_document`):
 
 ```python
 def _apply_wizard_answers(doc: tomlkit.TOMLDocument, answers) -> None:
@@ -977,7 +977,7 @@ def _apply_wizard_answers(doc: tomlkit.TOMLDocument, answers) -> None:
     Touches only `[general].default_mode` and `[providers.<name>].api_key`.
     All other sections are preserved verbatim. Missing tables are created.
     """
-    from thoth.init_wizard import ENV_VAR_BY_PROVIDER
+    from doxa-research.init_wizard import ENV_VAR_BY_PROVIDER
 
     # general.default_mode
     general = doc.get("general")
@@ -1013,7 +1013,7 @@ Expected: 7 pass.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/thoth/commands.py tests/test_init_command_dispatch.py
+git add src/doxa_research/commands.py tests/test_init_command_dispatch.py
 git commit -m "feat(p31): add _apply_wizard_answers tomlkit merge helper"
 ```
 
@@ -1024,7 +1024,7 @@ git commit -m "feat(p31): add _apply_wizard_answers tomlkit merge helper"
 When `--force` is set on an existing file, parse it and seed the wizard's defaults.
 
 **Files:**
-- Modify: `src/thoth/commands.py`
+- Modify: `src/doxa_research/commands.py`
 - Modify: `tests/test_init_command_dispatch.py`
 
 - [ ] **Step 1: Write failing tests**
@@ -1032,7 +1032,7 @@ When `--force` is set on an existing file, parse it and seed the wizard's defaul
 Append to `tests/test_init_command_dispatch.py`:
 
 ```python
-from thoth.commands import _load_or_build_doc, _prefill_from_doc
+from doxa-research.commands import _load_or_build_doc, _prefill_from_doc
 
 
 def test_prefill_extracts_default_mode() -> None:
@@ -1057,14 +1057,14 @@ def test_prefill_ignores_unknown_default_mode() -> None:
 
 
 def test_load_or_build_returns_existing_doc(tmp_path: Path) -> None:
-    p = tmp_path / "thoth.config.toml"
+    p = tmp_path / "doxa-research.config.toml"
     p.write_text('version = 1\n[general]\ndefault_mode = "thinking"\n')
     doc = _load_or_build_doc(p, force=True)
     assert doc["general"]["default_mode"] == "thinking"
 
 
 def test_load_or_build_returns_starter_when_missing(tmp_path: Path) -> None:
-    p = tmp_path / "thoth.config.toml"
+    p = tmp_path / "doxa-research.config.toml"
     doc = _load_or_build_doc(p, force=False)
     # starter doc has known shape
     assert "profiles" in doc
@@ -1077,12 +1077,12 @@ Expected: ImportError.
 
 - [ ] **Step 3: Implement**
 
-Add to `src/thoth/commands.py`:
+Add to `src/doxa_research/commands.py`:
 
 ```python
 def _prefill_from_doc(doc: tomlkit.TOMLDocument):
     """Extract wizard-relevant fields from an existing tomlkit doc."""
-    from thoth.init_wizard import (
+    from doxa-research.init_wizard import (
         DEFAULT_MODE_OPTIONS,
         _Prefill,
     )
@@ -1107,7 +1107,7 @@ def _load_or_build_doc(target: Path, *, force: bool) -> tomlkit.TOMLDocument:
         try:
             return tomlkit.parse(target.read_text())
         except Exception as exc:  # tomlkit raises a variety of errors
-            raise ThothError(
+            raise DoxaError(
                 f"Cannot parse existing config at {target}: {exc}. "
                 "Pass --non-interactive to overwrite with defaults, "
                 "or fix the file."
@@ -1115,7 +1115,7 @@ def _load_or_build_doc(target: Path, *, force: bool) -> tomlkit.TOMLDocument:
     return _build_starter_document()
 ```
 
-No rename needed — `_Prefill` is defined as a module-private dataclass in Task 6 inside `init_wizard.py`; cross-module imports of underscore-prefixed names within the same `thoth` package are an established pattern in this codebase. Just import it where needed (`from thoth.init_wizard import _Prefill, DEFAULT_MODE_OPTIONS`).
+No rename needed — `_Prefill` is defined as a module-private dataclass in Task 6 inside `init_wizard.py`; cross-module imports of underscore-prefixed names within the same `doxa-research` package are an established pattern in this codebase. Just import it where needed (`from doxa-research.init_wizard import _Prefill, DEFAULT_MODE_OPTIONS`).
 
 - [ ] **Step 4: Run tests**
 
@@ -1125,7 +1125,7 @@ Expected: 5 pass.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/thoth/commands.py tests/test_init_command_dispatch.py
+git add src/doxa_research/commands.py tests/test_init_command_dispatch.py
 git commit -m "feat(p31): add _prefill_from_doc + _load_or_build_doc helpers"
 ```
 
@@ -1136,7 +1136,7 @@ git commit -m "feat(p31): add _prefill_from_doc + _load_or_build_doc helpers"
 Replace the placeholder in `init_command` with the real interactive branch.
 
 **Files:**
-- Modify: `src/thoth/commands.py`
+- Modify: `src/doxa_research/commands.py`
 - Modify: `tests/test_init_command_dispatch.py`
 
 - [ ] **Step 1: Write failing dispatcher tests**
@@ -1144,8 +1144,8 @@ Replace the placeholder in `init_command` with the real interactive branch.
 Append to `tests/test_init_command_dispatch.py`:
 
 ```python
-from thoth.commands import CommandHandler
-from thoth.config import ConfigManager
+from doxa-research.commands import CommandHandler
+from doxa-research.config import ConfigManager
 
 
 def test_dispatch_non_interactive_uses_static_starter(
@@ -1158,10 +1158,10 @@ def test_dispatch_non_interactive_uses_static_starter(
         called["flag"] = True
         raise AssertionError("wizard.run should not be called")
 
-    import thoth.init_wizard as wiz
+    import doxa-research.init_wizard as wiz
 
     monkeypatch.setattr(wiz, "run", boom)
-    target = tmp_path / "thoth.config.toml"
+    target = tmp_path / "doxa-research.config.toml"
     h = CommandHandler(ConfigManager())
     h.init_command(config_path=str(target), force=False, non_interactive=True)
     assert target.exists()
@@ -1172,14 +1172,14 @@ def test_dispatch_interactive_writes_wizard_output(
     tmp_path: Path, monkeypatch
 ) -> None:
     """Wizard answers land in the file."""
-    target = tmp_path / "thoth.config.toml"
+    target = tmp_path / "doxa-research.config.toml"
     answers = WizardAnswers(
         providers=(ProviderChoice("openai", "literal", "sk-stub"),),
         default_mode="thinking",
         target_path=target,
     )
 
-    import thoth.init_wizard as wiz
+    import doxa-research.init_wizard as wiz
 
     monkeypatch.setattr(wiz, "run", lambda **_: answers)
     h = CommandHandler(ConfigManager())
@@ -1192,9 +1192,9 @@ def test_dispatch_interactive_writes_wizard_output(
 def test_dispatch_wizard_cancel_no_file_written(
     tmp_path: Path, monkeypatch
 ) -> None:
-    target = tmp_path / "thoth.config.toml"
+    target = tmp_path / "doxa-research.config.toml"
 
-    import thoth.init_wizard as wiz
+    import doxa-research.init_wizard as wiz
 
     monkeypatch.setattr(wiz, "run", lambda **_: None)
     h = CommandHandler(ConfigManager())
@@ -1205,7 +1205,7 @@ def test_dispatch_wizard_cancel_no_file_written(
 def test_dispatch_force_roundtrip_preserves_unknown(
     tmp_path: Path, monkeypatch
 ) -> None:
-    target = tmp_path / "thoth.config.toml"
+    target = tmp_path / "doxa-research.config.toml"
     target.write_text(
         'version = 1\n'
         '[general]\ndefault_mode = "default"\n'
@@ -1217,7 +1217,7 @@ def test_dispatch_force_roundtrip_preserves_unknown(
         target_path=target,
     )
 
-    import thoth.init_wizard as wiz
+    import doxa-research.init_wizard as wiz
 
     monkeypatch.setattr(wiz, "run", lambda **_: answers)
     h = CommandHandler(ConfigManager())
@@ -1231,10 +1231,10 @@ def test_dispatch_json_envelope_regression(tmp_path: Path) -> None:
     """TS01-m: --json --non-interactive path is unchanged by P31."""
     from click.testing import CliRunner
 
-    from thoth.cli import cli
+    from doxa-research.cli import cli
 
     runner = CliRunner()
-    target = tmp_path / "thoth.config.toml"
+    target = tmp_path / "doxa-research.config.toml"
     result = runner.invoke(
         cli,
         ["init", "--json", "--non-interactive", "--config", str(target)],
@@ -1257,7 +1257,7 @@ Expected: 4 fail (current `init_command` doesn't accept `non_interactive`, doesn
 
 - [ ] **Step 3: Modify `init_command`**
 
-Replace lines 185–224 of `src/thoth/commands.py` (the existing `init_command` body) with:
+Replace lines 185–224 of `src/doxa_research/commands.py` (the existing `init_command` body) with:
 
 ```python
 def init_command(
@@ -1270,20 +1270,20 @@ def init_command(
     non_interactive: bool = False,
     **params,
 ):
-    """Initialize Thoth configuration"""
+    """Initialize Doxa Research configuration"""
     if user and hidden:
-        raise ThothError(
-            "thoth init: --user and --hidden are mutually exclusive",
+        raise DoxaError(
+            "doxa-research init: --user and --hidden are mutually exclusive",
         )
 
     target = self._resolve_init_target(config_path, user=user, hidden=hidden)
     if target.exists() and not force:
-        raise ThothError(
-            f"thoth init: refusing to overwrite existing {target}. "
+        raise DoxaError(
+            f"doxa-research init: refusing to overwrite existing {target}. "
             "Pass --force to overwrite.",
         )
 
-    console.print("[bold]Welcome to Thoth Research Assistant Setup![/bold]\n")
+    console.print("[bold]Welcome to Doxa Research Research Assistant Setup![/bold]\n")
     console.print("Checking environment...")
     console.print(f"✓ Python {sys.version.split()[0]} detected")
     console.print("✓ UV package manager available")
@@ -1296,13 +1296,13 @@ def init_command(
         doc = _build_starter_document()
         target.write_text(tomlkit.dumps(doc))
         console.print(f"\n[green]✓[/green] Configuration saved to {target}")
-        console.print('\nYou can now run: thoth deep_research "your prompt"')
+        console.print('\nYou can now run: doxa-research deep_research "your prompt"')
         return
 
     # Interactive wizard path
     import os
 
-    from thoth import init_wizard
+    from doxa-research import init_wizard
 
     base_doc = _load_or_build_doc(target, force=force)
     prefill = _prefill_from_doc(base_doc) if force and target.exists() else None
@@ -1325,12 +1325,12 @@ def init_command(
     _apply_wizard_answers(base_doc, answers)
     target.write_text(tomlkit.dumps(base_doc))
     console.print(f"\n[green]✓[/green] Configuration saved to {target}")
-    console.print('\nYou can now run: thoth deep_research "your prompt"')
+    console.print('\nYou can now run: doxa-research deep_research "your prompt"')
 ```
 
 - [ ] **Step 4: Update CLI leaf to pass `non_interactive` through**
 
-In `src/thoth/cli_subcommands/init.py`, find the block:
+In `src/doxa_research/cli_subcommands/init.py`, find the block:
 
 ```python
     extra_kwargs: dict[str, bool] = {}
@@ -1366,22 +1366,22 @@ Expected: all pass.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add src/thoth/commands.py src/thoth/cli_subcommands/init.py tests/test_init_command_dispatch.py
+git add src/doxa_research/commands.py src/doxa_research/cli_subcommands/init.py tests/test_init_command_dispatch.py
 git commit -m "feat(p31): wire interactive wizard into init_command dispatcher"
 ```
 
 ---
 
-## Task 10: Integration test in thoth_test
+## Task 10: Integration test in doxa_test
 
 Drive the wizard through real stdin to catch any TUI regression the unit tests miss.
 
 **Files:**
-- Modify: `thoth_test`
+- Modify: `doxa_test`
 
 - [ ] **Step 1: Find the right insertion point**
 
-Run: `grep -n "M2T-02" thoth_test`
+Run: `grep -n "M2T-02" doxa_test`
 Expected: a single line near the existing init test case (around line 2070 per pre-flight check).
 
 - [ ] **Step 2: Add the new test case**
@@ -1392,7 +1392,7 @@ Immediately after the `M2T-02` `TestCase(...)` closing `)`, add:
     TestCase(
         test_id="M2T-INTERACTIVE-INIT",
         description="Interactive init wizard collects answers and writes config",
-        command=[THOTH_EXECUTABLE, "init", "--config", "./test_interactive.toml"],
+        command=[DOXA_EXECUTABLE, "init", "--config", "./test_interactive.toml"],
         # pexpect-driven: each entry is (expect_pattern, send_string)
         interactive_inputs=[
             (r"Pick providers", "1"),                  # Q1: openai
@@ -1408,17 +1408,17 @@ Immediately after the `M2T-02` `TestCase(...)` closing `)`, add:
     ),
 ```
 
-If the existing `TestCase` schema does NOT have an `interactive_inputs` field, this task expands to also add that field to the `TestCase` dataclass and its pexpect runner. Run: `grep -n "interactive_inputs\|class TestCase" thoth_test | head -10` first; if only one line (the dataclass definition), the field needs to be added — see Task 10b below.
+If the existing `TestCase` schema does NOT have an `interactive_inputs` field, this task expands to also add that field to the `TestCase` dataclass and its pexpect runner. Run: `grep -n "interactive_inputs\|class TestCase" doxa_test | head -10` first; if only one line (the dataclass definition), the field needs to be added — see Task 10b below.
 
 - [ ] **Step 3: Run the integration suite**
 
-Run: `./thoth_test -r --id M2T-INTERACTIVE-INIT -v`
+Run: `./doxa_test -r --id M2T-INTERACTIVE-INIT -v`
 Expected: PASS.
 
 - [ ] **Step 4: Commit**
 
 ```bash
-git add thoth_test
+git add doxa_test
 git commit -m "test(p31): add M2T-INTERACTIVE-INIT pexpect integration case"
 ```
 
@@ -1431,7 +1431,7 @@ git commit -m "test(p31): add M2T-INTERACTIVE-INIT pexpect integration case"
       child.expect(pattern, timeout=10)
       child.sendline(send)
   ```
-- [ ] Commit separately as `feat(thoth_test): support interactive_inputs for pexpect cases`.
+- [ ] Commit separately as `feat(doxa_test): support interactive_inputs for pexpect cases`.
 
 ---
 
@@ -1450,8 +1450,8 @@ uv run ruff check src/ tests/
 uv run ruff format --check src/ tests/
 uv run ty check src/
 uv run pytest -q
-./thoth_test -r --skip-interactive -q
-./thoth_test -r --id M2T-INTERACTIVE-INIT
+./doxa_test -r --skip-interactive -q
+./doxa_test -r --id M2T-INTERACTIVE-INIT
 ```
 
 Expected: all green.
@@ -1504,8 +1504,8 @@ gh pr create --title "feat(p31): interactive init wizard" --body "$(cat <<'EOF'
 
 ## Test plan
 - [ ] Unit: `uv run pytest tests/test_init_wizard.py tests/test_init_command_dispatch.py -v`
-- [ ] Integration: `./thoth_test -r --id M2T-INTERACTIVE-INIT`
-- [ ] Manual smoke: in a tmp dir, `OPENAI_API_KEY=sk-x thoth init --config ./demo.toml` and walk the wizard
+- [ ] Integration: `./doxa_test -r --id M2T-INTERACTIVE-INIT`
+- [ ] Manual smoke: in a tmp dir, `OPENAI_API_KEY=sk-x doxa-research init --config ./demo.toml` and walk the wizard
 - [ ] `--force` round-trip: edit a `[mysection]` into the resulting file, re-run with `--force`, verify `mysection` survives
 EOF
 )"

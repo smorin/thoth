@@ -10,7 +10,7 @@ prompts at search_context_size=low).
 
 Cost target — background (P27 sonar-deep-research) tests: ~$1.32 per run
 at reasoning_effort=high. Perplexity has no upstream cancel API (T01
-verified), so the upstream job continues billing even after `thoth cancel`
+verified), so the upstream job continues billing even after `doxa cancel`
 marks the local checkpoint cancelled — there's no way to reduce cost by
 aborting early. Run this module weekly via the live-api workflow only.
 """
@@ -29,7 +29,7 @@ from tests.extended.conftest import (
     assert_no_secret_leaked,
     checkpoint_path,
     payload,
-    run_thoth,
+    run_doxa,
     wait_for_provider_job_id,
 )
 
@@ -43,7 +43,7 @@ def test_ext_pplx_imm_stream_default_mode_emits_grounded_answer(
 ) -> None:
     """Live: --provider perplexity --mode perplexity_quick produces grounded text."""
     env, _ = live_perplexity_env
-    result, elapsed = run_thoth(
+    result, elapsed = run_doxa(
         [
             "ask",
             "Reply in one short sentence about Sonar.",
@@ -67,7 +67,7 @@ def test_ext_pplx_imm_stream_explicit_model_passthrough(
 ) -> None:
     """Live: --provider perplexity --model sonar runs without local validation."""
     env, _ = live_perplexity_env
-    result, elapsed = run_thoth(
+    result, elapsed = run_doxa(
         [
             "ask",
             "Reply in one short sentence.",
@@ -93,7 +93,7 @@ def test_ext_pplx_imm_stream_tee_writes_stdout_and_file(
     env, _ = live_perplexity_env
     target = tmp_path / "perplexity-stream-tee.md"
 
-    result, elapsed = run_thoth(
+    result, elapsed = run_doxa(
         [
             "ask",
             "Reply in one short sentence confirming live tee works.",
@@ -154,7 +154,7 @@ web_search_options = { search_context_size = "low" }
     ]
     assert env["PERPLEXITY_API_KEY"] not in args
 
-    result, _elapsed = run_thoth(
+    result, _elapsed = run_doxa(
         args,
         env,
         timeout=120,
@@ -170,7 +170,7 @@ web_search_options = { search_context_size = "low" }
 # =============================================================================
 #
 # Cost: ~$1.32 per run at reasoning_effort=high. Perplexity has no upstream
-# cancel API (T01) — submitted jobs continue billing regardless of `thoth
+# cancel API (T01) — submitted jobs continue billing regardless of `doxa_research
 # cancel`. Tests below intentionally accept this cost; the live-api workflow
 # runs weekly.
 
@@ -195,7 +195,7 @@ def _submit_perplexity_background_json(
     if extra_args:
         args.extend(extra_args)
 
-    result, elapsed = run_thoth(args, env, timeout=120)
+    result, elapsed = run_doxa(args, env, timeout=120)
 
     assert result.returncode == 0, result.stderr + result.stdout
     assert result.stdout.lstrip().startswith("{")
@@ -225,7 +225,7 @@ def test_ext_pplx_bg_submit_async_persists_request_id(
 
     NOTE: ~$1.32 per run; upstream job continues running after this test
     returns and there is no way to stop it (T01). Cost is unavoidable; this
-    test intentionally does NOT call `thoth cancel`.
+    test intentionally does NOT call `doxa cancel`.
     """
     env, state_root = live_perplexity_env
     operation_id, _result, _elapsed = _submit_perplexity_background_json(
@@ -242,7 +242,7 @@ def test_ext_pplx_bg_submit_async_persists_request_id(
     assert providers["perplexity"].get("status") in PERPLEXITY_BACKGROUND_STATUSES
     assert providers["perplexity"].get("job_id") == job_id
 
-    resume_result, resume_elapsed = run_thoth(
+    resume_result, resume_elapsed = run_doxa(
         ["resume", operation_id, "--async", "--json"], env, timeout=120
     )
     assert resume_result.returncode == 0, resume_result.stderr + resume_result.stdout
@@ -266,7 +266,7 @@ def test_ext_pplx_bg_submit_async_persists_request_id(
 def test_ext_pplx_bg_cancel_renders_upstream_unsupported(
     live_perplexity_env: tuple[dict[str, str], Path],
 ) -> None:
-    """EXT-PPLX-BG-CANCEL: thoth cancel surfaces upstream_unsupported correctly.
+    """EXT-PPLX-BG-CANCEL: doxa cancel surfaces upstream_unsupported correctly.
 
     Perplexity returns {status: upstream_unsupported} from cancel(); the
     user-facing CLI (cancel.py:126) must render the warning string
@@ -306,7 +306,7 @@ def test_ext_pplx_bg_cancel_renders_upstream_unsupported(
         encoding="utf-8",
     )
 
-    cancel_result, cancel_elapsed = run_thoth(["cancel", operation_id, "--json"], env, timeout=45)
+    cancel_result, cancel_elapsed = run_doxa(["cancel", operation_id, "--json"], env, timeout=45)
     assert cancel_result.returncode == 0, cancel_result.stderr + cancel_result.stdout
     assert cancel_elapsed < 45
     assert_no_secret_leaked(cancel_result, env)
@@ -333,21 +333,21 @@ def test_ext_pplx_bg_blocking_resume_complete_lifecycle(
 ) -> None:
     """EXT-PPLX-BG-LIFECYCLE: full async submit -> resume -> complete cycle.
 
-    Gated by THOTH_EXTENDED_SLOW=1. Submits a deep-research job, then calls
-    `thoth resume <op_id>` which exercises PerplexityProvider.reconnect() +
+    Gated by DOXA_EXTENDED_SLOW=1. Submits a deep-research job, then calls
+    `doxa resume <op_id>` which exercises PerplexityProvider.reconnect() +
     the runner's polling loop until COMPLETED. Verifies the output file
     contains the answer + ## Sources + ## Cost sections.
 
     NOTE: ~$1.32 per run AND 2-15 minutes wall-clock (sonar-deep-research
-    typical completion time). Set THOTH_EXTENDED_SLOW=1 to opt in.
+    typical completion time). Set DOXA_EXTENDED_SLOW=1 to opt in.
     """
-    if os.environ.get("THOTH_EXTENDED_SLOW") != "1":
-        pytest.skip("set THOTH_EXTENDED_SLOW=1 to run the completion lifecycle test")
+    if os.environ.get("DOXA_EXTENDED_SLOW") != "1":
+        pytest.skip("set DOXA_EXTENDED_SLOW=1 to run the completion lifecycle test")
 
     env, state_root = live_perplexity_env
     project = "ext-pplx-bg-slow"
     output_root = tmp_path / "outputs"
-    config_path = tmp_path / "thoth.config.toml"
+    config_path = tmp_path / "doxa.config.toml"
     # [providers.perplexity] is REQUIRED here — there's a pre-existing bug
     # in the --config + --async + --json path where the env-var fallback for
     # api_key doesn't fire when the config omits the providers section.
@@ -383,7 +383,7 @@ max_wait = 30
     # 2-15 min lifecycle plus headroom for the documented async polling
     # delay bug (research §17).
     deadline = time.monotonic()  # noqa: F841 (left for future budget tracking)
-    resume_result, _resume_elapsed = run_thoth(
+    resume_result, _resume_elapsed = run_doxa(
         ["resume", operation_id, "--config", str(config_path), "--quiet"],
         env,
         timeout=1500,

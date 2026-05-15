@@ -12,9 +12,9 @@ from types import SimpleNamespace
 
 import pytest
 
-from thoth import __main__ as thoth_main
-from thoth.errors import ThothError
-from thoth.providers import (
+from doxa_research import __main__ as doxa_main
+from doxa_research.errors import DoxaError
+from doxa_research.providers import (
     PROVIDER_ENV_VARS,
     PROVIDERS,
     MockProvider,
@@ -52,20 +52,20 @@ def test_create_provider_returns_mock_instance() -> None:
 
 def test_create_provider_unknown_name_raises() -> None:
     config = _stub_config({})
-    with pytest.raises(ThothError, match="Unknown provider"):
+    with pytest.raises(DoxaError, match="Unknown provider"):
         create_provider("bogus", config)  # ty: ignore[invalid-argument-type]
 
 
 def test_create_provider_rejects_invalid_mock_key() -> None:
     config = _stub_config({"mock": {"api_key": "invalid"}})
-    with pytest.raises(ThothError, match="Invalid mock API key"):
+    with pytest.raises(DoxaError, match="Invalid mock API key"):
         create_provider("mock", config)  # ty: ignore[invalid-argument-type]
 
 
 def test_create_provider_is_reexported_from_main() -> None:
-    assert thoth_main.create_provider is create_provider
-    assert thoth_main.PROVIDERS is PROVIDERS
-    assert thoth_main.MockProvider is MockProvider
+    assert doxa_main.create_provider is create_provider
+    assert doxa_main.PROVIDERS is PROVIDERS
+    assert doxa_main.MockProvider is MockProvider
 
 
 # ---------------------------------------------------------------------------
@@ -81,7 +81,7 @@ def test_perplexity_provider_is_implemented_for_background_kind() -> None:
     whether to actually call the provider vs. surface a 'not yet
     implemented' message.
     """
-    from thoth.providers.perplexity import PerplexityProvider
+    from doxa_research.providers.perplexity import PerplexityProvider
 
     p = PerplexityProvider(
         api_key="pplx-test",
@@ -99,7 +99,7 @@ def test_perplexity_deep_research_mode_resolves_to_sonar_deep_research() -> None
     sonar-deep-research and kind = background, which routes to the async
     submit path.
     """
-    from thoth.config import BUILTIN_MODES
+    from doxa_research.config import BUILTIN_MODES
 
     mode = BUILTIN_MODES["perplexity_deep_research"]
     assert mode["provider"] == "perplexity"
@@ -119,7 +119,7 @@ def test_create_provider_returns_perplexity_instance(
     PERPLEXITY_API_KEY exported) overriding the stub config's api_key — the
     factory prefers env-var values when present.
     """
-    from thoth.providers.perplexity import PerplexityProvider
+    from doxa_research.providers.perplexity import PerplexityProvider
 
     monkeypatch.delenv("PERPLEXITY_API_KEY", raising=False)
     config = _stub_config({"perplexity": {"api_key": "pplx-test"}})

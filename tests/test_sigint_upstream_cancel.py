@@ -19,17 +19,17 @@ from typing import Any, cast
 import pytest
 from rich.console import Console
 
-from thoth import signals as thoth_signals
-from thoth.config import ConfigManager
-from thoth.context import AppContext
-from thoth.run import _maybe_cancel_upstream_and_raise
+from doxa_research import signals as doxa_signals
+from doxa_research.config import ConfigManager
+from doxa_research.context import AppContext
+from doxa_research.run import _maybe_cancel_upstream_and_raise
 
 
 @pytest.fixture(autouse=True)
 def _reset_interrupt() -> Any:
-    thoth_signals._interrupt_event.clear()
+    doxa_signals._interrupt_event.clear()
     yield
-    thoth_signals._interrupt_event.clear()
+    doxa_signals._interrupt_event.clear()
 
 
 class _StubConfig:
@@ -115,7 +115,7 @@ def test_default_config_triggers_cancel_and_raises() -> None:
     config = ctx.config
     jobs = _make_jobs(("openai", p_oai, "job-1"), ("perplexity", p_pplx, "job-2"))
 
-    thoth_signals._interrupt_event.set()
+    doxa_signals._interrupt_event.set()
     with pytest.raises(KeyboardInterrupt):
         asyncio.run(_maybe_cancel_upstream_and_raise(jobs, set(), set(), ctx, config))
 
@@ -133,13 +133,13 @@ def test_cli_override_false_skips_cancel_and_prints_hint() -> None:
     config = ctx.config
     jobs = _make_jobs(("openai", p, "job-1"))
 
-    thoth_signals._interrupt_event.set()
+    doxa_signals._interrupt_event.set()
     with pytest.raises(KeyboardInterrupt):
         asyncio.run(_maybe_cancel_upstream_and_raise(jobs, set(), set(), ctx, config))
 
     assert p.cancel_calls == []
     assert "Upstream job still running" in buf.getvalue()
-    assert "thoth cancel" in buf.getvalue()
+    assert "doxa cancel" in buf.getvalue()
 
 
 def test_cli_override_false_with_as_json_suppresses_hint() -> None:
@@ -149,7 +149,7 @@ def test_cli_override_false_with_as_json_suppresses_hint() -> None:
     config = ctx.config
     jobs = _make_jobs(("openai", p, "job-1"))
 
-    thoth_signals._interrupt_event.set()
+    doxa_signals._interrupt_event.set()
     with pytest.raises(KeyboardInterrupt):
         asyncio.run(_maybe_cancel_upstream_and_raise(jobs, set(), set(), ctx, config))
 
@@ -170,7 +170,7 @@ def test_completed_and_failed_providers_are_skipped() -> None:
         ("running", p_running, "j-running"),
     )
 
-    thoth_signals._interrupt_event.set()
+    doxa_signals._interrupt_event.set()
     with pytest.raises(KeyboardInterrupt):
         asyncio.run(_maybe_cancel_upstream_and_raise(jobs, {"done"}, {"failed"}, ctx, config))
 
@@ -187,7 +187,7 @@ def test_not_implemented_in_one_provider_does_not_block_others() -> None:
     config = ctx.config
     jobs = _make_jobs(("openai", p_oai, "job-1"), ("perplexity", p_pplx, "job-2"))
 
-    thoth_signals._interrupt_event.set()
+    doxa_signals._interrupt_event.set()
     with pytest.raises(KeyboardInterrupt):
         asyncio.run(_maybe_cancel_upstream_and_raise(jobs, set(), set(), ctx, config))
 
@@ -223,7 +223,7 @@ def test_upstream_unsupported_does_not_print_cancelled_upstream() -> None:
     config = ctx.config
     jobs = _make_jobs(("openai", p_oai, "job-1"), ("perplexity", p_pplx, "job-2"))
 
-    thoth_signals._interrupt_event.set()
+    doxa_signals._interrupt_event.set()
     with pytest.raises(KeyboardInterrupt):
         asyncio.run(_maybe_cancel_upstream_and_raise(jobs, set(), set(), ctx, config))
 
@@ -239,7 +239,7 @@ def test_upstream_unsupported_does_not_print_cancelled_upstream() -> None:
         "upstream_unsupported result misreported as a successful cancel"
     )
     # The user-visible warning is exactly what cancel.py:126 renders for the
-    # `thoth cancel` subcommand path — the polling-loop path mirrors it.
+    # `doxa cancel` subcommand path — the polling-loop path mirrors it.
     assert "perplexity" in out
     assert "upstream cancel not supported" in out
 
@@ -255,7 +255,7 @@ def test_upstream_unsupported_alone_still_raises_keyboard_interrupt() -> None:
     config = ctx.config
     jobs = _make_jobs(("perplexity", p, "job-1"))
 
-    thoth_signals._interrupt_event.set()
+    doxa_signals._interrupt_event.set()
     with pytest.raises(KeyboardInterrupt):
         asyncio.run(_maybe_cancel_upstream_and_raise(jobs, set(), set(), ctx, config))
 
@@ -271,7 +271,7 @@ def test_hung_cancel_unwinds_within_5s_envelope() -> None:
     config = ctx.config
     jobs = _make_jobs(("openai", p, "job-1"))
 
-    thoth_signals._interrupt_event.set()
+    doxa_signals._interrupt_event.set()
 
     async def _run_with_clock() -> float:
         loop = asyncio.get_running_loop()

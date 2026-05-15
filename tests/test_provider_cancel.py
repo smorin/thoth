@@ -10,9 +10,9 @@ import asyncio
 
 import pytest
 
-from thoth.providers.mock import MockProvider
-from thoth.providers.openai import OpenAIProvider
-from thoth.providers.perplexity import PerplexityProvider
+from doxa_research.providers.mock import MockProvider
+from doxa_research.providers.openai import OpenAIProvider
+from doxa_research.providers.perplexity import PerplexityProvider
 
 
 def test_mock_cancel_pops_job_and_returns_cancelled() -> None:

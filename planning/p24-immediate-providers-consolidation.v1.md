@@ -2,15 +2,15 @@
 
 **Goal:** Document the canonical immediate-provider surface across `openai.py`, `perplexity.py`, and the upcoming `gemini.py` (P24). Classify drift across the existing two implementations as intentional vs accidental, and assign each accidental-drift fix to the recipient project that should land it.
 
-**Generated:** 2026-05-03 by the `factor-dedup` skill running over `src/thoth/providers/{openai,perplexity}.py` immediate paths. Companion to [P24's project file](../projects/P24-gemini-immediate-sync.md), which embeds the **Cross-provider parity matrix** distilled from this spec.
+**Generated:** 2026-05-03 by the `factor-dedup` skill running over `src/doxa_research/providers/{openai,perplexity}.py` immediate paths. Companion to [P24's project file](../projects/P24-gemini-immediate-sync.md), which embeds the **Cross-provider parity matrix** distilled from this spec.
 
 **Skill output type:** consolidation spec (per `factor-dedup` Step 7) ready to feed to `superpowers:writing-plans` for executable plans.
 
 ## Implementations consolidated
 
-- **`src/thoth/providers/openai.py`** (immediate path only — synchronous chat via Responses API; `_submit_with_retry` and `stream()` for non-`is_background_model` models). The dual-mode background path is excluded from this comparison.
-- **`src/thoth/providers/perplexity.py`** (full file — immediate-only by design; P27 owns Perplexity background separately).
-- **`src/thoth/providers/gemini.py`** (planned — P24 design captured in [P24's project file](../projects/P24-gemini-immediate-sync.md)).
+- **`src/doxa_research/providers/openai.py`** (immediate path only — synchronous chat via Responses API; `_submit_with_retry` and `stream()` for non-`is_background_model` models). The dual-mode background path is excluded from this comparison.
+- **`src/doxa_research/providers/perplexity.py`** (full file — immediate-only by design; P27 owns Perplexity background separately).
+- **`src/doxa_research/providers/gemini.py`** (planned — P24 design captured in [P24's project file](../projects/P24-gemini-immediate-sync.md)).
 
 ## Method
 
@@ -61,7 +61,7 @@ Each row has been walked with the user. Disposition column shows the agreed acti
 | 3b | Sources-block sanitization | RAW `f"- [{title}]({url})"` (`openai.py:614-622`) — **security gap** | `md_link_title()` + `md_link_url()` (`perplexity.py:463`) | **Fix in BOTH places**: Gemini uses sanitized helpers (P24 core); OpenAI backports. | P24 — TS05/T05 (Gemini), TS11/T12 (OpenAI) |
 | 3c | `stream()` emits `reasoning` and `citation` events | NO (only `text` + `done`) | YES (both) | **Investigate + close gap if API supports it**: P24 emits both (Gemini's API supports both natively). For OpenAI, audit the Responses API to determine whether reasoning summary chunks and annotation chunks can be surfaced during `stream()` vs only at `get_result()`. If the API supports them, wire them through; if not, document as intentional API limitation. | P24 — TS03/T03 (Gemini), TS12/T13 (OpenAI audit + outcome) |
 | 3d | `NotFoundError` model-hint mapping | YES (`openai.py:87-93`) | NO (drift — falls through to `APIError`) | **Fix in both**: Gemini maps `ClientError(404, NOT_FOUND)` (P24 core); Perplexity backports. | P24 — TS02/T02 (Gemini), TS14/T15 (Perplexity) |
-| 3e | `unsupported parameter` regex extraction | YES (`r"'(\w+)'"` at `openai.py:95-113`) | NO (drift) | **Fix in both**: Gemini extracts on `INVALID_ARGUMENT 400` (P24 core); Perplexity backports. **Helper-extraction analysis:** worth attempting — both providers receive an OpenAI-shape error body with a parameter name in single quotes; a shared `_extract_unsupported_param(message: str) -> str \| None` helper in `thoth.providers._helpers` could deduplicate. **Caveat:** Gemini's error body comes from `google.genai.errors.ClientError`, not the OpenAI SDK, so the message format may differ subtly. Decide during T15 implementation whether shapes overlap enough to share. | P24 — TS02/T02 (Gemini), TS14/T15 (Perplexity + helper decision) |
+| 3e | `unsupported parameter` regex extraction | YES (`r"'(\w+)'"` at `openai.py:95-113`) | NO (drift) | **Fix in both**: Gemini extracts on `INVALID_ARGUMENT 400` (P24 core); Perplexity backports. **Helper-extraction analysis:** worth attempting — both providers receive an OpenAI-shape error body with a parameter name in single quotes; a shared `_extract_unsupported_param(message: str) -> str \| None` helper in `doxa-research.providers._helpers` could deduplicate. **Caveat:** Gemini's error body comes from `google.genai.errors.ClientError`, not the OpenAI SDK, so the message format may differ subtly. Decide during T15 implementation whether shapes overlap enough to share. | P24 — TS02/T02 (Gemini), TS14/T15 (Perplexity + helper decision) |
 | 3f | `_DIRECT_SDK_KEYS` constant | NONE (logic distributed in `_submit_with_retry`) | `_DIRECT_SDK_KEYS` constant — bare name, no provider suffix (`perplexity.py:211-217`) | **Fix in all three** with uniform naming convention `_DIRECT_SDK_KEYS_<PROVIDER>`: Gemini defines `_DIRECT_SDK_KEYS_GEMINI` (P24 core); OpenAI introduces `_DIRECT_SDK_KEYS_OPENAI` (new); Perplexity renames bare `_DIRECT_SDK_KEYS` → `_DIRECT_SDK_KEYS_PERPLEXITY` (`replace_all` mechanical rename). | P24 — TS01/T01 (Gemini), TS10/T11 (OpenAI), TS14/T15 (Perplexity rename) |
 | 3g | Auth-invalid `exit_code` | DEFAULT (drift) | `exit_code=2` | **Fix in both**: Gemini sets `exit_code=2` (P24 core); OpenAI aligned. | P24 — TS02/T02 (Gemini), TS13/T14 (OpenAI) |
 | 3h | Empty-content debug-print on `verbose=True` | YES (`openai.py:567-588`) | NO (drift) | **Backport to Perplexity** (and Gemini if applicable): Add the empty-content debug-print pattern to Perplexity. For Gemini, evaluate during T05 whether `response.text` empty + diagnostic info available shape applies. | P24 — TS15/T16 (Perplexity); Gemini evaluated during T05 |
@@ -69,7 +69,7 @@ Each row has been walked with the user. Disposition column shows the agreed acti
 
 ## Unified canonical surface (target for all three immediate providers)
 
-After Bucket-3 fixes land, every immediate provider in `src/thoth/providers/` MUST satisfy this surface:
+After Bucket-3 fixes land, every immediate provider in `src/doxa_research/providers/` MUST satisfy this surface:
 
 1. **Module-level constants**, suffix-named for uniform repo-wide grep'ability: `_PROVIDER_NAME_<PROVIDER>: str` (matching the registry key); `_DIRECT_SDK_KEYS_<PROVIDER>: tuple[str, ...]` (allowlist of native SDK kwargs). Naming convention: provider name in UPPER_SNAKE_CASE matches the dict key in `PROVIDERS` (`openai`, `perplexity`, `gemini`).
 2. **Provider config namespace**: `[modes.X.<provider>]` keys translated to native SDK request fields. Anything in `_DIRECT_SDK_KEYS_<NAME>` is a top-level kwarg; everything else is provider-extension passthrough.
@@ -85,11 +85,11 @@ After Bucket-3 fixes land, every immediate provider in `src/thoth/providers/` MU
    - `check_status(job_id)` — returns `{"status": "completed", "progress": 1.0}` for known immediate jobs.
    - `get_result(job_id, verbose)` — renders text + optional `## Reasoning` + optional `## Sources` (using `md_link_title` / `md_link_url` sanitization).
    - `list_models()` — provider-specific (enumerated allowlist or dynamic + hardcoded merge).
-4. **Module-level error mapper** `_map_<provider>_error(exc, model, verbose) -> ThothError`:
+4. **Module-level error mapper** `_map_<provider>_error(exc, model, verbose) -> DoxaError`:
    - 12-class branch shape: auth-invalid (with `exit_code=2`) / auth-missing → `APIKeyError` / rate-limit → `APIRateLimitError` / quota → `APIQuotaError` / not-found → `ProviderError` with `models` CLI hint / bad-request with offending-parameter regex extraction → `ProviderError` with hint / permission-denied / 5xx → `ProviderError` / timeout (transient) / connection (transient) / `APIError` (catch-all SDK) / generic `Exception` fallback.
    - Every constructed error carries `provider=_PROVIDER_NAME`.
    - `ModeKindMismatchError` re-raised UNMAPPED.
-5. **Sanitization**: every `## Sources` block uses `md_link_title()` and `md_link_url()` from `thoth.utils`. Never raw `f"- [{title}]({url})"` interpolation.
+5. **Sanitization**: every `## Sources` block uses `md_link_title()` and `md_link_url()` from `doxa-research.utils`. Never raw `f"- [{title}]({url})"` interpolation.
 6. **Verbose flag**: attaches `raw_error` to mapped exceptions; emits empty-content diagnostic when `response.text` (or equivalent) is unexpectedly empty.
 
 ## Risks
@@ -132,5 +132,5 @@ Original options (preserved for traceability):
 - 2026-05-03 — User walked all 9 Bucket-3 findings; dispositions captured in the table above.
 - 2026-05-03 — User added new directive: investigate `[providers.X]` root-namespace passthrough for default settings.
 - 2026-05-03 — User directive: enforce uniform `_DIRECT_SDK_KEYS_<PROVIDER>` and `_PROVIDER_NAME_<PROVIDER>` constant naming across all three modules. Reverses earlier "skip OpenAI `_PROVIDER_NAME` backport — pure cosmetic" disposition; OpenAI now gets the constant introduced, Perplexity gets the bare names renamed. Justification: uniqueness for grep + future cross-provider helper extraction.
-- 2026-05-03 — Branch fast-forwarded; absorbed 4 P27 closure commits. Refresh review surfaced: `perplexity.py` is now DUAL-MODE (immediate + background); P27 polish extracted `_invalid_key_thotherror(provider, settings_url) -> ThothError` to `perplexity.py:143` (partial consolidation already done — plan now PROMOTES this helper to `thoth.providers._helpers` for cross-provider use); `_map_perplexity_error_async` exists at line 246 as the background-path sibling (out of scope, deliberate parallel by docstring); `_PERPLEXITY_STATUS_TABLE` constant at line 109 is background-path; `list_models` adds `sonar-deep-research`. Line numbers in plan tasks are stale — executors grep, don't chase line numbers.
+- 2026-05-03 — Branch fast-forwarded; absorbed 4 P27 closure commits. Refresh review surfaced: `perplexity.py` is now DUAL-MODE (immediate + background); P27 polish extracted `_invalid_key_doxaerror(provider, settings_url) -> DoxaError` to `perplexity.py:143` (partial consolidation already done — plan now PROMOTES this helper to `doxa-research.providers._helpers` for cross-provider use); `_map_perplexity_error_async` exists at line 246 as the background-path sibling (out of scope, deliberate parallel by docstring); `_PERPLEXITY_STATUS_TABLE` constant at line 109 is background-path; `list_models` adds `sonar-deep-research`. Line numbers in plan tasks are stale — executors grep, don't chase line numbers.
 - 2026-05-03 — Bucket-2 row 4 (Perplexity dynamic models) and row 5 (Perplexity async cancel) verified empirically against docs.perplexity.ai; both stand as intentional.

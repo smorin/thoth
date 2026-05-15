@@ -31,7 +31,7 @@ from tests.extended.conftest import (
     assert_nonempty_file,
     require_gemini_key,
     require_perplexity_key,
-    run_thoth,
+    run_doxa,
 )
 
 pytestmark = pytest.mark.live_api
@@ -93,9 +93,9 @@ def live_immediate_case(
 def test_immediate_streaming_smoke(
     live_immediate_case: tuple[ImmediateProviderCase, dict[str, str], Path],
 ) -> None:
-    """P20-TS03: immediate `thoth ask` streams to stdout, no result file, no bg hints."""
+    """P20-TS03: immediate `doxa ask` streams to stdout, no result file, no bg hints."""
     case, env, tmp_path = live_immediate_case
-    result, elapsed = run_thoth(
+    result, elapsed = run_doxa(
         [
             "ask",
             "Reply with the word ok.",
@@ -128,7 +128,7 @@ def test_immediate_out_file_writes_and_silences_stdout(
     """P20-TS04: `--out FILE` writes non-empty file; stdout suppressed."""
     case, env, _state_root = live_immediate_case
     target = tmp_path / "answer.md"
-    result, _elapsed = run_thoth(
+    result, _elapsed = run_doxa(
         [
             "ask",
             "Reply with the word ok.",
@@ -170,14 +170,14 @@ def test_append_grows_file_and_preserves_prefix(
         "--append",
     ]
 
-    r1, _ = run_thoth(cmd, env, timeout=120)
+    r1, _ = run_doxa(cmd, env, timeout=120)
     assert r1.returncode == 0, r1.stderr + r1.stdout
     assert_no_secret_leaked(r1, env)
     assert_nonempty_file(target)
     size_after_first = target.stat().st_size
     prefix_after_first = target.read_bytes()
 
-    r2, _ = run_thoth(cmd, env, timeout=120)
+    r2, _ = run_doxa(cmd, env, timeout=120)
     assert r2.returncode == 0, r2.stderr + r2.stdout
     assert_no_secret_leaked(r2, env)
     size_after_second = target.stat().st_size
@@ -200,7 +200,7 @@ def test_no_metadata_immediate_smoke(
     """
     case, env, _state_root = live_immediate_case
     target = tmp_path / "no-metadata.md"
-    result, _ = run_thoth(
+    result, _ = run_doxa(
         [
             "ask",
             "Reply with one short word.",
@@ -230,7 +230,7 @@ def test_cli_api_key_does_not_leak(
     env_no_key = env.copy()
     env_no_key.pop(case.env_var, None)
 
-    result, _ = run_thoth(
+    result, _ = run_doxa(
         [
             "ask",
             "Reply with the word ok.",
@@ -308,7 +308,7 @@ thinking_budget = 0
         encoding="utf-8",
     )
 
-    result, elapsed = run_thoth(
+    result, elapsed = run_doxa(
         [
             "ask",
             "Reply with one short sentence confirming this combined live smoke ran.",
@@ -369,10 +369,10 @@ def test_mismatch_defense_no_http(monkeypatch: pytest.MonkeyPatch) -> None:
     Uses a fake API key for provider construction; the mismatch check
     fires before the key is ever sent to OpenAI.
     """
-    from thoth.config import ConfigManager
-    from thoth.errors import ModeKindMismatchError
-    from thoth.models import KNOWN_MODELS
-    from thoth.providers import create_provider
+    from doxa_research.config import ConfigManager
+    from doxa_research.errors import ModeKindMismatchError
+    from doxa_research.models import KNOWN_MODELS
+    from doxa_research.providers import create_provider
 
     monkeypatch.setenv("OPENAI_API_KEY", "sk-fake-mismatch-defense-key")
 

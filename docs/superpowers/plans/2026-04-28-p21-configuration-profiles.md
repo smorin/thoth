@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add CPP-style configuration profile *resolution and overlay* — root `--profile`, `THOTH_PROFILE`, `general.default_profile`, and `[profiles.<name>]` overlay between project config and env/CLI per-setting overrides. Users hand-edit TOML in P21; CLI management commands (`thoth config profiles ...`) ship in P21b.
+**Goal:** Add CPP-style configuration profile *resolution and overlay* — root `--profile`, `DOXA_PROFILE`, `general.default_profile`, and `[profiles.<name>]` overlay between project config and env/CLI per-setting overrides. Users hand-edit TOML in P21; CLI management commands (`doxa-research config profiles ...`) ship in P21b.
 
-**Architecture:** Put pure profile resolution and profile catalog logic in `src/thoth/config_profiles.py`. `ConfigManager` loads user/project profile tables, resolves a single active profile, inserts a `profile` layer between project config and environment overrides, and exposes selection metadata. Click gets a root `--profile` option threaded through every existing config-loading call site (including `config_cmd._load_manager` and the existing `config get/list` Click leaves).
+**Architecture:** Put pure profile resolution and profile catalog logic in `src/doxa_research/config_profiles.py`. `ConfigManager` loads user/project profile tables, resolves a single active profile, inserts a `profile` layer between project config and environment overrides, and exposes selection metadata. Click gets a root `--profile` option threaded through every existing config-loading call site (including `config_cmd._load_manager` and the existing `config get/list` Click leaves).
 
 **Tech Stack:** Python 3.11+, Click 8.x, tomlkit (already in use), pytest, existing `ConfigManager`, existing `config_cmd.py` data-function pattern.
 
@@ -16,15 +16,15 @@
 
 ## File Map
 
-- Create: `src/thoth/config_profiles.py` — profile selection, catalog, validation.
-- Modify: `src/thoth/config.py` — call profile resolver, add `profile` layer, expose metadata, refactor `_load_project_config` to also return the actual path.
-- Modify: `src/thoth/errors.py` — add `ConfigProfileError`.
-- Modify: `src/thoth/cli_subcommands/_options.py` — add root `--profile`.
-- Modify: `src/thoth/cli_subcommands/_option_policy.py` — `DEFAULT_HONOR` includes `"profile"`.
-- Modify: `src/thoth/cli.py` — store profile option, conflict labels, fallback parsing.
-- Modify: `src/thoth/config_cmd.py` — thread profile through `_load_manager` and existing `get_config_*_data` entries (no new CRUD functions in P21).
-- Modify: `src/thoth/cli_subcommands/config.py` — existing leaves (`get`, `list`, etc.) forward inherited `profile`.
-- Modify: `src/thoth/help.py`, `README.md`, `manual_testing_instructions.md`, `PROJECTS.md` — document hand-edit profile behavior, forward-pointer to P21b.
+- Create: `src/doxa_research/config_profiles.py` — profile selection, catalog, validation.
+- Modify: `src/doxa_research/config.py` — call profile resolver, add `profile` layer, expose metadata, refactor `_load_project_config` to also return the actual path.
+- Modify: `src/doxa_research/errors.py` — add `ConfigProfileError`.
+- Modify: `src/doxa_research/cli_subcommands/_options.py` — add root `--profile`.
+- Modify: `src/doxa_research/cli_subcommands/_option_policy.py` — `DEFAULT_HONOR` includes `"profile"`.
+- Modify: `src/doxa_research/cli.py` — store profile option, conflict labels, fallback parsing.
+- Modify: `src/doxa_research/config_cmd.py` — thread profile through `_load_manager` and existing `get_config_*_data` entries (no new CRUD functions in P21).
+- Modify: `src/doxa_research/cli_subcommands/config.py` — existing leaves (`get`, `list`, etc.) forward inherited `profile`.
+- Modify: `src/doxa_research/help.py`, `README.md`, `manual_testing_instructions.md`, `PROJECTS.md` — document hand-edit profile behavior, forward-pointer to P21b.
 - Test: `tests/test_config_profiles.py` — profile resolution, overlay behavior, root-flag threading.
 
 P21 does NOT touch `tests/test_config_profiles_cmd.py`, `tests/test_json_envelopes.py`, or `tests/test_ci_lint_rules.py` (those land in P21b).
@@ -35,8 +35,8 @@ P21 does NOT touch `tests/test_config_profiles_cmd.py`, `tests/test_json_envelop
 
 **Files:**
 - Create: `tests/test_config_profiles.py`
-- Create: `src/thoth/config_profiles.py`
-- Modify: `src/thoth/errors.py`
+- Create: `src/doxa_research/config_profiles.py`
+- Modify: `src/doxa_research/errors.py`
 
 - [ ] **Step 1: Write failing resolver tests**
 
@@ -49,19 +49,19 @@ from pathlib import Path
 
 import pytest
 
-from thoth.config_profiles import (
+from doxa-research.config_profiles import (
     ProfileSelection,
     collect_profile_catalog,
     resolve_profile_layer,
     resolve_profile_selection,
 )
-from thoth.errors import ConfigProfileError
+from doxa-research.errors import ConfigProfileError
 
 
 def test_resolve_profile_selection_prefers_flag_over_env_and_config(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("THOTH_PROFILE", "env-profile")
+    monkeypatch.setenv("DOXA_PROFILE", "env-profile")
     selection = resolve_profile_selection(
         cli_profile="flag-profile",
         base_config={"general": {"default_profile": "config-profile"}},
@@ -76,20 +76,20 @@ def test_resolve_profile_selection_prefers_flag_over_env_and_config(
 def test_resolve_profile_selection_uses_env_before_config(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("THOTH_PROFILE", "env-profile")
+    monkeypatch.setenv("DOXA_PROFILE", "env-profile")
     selection = resolve_profile_selection(
         cli_profile=None,
         base_config={"general": {"default_profile": "config-profile"}},
     )
     assert selection.name == "env-profile"
     assert selection.source == "env"
-    assert selection.source_detail == "THOTH_PROFILE"
+    assert selection.source_detail == "DOXA_PROFILE"
 
 
 def test_resolve_profile_selection_uses_config_pointer_when_flag_and_env_absent(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.delenv("THOTH_PROFILE", raising=False)
+    monkeypatch.delenv("DOXA_PROFILE", raising=False)
     selection = resolve_profile_selection(
         cli_profile=None,
         base_config={"general": {"default_profile": "config-profile"}},
@@ -100,7 +100,7 @@ def test_resolve_profile_selection_uses_config_pointer_when_flag_and_env_absent(
 
 
 def test_resolve_profile_selection_none_when_unset(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("THOTH_PROFILE", raising=False)
+    monkeypatch.delenv("DOXA_PROFILE", raising=False)
     selection = resolve_profile_selection(cli_profile=None, base_config={"general": {}})
     assert selection.name is None
     assert selection.source == "none"
@@ -112,7 +112,7 @@ def test_project_profile_shadows_user_profile_wholesale(tmp_path: Path) -> None:
         user_config={"profiles": {"prod": {"general": {"default_mode": "thinking"}}}},
         project_config={"profiles": {"prod": {"execution": {"poll_interval": 5}}}},
         user_path=tmp_path / "user.toml",
-        project_path=tmp_path / "thoth.config.toml",
+        project_path=tmp_path / "doxa-research.config.toml",
     )
     layer = resolve_profile_layer(
         ProfileSelection("prod", "flag", "--profile flag"),
@@ -153,7 +153,7 @@ def test_missing_selected_profile_raises_with_source(tmp_path: Path) -> None:
 @pytest.mark.parametrize(
     "selection,detail_substring",
     [
-        (ProfileSelection("ghost", "env", "THOTH_PROFILE"), "THOTH_PROFILE"),
+        (ProfileSelection("ghost", "env", "DOXA_PROFILE"), "DOXA_PROFILE"),
         (ProfileSelection("ghost", "config", "general.default_profile"), "general.default_profile"),
     ],
 )
@@ -181,14 +181,14 @@ Run:
 uv run pytest tests/test_config_profiles.py -v
 ```
 
-Expected: import failures for `thoth.config_profiles` and `ConfigProfileError`.
+Expected: import failures for `doxa-research.config_profiles` and `ConfigProfileError`.
 
 - [ ] **Step 3: Add `ConfigProfileError`**
 
-In `src/thoth/errors.py`, add:
+In `src/doxa_research/errors.py`, add:
 
 ```python
-class ConfigProfileError(ThothError):
+class ConfigProfileError(DoxaError):
     """Configuration profile selection or validation failed."""
 
     def __init__(
@@ -199,7 +199,7 @@ class ConfigProfileError(ThothError):
         source: str | None = None,
     ):
         details = message if source is None else f"{message} (from {source})"
-        suggestion_parts = ["Run `thoth config profiles list` to see available profiles."]
+        suggestion_parts = ["Run `doxa-research config profiles list` to see available profiles."]
         if available_profiles:
             suggestion_parts.append(f"Available profiles: {', '.join(available_profiles)}.")
         super().__init__(
@@ -211,10 +211,10 @@ class ConfigProfileError(ThothError):
 
 - [ ] **Step 4: Add profile resolver module**
 
-Create `src/thoth/config_profiles.py`:
+Create `src/doxa_research/config_profiles.py`:
 
 ```python
-"""Configuration profile resolution for Thoth."""
+"""Configuration profile resolution for Doxa Research."""
 
 from __future__ import annotations
 
@@ -223,7 +223,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 
-from thoth.errors import ConfigProfileError
+from doxa-research.errors import ConfigProfileError
 
 ProfileSelectionSource = Literal["flag", "env", "config", "none"]
 ProfileTier = Literal["project", "user"]
@@ -274,9 +274,9 @@ def resolve_profile_selection(
 ) -> ProfileSelection:
     if cli_profile:
         return ProfileSelection(cli_profile, "flag", "--profile flag")
-    env_profile = os.getenv("THOTH_PROFILE")
+    env_profile = os.getenv("DOXA_PROFILE")
     if env_profile:
-        return ProfileSelection(env_profile, "env", "THOTH_PROFILE")
+        return ProfileSelection(env_profile, "env", "DOXA_PROFILE")
     general = base_config.get("general") or {}
     config_profile = general.get("default_profile") if isinstance(general, dict) else None
     if config_profile:
@@ -319,7 +319,7 @@ Expected: resolver tests pass.
 - [ ] **Step 6: Commit Task 1**
 
 ```bash
-git add src/thoth/config_profiles.py src/thoth/errors.py tests/test_config_profiles.py
+git add src/doxa_research/config_profiles.py src/doxa_research/errors.py tests/test_config_profiles.py
 git commit -m "feat: add config profile resolver"
 ```
 
@@ -329,15 +329,15 @@ git commit -m "feat: add config profile resolver"
 
 **Files:**
 - Modify: `tests/test_config_profiles.py`
-- Modify: `src/thoth/config.py`
-- Modify: `src/thoth/config_profiles.py`
+- Modify: `src/doxa_research/config.py`
+- Modify: `src/doxa_research/config_profiles.py`
 
 - [ ] **Step 1: Add failing ConfigManager overlay tests**
 
 Append to `tests/test_config_profiles.py`:
 
 ```python
-from thoth.config import ConfigManager
+from doxa-research.config import ConfigManager
 
 
 def _write(path: Path, text: str) -> None:
@@ -346,10 +346,10 @@ def _write(path: Path, text: str) -> None:
 
 
 def test_config_manager_no_profile_keeps_existing_effective_config(
-    isolated_thoth_home: Path,
+    isolated_doxa_home: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.delenv("THOTH_PROFILE", raising=False)
+    monkeypatch.delenv("DOXA_PROFILE", raising=False)
     cm = ConfigManager()
     cm.load_all_layers({})
     assert cm.get("general.default_mode") == "default"
@@ -358,13 +358,13 @@ def test_config_manager_no_profile_keeps_existing_effective_config(
 
 
 def test_config_manager_applies_profile_between_project_and_env(
-    isolated_thoth_home: Path,
+    isolated_doxa_home: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from thoth.paths import user_config_file
+    from doxa-research.paths import user_config_file
 
-    monkeypatch.setenv("THOTH_PROFILE", "fast")
-    monkeypatch.setenv("THOTH_DEFAULT_MODE", "clarification")
+    monkeypatch.setenv("DOXA_PROFILE", "fast")
+    monkeypatch.setenv("DOXA_DEFAULT_MODE", "clarification")
     _write(
         user_config_file(),
         """
@@ -389,8 +389,8 @@ default_mode = "thinking"
     assert cm.active_profile.tier == "user"
 
 
-def test_cli_setting_override_beats_active_profile(isolated_thoth_home: Path) -> None:
-    from thoth.paths import user_config_file
+def test_cli_setting_override_beats_active_profile(isolated_doxa_home: Path) -> None:
+    from doxa-research.paths import user_config_file
 
     _write(
         user_config_file(),
@@ -411,12 +411,12 @@ poll_interval = 5
 
 
 def test_default_profile_pointer_survives_profile_splitting(
-    isolated_thoth_home: Path,
+    isolated_doxa_home: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from thoth.paths import user_config_file
+    from doxa-research.paths import user_config_file
 
-    monkeypatch.delenv("THOTH_PROFILE", raising=False)
+    monkeypatch.delenv("DOXA_PROFILE", raising=False)
     _write(
         user_config_file(),
         """
@@ -439,16 +439,16 @@ default_mode = "thinking"
     assert cm.profile_selection.source == "config"
 
 
-def test_config_manager_uses_dot_thoth_project_file_when_present(
-    isolated_thoth_home: Path,
+def test_config_manager_uses_dot_doxa_project_file_when_present(
+    isolated_doxa_home: Path,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Catalog must report the actual project file used (covers both project_config_paths)."""
     monkeypatch.chdir(tmp_path)
-    monkeypatch.delenv("THOTH_PROFILE", raising=False)
+    monkeypatch.delenv("DOXA_PROFILE", raising=False)
     _write(
-        tmp_path / ".thoth.config.toml",
+        tmp_path / ".doxa-research.config.toml",
         """
 version = "2.0"
 
@@ -463,19 +463,19 @@ default_mode = "thinking"
 
     assert cm.active_profile is not None
     assert cm.active_profile.tier == "project"
-    assert cm.active_profile.path == Path(".thoth.config.toml") or \
-           cm.active_profile.path.name == "thoth.config.toml"
+    assert cm.active_profile.path == Path(".doxa-research.config.toml") or \
+           cm.active_profile.path.name == "doxa-research.config.toml"
 
 
-def test_thoth_profile_is_not_a_per_setting_env_override() -> None:
-    """Regression guard: THOTH_PROFILE must not be added to env_mappings."""
+def test_doxa_profile_is_not_a_per_setting_env_override() -> None:
+    """Regression guard: DOXA_PROFILE must not be added to env_mappings."""
     import inspect
 
-    from thoth import config as thoth_config
+    from doxa-research import config as doxa_config
 
-    src = inspect.getsource(thoth_config.ConfigManager._get_env_overrides)
-    assert "THOTH_PROFILE" not in src, (
-        "THOTH_PROFILE belongs to Stage 1 selection (read by resolve_profile_selection), "
+    src = inspect.getsource(doxa_config.ConfigManager._get_env_overrides)
+    assert "DOXA_PROFILE" not in src, (
+        "DOXA_PROFILE belongs to Stage 1 selection (read by resolve_profile_selection), "
         "not Stage 2 per-setting overrides. See CPP REQ-CPP-004."
     )
 ```
@@ -492,7 +492,7 @@ Expected: failures for missing `profile_selection`, missing `active_profile`, or
 
 - [ ] **Step 3: Add helpers for stripping profile metadata**
 
-In `src/thoth/config_profiles.py`, add:
+In `src/doxa_research/config_profiles.py`, add:
 
 ```python
 def without_profiles(config: dict[str, Any]) -> dict[str, Any]:
@@ -519,10 +519,10 @@ def _load_project_config(self) -> dict[str, Any]:
 
 Update `collect_profile_catalog` so `project_path: Path | None`. When `project_path is None`, do not append project entries to the catalog (there is no project file).
 
-In `src/thoth/config.py`, import profile helpers:
+In `src/doxa_research/config.py`, import profile helpers:
 
 ```python
-from thoth.config_profiles import (
+from doxa-research.config_profiles import (
     ProfileLayer,
     ProfileSelection,
     collect_profile_catalog,
@@ -613,7 +613,7 @@ Expected: existing config behavior still passes.
 - [ ] **Step 7: Commit Task 2**
 
 ```bash
-git add src/thoth/config.py src/thoth/config_profiles.py tests/test_config_profiles.py
+git add src/doxa_research/config.py src/doxa_research/config_profiles.py tests/test_config_profiles.py
 git commit -m "feat: apply active config profile"
 ```
 
@@ -623,9 +623,9 @@ git commit -m "feat: apply active config profile"
 
 **Files:**
 - Modify: `tests/test_config_profiles.py`
-- Modify: `src/thoth/cli_subcommands/_options.py`
-- Modify: `src/thoth/cli_subcommands/_option_policy.py`
-- Modify: `src/thoth/cli.py`
+- Modify: `src/doxa_research/cli_subcommands/_options.py`
+- Modify: `src/doxa_research/cli_subcommands/_option_policy.py`
+- Modify: `src/doxa_research/cli.py`
 - Modify: selected subcommands that instantiate `ConfigManager()` directly
 
 - [ ] **Step 1: Add failing Click tests for `--profile`**
@@ -635,11 +635,11 @@ Append to `tests/test_config_profiles.py`:
 ```python
 from click.testing import CliRunner
 
-from thoth.cli import cli
+from doxa-research.cli import cli
 
 
-def test_root_profile_reaches_config_get(isolated_thoth_home: Path) -> None:
-    from thoth.paths import user_config_file
+def test_root_profile_reaches_config_get(isolated_doxa_home: Path) -> None:
+    from doxa-research.paths import user_config_file
 
     _write(
         user_config_file(),
@@ -661,7 +661,7 @@ default_mode = "thinking"
     assert result.output.strip().splitlines()[-1] == "thinking"
 
 
-def test_unknown_root_profile_errors_before_config_get(isolated_thoth_home: Path) -> None:
+def test_unknown_root_profile_errors_before_config_get(isolated_doxa_home: Path) -> None:
     result = CliRunner().invoke(
         cli,
         ["--profile", "missing", "config", "get", "general.default_mode"],
@@ -683,13 +683,13 @@ Expected: Click rejects `--profile` before implementation.
 
 - [ ] **Step 3: Add root option and policy**
 
-In `src/thoth/cli_subcommands/_options.py`, add `--profile` near `--config`:
+In `src/doxa_research/cli_subcommands/_options.py`, add `--profile` near `--config`:
 
 ```python
 (("--profile", "profile"), {"help": "Configuration profile to apply"}),
 ```
 
-In `src/thoth/cli_subcommands/_option_policy.py`, add:
+In `src/doxa_research/cli_subcommands/_option_policy.py`, add:
 
 ```python
 "profile": "--profile",
@@ -737,12 +737,12 @@ Use `{"_profile": profile}` in direct `ConfigManager.load_all_layers(...)` calls
 
 - [ ] **Step 5: Thread profile through every config-loading entry point**
 
-Run a complete sweep, **including `src/thoth/config_cmd.py`**:
+Run a complete sweep, **including `src/doxa_research/config_cmd.py`**:
 
 ```bash
 rg "ConfigManager\(|load_all_layers|_load_manager" \
-  src/thoth/cli_subcommands src/thoth/commands.py src/thoth/run.py \
-  src/thoth/config_cmd.py src/thoth/cli.py
+  src/doxa_research/cli_subcommands src/doxa_research/commands.py src/doxa_research/run.py \
+  src/doxa_research/config_cmd.py src/doxa_research/cli.py
 ```
 
 For each direct load, pass `_profile` alongside `config_path` where the command honors inherited config:
@@ -752,7 +752,7 @@ profile = inherited_value(ctx, "profile")
 config_manager.load_all_layers({"config_path": config_path, "_profile": profile})
 ```
 
-In `src/thoth/config_cmd.py`, update `_load_manager` to accept a profile and forward it as `cli_args`:
+In `src/doxa_research/config_cmd.py`, update `_load_manager` to accept a profile and forward it as `cli_args`:
 
 ```python
 def _load_manager(
@@ -768,9 +768,9 @@ def _load_manager(
     return cm
 ```
 
-Add `profile: str | None = None` to every `get_config_*_data(...)` entry that builds a merged view (`get_config_get_data`, `get_config_list_data`, etc.) and forward it to `_load_manager`. Update `src/thoth/cli_subcommands/config.py` leaves to call `inherited_value(ctx, "profile")` and pass it down.
+Add `profile: str | None = None` to every `get_config_*_data(...)` entry that builds a merged view (`get_config_get_data`, `get_config_list_data`, etc.) and forward it to `_load_manager`. Update `src/doxa_research/cli_subcommands/config.py` leaves to call `inherited_value(ctx, "profile")` and pass it down.
 
-For `get_config()`, add an optional `profile: str | None = None` argument in `src/thoth/config.py`:
+For `get_config()`, add an optional `profile: str | None = None` argument in `src/doxa_research/config.py`:
 
 ```python
 def get_config(profile: str | None = None) -> ConfigManager:
@@ -807,7 +807,7 @@ Expected: inherited option validation remains intentional.
 - [ ] **Step 8: Commit Task 3**
 
 ```bash
-git add src/thoth/cli.py src/thoth/cli_subcommands/_options.py src/thoth/cli_subcommands/_option_policy.py src/thoth/config.py src/thoth/cli_subcommands tests/test_config_profiles.py
+git add src/doxa_research/cli.py src/doxa_research/cli_subcommands/_options.py src/doxa_research/cli_subcommands/_option_policy.py src/doxa_research/config.py src/doxa_research/cli_subcommands tests/test_config_profiles.py
 git commit -m "feat: add profile selection option"
 ```
 
@@ -816,7 +816,7 @@ git commit -m "feat: add profile selection option"
 ## Task 4: Help, Docs, and Tracker (P21 — hand-edit only)
 
 **Files:**
-- Modify: `src/thoth/help.py`
+- Modify: `src/doxa_research/help.py`
 - Modify: `README.md`
 - Modify: `manual_testing_instructions.md`
 - Modify: `PROJECTS.md`
@@ -825,12 +825,12 @@ P21 documents profile *behavior* and the hand-edit workflow. The CLI management 
 
 - [ ] **Step 1: Update help text**
 
-Update `src/thoth/help.py` so `thoth help config` mentions `--profile` and the hand-edit path:
+Update `src/doxa_research/help.py` so `doxa-research help config` mentions `--profile` and the hand-edit path:
 
 ```text
-Profile selection: --profile NAME (also THOTH_PROFILE env, or general.default_profile in config)
+Profile selection: --profile NAME (also DOXA_PROFILE env, or general.default_profile in config)
 Profile sections live under [profiles.<name>] and overlay top-level config.
-CLI management commands (`thoth config profiles ...`) ship in a follow-up project (P21b).
+CLI management commands (`doxa-research config profiles ...`) ship in a follow-up project (P21b).
 ```
 
 - [ ] **Step 2: Add the README "Configuration Profiles" section**
@@ -848,11 +848,11 @@ default_mode = "deep_research"
 default_mode = "thinking"
 ```
 
-Selection precedence is `--profile` → `THOTH_PROFILE` → `general.default_profile` → no profile.
+Selection precedence is `--profile` → `DOXA_PROFILE` → `general.default_profile` → no profile.
 
-`thoth config get general.default_profile` reflects the **persisted pointer** in the file. `--profile` and `THOTH_PROFILE` are read-only runtime inputs — they never write back to `general.default_profile`. With persisted `general.default_profile = "fast"`, running `thoth --profile bar config get general.default_profile` returns `"fast"`; the runtime active selection is `bar`.
+`doxa-research config get general.default_profile` reflects the **persisted pointer** in the file. `--profile` and `DOXA_PROFILE` are read-only runtime inputs — they never write back to `general.default_profile`. With persisted `general.default_profile = "fast"`, running `doxa-research --profile bar config get general.default_profile` returns `"fast"`; the runtime active selection is `bar`.
 
-> **CLI management coming in P21b.** Today, manage profiles by editing `~/.config/thoth/thoth.config.toml` (or `./thoth.config.toml`/`./.thoth.config.toml` for project-scoped profiles) directly. The next project (P21b) adds `thoth config profiles list/show/current/set-default/unset-default/add/set/unset/remove` so you don't have to hand-edit.
+> **CLI management coming in P21b.** Today, manage profiles by editing `~/.config/doxa-research/doxa-research.config.toml` (or `./doxa.config.toml`/`./.doxa-research.config.toml` for project-scoped profiles) directly. The next project (P21b) adds `doxa-research config profiles list/show/current/set-default/unset-default/add/set/unset/remove` so you don't have to hand-edit.
 ````
 
 - [ ] **Step 3: Add concrete README examples**
@@ -867,7 +867,7 @@ default_project = "daily-notes"
 ```
 
 ```bash
-thoth --profile daily "summarize today's notes"
+doxa --profile daily "summarize today's notes"
 ```
 
 #### Run all available deep-research providers
@@ -882,7 +882,7 @@ parallel = true
 ```
 
 ```bash
-thoth --profile all_deep "compare vector databases"
+doxa --profile all_deep "compare vector databases"
 ```
 
 > **Future-ready: gemini.** A `gemini` provider is planned (see `research/gemini-deep-research-api.v1.md`). Once it ships, you'll be able to add it to the `providers` list above. The profile schema is already future-ready; the runtime support lands in a later project — analogous to the interactive default-mode example below.
@@ -899,7 +899,7 @@ parallel = false
 ```
 
 ```bash
-thoth --profile openai_deep "research model routing"
+doxa --profile openai_deep "research model routing"
 ```
 
 #### Use an immediate default mode
@@ -910,7 +910,7 @@ default_mode = "thinking"
 ```
 
 ```bash
-thoth --profile quick "give me the short version"
+doxa --profile quick "give me the short version"
 ```
 
 #### Reserve an interactive default profile
@@ -928,7 +928,7 @@ This profile can be stored, listed, and selected by P21 today (via hand-edit). T
 Append to `manual_testing_instructions.md`:
 
 ```bash
-# Hand-edit ~/.config/thoth/thoth.config.toml first to add:
+# Hand-edit ~/.config/doxa-research/doxa-research.config.toml first to add:
 #
 #   [profiles.fast.general]
 #   default_mode = "thinking"
@@ -936,11 +936,11 @@ Append to `manual_testing_instructions.md`:
 #   [general]
 #   default_profile = "fast"
 
-thoth config get general.default_mode                      # expect "thinking" (from profile)
-THOTH_PROFILE=fast thoth config get general.default_mode   # expect "thinking"
-thoth --profile missing config get general.default_mode    # expect ConfigProfileError naming '--profile flag'
-thoth config get general.default_profile                   # expect "fast" (persisted)
-thoth --profile bar config get general.default_profile     # expect "fast" (NOT mutated by --profile)
+doxa config get general.default_mode                      # expect "thinking" (from profile)
+DOXA_PROFILE=fast doxa-research config get general.default_mode   # expect "thinking"
+doxa --profile missing config get general.default_mode    # expect ConfigProfileError naming '--profile flag'
+doxa config get general.default_profile                   # expect "fast" (persisted)
+doxa --profile bar config get general.default_profile     # expect "fast" (NOT mutated by --profile)
 ```
 
 - [ ] **Step 5: Update P21 tracker**
@@ -959,7 +959,7 @@ Expected: tests pass and no whitespace errors.
 - [ ] **Step 7: Commit Task 4**
 
 ```bash
-git add src/thoth/help.py README.md manual_testing_instructions.md PROJECTS.md
+git add src/doxa_research/help.py README.md manual_testing_instructions.md PROJECTS.md
 git commit -m "docs: document config profile resolution"
 ```
 
@@ -974,7 +974,7 @@ make env-check
 just fix
 just check
 uv run pytest tests/test_config_profiles.py tests/test_config_cmd.py -v
-./thoth_test -r --skip-interactive -q
+./doxa_test -r --skip-interactive -q
 just test-fix
 just test-lint
 just test-typecheck
@@ -986,7 +986,7 @@ Expected:
 - `make env-check` exits 0.
 - `just check` exits 0.
 - Targeted pytest exits 0.
-- `./thoth_test -r --skip-interactive -q` exits 0.
+- `./doxa_test -r --skip-interactive -q` exits 0.
 - `just test-lint` and `just test-typecheck` exit 0.
 - `git diff --check` exits 0.
 

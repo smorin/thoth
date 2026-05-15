@@ -81,7 +81,7 @@ pre-commit:
 
     test:
       glob: "*.py"
-      run: ./thoth_test -r --provider mock --skip-interactive
+      run: ./doxa_test -r --provider mock --skip-interactive
 
 pre-push:
   parallel: true
@@ -90,7 +90,7 @@ pre-push:
       run: uv run ty check src/
 
     bandit-security:
-      run: uvx bandit -r src/thoth/ -ll -q
+      run: uvx bandit -r src/doxa_research/ -ll -q
 
     gitleaks:
       run: ./scripts/check-gitleaks.sh full

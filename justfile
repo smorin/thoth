@@ -15,17 +15,17 @@ install-dev: install
     bun install
     just install-lefthook
 
-# Install thoth to /usr/local/bin
+# Install doxa to /usr/local/bin
 [group: 'setup']
 install-bin:
-    cp thoth /usr/local/bin/
-    chmod +x /usr/local/bin/thoth
+    cp doxa /usr/local/bin/
+    chmod +x /usr/local/bin/doxa
 
 # Check environment dependencies
 [group: 'setup']
 check:
-    uv run ruff check src/thoth/ --fix
-    uv run ty check src/thoth/
+    uv run ruff check src/doxa_research/ --fix
+    uv run ty check src/doxa_research/
 
 # Clean build artifacts
 [group: 'setup']
@@ -43,52 +43,52 @@ clean:
 [group: 'quality']
 all: format lint typecheck security test
 
-# Format src/thoth/ package
+# Format src/doxa_research/ package
 [group: 'quality']
 format:
-    uv run ruff format src/thoth/
+    uv run ruff format src/doxa_research/
 
-# Lint src/thoth/ package
+# Lint src/doxa_research/ package
 [group: 'quality']
 lint:
-    uv run ruff check src/thoth/ --fix
+    uv run ruff check src/doxa_research/ --fix
 
-# Type check src/thoth/ package
+# Type check src/doxa_research/ package
 [group: 'quality']
 typecheck:
-    uv run ty check src/thoth/
+    uv run ty check src/doxa_research/
 
 # Run bandit security linter
 [group: 'quality']
 security:
     uvx bandit -r src/ -ll
 
-# Auto-fix and format src/thoth/
+# Auto-fix and format src/doxa_research/
 [group: 'quality']
 fix:
-    uv run ruff check --fix src/thoth/
-    uv run ruff format src/thoth/
+    uv run ruff check --fix src/doxa_research/
+    uv run ruff format src/doxa_research/
 
 # Format test suite
 [group: 'quality']
 test-format:
-    uv tool run ruff format thoth_test
+    uv tool run ruff format doxa_test
 
 # Lint test suite
 [group: 'quality']
 test-lint:
-    uv tool run ruff check thoth_test
+    uv tool run ruff check doxa_test
 
 # Type check test suite
 [group: 'quality']
 test-typecheck:
-    uv tool run ty check thoth_test
+    uv tool run ty check doxa_test
 
 # Auto-fix and format test suite
 [group: 'quality']
 test-fix:
-    uv tool run ruff check --fix thoth_test
-    uv tool run ruff format thoth_test
+    uv tool run ruff check --fix doxa_test
+    uv tool run ruff format doxa_test
 
 # Format both package and test suite
 [group: 'quality']
@@ -108,11 +108,11 @@ fix-all: fix test-fix
 
 # ─── Testing ──────────────────────────────────────────────────────────
 
-# Run full test suite (pytest in parallel + thoth_test integration suite)
+# Run full test suite (pytest in parallel + doxa_test integration suite)
 [group: 'testing']
 test:
     uv run pytest tests/ -n auto -v
-    ./thoth_test -r
+    ./doxa_test -r
 
 # Run pytest suite serially (for debugging xdist flakiness)
 [group: 'testing']
@@ -144,7 +144,7 @@ test-extended-gemini:
 # Run opt-in slow real-API lifecycle tests.
 [group: 'testing']
 test-extended-slow:
-    THOTH_EXTENDED_SLOW=1 uv run pytest -m extended_slow -v
+    DOXA_EXTENDED_SLOW=1 uv run pytest -m extended_slow -v
 
 # Run live-API workflow regression tests. Gated by `pytest -m live_api`;
 # requires provider API keys for live provider coverage. P20 — runs weekly via
@@ -171,7 +171,7 @@ test-live-api-gemini:
 # Run tests skipping interactive mode (fast, CI-safe)
 [group: 'testing']
 test-skip-interactive:
-    ./thoth_test -r --provider mock --skip-interactive
+    ./doxa_test -r --provider mock --skip-interactive
 
 # Run VCR cassette replay tests
 [group: 'testing']
@@ -213,26 +213,26 @@ publish:
 
 # ─── Dev ──────────────────────────────────────────────────────────────
 
-# Show thoth help
+# Show doxa help
 [group: 'dev']
 dev:
-    ./thoth --help
+    ./doxa --help
 
 # Run example research prompt
 [group: 'dev']
 run:
-    ./thoth "What is quantum computing?" --provider mock
+    ./doxa "What is quantum computing?" --provider mock
 
-# Initialize thoth configuration
+# Initialize doxa configuration
 [group: 'dev']
 init:
-    ./thoth init
+    ./doxa init
 
 # Quick smoke test of basic functionality
 [group: 'dev']
 smoke-test:
-    ./thoth --version
-    ./thoth --help
+    ./doxa --version
+    ./doxa --help
 
 # ─── Virtual Environment ─────────────────────────────────────────────
 

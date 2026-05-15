@@ -1,6 +1,6 @@
 from click.testing import CliRunner
 
-from thoth.cli import cli
+from doxa_research.cli import cli
 
 
 def _help() -> str:
@@ -25,7 +25,7 @@ def test_help_has_workflow_chain():
 
 def test_help_has_resume_example():
     out = _help()
-    assert "thoth resume" in out
+    assert "doxa resume" in out
 
 
 def test_help_lists_cancel_command():
@@ -41,5 +41,5 @@ def test_help_has_verbose_example():
 
 def test_help_has_async_chain_example():
     out = _help()
-    assert "thoth deep_research --auto" in out
+    assert "doxa deep_research --auto" in out
     assert "--async" in out

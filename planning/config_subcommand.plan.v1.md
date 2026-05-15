@@ -1,10 +1,10 @@
-# `thoth config` Subcommand + XDG Layout — Implementation Plan
+# `doxa-research config` Subcommand + XDG Layout — Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add `thoth config` subcommand (get/set/unset/list/path/edit/help) and migrate all user-writable paths to XDG Base Directory Spec. No legacy-path migration.
+**Goal:** Add `doxa-research config` subcommand (get/set/unset/list/path/edit/help) and migrate all user-writable paths to XDG Base Directory Spec. No legacy-path migration.
 
-**Architecture:** New `src/thoth/paths.py` centralizes XDG path resolution; every `platformdirs.user_config_dir("thoth")` callsite switches to the new helpers. New `src/thoth/config_cmd.py` owns the CLI surface for the `config` subcommand, dispatched from `cli.py` the same way as `init`/`status`/`list`. `tomllib` stays the reader; `tomlkit` is used for writes to preserve user comments.
+**Architecture:** New `src/doxa_research/paths.py` centralizes XDG path resolution; every `platformdirs.user_config_dir("doxa-research")` callsite switches to the new helpers. New `src/doxa_research/config_cmd.py` owns the CLI surface for the `config` subcommand, dispatched from `cli.py` the same way as `init`/`status`/`list`. `tomllib` stays the reader; `tomlkit` is used for writes to preserve user comments.
 
 **Tech Stack:** Python 3.11+, click, tomllib (stdlib), tomlkit (new), rich, pytest + pytest-xdist, ruff, ty.
 
@@ -15,18 +15,18 @@
 ## File Structure
 
 **New files:**
-- `src/thoth/paths.py` — XDG path helpers (pure functions, no side effects)
-- `src/thoth/config_cmd.py` — `config_command(op, rest, ...)` dispatcher + per-op functions
+- `src/doxa_research/paths.py` — XDG path helpers (pure functions, no side effects)
+- `src/doxa_research/config_cmd.py` — `config_command(op, rest, ...)` dispatcher + per-op functions
 - `tests/test_paths.py`
 - `tests/test_config_cmd.py`
 
 **Modified files:**
-- `src/thoth/config.py` — swap `platformdirs` import for `thoth.paths`; update `get_defaults()["paths"]["checkpoint_dir"]` and `ConfigManager.__init__`
-- `src/thoth/models.py` — swap `ModelCache` default dir to `paths.user_cache_dir() / "model_cache"`
-- `src/thoth/commands.py` — swap `init_command` default config path; register `config` in `CommandHandler.commands`
-- `src/thoth/cli.py` — dispatch `"config"` in subcommand chain + help intercept
-- `src/thoth/help.py` — `show_config_help()`, extend `build_epilog()`, extend `show_general_help()`
-- `tests/conftest.py` — extend `isolated_thoth_home` to also set `XDG_STATE_HOME` + `XDG_CACHE_HOME`; update `checkpoint_dir` fixture to use new state path
+- `src/doxa_research/config.py` — swap `platformdirs` import for `doxa-research.paths`; update `get_defaults()["paths"]["checkpoint_dir"]` and `ConfigManager.__init__`
+- `src/doxa_research/models.py` — swap `ModelCache` default dir to `paths.user_cache_dir() / "model_cache"`
+- `src/doxa_research/commands.py` — swap `init_command` default config path; register `config` in `CommandHandler.commands`
+- `src/doxa_research/cli.py` — dispatch `"config"` in subcommand chain + help intercept
+- `src/doxa_research/help.py` — `show_config_help()`, extend `build_epilog()`, extend `show_general_help()`
+- `tests/conftest.py` — extend `isolated_doxa_home` to also set `XDG_STATE_HOME` + `XDG_CACHE_HOME`; update `checkpoint_dir` fixture to use new state path
 - `pyproject.toml` — add `tomlkit>=0.13`; drop `platformdirs` once last callsite is migrated
 
 ---
@@ -81,7 +81,7 @@ git commit -m "chore(deps): add tomlkit for config writes"
 
 **Files:**
 - Create: `tests/test_paths.py`
-- Create: `src/thoth/paths.py`
+- Create: `src/doxa_research/paths.py`
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -96,15 +96,15 @@ from pathlib import Path
 
 import pytest
 
-from thoth import paths
+from doxa-research import paths
 
 
 @pytest.mark.parametrize(
     ("env_name", "func", "subpath", "default_rel"),
     [
-        ("XDG_CONFIG_HOME", paths.user_config_dir, "thoth", ".config/thoth"),
-        ("XDG_STATE_HOME", paths.user_state_dir, "thoth", ".local/state/thoth"),
-        ("XDG_CACHE_HOME", paths.user_cache_dir, "thoth", ".cache/thoth"),
+        ("XDG_CONFIG_HOME", paths.user_config_dir, "doxa-research", ".config/doxa-research"),
+        ("XDG_STATE_HOME", paths.user_state_dir, "doxa-research", ".local/state/doxa-research"),
+        ("XDG_CACHE_HOME", paths.user_cache_dir, "doxa-research", ".cache/doxa-research"),
     ],
 )
 def test_dir_honors_env_when_set(
@@ -122,9 +122,9 @@ def test_dir_honors_env_when_set(
 @pytest.mark.parametrize(
     ("env_name", "func", "default_rel"),
     [
-        ("XDG_CONFIG_HOME", paths.user_config_dir, ".config/thoth"),
-        ("XDG_STATE_HOME", paths.user_state_dir, ".local/state/thoth"),
-        ("XDG_CACHE_HOME", paths.user_cache_dir, ".cache/thoth"),
+        ("XDG_CONFIG_HOME", paths.user_config_dir, ".config/doxa-research"),
+        ("XDG_STATE_HOME", paths.user_state_dir, ".local/state/doxa-research"),
+        ("XDG_CACHE_HOME", paths.user_cache_dir, ".cache/doxa-research"),
     ],
 )
 def test_dir_falls_back_when_env_unset(
@@ -140,9 +140,9 @@ def test_dir_falls_back_when_env_unset(
 @pytest.mark.parametrize(
     ("env_name", "func", "default_rel"),
     [
-        ("XDG_CONFIG_HOME", paths.user_config_dir, ".config/thoth"),
-        ("XDG_STATE_HOME", paths.user_state_dir, ".local/state/thoth"),
-        ("XDG_CACHE_HOME", paths.user_cache_dir, ".cache/thoth"),
+        ("XDG_CONFIG_HOME", paths.user_config_dir, ".config/doxa-research"),
+        ("XDG_STATE_HOME", paths.user_state_dir, ".local/state/doxa-research"),
+        ("XDG_CACHE_HOME", paths.user_cache_dir, ".cache/doxa-research"),
     ],
 )
 def test_dir_falls_back_when_env_empty(
@@ -160,34 +160,34 @@ def test_user_config_file_under_config_dir(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
-    assert paths.user_config_file() == tmp_path / "thoth" / "config.toml"
+    assert paths.user_config_file() == tmp_path / "doxa-research" / "config.toml"
 
 
 def test_user_checkpoints_dir_under_state_dir(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
-    assert paths.user_checkpoints_dir() == tmp_path / "thoth" / "checkpoints"
+    assert paths.user_checkpoints_dir() == tmp_path / "doxa-research" / "checkpoints"
 
 
 def test_user_model_cache_dir_under_cache_dir(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path))
-    assert paths.user_model_cache_dir() == tmp_path / "thoth" / "model_cache"
+    assert paths.user_model_cache_dir() == tmp_path / "doxa-research" / "model_cache"
 ```
 
 - [ ] **Step 2: Run tests, verify they fail**
 
 Run: `uv run pytest tests/test_paths.py -v`
-Expected: ImportError / ModuleNotFoundError for `thoth.paths`.
+Expected: ImportError / ModuleNotFoundError for `doxa-research.paths`.
 
 - [ ] **Step 3: Implement `paths.py`**
 
-Create `src/thoth/paths.py`:
+Create `src/doxa_research/paths.py`:
 
 ```python
-"""XDG Base Directory Specification path helpers for Thoth.
+"""XDG Base Directory Specification path helpers for Doxa Research.
 
 Per the spec, when an XDG_* env var is unset or empty, fall back to the
 spec default relative to the user's home directory.
@@ -198,7 +198,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-_APP = "thoth"
+_APP = "doxa-research"
 
 
 def _xdg_dir(env_name: str, default_rel: str) -> Path:
@@ -260,7 +260,7 @@ Expected: no errors.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add src/thoth/paths.py tests/test_paths.py
+git add src/doxa_research/paths.py tests/test_paths.py
 git commit -m "feat(paths): add XDG path helpers"
 ```
 
@@ -269,19 +269,19 @@ git commit -m "feat(paths): add XDG path helpers"
 ## Task 3: Migrate `config.py` + `models.py` + `commands.py` + `help.py` to `paths.py`
 
 **Files:**
-- Modify: `src/thoth/config.py`
-- Modify: `src/thoth/models.py`
-- Modify: `src/thoth/commands.py`
-- Modify: `src/thoth/help.py`
+- Modify: `src/doxa_research/config.py`
+- Modify: `src/doxa_research/models.py`
+- Modify: `src/doxa_research/commands.py`
+- Modify: `src/doxa_research/help.py`
 - Modify: `tests/conftest.py`
 
 - [ ] **Step 1: Update `conftest.py` to set XDG_STATE_HOME and XDG_CACHE_HOME**
 
-Replace the `isolated_thoth_home` and `checkpoint_dir` fixtures in `tests/conftest.py`:
+Replace the `isolated_doxa_home` and `checkpoint_dir` fixtures in `tests/conftest.py`:
 
 ```python
 @pytest.fixture
-def isolated_thoth_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+def isolated_doxa_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """Per-test XDG_* roots so config/state/cache never hit the real user dir."""
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
     monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
@@ -290,9 +290,9 @@ def isolated_thoth_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path
 
 
 @pytest.fixture
-def checkpoint_dir(isolated_thoth_home: Path) -> Path:
-    """Thoth's checkpoint directory under the isolated test state dir."""
-    from thoth.paths import user_checkpoints_dir
+def checkpoint_dir(isolated_doxa_home: Path) -> Path:
+    """Doxa Research's checkpoint directory under the isolated test state dir."""
+    from doxa-research.paths import user_checkpoints_dir
 
     path = user_checkpoints_dir()
     path.mkdir(parents=True, exist_ok=True)
@@ -301,7 +301,7 @@ def checkpoint_dir(isolated_thoth_home: Path) -> Path:
 
 Also remove the now-unused `from platformdirs import user_config_dir` import from `conftest.py`.
 
-- [ ] **Step 2: Migrate `src/thoth/config.py`**
+- [ ] **Step 2: Migrate `src/doxa_research/config.py`**
 
 Replace line 20:
 ```python
@@ -309,12 +309,12 @@ from platformdirs import user_config_dir
 ```
 with:
 ```python
-from thoth.paths import user_checkpoints_dir, user_config_file
+from doxa-research.paths import user_checkpoints_dir, user_config_file
 ```
 
 Replace line 147 (inside `get_defaults`):
 ```python
-"checkpoint_dir": str(Path(user_config_dir("thoth")) / "checkpoints"),
+"checkpoint_dir": str(Path(user_config_dir("doxa-research")) / "checkpoints"),
 ```
 with:
 ```python
@@ -323,14 +323,14 @@ with:
 
 Replace line 197 (inside `ConfigManager.__init__`):
 ```python
-self.user_config_path = config_path or Path(user_config_dir("thoth")) / "config.toml"
+self.user_config_path = config_path or Path(user_config_dir("doxa-research")) / "config.toml"
 ```
 with:
 ```python
 self.user_config_path = config_path or user_config_file()
 ```
 
-- [ ] **Step 3: Migrate `src/thoth/models.py`**
+- [ ] **Step 3: Migrate `src/doxa_research/models.py`**
 
 Replace line 19:
 ```python
@@ -338,19 +338,19 @@ from platformdirs import user_config_dir
 ```
 with:
 ```python
-from thoth.paths import user_model_cache_dir
+from doxa-research.paths import user_model_cache_dir
 ```
 
 Replace line 108:
 ```python
-self.cache_dir = Path(user_config_dir("thoth")) / "model_cache"
+self.cache_dir = Path(user_config_dir("doxa-research")) / "model_cache"
 ```
 with:
 ```python
 self.cache_dir = user_model_cache_dir()
 ```
 
-- [ ] **Step 4: Migrate `src/thoth/commands.py`**
+- [ ] **Step 4: Migrate `src/doxa_research/commands.py`**
 
 Replace line 18:
 ```python
@@ -358,13 +358,13 @@ from platformdirs import user_config_dir
 ```
 with:
 ```python
-from thoth.paths import user_config_file
+from doxa-research.paths import user_config_file
 ```
 
 Replace the init_command default-path assignment (around line 71-72):
 ```python
 if config_path is None:
-    config_path = Path(user_config_dir("thoth")) / "config.toml"
+    config_path = Path(user_config_dir("doxa-research")) / "config.toml"
 ```
 with:
 ```python
@@ -372,7 +372,7 @@ if config_path is None:
     config_path = user_config_file()
 ```
 
-- [ ] **Step 5: Migrate `src/thoth/help.py`**
+- [ ] **Step 5: Migrate `src/doxa_research/help.py`**
 
 Replace line 12:
 ```python
@@ -380,12 +380,12 @@ from platformdirs import user_config_dir
 ```
 with:
 ```python
-from thoth.paths import user_config_file
+from doxa-research.paths import user_config_file
 ```
 
 Replace line 106 (inside `show_init_help`):
 ```python
-console.print(f"  {Path(user_config_dir('thoth')) / 'config.toml'}")
+console.print(f"  {Path(user_config_dir('doxa-research')) / 'config.toml'}")
 ```
 with:
 ```python
@@ -426,7 +426,7 @@ Expected: all existing tests pass; no lint/type errors.
 - [ ] **Step 9: Commit**
 
 ```bash
-git add src/thoth/config.py src/thoth/models.py src/thoth/commands.py src/thoth/help.py tests/conftest.py pyproject.toml uv.lock
+git add src/doxa_research/config.py src/doxa_research/models.py src/doxa_research/commands.py src/doxa_research/help.py tests/conftest.py pyproject.toml uv.lock
 git commit -m "refactor(paths): migrate all callsites from platformdirs to XDG helpers"
 ```
 
@@ -436,14 +436,14 @@ git commit -m "refactor(paths): migrate all callsites from platformdirs to XDG h
 
 **Files:**
 - Create: `tests/test_config_cmd.py`
-- Create: `src/thoth/config_cmd.py`
+- Create: `src/doxa_research/config_cmd.py`
 
 - [ ] **Step 1: Write failing tests for `get`**
 
 Create `tests/test_config_cmd.py`:
 
 ```python
-"""Tests for the `thoth config` subcommand."""
+"""Tests for the `doxa-research config` subcommand."""
 
 from __future__ import annotations
 
@@ -451,11 +451,11 @@ from pathlib import Path
 
 import pytest
 
-from thoth.config_cmd import config_command
+from doxa-research.config_cmd import config_command
 
 
 def test_get_returns_merged_value(
-    isolated_thoth_home: Path, capsys: pytest.CaptureFixture[str]
+    isolated_doxa_home: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     rc = config_command("get", ["general.default_mode"])
     out = capsys.readouterr().out.strip()
@@ -464,17 +464,17 @@ def test_get_returns_merged_value(
 
 
 def test_get_missing_key_exits_nonzero(
-    isolated_thoth_home: Path, capsys: pytest.CaptureFixture[str]
+    isolated_doxa_home: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     rc = config_command("get", ["nonexistent.key"])
     assert rc == 1
 
 
 def test_get_layer_defaults(
-    isolated_thoth_home: Path, capsys: pytest.CaptureFixture[str]
+    isolated_doxa_home: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     # Write a user override, confirm --layer defaults still returns the default.
-    user_toml = Path(isolated_thoth_home) / "config" / "thoth" / "config.toml"
+    user_toml = Path(isolated_doxa_home) / "config" / "doxa-research" / "config.toml"
     user_toml.parent.mkdir(parents=True, exist_ok=True)
     user_toml.write_text('version = "2.0"\n[general]\ndefault_mode = "exploration"\n')
 
@@ -485,7 +485,7 @@ def test_get_layer_defaults(
 
 
 def test_get_raw_preserves_env_template(
-    isolated_thoth_home: Path,
+    isolated_doxa_home: Path,
     capsys: pytest.CaptureFixture[str],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -499,14 +499,14 @@ def test_get_raw_preserves_env_template(
 - [ ] **Step 2: Run tests, verify they fail**
 
 Run: `uv run pytest tests/test_config_cmd.py -v`
-Expected: ImportError on `thoth.config_cmd`.
+Expected: ImportError on `doxa-research.config_cmd`.
 
 - [ ] **Step 3: Implement scaffold + `get`**
 
-Create `src/thoth/config_cmd.py`:
+Create `src/doxa_research/config_cmd.py`:
 
 ```python
-"""CLI surface for the `thoth config` subcommand."""
+"""CLI surface for the `doxa-research config` subcommand."""
 
 from __future__ import annotations
 
@@ -516,8 +516,8 @@ from typing import Any
 
 from rich.console import Console
 
-from thoth.config import ConfigManager
-from thoth.paths import user_config_file
+from doxa-research.config import ConfigManager
+from doxa-research.paths import user_config_file
 
 console = Console()
 
@@ -608,7 +608,7 @@ def _op_get(args: list[str]) -> int:
 
 
 def config_command(op: str, args: list[str]) -> int:
-    """Dispatch `thoth config <op>`. Returns a process exit code."""
+    """Dispatch `doxa-research config <op>`. Returns a process exit code."""
     ops = {
         "get": _op_get,
     }
@@ -637,7 +637,7 @@ just check
 - [ ] **Step 6: Commit**
 
 ```bash
-git add src/thoth/config_cmd.py tests/test_config_cmd.py
+git add src/doxa_research/config_cmd.py tests/test_config_cmd.py
 git commit -m "feat(config): add config_command dispatcher with get op"
 ```
 
@@ -646,7 +646,7 @@ git commit -m "feat(config): add config_command dispatcher with get op"
 ## Task 5: `set` op with TOML round-trip (tests first)
 
 **Files:**
-- Modify: `src/thoth/config_cmd.py`
+- Modify: `src/doxa_research/config_cmd.py`
 - Modify: `tests/test_config_cmd.py`
 
 - [ ] **Step 1: Append failing tests for `set`**
@@ -655,12 +655,12 @@ Append to `tests/test_config_cmd.py`:
 
 ```python
 def test_set_writes_user_toml(
-    isolated_thoth_home: Path, capsys: pytest.CaptureFixture[str]
+    isolated_doxa_home: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     rc = config_command("set", ["general.default_mode", "exploration"])
     assert rc == 0
 
-    from thoth.paths import user_config_file
+    from doxa-research.paths import user_config_file
 
     path = user_config_file()
     assert path.exists()
@@ -675,49 +675,49 @@ def test_set_writes_user_toml(
 
 
 def test_set_project_writes_project_toml(
-    isolated_thoth_home: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    isolated_doxa_home: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.chdir(tmp_path)
     rc = config_command("set", ["--project", "general.default_mode", "deep_dive"])
     assert rc == 0
-    project_path = tmp_path / "thoth.toml"
+    project_path = tmp_path / "doxa-research.toml"
     assert project_path.exists()
     assert "deep_dive" in project_path.read_text()
 
     # User file should not have been created.
-    from thoth.paths import user_config_file
+    from doxa-research.paths import user_config_file
     assert not user_config_file().exists()
 
 
-def test_set_parses_bool(isolated_thoth_home: Path) -> None:
+def test_set_parses_bool(isolated_doxa_home: Path) -> None:
     rc = config_command("set", ["execution.parallel_providers", "false"])
     assert rc == 0
     cm_rc = config_command("get", ["execution.parallel_providers"])
     assert cm_rc == 0
 
 
-def test_set_parses_int(isolated_thoth_home: Path) -> None:
+def test_set_parses_int(isolated_doxa_home: Path) -> None:
     rc = config_command("set", ["execution.poll_interval", "15"])
     assert rc == 0
 
-    from thoth.paths import user_config_file
+    from doxa-research.paths import user_config_file
     import tomllib
     data = tomllib.loads(user_config_file().read_text())
     assert data["execution"]["poll_interval"] == 15
 
 
-def test_set_string_flag_forces_string(isolated_thoth_home: Path) -> None:
+def test_set_string_flag_forces_string(isolated_doxa_home: Path) -> None:
     rc = config_command("set", ["--string", "execution.poll_interval", "15"])
     assert rc == 0
 
-    from thoth.paths import user_config_file
+    from doxa-research.paths import user_config_file
     import tomllib
     data = tomllib.loads(user_config_file().read_text())
     assert data["execution"]["poll_interval"] == "15"
 
 
-def test_set_preserves_existing_comments(isolated_thoth_home: Path) -> None:
-    from thoth.paths import user_config_file
+def test_set_preserves_existing_comments(isolated_doxa_home: Path) -> None:
+    from doxa-research.paths import user_config_file
     path = user_config_file()
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
@@ -742,7 +742,7 @@ Expected: FAIL with "unknown config op: set".
 
 - [ ] **Step 3: Implement `_op_set`**
 
-In `src/thoth/config_cmd.py`, add imports at top:
+In `src/doxa_research/config_cmd.py`, add imports at top:
 
 ```python
 from pathlib import Path
@@ -774,7 +774,7 @@ def _parse_value(raw: str, force_string: bool) -> Any:
 
 def _target_path(project: bool) -> Path:
     if project:
-        return Path.cwd() / "thoth.toml"
+        return Path.cwd() / "doxa-research.toml"
     return user_config_file()
 
 
@@ -787,7 +787,7 @@ def _load_toml_doc(path: Path):
 
 
 def _warn_on_validation(key: str, value: Any) -> None:
-    from thoth.config import ConfigSchema
+    from doxa-research.config import ConfigSchema
 
     defaults = ConfigSchema.get_defaults()
     parts = key.split(".")
@@ -878,7 +878,7 @@ just check
 - [ ] **Step 6: Commit**
 
 ```bash
-git add src/thoth/config_cmd.py tests/test_config_cmd.py
+git add src/doxa_research/config_cmd.py tests/test_config_cmd.py
 git commit -m "feat(config): add set op with tomlkit round-trip"
 ```
 
@@ -887,7 +887,7 @@ git commit -m "feat(config): add set op with tomlkit round-trip"
 ## Task 6: `unset` op (tests first)
 
 **Files:**
-- Modify: `src/thoth/config_cmd.py`
+- Modify: `src/doxa_research/config_cmd.py`
 - Modify: `tests/test_config_cmd.py`
 
 - [ ] **Step 1: Append failing tests**
@@ -895,12 +895,12 @@ git commit -m "feat(config): add set op with tomlkit round-trip"
 Append to `tests/test_config_cmd.py`:
 
 ```python
-def test_unset_removes_key(isolated_thoth_home: Path) -> None:
+def test_unset_removes_key(isolated_doxa_home: Path) -> None:
     config_command("set", ["general.default_mode", "exploration"])
     rc = config_command("unset", ["general.default_mode"])
     assert rc == 0
 
-    from thoth.paths import user_config_file
+    from doxa-research.paths import user_config_file
     import tomllib
     data = tomllib.loads(user_config_file().read_text())
     # Empty [general] table should be pruned.
@@ -908,7 +908,7 @@ def test_unset_removes_key(isolated_thoth_home: Path) -> None:
 
 
 def test_unset_missing_key_is_noop(
-    isolated_thoth_home: Path, capsys: pytest.CaptureFixture[str]
+    isolated_doxa_home: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     rc = config_command("unset", ["general.default_mode"])
     assert rc == 0
@@ -918,14 +918,14 @@ def test_unset_missing_key_is_noop(
 
 
 def test_unset_project_target(
-    isolated_thoth_home: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    isolated_doxa_home: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.chdir(tmp_path)
     config_command("set", ["--project", "general.default_mode", "deep_dive"])
     rc = config_command("unset", ["--project", "general.default_mode"])
     assert rc == 0
     import tomllib
-    data = tomllib.loads((tmp_path / "thoth.toml").read_text())
+    data = tomllib.loads((tmp_path / "doxa-research.toml").read_text())
     assert "general" not in data
 ```
 
@@ -1007,7 +1007,7 @@ Expected: all `test_unset_*` pass.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/thoth/config_cmd.py tests/test_config_cmd.py
+git add src/doxa_research/config_cmd.py tests/test_config_cmd.py
 just fix
 git commit -m "feat(config): add unset op with empty-table pruning"
 ```
@@ -1017,7 +1017,7 @@ git commit -m "feat(config): add unset op with empty-table pruning"
 ## Task 7: `list` + `path` ops (tests first)
 
 **Files:**
-- Modify: `src/thoth/config_cmd.py`
+- Modify: `src/doxa_research/config_cmd.py`
 - Modify: `tests/test_config_cmd.py`
 
 - [ ] **Step 1: Append failing tests**
@@ -1026,7 +1026,7 @@ Append to `tests/test_config_cmd.py`:
 
 ```python
 def test_list_prints_toml(
-    isolated_thoth_home: Path, capsys: pytest.CaptureFixture[str]
+    isolated_doxa_home: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     rc = config_command("list", [])
     out = capsys.readouterr().out
@@ -1036,7 +1036,7 @@ def test_list_prints_toml(
 
 
 def test_list_keys_emits_sorted_dotted(
-    isolated_thoth_home: Path, capsys: pytest.CaptureFixture[str]
+    isolated_doxa_home: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     rc = config_command("list", ["--keys"])
     out = capsys.readouterr().out.strip().splitlines()
@@ -1046,7 +1046,7 @@ def test_list_keys_emits_sorted_dotted(
 
 
 def test_list_json_is_valid_json(
-    isolated_thoth_home: Path, capsys: pytest.CaptureFixture[str]
+    isolated_doxa_home: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     import json
     rc = config_command("list", ["--json"])
@@ -1057,7 +1057,7 @@ def test_list_json_is_valid_json(
 
 
 def test_list_layer_shows_one_layer(
-    isolated_thoth_home: Path, capsys: pytest.CaptureFixture[str]
+    isolated_doxa_home: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     config_command("set", ["general.default_mode", "exploration"])
     capsys.readouterr()
@@ -1069,9 +1069,9 @@ def test_list_layer_shows_one_layer(
 
 
 def test_path_prints_user_config_path(
-    isolated_thoth_home: Path, capsys: pytest.CaptureFixture[str]
+    isolated_doxa_home: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    from thoth.paths import user_config_file
+    from doxa-research.paths import user_config_file
 
     rc = config_command("path", [])
     out = capsys.readouterr().out.strip()
@@ -1080,7 +1080,7 @@ def test_path_prints_user_config_path(
 
 
 def test_path_project_prints_project_path(
-    isolated_thoth_home: Path,
+    isolated_doxa_home: Path,
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
     monkeypatch: pytest.MonkeyPatch,
@@ -1089,7 +1089,7 @@ def test_path_project_prints_project_path(
     rc = config_command("path", ["--project"])
     out = capsys.readouterr().out.strip()
     assert rc == 0
-    assert out == str(tmp_path / "thoth.toml")
+    assert out == str(tmp_path / "doxa-research.toml")
 ```
 
 - [ ] **Step 2: Run, confirm failure**
@@ -1190,7 +1190,7 @@ Expected: PASS.
 
 ```bash
 just fix
-git add src/thoth/config_cmd.py tests/test_config_cmd.py
+git add src/doxa_research/config_cmd.py tests/test_config_cmd.py
 git commit -m "feat(config): add list and path ops"
 ```
 
@@ -1199,7 +1199,7 @@ git commit -m "feat(config): add list and path ops"
 ## Task 8: Secrets masking on `get` and `list` (tests first)
 
 **Files:**
-- Modify: `src/thoth/config_cmd.py`
+- Modify: `src/doxa_research/config_cmd.py`
 - Modify: `tests/test_config_cmd.py`
 
 - [ ] **Step 1: Append failing tests**
@@ -1208,7 +1208,7 @@ Append to `tests/test_config_cmd.py`:
 
 ```python
 def test_get_masks_api_key_by_default(
-    isolated_thoth_home: Path,
+    isolated_doxa_home: Path,
     capsys: pytest.CaptureFixture[str],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1220,7 +1220,7 @@ def test_get_masks_api_key_by_default(
 
 
 def test_get_show_secrets_reveals(
-    isolated_thoth_home: Path,
+    isolated_doxa_home: Path,
     capsys: pytest.CaptureFixture[str],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1232,7 +1232,7 @@ def test_get_show_secrets_reveals(
 
 
 def test_list_masks_api_keys_by_default(
-    isolated_thoth_home: Path,
+    isolated_doxa_home: Path,
     capsys: pytest.CaptureFixture[str],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1327,7 +1327,7 @@ Expected: PASS.
 
 ```bash
 just fix
-git add src/thoth/config_cmd.py tests/test_config_cmd.py
+git add src/doxa_research/config_cmd.py tests/test_config_cmd.py
 git commit -m "feat(config): mask api_key values by default with --show-secrets opt-in"
 ```
 
@@ -1336,8 +1336,8 @@ git commit -m "feat(config): mask api_key values by default with --show-secrets 
 ## Task 9: `edit` and `help` ops (tests first)
 
 **Files:**
-- Modify: `src/thoth/config_cmd.py`
-- Modify: `src/thoth/help.py`
+- Modify: `src/doxa_research/config_cmd.py`
+- Modify: `src/doxa_research/help.py`
 - Modify: `tests/test_config_cmd.py`
 
 - [ ] **Step 1: Append failing tests**
@@ -1346,7 +1346,7 @@ Append to `tests/test_config_cmd.py`:
 
 ```python
 def test_edit_invokes_editor_and_creates_file(
-    isolated_thoth_home: Path,
+    isolated_doxa_home: Path,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1356,7 +1356,7 @@ def test_edit_invokes_editor_and_creates_file(
     stub.chmod(0o755)
     monkeypatch.setenv("EDITOR", str(stub))
 
-    from thoth.paths import user_config_file
+    from doxa-research.paths import user_config_file
     assert not user_config_file().exists()
 
     rc = config_command("edit", [])
@@ -1370,7 +1370,7 @@ def test_help_renders_text(capsys: pytest.CaptureFixture[str]) -> None:
     rc = config_command("help", [])
     out = capsys.readouterr().out
     assert rc == 0
-    assert "thoth config" in out
+    assert "doxa-research config" in out
     assert "get" in out
     assert "set" in out
     assert "unset" in out
@@ -1383,14 +1383,14 @@ Expected: FAIL.
 
 - [ ] **Step 3: Add `show_config_help()` in `help.py`**
 
-In `src/thoth/help.py`, add before the `__all__` list:
+In `src/doxa_research/help.py`, add before the `__all__` list:
 
 ```python
 def show_config_help():
     """Show detailed help for the config command."""
-    console.print("\n[bold]thoth config[/bold] - Inspect and edit configuration")
+    console.print("\n[bold]doxa-research config[/bold] - Inspect and edit configuration")
     console.print("\n[bold]Usage:[/bold]")
-    console.print("  thoth config <OP> [ARGS...]")
+    console.print("  doxa-research config <OP> [ARGS...]")
     console.print("\n[bold]Ops:[/bold]")
     console.print("  get <KEY> [--layer L] [--raw] [--json] [--show-secrets]")
     console.print("     Print a single value from the merged config.")
@@ -1407,11 +1407,11 @@ def show_config_help():
     console.print("  help")
     console.print("     Show this help.")
     console.print("\n[bold]Examples:[/bold]")
-    console.print('  $ thoth config get general.default_mode')
-    console.print('  $ thoth config set general.default_mode exploration')
-    console.print('  $ thoth config set --project execution.poll_interval 15')
-    console.print('  $ thoth config list --keys')
-    console.print('  $ thoth config path')
+    console.print('  $ doxa config get general.default_mode')
+    console.print('  $ doxa config set general.default_mode exploration')
+    console.print('  $ doxa config set --project execution.poll_interval 15')
+    console.print('  $ doxa config list --keys')
+    console.print('  $ doxa config path')
     console.print("\n[bold]Notes:[/bold]")
     console.print("  API key values are masked by default; use --show-secrets to reveal.")
     console.print("  Writes preserve comments and formatting of the target TOML file.")
@@ -1423,7 +1423,7 @@ Add `"show_config_help"` to `__all__` and update the imports in `commands.py` an
 
 ```python
 def _op_help(args: list[str]) -> int:
-    from thoth.help import show_config_help
+    from doxa-research.help import show_config_help
 
     show_config_help()
     return 0
@@ -1458,7 +1458,7 @@ Expected: PASS.
 
 ```bash
 just fix
-git add src/thoth/config_cmd.py src/thoth/help.py tests/test_config_cmd.py
+git add src/doxa_research/config_cmd.py src/doxa_research/help.py tests/test_config_cmd.py
 git commit -m "feat(config): add edit and help ops"
 ```
 
@@ -1467,9 +1467,9 @@ git commit -m "feat(config): add edit and help ops"
 ## Task 10: Wire `config` into `cli.py` + `commands.py` + help system
 
 **Files:**
-- Modify: `src/thoth/cli.py`
-- Modify: `src/thoth/commands.py`
-- Modify: `src/thoth/help.py`
+- Modify: `src/doxa_research/cli.py`
+- Modify: `src/doxa_research/commands.py`
+- Modify: `src/doxa_research/help.py`
 - Modify: `tests/test_config_cmd.py`
 
 - [ ] **Step 1: Append end-to-end test via click runner**
@@ -1478,11 +1478,11 @@ Append to `tests/test_config_cmd.py`:
 
 ```python
 def test_cli_config_get_via_click(
-    isolated_thoth_home: Path,
+    isolated_doxa_home: Path,
 ) -> None:
     from click.testing import CliRunner
 
-    from thoth.cli import cli
+    from doxa-research.cli import cli
 
     runner = CliRunner()
     result = runner.invoke(cli, ["config", "get", "general.default_mode"])
@@ -1493,7 +1493,7 @@ def test_cli_config_get_via_click(
 def test_cli_config_help_listed_in_epilog() -> None:
     from click.testing import CliRunner
 
-    from thoth.cli import cli
+    from doxa-research.cli import cli
 
     runner = CliRunner()
     result = runner.invoke(cli, ["--help"])
@@ -1507,7 +1507,7 @@ Expected: FAIL (config not dispatched).
 
 - [ ] **Step 3: Register in `cli.py` subcommand list**
 
-In `src/thoth/cli.py`, update the two `if args and args[0] in [...]` checks (lines 157 and 222) to include `"config"`:
+In `src/doxa_research/cli.py`, update the two `if args and args[0] in [...]` checks (lines 157 and 222) to include `"config"`:
 
 ```python
 if not (args and args[0] in ["init", "status", "list", "help", "providers", "config"]):
@@ -1523,7 +1523,7 @@ Inside the dispatch block, after the existing `elif command == "providers":` bra
 
 ```python
 elif command == "config":
-    from thoth.config_cmd import config_command
+    from doxa-research.config_cmd import config_command
 
     if len(args) < 2:
         console.print("[red]Error:[/red] config command requires an op (get|set|unset|list|path|edit|help)")
@@ -1534,7 +1534,7 @@ elif command == "config":
     sys.exit(rc)
 ```
 
-Also extend the `thoth help <cmd>` dispatch in `cli.py` to recognize `config`:
+Also extend the `doxa-research help <cmd>` dispatch in `cli.py` to recognize `config`:
 
 ```python
 elif help_command == "config":
@@ -1544,8 +1544,8 @@ elif help_command == "config":
 And add the import at top of `cli.py`:
 
 ```python
-from thoth.help import (
-    ThothCommand,
+from doxa-research.help import (
+    DoxaCommand,
     build_epilog,
     show_config_help,
     show_init_help,
@@ -1553,9 +1553,9 @@ from thoth.help import (
 )
 ```
 
-- [ ] **Step 4: Extend `ThothCommand.parse_args` in `help.py` to intercept `--help config`**
+- [ ] **Step 4: Extend `DoxaCommand.parse_args` in `help.py` to intercept `--help config`**
 
-In `help.py`, inside `ThothCommand.parse_args`, add a branch for `"config"`:
+In `help.py`, inside `DoxaCommand.parse_args`, add a branch for `"config"`:
 
 ```python
 elif subcommand == "config":
@@ -1579,7 +1579,7 @@ console.print("  config          Inspect and edit configuration")
 
 - [ ] **Step 6: Register in `CommandHandler` (commands.py)**
 
-In `src/thoth/commands.py`, add `"config"` to the `self.commands` dict inside `CommandHandler.__init__`:
+In `src/doxa_research/commands.py`, add `"config"` to the `self.commands` dict inside `CommandHandler.__init__`:
 
 ```python
 self.commands = {
@@ -1597,12 +1597,12 @@ Add a thin wrapper method on `CommandHandler`:
 
 ```python
 def config_command(self, op: str | None = None, rest: list[str] | None = None, **params) -> int:
-    from thoth.config_cmd import config_command as _cfg
+    from doxa-research.config_cmd import config_command as _cfg
 
     if op is None:
-        raise ThothError(
+        raise DoxaError(
             "config requires an op",
-            "Run `thoth config help` for usage",
+            "Run `doxa-research config help` for usage",
         )
     return _cfg(op, rest or [])
 ```
@@ -1628,7 +1628,7 @@ just check
 - [ ] **Step 9: Commit**
 
 ```bash
-git add src/thoth/cli.py src/thoth/commands.py src/thoth/help.py tests/test_config_cmd.py
+git add src/doxa_research/cli.py src/doxa_research/commands.py src/doxa_research/help.py tests/test_config_cmd.py
 git commit -m "feat(config): wire config subcommand into CLI dispatch and help system"
 ```
 
@@ -1655,7 +1655,7 @@ Expected: no errors.
 
 - [ ] **Step 4: Full test run**
 
-Run: `./thoth_test -r`
+Run: `./doxa_test -r`
 Expected: all tests pass.
 
 - [ ] **Step 5: Test-suite lint/typecheck**
@@ -1676,16 +1676,16 @@ Run (in a throwaway dir):
 export XDG_CONFIG_HOME="$(mktemp -d)"
 export XDG_STATE_HOME="$(mktemp -d)"
 export XDG_CACHE_HOME="$(mktemp -d)"
-uv run thoth config path
-uv run thoth config get general.default_mode
-uv run thoth config set general.default_mode exploration
-uv run thoth config get general.default_mode
-uv run thoth config list --keys
-uv run thoth config help
+uv run doxa-research config path
+uv run doxa-research config get general.default_mode
+uv run doxa-research config set general.default_mode exploration
+uv run doxa-research config get general.default_mode
+uv run doxa-research config list --keys
+uv run doxa-research config help
 ```
 
 Expected (abbreviated):
-- `path` prints `${XDG_CONFIG_HOME}/thoth/config.toml`
+- `path` prints `${XDG_CONFIG_HOME}/doxa-research/config.toml`
 - first `get` prints `default`
 - after `set`, `get` prints `exploration`
 - `list --keys` prints sorted dotted keys including `general.default_mode`
@@ -1697,7 +1697,7 @@ Per project convention, append a new Project entry to `PROJECTS.md`:
 
 ```markdown
 ## [x] Project P25: Config Subcommand + XDG Layout (v2.6.0)
-**Goal**: Add `thoth config` subcommand (get/set/unset/list/path/edit/help) and migrate user-writable paths to XDG Base Directory Spec.
+**Goal**: Add `doxa-research config` subcommand (get/set/unset/list/path/edit/help) and migrate user-writable paths to XDG Base Directory Spec.
 
 ### Tests & Tasks
 - [x] [P25-T01] Add tomlkit dep

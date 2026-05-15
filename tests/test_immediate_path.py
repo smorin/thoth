@@ -6,7 +6,7 @@ Confirms the user-visible Phase C value:
     Progress bar engages)
   * `_execute_research` does NOT print the trailing "Operation ID" + status
     hints for immediate-kind operations
-  * `_execute_research` does NOT print the "Resume with: thoth resume" hint
+  * `_execute_research` does NOT print the "Resume with: doxa resume" hint
     on a recoverable failure for immediate-kind operations
 
 The full path split (skipping the polling loop entirely for immediate runs)
@@ -22,10 +22,10 @@ from unittest.mock import patch
 import pytest
 from rich.console import Console
 
-from tests._fixture_helpers import run_thoth
+from doxa_research.context import AppContext
+from doxa_research.run import _execute_immediate, _poll_display
+from tests._fixture_helpers import run_doxa
 from tests.conftest import make_operation
-from thoth.context import AppContext
-from thoth.run import _execute_immediate, _poll_display
 
 
 def test_poll_display_yields_none_for_immediate_kind() -> None:
@@ -86,7 +86,7 @@ def test_poll_display_legacy_no_mode_cfg_immediate_model() -> None:
 def test_should_show_spinner_used_by_poll_display_for_background_with_mode_cfg() -> None:
     """When mode_cfg=background, the spinner gate is consulted."""
     background_cfg = {"model": "o3-deep-research", "kind": "background"}
-    with patch("thoth.run.should_show_spinner", return_value=False) as mock_gate:
+    with patch("doxa_research.run.should_show_spinner", return_value=False) as mock_gate:
         with _poll_display(
             quiet=False,
             mode_model="o3-deep-research",
@@ -104,7 +104,7 @@ def test_should_show_spinner_used_by_poll_display_for_background_with_mode_cfg()
 def test_should_show_spinner_short_circuits_for_immediate() -> None:
     """For immediate kind, _poll_display short-circuits without consulting the spinner gate."""
     immediate_cfg = {"model": "o3", "kind": "immediate"}
-    with patch("thoth.run.should_show_spinner", return_value=False) as mock_gate:
+    with patch("doxa_research.run.should_show_spinner", return_value=False) as mock_gate:
         with _poll_display(
             quiet=False,
             mode_model="o3",
@@ -119,16 +119,16 @@ def test_should_show_spinner_short_circuits_for_immediate() -> None:
 
 
 def test_immediate_stream_failure_does_not_double_fail_operation(
-    isolated_thoth_home: Path,
+    isolated_doxa_home: Path,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A stream failure already marked failed must not be failed a second time."""
     monkeypatch.chdir(tmp_path)
 
-    exit_code, stdout, stderr = run_thoth(
+    exit_code, stdout, stderr = run_doxa(
         ["permanent stream fail", "--provider", "mock"],
-        env_overrides={"THOTH_MOCK_BEHAVIOR": "permanent"},
+        env_overrides={"DOXA_MOCK_BEHAVIOR": "permanent"},
     )
     combined = stdout + stderr
 
@@ -254,7 +254,7 @@ class _SideChannelProvider:
     model = "perplexity-stub"
 
     async def stream(self, prompt, mode, system_prompt=None, verbose=False):
-        from thoth.providers.base import Citation, StreamEvent
+        from doxa_research.providers.base import Citation, StreamEvent
 
         yield StreamEvent(kind="reasoning", text="thinking step 1")
         yield StreamEvent(kind="text", text="answer body")

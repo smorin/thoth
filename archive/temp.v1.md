@@ -1,4 +1,4 @@
-# Thoth PRD v8 Recommendations
+# Doxa Research PRD v8 Recommendations
 
 ## 1. Configuration File Structure
 **Recommendation: Use a single config.toml file**
@@ -9,7 +9,7 @@ Benefits:
 - Easier backup and sharing
 - Less file system clutter
 
-Proposed structure for single `~/.thoth/config.toml`:
+Proposed structure for single `~/.doxa-research/config.toml`:
 ```toml
 [general]
 default_project = ""  # Empty means ad-hoc mode (current directory)
@@ -17,7 +17,7 @@ default_mode = "deep_research"
 
 [paths]
 base_output_dir = "./research-outputs"  # Default base directory for projects
-checkpoint_dir = "~/.thoth/checkpoints"
+checkpoint_dir = "~/.doxa-research/checkpoints"
 
 [execution]
 poll_interval = 30
@@ -49,7 +49,7 @@ parallel = true
 ### Async Flag
 - Use `--async` / `-A` as the primary flag (it's clearer than --no-wait)
 - `-A` is just a flag, not accepting arguments
-- Correct usage: `thoth deep_research "query" -A`
+- Correct usage: `doxa-research deep_research "query" -A`
 
 ### Command Matrix Additions
 Add these to the options matrix:
@@ -169,19 +169,19 @@ Ensure all paths in config are properly expanded:
 from pathlib import Path
 
 def load_config():
-    config = load_toml("~/.thoth/config.toml")
-    
+    config = load_toml("~/.doxa-research/config.toml")
+
     # Expand all paths
     if "paths" in config:
         for key, value in config["paths"].items():
             config["paths"][key] = str(Path(value).expanduser())
-    
+
     # Also handle output_dir at top level if present
     if "output_dir" in config.get("general", {}):
         config["general"]["output_dir"] = str(
             Path(config["general"]["output_dir"]).expanduser()
         )
-    
+
     return config
 ```
 
@@ -195,7 +195,7 @@ def load_config():
 ### Standardize Naming
 - Use "operation_id" consistently (not "research_id")
 - Use "system" role for OpenAI (not "developer")
-- Use "~/.thoth/config.toml" as single config file
+- Use "~/.doxa-research/config.toml" as single config file
 
 ### Python Version
 - Require Python ≥ 3.11 (remove tomli dependency)
@@ -207,8 +207,8 @@ def load_config():
 
 ## Summary of Changes for v8
 
-1. **Single config file**: `~/.thoth/config.toml` with all settings
-2. **Use Click**: Better suited for our complex CLI requirements  
+1. **Single config file**: `~/.doxa-research/config.toml` with all settings
+2. **Use Click**: Better suited for our complex CLI requirements
 3. **Standardize on --async/-A**: Remove --no-wait
 4. **Use --resume/-R**: Keep --research-id for compatibility
 5. **Fix role names**: Use "system" not "developer"
@@ -219,7 +219,7 @@ def load_config():
 
 ## New Output Behavior
 
-1. **Ad-hoc mode (default)**: 
+1. **Ad-hoc mode (default)**:
    - No --project specified → files go to current directory
    - No subdirectories created
    - Simple filenames: `YYYY-MM-DD_HHMMSS_<mode>-<slug>.md`

@@ -2,7 +2,7 @@
 # P18 Phase I: nightly real-API contract tests.
 #
 # Runs `pytest -m "extended and not extended_slow"` which exercises every entry in KNOWN_MODELS
-# against live provider APIs to detect drift between thoth's declared
+# against live provider APIs to detect drift between doxa-research's declared
 # `kind` and what the upstream API actually does. Gated on provider API-key
 # repo secrets. The job is informational — failures notify the team but do
 # NOT block PR merges.

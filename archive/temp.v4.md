@@ -1,8 +1,8 @@
-# Thoth v11 - Outstanding Questions and Issues
+# Doxa Research v11 - Outstanding Questions and Issues
 
 ## Summary
 
-After applying all recommendations from temp.v3.md to create thoth.v11.md, most logical inconsistencies have been resolved. However, a few questions remain that may require further clarification or design decisions.
+After applying all recommendations from temp.v3.md to create doxa-research.v11.md, most logical inconsistencies have been resolved. However, a few questions remain that may require further clarification or design decisions.
 
 ---
 
@@ -60,7 +60,7 @@ F-35 now specifies "strict pattern matching" for finding output files, but the e
 2024-08-03_143022_exploration-quantum-computing_perplexity.md
 
 # Second command with auto-input - which files match?
-thoth deep_research --auto --previous exploration
+doxa deep_research --auto --previous exploration
 ```
 
 ---
@@ -122,7 +122,7 @@ F-32 and F-33 cover basic error handling for mode chaining, but some scenarios a
 The PRD doesn't discuss configuration versioning or migration.
 
 ### Outstanding Questions
-- What happens when thoth is updated and config schema changes?
+- What happens when doxa-research is updated and config schema changes?
 - Should there be:
   - Automatic migration?
   - Version field in config.toml?

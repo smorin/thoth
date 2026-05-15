@@ -1,0 +1,3985 @@
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#   "rich>=13.7",
+#   "click>=8.0",
+#   "pexpect>=4.8",
+#   "platformdirs>=4.0",
+#   "openai>=1.14.0",
+#   "httpx>=0.27.0",
+#   "aiofiles>=23.0",
+#   "tenacity>=8.0",
+#   "python-dateutil>=2.8",
+#   "prompt-toolkit>=3.0",
+# ]
+# ///
+"""
+Doxa Research Test Suite - Comprehensive regression tests for Doxa Research CLI
+
+This test suite validates all aspects of Doxa Research's functionality through
+black-box testing using subprocess and pexpect. Each test validates:
+- Exit codes
+- Standard output patterns
+- Standard error patterns
+- File creation and content
+- Interactive mode behavior
+"""
+
+import atexit
+import concurrent.futures
+import json
+import os
+import re
+import shutil
+import signal
+import subprocess
+import sys
+import tempfile
+import threading
+import time
+from collections.abc import Callable
+from dataclasses import dataclass, field
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
+from typing import Any
+from uuid import uuid4
+
+import click
+from rich.console import Console
+from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn
+from rich.table import Table
+
+# Try to import pexpect for interactive tests
+try:
+    import pexpect
+
+    PEXPECT_AVAILABLE = True
+except ImportError:
+    PEXPECT_AVAILABLE = False
+    pexpect = None  # ty: ignore[invalid-assignment]
+
+# Initialize console for output
+console = Console()
+
+# Test configuration
+DOXA_EXECUTABLE = "./doxa"
+TEST_TIMEOUT = 30
+CLEANUP_ENABLED = True
+VERBOSE_OUTPUT = False  # Global verbose flag
+INTERACTIVE_COMPLETION_TIMEOUT = 5
+INTERACTIVE_STEP_TIMEOUT = int(os.getenv("DOXA_TEST_STEP_TIMEOUT", "3"))
+
+# CACHE_DIR is resolved once at import time. The env var override is intended
+# for test hermeticity (subprocess invocations inherit it); mid-process changes
+# via monkeypatch.setenv will NOT move the cache. In-process tests that need
+# to redirect the cache must patch doxa_test_mod.CACHE_FILE directly (and the
+# __defaults__ of read_last_failed / write_cache_atomic if they call the bare
+# form). `or` (not the getenv default) so an empty string falls back safely.
+CACHE_DIR = Path(os.getenv("DOXA_TEST_CACHE_DIR") or ".doxa_test_cache")
+CACHE_FILE = CACHE_DIR / "last_run.json"
+REPORT_SCHEMA_VERSION = 1
+PROVIDER_ENV_VARS = {
+    "openai": "OPENAI_API_KEY",
+    "perplexity": "PERPLEXITY_API_KEY",
+    "gemini": "GEMINI_API_KEY",
+}
+PROVIDER_API_KEY_FLAGS = {
+    "mock": "--api-key-mock",
+    "openai": "--api-key-openai",
+    "perplexity": "--api-key-perplexity",
+    "gemini": "--api-key-gemini",
+}
+PROVIDER_NAMES = ("mock", "openai", "perplexity", "gemini")
+LIVE_PROVIDER_NAMES = tuple(PROVIDER_ENV_VARS)
+
+# Make doxa-research package importable from fixture tests without per-call boilerplate.
+_DOXA_SRC = str(Path(__file__).resolve().parent / "src")
+if _DOXA_SRC not in sys.path:
+    sys.path.insert(0, _DOXA_SRC)
+
+
+# Terminal key sequences for interactive tests
+class Keys:
+    """ANSI escape sequences for special keys in terminal"""
+
+    UP = "\x1b[A"
+    DOWN = "\x1b[B"
+    TAB = "\t"
+    CTRL_C = "\x03"
+    CTRL_D = "\x04"
+    CTRL_J = "\x0a"  # Line feed - universal newline
+    ALT_ENTER = "\x1b\r"  # ESC + Enter
+    SHIFT_ENTER_CSI = "\x1b[13;2u"  # CSI-u sequence for Shift+Enter
+    ENTER = "\r"
+
+
+# ============================================================================
+# Data Models
+# ============================================================================
+
+
+@dataclass
+class TestResult:
+    """Result of a single test execution"""
+
+    test_id: str
+    passed: bool
+    duration: float
+    stdout: str
+    stderr: str
+    exit_code: int
+    error_message: str | None = None
+    created_files: list[Path] = field(default_factory=list)
+    is_api_key_failure: bool = False
+    skipped: bool = False
+
+
+@dataclass
+class TestCase:
+    """Definition of a test case"""
+
+    test_id: str
+    description: str
+    command: list[str]
+    env: dict[str, str] = field(default_factory=dict)
+    expected_exit_code: int = 0
+    expected_stdout_patterns: list[str] = field(default_factory=list)
+    expected_stderr_patterns: list[str] = field(default_factory=list)
+    not_expected_stdout_patterns: list[str] = field(default_factory=list)
+    not_expected_stderr_patterns: list[str] = field(default_factory=list)
+    expected_files: list[str] = field(default_factory=list)
+    not_expected_files: list[str] = field(default_factory=list)
+    expected_file_content_patterns: dict[str, list[str]] = field(default_factory=dict)
+    not_expected_file_content_patterns: dict[str, list[str]] = field(default_factory=dict)
+    timeout: int = TEST_TIMEOUT
+    cleanup_files: list[str] = field(default_factory=list)
+    skip: bool = False
+    skip_reason: str = ""
+    provider: str | None = None  # Which provider this test requires
+    api_key_method: str = "env"  # "env", "cli", or "config"
+    signal_after: float | None = None  # Send signal after N seconds
+    stdin_input: str | None = None  # Data piped to subprocess stdin
+    test_type: str = "subprocess"  # "subprocess" or "interactive"
+    interactive_scenario: list[tuple] | None = None  # For pexpect tests: [(expect, send), ...]
+    terminal_env: dict[str, str] | None = None  # Terminal-specific env vars
+    is_interactive: bool = False  # Whether this is an interactive mode test
+    setup_func: Callable[[Path], object] | None = None  # receives per-test config_home
+    teardown_func: Callable[[Path], object] | None = None  # receives per-test config_home
+    _requested_but_filtered: bool = False
+
+
+# ============================================================================
+# Utility Functions
+# ============================================================================
+
+
+def generate_mock_api_key() -> str:
+    """Generate a random dummy API key for mock provider testing"""
+    return f"mock-key-{uuid4().hex[:16]}"
+
+
+def shared_uv_cache_dir() -> str:
+    """Return the uv cache inherited by this runner, or the normal user cache."""
+    return os.getenv("UV_CACHE_DIR") or str(Path.home() / ".cache" / "uv")
+
+
+def get_test_api_keys() -> dict[str, str]:
+    """Get API keys for testing (real or generated)"""
+    return {
+        "mock": generate_mock_api_key(),
+        **{provider: os.getenv(env_var, "") for provider, env_var in PROVIDER_ENV_VARS.items()},
+    }
+
+
+def get_available_providers(test_api_keys: dict[str, str]) -> list[str]:
+    """Determine which providers are available for testing"""
+    providers = ["mock"]  # Mock is always available
+
+    for provider in LIVE_PROVIDER_NAMES:
+        if test_api_keys.get(provider):
+            providers.append(provider)
+
+    return providers
+
+
+def run_command(
+    command: list[str],
+    env: dict[str, str] | None = None,
+    timeout: int = TEST_TIMEOUT,
+    cwd: str | None = None,
+    signal_after: float | None = None,
+    stdin_input: str | None = None,
+) -> tuple[int, str, str]:
+    """
+    Execute a command and return exit code, stdout, stderr
+    """
+    # Merge environment variables
+    cmd_env = os.environ.copy()
+    if env:
+        cmd_env.update(env)
+
+    # Set terminal columns to ensure tables render properly
+    cmd_env["COLUMNS"] = "200"
+
+    try:
+        # Use Popen for more control over output capture
+        process = subprocess.Popen(
+            command,
+            stdin=subprocess.PIPE if stdin_input is not None else subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            env=cmd_env,
+            cwd=cwd,
+            bufsize=-1,  # Use system default buffering
+        )
+
+        try:
+            if signal_after:
+                # Wait for specified time then send signal
+                import threading
+
+                def send_signal():
+                    time.sleep(signal_after)
+                    if process.poll() is None:  # Process still running
+                        process.send_signal(signal.SIGINT)
+
+                signal_thread = threading.Thread(target=send_signal)
+                signal_thread.daemon = True
+                signal_thread.start()
+
+            stdout, stderr = process.communicate(input=stdin_input, timeout=timeout)
+            return process.returncode, stdout, stderr
+        except subprocess.TimeoutExpired:
+            process.kill()
+            stdout, stderr = process.communicate()
+            return -1, stdout, f"Command timed out after {timeout} seconds\n{stderr}"
+
+    except Exception as e:
+        return -1, "", f"Command failed: {str(e)}"
+
+
+def cleanup_test_files(patterns: list[str]):
+    """Remove test artifacts matching patterns"""
+    if not CLEANUP_ENABLED:
+        return
+
+    for pattern in patterns:
+        expanded = os.path.expanduser(pattern)
+        p = Path(expanded)
+        if p.is_absolute():
+            base = Path(p.anchor)
+            glob_part = str(p.relative_to(p.anchor))
+        else:
+            base = Path(".")
+            glob_part = expanded
+        for file_path in base.glob(glob_part):
+            try:
+                if file_path.is_file():
+                    file_path.unlink()
+                elif file_path.is_dir():
+                    shutil.rmtree(file_path)
+            except Exception:
+                pass
+
+
+def validate_file_creation(
+    expected_files: list[str],
+    since: float = 0.0,
+    base: Path = Path("."),
+) -> tuple[bool, list[Path], str]:
+    """Check if expected files were created after ``since`` (epoch seconds).
+
+    ``since`` filters out stale files left over from earlier runs so a broken
+    test can't pass just because a previous test already dropped a matching
+    file in the cwd.
+
+    ``base`` is the directory to resolve glob patterns against. Defaults to
+    CWD for tests that write to the current directory; callers that inject
+    ``--output-dir`` pass the tmpdir instead.
+    """
+    created_files = []
+    missing_files = []
+
+    for file_pattern in expected_files:
+        matching_files = [p for p in base.glob(file_pattern) if p.stat().st_mtime >= since]
+        if matching_files:
+            created_files.extend(matching_files)
+        else:
+            missing_files.append(file_pattern)
+
+    if missing_files:
+        return (
+            False,
+            created_files,
+            f"Missing expected files: {', '.join(missing_files)}",
+        )
+
+    return True, created_files, ""
+
+
+def validate_file_absence(
+    not_expected_files: list[str],
+    since: float = 0.0,
+    base: Path = Path("."),
+) -> tuple[bool, list[Path], str]:
+    """Check that matching files were not created after ``since``."""
+    unexpected_files = []
+
+    for file_pattern in not_expected_files:
+        matching_files = [p for p in base.glob(file_pattern) if p.stat().st_mtime >= since]
+        unexpected_files.extend(matching_files)
+
+    if unexpected_files:
+        return (
+            False,
+            unexpected_files,
+            f"Unexpected files created: {', '.join(str(p) for p in unexpected_files)}",
+        )
+
+    return True, [], ""
+
+
+def validate_file_contents(
+    expected_file_content_patterns: dict[str, list[str]],
+    since: float = 0.0,
+    base: Path = Path("."),
+) -> tuple[bool, list[Path], str]:
+    """Check that matching files contain all required regex patterns."""
+    matched_files: list[Path] = []
+
+    for file_pattern, content_patterns in expected_file_content_patterns.items():
+        matching_files = [p for p in base.glob(file_pattern) if p.stat().st_mtime >= since]
+        if not matching_files:
+            return False, matched_files, f"Missing expected files for content check: {file_pattern}"
+
+        for file_path in matching_files:
+            matched_files.append(file_path)
+            content = file_path.read_text(encoding="utf-8")
+            for content_pattern in content_patterns:
+                if not re.search(content_pattern, content, re.MULTILINE | re.DOTALL):
+                    return (
+                        False,
+                        matched_files,
+                        f"Missing content pattern {content_pattern!r} in {file_path}",
+                    )
+
+    return True, matched_files, ""
+
+
+def validate_file_content_absence(
+    not_expected_file_content_patterns: dict[str, list[str]],
+    since: float = 0.0,
+    base: Path = Path("."),
+) -> tuple[bool, list[Path], str]:
+    """Check that matching files do not contain forbidden regex patterns."""
+    matched_files: list[Path] = []
+
+    for file_pattern, content_patterns in not_expected_file_content_patterns.items():
+        matching_files = [p for p in base.glob(file_pattern) if p.stat().st_mtime >= since]
+        if not matching_files:
+            return False, matched_files, f"Missing expected files for content check: {file_pattern}"
+
+        for file_path in matching_files:
+            matched_files.append(file_path)
+            content = file_path.read_text(encoding="utf-8")
+            for content_pattern in content_patterns:
+                if re.search(content_pattern, content, re.MULTILINE | re.DOTALL):
+                    return (
+                        False,
+                        matched_files,
+                        f"Unexpected content pattern {content_pattern!r} in {file_path}",
+                    )
+
+    return True, matched_files, ""
+
+
+def validate_output(
+    output: str, expected_patterns: list[str], not_expected_patterns: list[str]
+) -> tuple[bool, str]:
+    """Validate output against expected and not-expected patterns"""
+    # Check expected patterns
+    for pattern in expected_patterns:
+        if not re.search(pattern, output, re.MULTILINE | re.DOTALL):
+            return False, f"Pattern not found: {pattern}"
+
+    # Check not-expected patterns
+    for pattern in not_expected_patterns:
+        if re.search(pattern, output, re.MULTILINE | re.DOTALL):
+            return False, f"Unexpected pattern found: {pattern}"
+
+    return True, ""
+
+
+def is_api_key_error(stdout: str, stderr: str) -> bool:
+    """Check if the error is due to missing API key"""
+    error_patterns = [
+        r"API key not found",
+        r"api key not found",
+        r"Set.*API_KEY",
+        r"OPENAI_API_KEY",
+        r"PERPLEXITY_API_KEY",
+    ]
+    combined_output = stdout + stderr
+    return any(re.search(pattern, combined_output, re.IGNORECASE) for pattern in error_patterns)
+
+
+def create_test_config(config_dir: Path, content: str):
+    """Create a test configuration file"""
+    config_dir.mkdir(parents=True, exist_ok=True)
+    config_file = config_dir / "config.toml"
+    config_file.write_text(content)
+    return config_file
+
+
+def create_test_input_file(config_dir: Path):
+    """Create a test input file for --input-file cases."""
+    input_file = config_dir / "input.md"
+    input_file.write_text("background input file content\n")
+    return input_file
+
+
+def find_latest_output_file(pattern: str = "*_*_*_*_*.md") -> Path | None:
+    """Find the most recently created output file matching pattern"""
+    files = sorted(Path(".").glob(pattern), key=lambda p: p.stat().st_mtime, reverse=True)
+    return files[0] if files else None
+
+
+_TEST_CONFIG_HOME: Path | None = None
+_TEST_CONFIG_HOME_LOCK = threading.Lock()
+
+
+def _ensure_test_config_home() -> Path:
+    """Create a per-run temp XDG root and propagate it to subprocesses.
+
+    Doxa Research now follows XDG split: config under XDG_CONFIG_HOME, checkpoints
+    under XDG_STATE_HOME, model cache under XDG_CACHE_HOME. Point all three
+    at the same tmpdir so tests get an isolated unified tree.
+    """
+    global _TEST_CONFIG_HOME
+    with _TEST_CONFIG_HOME_LOCK:
+        if _TEST_CONFIG_HOME is None:
+            _TEST_CONFIG_HOME = Path(tempfile.mkdtemp(prefix=f"doxa-test-"))
+            os.environ["XDG_CONFIG_HOME"] = str(_TEST_CONFIG_HOME)
+            os.environ["XDG_STATE_HOME"] = str(_TEST_CONFIG_HOME)
+            os.environ["XDG_CACHE_HOME"] = str(_TEST_CONFIG_HOME)
+            atexit.register(shutil.rmtree, str(_TEST_CONFIG_HOME), True)
+        return _TEST_CONFIG_HOME
+
+
+# Flags that cause `_prepare_test_isolation` to skip its --output-dir injection.
+# A TestCase using any of these is opting OUT of per-test tmpdir isolation, so
+# its output target must be unique across the suite or parallel runs will race.
+_OUTPUT_FLAGS = ("-o", "--output-dir")
+_PROJECT_FLAG = "--project"
+_OUTPUT_EQ_PREFIXES = ("-o=", "--output-dir=")
+_PROJECT_EQ_PREFIX = "--project="
+_CONFIG_FLAGS = ("-c", "--config")
+_CONFIG_EQ_PREFIXES = ("-c=", "--config=")
+
+
+def _has_output_opt_out(cmd: list[str]) -> bool:
+    return any(
+        arg in _OUTPUT_FLAGS
+        or arg == _PROJECT_FLAG
+        or any(arg.startswith(p) for p in _OUTPUT_EQ_PREFIXES)
+        or arg.startswith(_PROJECT_EQ_PREFIX)
+        for arg in cmd
+    )
+
+
+def _rewrite_config_arg_to_tmpdir(cmd: list[str], tmpdir: Path) -> tuple[list[str], Path]:
+    rewritten = list(cmd)
+    fallback = tmpdir / "test_config.toml"
+    for i, arg in enumerate(rewritten):
+        if arg in _CONFIG_FLAGS and i + 1 < len(rewritten):
+            config_path = tmpdir / (Path(rewritten[i + 1]).name or fallback.name)
+            rewritten[i + 1] = str(config_path)
+            return rewritten, config_path
+        for prefix in _CONFIG_EQ_PREFIXES:
+            if arg.startswith(prefix):
+                raw_path = arg[len(prefix) :]
+                config_path = tmpdir / (Path(raw_path).name or fallback.name)
+                rewritten[i] = f"{prefix}{config_path}"
+                return rewritten, config_path
+    rewritten.extend(["--config", str(fallback)])
+    return rewritten, fallback
+
+
+def _prepare_test_isolation(
+    test_case: TestCase,
+) -> tuple[Path, list[str], dict[str, str], Path | None]:
+    """Create per-test tmpdir and return (tmpdir, command, env, output_base).
+
+    ``output_base`` is the tmpdir when we injected ``--output-dir``, else None
+    (callers should resolve expected_files against CWD in that case).
+    """
+    tmpdir = Path(tempfile.mkdtemp(prefix=f"doxa-test-{test_case.test_id}-"))
+    cmd = list(test_case.command)
+    output_base: Path | None = None
+    # Only inject --output-dir for tests that actually run a provider and produce
+    # output files. Tests without a provider (CLI errors, --help, etc.) can parse
+    # the injected args incorrectly (e.g. `doxa-research --mode --output-dir X` would
+    # consume --output-dir as the --mode value). Also skip if the test already
+    # passes -o/--output-dir or uses --project (which routes output under
+    # base_output_dir/<project>/ and is overridden by --output-dir).
+    if test_case.provider and not _has_output_opt_out(cmd):
+        cmd += ["--output-dir", str(tmpdir)]
+        output_base = tmpdir
+    env = dict(test_case.env)
+    env.setdefault("XDG_CONFIG_HOME", str(tmpdir))
+    env.setdefault("XDG_STATE_HOME", str(tmpdir))
+    env.setdefault("XDG_CACHE_HOME", str(tmpdir))
+    # uv falls back to XDG_CACHE_HOME when UV_CACHE_DIR is unset; pointing it at
+    # the per-test tmpdir would force a fresh package re-download on every test
+    # (and break T-SIG-01's 1.5s SIGINT timing). Keep uv on the shared cache.
+    env.setdefault("UV_CACHE_DIR", shared_uv_cache_dir())
+    return tmpdir, cmd, env, output_base
+
+
+def _expand_tmpdir_placeholders(cmd: list[str], tmpdir: Path) -> list[str]:
+    """Expand {tmpdir} placeholders after per-test isolation is allocated."""
+    return [arg.replace("{tmpdir}", str(tmpdir)) for arg in cmd]
+
+
+def _resolve_output_target(cmd: list[str]) -> tuple[Path | None, str | None]:
+    """Return (resolved output Path, source flag) if ``cmd`` opts out of
+    tmpdir injection, else ``(None, None)``.
+
+    Handles both forms click accepts:
+      - space-separated: ``-o value`` / ``--output-dir value`` / ``--project value``
+      - equals-attached: ``-o=value`` / ``--output-dir=value`` / ``--project=value``
+
+    First textual occurrence wins (matches the runner's `any(a in cmd for a in
+    (...))` semantics in `_prepare_test_isolation`). Cross-flag collisions are
+    detected because ``--project X`` resolves to the same canonical path as
+    ``-o research-outputs/X``.
+    """
+    for i, arg in enumerate(cmd):
+        # =-attached form
+        for prefix in _OUTPUT_EQ_PREFIXES:
+            if arg.startswith(prefix):
+                value = arg[len(prefix) :]
+                return (Path.cwd() / Path(value).expanduser()).resolve(), prefix[:-1]
+        if arg.startswith(_PROJECT_EQ_PREFIX):
+            value = arg[len(_PROJECT_EQ_PREFIX) :]
+            return (Path.cwd() / "research-outputs" / value).resolve(), "--project"
+        # Space-separated form
+        if arg in _OUTPUT_FLAGS and i + 1 < len(cmd):
+            return (Path.cwd() / Path(cmd[i + 1]).expanduser()).resolve(), arg
+        if arg == _PROJECT_FLAG and i + 1 < len(cmd):
+            return (Path.cwd() / "research-outputs" / cmd[i + 1]).resolve(), arg
+    return None, None
+
+
+def _opt_out_flag_families(cmd: list[str]) -> set[str]:
+    """Return the set of opt-out flag families present in ``cmd``.
+
+    Two families exist:
+      - ``"output"`` — any of ``-o``/``--output-dir`` (space or =-attached)
+      - ``"project"`` — ``--project`` (space or =-attached)
+
+    A TestCase using both families is ambiguous: the runner skips its
+    --output-dir injection (because at least one opt-out flag is present),
+    but doxa-research's CLI then picks one of the two flags by its own precedence
+    rules — which the suite's parallel-safety guarantees should not depend on.
+    """
+    families: set[str] = set()
+    for arg in cmd:
+        if arg in _OUTPUT_FLAGS or any(arg.startswith(p) for p in _OUTPUT_EQ_PREFIXES):
+            families.add("output")
+        elif arg == _PROJECT_FLAG or arg.startswith(_PROJECT_EQ_PREFIX):
+            families.add("project")
+    return families
+
+
+def detect_parallel_hazards(tests: list["TestCase"]) -> list[str]:
+    """Return one human-readable error per parallel-execution hazard.
+
+    Two hazard classes are detected:
+
+    1. **Duplicate output target.** Two TestCases that both opt out of
+       --output-dir injection (via -o/--output-dir/--project) and resolve to
+       the same canonical path. Parallel execution would race on writes and
+       cleanup.
+    2. **Ambiguous opt-out flags.** A single TestCase that uses both an output
+       flag (-o/--output-dir) AND --project. The runner skips tmpdir injection
+       because at least one is present; the actual output path then depends on
+       doxa-research's own flag precedence, which is fragile to depend on.
+
+    An empty list means the suite is parallel-safe. Per-class messages are
+    interleaved in stable order (sorted by canonical key) so output is
+    reproducible across runs.
+    """
+    by_path: dict[Path, list[str]] = {}
+    flag_used: dict[Path, str] = {}
+    ambiguous: list[tuple[str, str]] = []  # (test_id, message)
+
+    for tc in tests:
+        if len(_opt_out_flag_families(tc.command)) > 1:
+            ambiguous.append(
+                (
+                    tc.test_id,
+                    f"Ambiguous opt-out flags: test {tc.test_id} uses both "
+                    f"-o/--output-dir AND --project. The runner skips tmpdir "
+                    f"injection on either, then doxa-research's CLI picks one by its "
+                    f"own precedence rules. Use exactly one opt-out flag per "
+                    f"test, or remove both so the runner can inject "
+                    f"--output-dir into a per-test tmpdir.",
+                )
+            )
+        target, flag = _resolve_output_target(tc.command)
+        if target is None:
+            continue
+        by_path.setdefault(target, []).append(tc.test_id)
+        if target not in flag_used and flag is not None:
+            flag_used[target] = flag
+
+    hazards: list[str] = []
+    for _, msg in sorted(ambiguous):
+        hazards.append(msg)
+    for target, ids in sorted(by_path.items()):
+        if len(ids) <= 1:
+            continue
+        ids_str = " and ".join(ids) if len(ids) == 2 else ", ".join(ids)
+        hazards.append(
+            f"Parallel hazard: tests {ids_str} both write to '{target}' "
+            f"(via {flag_used.get(target, '?')}). Parallel execution would "
+            f"race; use a unique per-test path or remove the explicit flag "
+            f"so the runner can inject --output-dir."
+        )
+    return hazards
+
+
+def get_checkpoint_dir(config_home: Path) -> Path:
+    """Return <config_home>/doxa/checkpoints for the given per-test config home."""
+    return config_home / "doxa" / "checkpoints"
+
+
+def create_test_checkpoint(
+    operation_id: str,
+    config_home: Path,
+    status: str = "completed",
+    **overrides,
+) -> Path:
+    """Create a valid checkpoint file for testing"""
+    checkpoint_dir = get_checkpoint_dir(config_home)
+    checkpoint_dir.mkdir(parents=True, exist_ok=True)
+
+    now = datetime.now()
+    data = {
+        "id": operation_id,
+        "prompt": "test checkpoint prompt",
+        "mode": "default",
+        "status": status,
+        "created_at": (now - timedelta(minutes=5)).isoformat(),
+        "updated_at": now.isoformat(),
+        "providers": {"mock": {"status": "completed"}},
+        "output_paths": {},
+        "error": None,
+        "progress": 1.0 if status == "completed" else 0.0,
+        "project": None,
+        "input_files": [],
+        "failure_type": None,
+    }
+    data.update(overrides)
+
+    checkpoint_file = checkpoint_dir / f"{operation_id}.json"
+    with open(checkpoint_file, "w") as f:
+        json.dump(data, f, indent=2)
+    return checkpoint_file
+
+
+def create_corrupted_checkpoint(operation_id: str, config_home: Path) -> Path:
+    """Create a corrupted checkpoint file for testing"""
+    checkpoint_dir = get_checkpoint_dir(config_home)
+    checkpoint_dir.mkdir(parents=True, exist_ok=True)
+
+    checkpoint_file = checkpoint_dir / f"{operation_id}.json"
+    with open(checkpoint_file, "w") as f:
+        f.write("{invalid json content, not valid at all!!!")
+    return checkpoint_file
+
+
+def remove_test_checkpoint(operation_id: str, config_home: Path) -> None:
+    """Remove a test checkpoint file"""
+    checkpoint_file = get_checkpoint_dir(config_home) / f"{operation_id}.json"
+    if checkpoint_file.exists():
+        checkpoint_file.unlink()
+
+
+def extract_operation_id(output: str) -> str:
+    """Extract an operation ID from CLI output."""
+    match = re.search(r"Operation ID:\s*(research-\d{8}-\d{6}-[a-f0-9]{16})", output)
+    if not match:
+        raise AssertionError(f"operation ID not found in output: {output!r}")
+    return match.group(1)
+
+
+def load_checkpoint_data(operation_id: str, config_home: Path) -> dict[str, Any]:
+    """Load a checkpoint file as JSON for assertions."""
+    checkpoint_file = get_checkpoint_dir(config_home) / f"{operation_id}.json"
+    if not checkpoint_file.exists():
+        raise AssertionError(f"checkpoint not found: {checkpoint_file}")
+    with open(checkpoint_file) as f:
+        return json.load(f)
+
+
+def _p35_user_config_path(config_home: Path) -> Path:
+    """Return the user-tier doxa config path inside an isolated XDG config home."""
+    return config_home / "doxa" / "doxa.config.toml"
+
+
+def p35_set_default_deep_research_setup(config_home: Path) -> None:
+    """P35-INT-01 setup: persist `general.default_mode = "deep_research"` in the
+    isolated user config, then assert it landed on disk. Raise on any failure
+    so the runner reports a setup failure rather than a misleading test pass.
+    """
+    env = os.environ.copy()
+    env["XDG_CONFIG_HOME"] = str(config_home)
+    env["XDG_STATE_HOME"] = str(config_home)
+    env["XDG_CACHE_HOME"] = str(config_home)
+    env["UV_CACHE_DIR"] = shared_uv_cache_dir()
+    proc = subprocess.run(
+        [DOXA_EXECUTABLE, "modes", "set-default", "deep_research"],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    if proc.returncode != 0:
+        raise AssertionError(
+            f"P35-INT-01 setup: 'doxa modes set-default deep_research' exited "
+            f"{proc.returncode}\nstdout: {proc.stdout}\nstderr: {proc.stderr}"
+        )
+    cfg_path = _p35_user_config_path(config_home)
+    if not cfg_path.exists():
+        raise AssertionError(f"P35-INT-01 setup: expected config file {cfg_path} after set-default")
+    cfg_text = cfg_path.read_text()
+    if 'default_mode = "deep_research"' not in cfg_text:
+        raise AssertionError(
+            f"P35-INT-01 setup: 'default_mode = \"deep_research\"' missing from "
+            f"{cfg_path}; contents:\n{cfg_text}"
+        )
+
+
+def p35_unset_default_teardown(config_home: Path) -> None:
+    """P35-INT-01 teardown: run `doxa modes unset-default` against the same
+    isolated config. Best-effort — the runner swallows teardown exceptions, but
+    failures here surface in --verbose so regressions are still observable.
+    Strong unset-default contract assertions live in pytest (P35-TS04).
+    """
+    env = os.environ.copy()
+    env["XDG_CONFIG_HOME"] = str(config_home)
+    env["XDG_STATE_HOME"] = str(config_home)
+    env["XDG_CACHE_HOME"] = str(config_home)
+    env["UV_CACHE_DIR"] = shared_uv_cache_dir()
+    proc = subprocess.run(
+        [DOXA_EXECUTABLE, "modes", "unset-default"],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    if proc.returncode != 0:
+        raise AssertionError(
+            f"P35-INT-01 teardown: 'doxa modes unset-default' exited "
+            f"{proc.returncode}\nstdout: {proc.stdout}\nstderr: {proc.stderr}"
+        )
+    cfg_path = _p35_user_config_path(config_home)
+    if cfg_path.exists() and 'default_mode = "deep_research"' in cfg_path.read_text():
+        raise AssertionError(
+            f"P35-INT-01 teardown: default_mode key still present in {cfg_path} after unset-default"
+        )
+
+
+def validate_test_environment(
+    test_api_keys: dict[str, str], requested_providers: list[str] | None = None
+) -> None:
+    """Validate test environment and show configuration"""
+    console.print("\n[bold]Test Environment Configuration:[/bold]")
+
+    # Always show mock status (it's always available)
+    console.print(f"Mock API Key: {test_api_keys['mock'][:8]}... (auto-generated)")
+
+    # If specific providers requested, validate only those
+    if requested_providers:
+        missing_keys = []
+        for provider in requested_providers:
+            if provider == "mock":
+                continue  # Mock is always available
+            elif provider in LIVE_PROVIDER_NAMES:
+                env_var = PROVIDER_ENV_VARS[provider]
+                display_name = provider.capitalize() if provider != "openai" else "OpenAI"
+                if test_api_keys[provider]:
+                    console.print(f"{display_name} API Key: {test_api_keys[provider][:8]}... ✓")
+                else:
+                    console.print(
+                        f"[red]{display_name} API Key: Not set (required for requested tests)[/red]"
+                    )
+                    missing_keys.append(env_var)
+
+        if missing_keys:
+            console.print(
+                f"\n[red]Error: Missing required API keys: {', '.join(missing_keys)}[/red]"
+            )
+            console.print(
+                "Please set the environment variables or remove these providers from your selection."
+            )
+            sys.exit(1)
+    else:
+        # Default behavior: show status of all providers
+        for provider, env_var in PROVIDER_ENV_VARS.items():
+            display_name = provider.capitalize() if provider != "openai" else "OpenAI"
+            if test_api_keys[provider]:
+                console.print(f"{display_name} API Key: {test_api_keys[provider][:8]}... ✓")
+            else:
+                console.print(
+                    f"[yellow]{display_name} API Key: Not set "
+                    f"({display_name} tests will be skipped; set {env_var})[/yellow]"
+                )
+
+    console.print("")  # Blank line
+
+
+# ============================================================================
+# Interactive Test Runner
+# ============================================================================
+
+
+class InteractiveTestRunner:
+    """Handles pexpect-based interactive tests"""
+
+    def __init__(self, verbose: bool = False):
+        self.verbose = verbose
+
+    def strip_ansi(self, text: str) -> str:
+        """Remove ANSI escape codes from text for easier matching"""
+        return re.sub(r"\x1b\[[0-9;]*[A-Za-z]", "", text)
+
+    def run_interactive_test(self, test_case: TestCase) -> TestResult:
+        """Execute an interactive test using pexpect"""
+        start_time = time.time()
+
+        # Set up environment
+        test_env = os.environ.copy()
+        test_env["COLUMNS"] = "80"  # Standard terminal width
+        test_env.setdefault("UV_CACHE_DIR", shared_uv_cache_dir())
+
+        # Add test-specific environment variables
+        if test_case.env:
+            test_env.update(test_case.env)
+
+        # Add terminal-specific environment if provided
+        if test_case.terminal_env:
+            test_env.update(test_case.terminal_env)
+
+        # Set up API key if needed
+        if test_case.provider:
+            api_key = generate_mock_api_key() if test_case.provider == "mock" else ""
+            if test_case.provider == "mock":
+                test_env["MOCK_API_KEY"] = api_key
+                # Interactive mock tests submit work that completes in ~0.1s, so
+                # keep polling tight and let the child exit naturally.
+                test_env.setdefault("DOXA_POLL_INTERVAL", "1")
+            elif test_case.provider in PROVIDER_ENV_VARS:
+                env_var = PROVIDER_ENV_VARS[test_case.provider]
+                test_env[env_var] = os.getenv(env_var, "")
+
+        try:
+            # Spawn the interactive process
+            child = pexpect.spawn(
+                test_case.command[0],
+                args=test_case.command[1:] if len(test_case.command) > 1 else [],
+                env=test_env,
+                encoding="utf-8",
+                timeout=test_case.timeout,
+                dimensions=(24, 80),  # Standard terminal size
+            )
+
+            if self.verbose:
+                child.logfile = sys.stdout
+
+            # Wait for initial prompt/ready state
+            # Most interactive tests should start with Doxa Research Interactive Mode
+            try:
+                child.expect("Doxa Research Interactive Mode", timeout=5)
+            except (pexpect.TIMEOUT, pexpect.EOF):
+                # Some tests might not show this, continue anyway
+                pass
+
+            # Execute the interactive scenario
+            if test_case.interactive_scenario:
+                for i, (expect_pattern, send_input) in enumerate(test_case.interactive_scenario):
+                    if expect_pattern is not None:
+                        try:
+                            child.expect(expect_pattern, timeout=INTERACTIVE_STEP_TIMEOUT)
+                            if self.verbose:
+                                console.print(
+                                    f"✓ Step {i + 1}: Found pattern: {expect_pattern[:50]}"
+                                )
+                        except pexpect.TIMEOUT:
+                            error_msg = f"Step {i + 1}: Timeout waiting for: {expect_pattern}"
+                            return TestResult(
+                                test_id=test_case.test_id,
+                                passed=False,
+                                duration=time.time() - start_time,
+                                stdout=child.before or "",
+                                stderr=error_msg,
+                                exit_code=-1,
+                                error_message=error_msg,
+                            )
+                        except pexpect.EOF:
+                            # EOF might be expected for Ctrl+C tests
+                            if (
+                                "exit" not in str(expect_pattern).lower()
+                                and "eof" not in str(expect_pattern).lower()
+                            ):
+                                error_msg = f"Step {i + 1}: Unexpected EOF"
+                                return TestResult(
+                                    test_id=test_case.test_id,
+                                    passed=False,
+                                    duration=time.time() - start_time,
+                                    stdout=child.before or "",
+                                    stderr=error_msg,
+                                    exit_code=-1,
+                                    error_message=error_msg,
+                                )
+
+                    if send_input is not None:
+                        child.send(send_input)
+                        if self.verbose:
+                            console.print(f"✓ Step {i + 1}: Sent input: {repr(send_input[:20])}")
+                        time.sleep(0.1)  # Small delay for processing
+
+            # Try to exit cleanly if not already done
+            try:
+                if child.isalive():
+                    try:
+                        child.expect(pexpect.EOF, timeout=INTERACTIVE_COMPLETION_TIMEOUT)
+                    except pexpect.TIMEOUT:
+                        child.send("/exit\r")
+                        child.expect(pexpect.EOF, timeout=2)
+            except Exception:
+                pass  # Process might have already exited
+
+            # Get final output
+            stdout = child.before or ""
+
+            # Close the child process
+            child.close(force=True)
+            if child.exitstatus is not None:
+                exit_code = child.exitstatus
+            elif child.signalstatus is not None:
+                exit_code = -child.signalstatus  # negative => killed by signal
+            else:
+                exit_code = -1
+
+            duration = time.time() - start_time
+
+            # Create result
+            result = TestResult(
+                test_id=test_case.test_id,
+                passed=True,
+                duration=duration,
+                stdout=stdout,
+                stderr="",
+                exit_code=exit_code,
+            )
+
+            # Validate exit code if specified
+            if exit_code != test_case.expected_exit_code:
+                result.passed = False
+                result.error_message = (
+                    f"Expected exit code {test_case.expected_exit_code}, got {exit_code}"
+                )
+                return result
+
+            # Validate expected patterns in output if specified
+            if test_case.expected_stdout_patterns:
+                for pattern in test_case.expected_stdout_patterns:
+                    if not re.search(pattern, stdout, re.MULTILINE | re.DOTALL):
+                        result.passed = False
+                        result.error_message = f"Pattern not found: {pattern}"
+                        break
+
+            return result
+
+        except Exception as e:
+            # Handle specific exceptions
+            if "Input/output error" in str(e) and test_case.test_id in ["INT-06"]:
+                # Expected for Ctrl+C test
+                return TestResult(
+                    test_id=test_case.test_id,
+                    passed=True,
+                    duration=time.time() - start_time,
+                    stdout="",
+                    stderr="Process terminated as expected",
+                    exit_code=0,
+                )
+
+            return TestResult(
+                test_id=test_case.test_id,
+                passed=False,
+                duration=time.time() - start_time,
+                stdout="",
+                stderr=str(e),
+                exit_code=-1,
+                error_message=f"Test failed with error: {e}",
+            )
+
+
+def print_list_tsv(tests: list[TestCase]) -> None:
+    for t in tests:
+        provider = t.provider or "none"
+        sys.stdout.write(f"{t.test_id}\t{provider}\t{t.test_type}\t{t.description}\n")
+
+
+def print_list_json(tests: list[TestCase]) -> None:
+    payload = [
+        {
+            "test_id": t.test_id,
+            "provider": t.provider,
+            "test_type": t.test_type,
+            "description": t.description,
+            "is_interactive": bool(getattr(t, "is_interactive", False)),
+        }
+        for t in tests
+    ]
+    sys.stdout.write(json.dumps(payload) + "\n")
+
+
+def serialize_run_report(runner: "TestRunner", invocation: list[str]) -> dict[str, Any]:
+    started = getattr(runner, "_started_at_iso", None)
+    finished = datetime.now(tz=UTC).isoformat().replace("+00:00", "Z")
+    duration_total = time.time() - runner.start_time
+
+    counts = {
+        "total": len(runner.results),
+        "passed": sum(1 for r in runner.results if r.passed and not r.skipped),
+        "failed": sum(1 for r in runner.results if not r.passed),
+        "skipped": sum(1 for r in runner.results if r.skipped),
+        "api_key_failures": sum(1 for r in runner.results if not r.passed and r.is_api_key_failure),
+    }
+
+    test_case_by_id = {tc.test_id: tc for tc in runner.filtered_tests}
+    tests_payload = []
+    for r in runner.results:
+        tc = test_case_by_id.get(r.test_id)
+        include_output = not r.passed and not r.skipped
+        tests_payload.append(
+            {
+                "test_id": r.test_id,
+                "description": tc.description if tc else "",
+                "provider": tc.provider if tc else None,
+                "test_type": tc.test_type if tc else "subprocess",
+                "passed": r.passed,
+                "skipped": r.skipped,
+                "duration_seconds": round(r.duration, 3),
+                "exit_code": r.exit_code,
+                "error_message": r.error_message,
+                "is_api_key_failure": r.is_api_key_failure,
+                "requested_but_filtered": bool(getattr(tc, "_requested_but_filtered", False))
+                if tc
+                else False,
+                "stdout": r.stdout if include_output else None,
+                "stderr": r.stderr if include_output else None,
+            }
+        )
+
+    return {
+        "schema_version": REPORT_SCHEMA_VERSION,
+        "started_at": started,
+        "finished_at": finished,
+        "duration_total_seconds": round(duration_total, 3),
+        "invocation": invocation,
+        "requested_providers": runner.requested_providers,
+        "counts": counts,
+        "tests": tests_payload,
+    }
+
+
+def write_cache_atomic(payload: dict[str, Any], path: Path = CACHE_FILE) -> None:
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_suffix(path.suffix + ".tmp")
+        tmp.write_text(json.dumps(payload, indent=2))
+        os.replace(tmp, path)
+    except OSError as exc:
+        console.print(f"[yellow]Warning: could not write {path}: {exc}[/yellow]")
+
+
+def read_last_failed(path: Path = CACHE_FILE) -> list[str]:
+    """Return test_ids of failing tests from the last run cache.
+
+    Raises FileNotFoundError if the cache is missing OR unreadable for any
+    reason (corrupt JSON, wrong schema, permission error) — callers only
+    need to handle one case. Returns [] if the cache parses cleanly but
+    contains no failures.
+    """
+    try:
+        payload = json.loads(path.read_text())
+    except FileNotFoundError:
+        raise  # keep the pristine "No such file or directory" message
+    except (json.JSONDecodeError, OSError) as exc:
+        raise FileNotFoundError(f"cache at {path} unreadable: {exc}") from exc
+    if not isinstance(payload, dict) or payload.get("schema_version") != REPORT_SCHEMA_VERSION:
+        raise FileNotFoundError(f"cache at {path} has unknown schema")
+    tests = payload.get("tests") or []
+    return [
+        t["test_id"]
+        for t in tests
+        if isinstance(t, dict) and "test_id" in t and not t.get("passed", True)
+    ]
+
+
+def print_fenced_failure(result: TestResult, test_case: TestCase | None) -> None:
+    desc = test_case.description if test_case else ""
+    sys.stdout.write(f"===BEGIN FAILURE {result.test_id}===\n")
+    sys.stdout.write(f"Test: {result.test_id} — {desc}\n")
+    sys.stdout.write(f"Duration: {result.duration:.2f}s\n")
+    sys.stdout.write(f"Exit code: {result.exit_code}\n")
+    sys.stdout.write(f"Error: {result.error_message or ''}\n")
+    sys.stdout.write("--- STDOUT ---\n")
+    stdout = result.stdout or ""
+    sys.stdout.write(stdout + ("\n" if not stdout.endswith("\n") else ""))
+    sys.stdout.write("--- STDERR ---\n")
+    stderr = result.stderr or ""
+    sys.stdout.write(stderr + ("\n" if not stderr.endswith("\n") else ""))
+    sys.stdout.write(f"===END FAILURE {result.test_id}===\n")
+
+
+# ============================================================================
+# Selection Resolver
+# ============================================================================
+
+
+def resolve_selection(
+    all_tests: list[TestCase],
+    *,
+    test: str | None,
+    provider_filter: list[str] | None,
+    interactive: bool,
+    skip_interactive: bool,
+    ids: list[str],
+    last_failed: bool,
+) -> tuple[list[TestCase], list[str]]:
+    """Pure filter-composition for main().
+
+    Returns (selected_tests, warnings). When ``ids`` is non-empty it short-
+    circuits the other filters: each named test runs even if it would have
+    been excluded by --provider/--interactive/--skip-interactive, and a
+    warning is emitted plus the TestCase is annotated with
+    ``_requested_but_filtered = True`` so downstream consumers (JSON report)
+    can surface the mismatch. ``last_failed`` is reserved for Task 6.
+    """
+    warnings: list[str] = []
+
+    if ids:
+        by_id = {t.test_id: t for t in all_tests}
+        selected: list[TestCase] = []
+        for wanted in ids:
+            t = by_id.get(wanted)
+            if t is None:
+                warnings.append(f"--id {wanted} not found, ignoring")
+                continue
+            mismatch_reasons: list[str] = []
+            if provider_filter and t.provider and t.provider not in provider_filter:
+                mismatch_reasons.append(
+                    f"provider={t.provider} not in --provider {provider_filter}"
+                )
+            if interactive and not getattr(t, "is_interactive", False):
+                mismatch_reasons.append("not an interactive test but --interactive set")
+            if skip_interactive and getattr(t, "is_interactive", False):
+                mismatch_reasons.append("interactive test but --skip-interactive set")
+            t._requested_but_filtered = bool(mismatch_reasons)
+            if mismatch_reasons:
+                warnings.append(
+                    f"--id {wanted} runs despite filter mismatch: {'; '.join(mismatch_reasons)}"
+                )
+            selected.append(t)
+        return selected, warnings
+
+    selected = list(all_tests)
+    if interactive:
+        selected = [t for t in selected if getattr(t, "is_interactive", False)]
+    if skip_interactive:
+        selected = [t for t in selected if not getattr(t, "is_interactive", False)]
+    if test:
+        needle = test
+        selected = [
+            t for t in selected if needle in t.test_id or needle.lower() in t.description.lower()
+        ]
+    if provider_filter:
+        kept = []
+        for t in selected:
+            if not t.provider:
+                kept.append(t)
+            elif t.provider in provider_filter:
+                kept.append(t)
+        selected = kept
+    for t in selected:
+        t._requested_but_filtered = False
+    return selected, warnings
+
+
+# ============================================================================
+# Test Runner
+# ============================================================================
+
+
+class TestRunner:
+    """Executes test cases and validates results"""
+
+    def __init__(
+        self,
+        verbose: bool = False,
+        save_output: bool = False,
+        requested_providers: list[str] | None = None,
+        quiet: bool = False,
+        report_json_path: str | None = None,
+        jobs: int = 1,
+    ):
+        self.results: list[TestResult] = []
+        self.start_time = time.time()
+        self._started_at_iso = datetime.now(tz=UTC).isoformat().replace("+00:00", "Z")
+        self.test_api_keys = get_test_api_keys()
+        self.available_providers = get_available_providers(self.test_api_keys)
+        self.requested_providers = requested_providers
+        self.skipped_by_provider = {provider: 0 for provider in LIVE_PROVIDER_NAMES}
+        self.verbose = verbose
+        self.save_output = save_output
+        self.quiet = quiet
+        self._report_json_path = report_json_path
+        self.jobs = max(1, jobs)
+        if save_output:
+            self.output_dir = Path("test_outputs") / datetime.now().strftime("%Y%m%d_%H%M%S")
+            self.output_dir.mkdir(parents=True, exist_ok=True)
+
+    def should_skip_test(self, test_case: TestCase) -> tuple[bool, str]:
+        """Check if test should be skipped based on provider availability and selection"""
+        if not test_case.provider:
+            return False, ""  # No specific provider required
+
+        # If specific providers were requested, skip tests for other providers
+        if self.requested_providers and test_case.provider not in self.requested_providers:
+            return True, f"Provider {test_case.provider} not requested"
+
+        if test_case.provider == "mock":
+            return False, ""  # Mock tests always run (API key auto-generated)
+
+        # Check if API key is available for the provider
+        if test_case.provider not in self.available_providers:
+            self.skipped_by_provider[test_case.provider] = (
+                self.skipped_by_provider.get(test_case.provider, 0) + 1
+            )
+            return True, f"{test_case.provider.upper()}_API_KEY not set"
+
+        return False, ""
+
+    def run_test(self, test_case: TestCase) -> TestResult:
+        """Execute a single test case"""
+        # Check for manual skip
+        if test_case.skip:
+            return TestResult(
+                test_id=test_case.test_id,
+                passed=True,
+                duration=0,
+                stdout="",
+                stderr=f"Skipped: {test_case.skip_reason}",
+                exit_code=0,
+                skipped=True,
+            )
+
+        # Check for provider-based skip
+        should_skip, skip_reason = self.should_skip_test(test_case)
+        if should_skip:
+            return TestResult(
+                test_id=test_case.test_id,
+                passed=True,
+                duration=0,
+                stdout="",
+                stderr=f"Skipped: {skip_reason}",
+                exit_code=0,
+                skipped=True,
+            )
+
+        # Handle fixture tests (in-process, no subprocess)
+        if test_case.test_type == "fixture":
+            if test_case.setup_func is None:
+                return TestResult(
+                    test_id=test_case.test_id,
+                    passed=False,
+                    duration=0,
+                    stdout="",
+                    stderr="fixture test has no setup_func",
+                    exit_code=1,
+                )
+            fixture_tmpdir = Path(tempfile.mkdtemp(prefix=f"doxa-test-{test_case.test_id}-"))
+            start = time.time()
+            try:
+                test_case.setup_func(fixture_tmpdir)
+                return TestResult(
+                    test_id=test_case.test_id,
+                    passed=True,
+                    duration=time.time() - start,
+                    stdout="",
+                    stderr="",
+                    exit_code=0,
+                )
+            except Exception as e:
+                return TestResult(
+                    test_id=test_case.test_id,
+                    passed=False,
+                    duration=time.time() - start,
+                    stdout="",
+                    stderr=str(e),
+                    exit_code=1,
+                    error_message=str(e),
+                )
+            finally:
+                if test_case.teardown_func:
+                    try:
+                        test_case.teardown_func(fixture_tmpdir)
+                    except Exception:
+                        pass
+                shutil.rmtree(fixture_tmpdir, ignore_errors=True)
+
+        # Handle interactive tests
+        if test_case.test_type == "interactive":
+            if not PEXPECT_AVAILABLE:
+                return TestResult(
+                    test_id=test_case.test_id,
+                    passed=True,
+                    duration=0,
+                    stdout="",
+                    stderr="Skipped: pexpect not available for interactive tests",
+                    exit_code=0,
+                    skipped=True,
+                )
+            # Pre-clean any leftover artifacts so reruns start fresh
+            cleanup_test_files(test_case.cleanup_files)
+            interactive_runner = InteractiveTestRunner(self.verbose)
+            result = interactive_runner.run_interactive_test(test_case)
+            if result.passed:
+                cleanup_test_files(test_case.cleanup_files)
+            return result
+
+        tmpdir, prepared_cmd, prepared_env, output_base = _prepare_test_isolation(test_case)
+        try:
+            return self._run_subprocess_case(
+                test_case, tmpdir, prepared_cmd, prepared_env, output_base
+            )
+        finally:
+            shutil.rmtree(tmpdir, ignore_errors=True)
+
+    def _run_subprocess_case(
+        self,
+        test_case: TestCase,
+        tmpdir: Path,
+        prepared_cmd: list[str],
+        prepared_env: dict[str, str],
+        output_base: Path | None,
+    ) -> TestResult:
+        """Execute a subprocess-mode test with its per-test tmpdir already allocated."""
+        start_time = time.time()
+
+        # Run setup function if provided
+        if test_case.setup_func:
+            try:
+                test_case.setup_func(tmpdir)
+            except Exception as e:
+                return TestResult(
+                    test_id=test_case.test_id,
+                    passed=False,
+                    duration=0,
+                    stdout="",
+                    stderr=f"Setup failed: {e}",
+                    exit_code=-1,
+                    error_message=f"Setup function failed: {e}",
+                )
+
+        # Clean up any existing test files
+        cleanup_test_files(test_case.cleanup_files)
+
+        # Set up environment with appropriate API key
+        test_env = prepared_env.copy()
+        test_command = list(prepared_cmd)
+
+        if test_case.provider:
+            api_key = self.test_api_keys.get(test_case.provider, "")
+
+            # Mock provider completes in ~0.1s, so keep polling tight for every
+            # non-interactive mock test regardless of how the API key is supplied.
+            if test_case.provider == "mock" and "DOXA_POLL_INTERVAL" not in test_env:
+                test_env["DOXA_POLL_INTERVAL"] = "1"
+
+            if test_case.api_key_method == "env":
+                # Inject the appropriate API key in environment
+                if test_case.provider == "mock":
+                    # Don't override if already set in test_env
+                    if "MOCK_API_KEY" not in test_env:
+                        test_env["MOCK_API_KEY"] = api_key
+                elif test_case.provider in PROVIDER_ENV_VARS:
+                    env_var = PROVIDER_ENV_VARS[test_case.provider]
+                    if env_var not in test_env:
+                        test_env[env_var] = api_key
+
+            elif test_case.api_key_method == "cli":
+                # Add API key as command-line argument
+                api_key_flag = PROVIDER_API_KEY_FLAGS.get(test_case.provider, "--api-key-mock")
+
+                if api_key_flag not in test_command:
+                    test_command.extend([api_key_flag, api_key])
+                else:
+                    # Replace existing dummy key with actual key
+                    idx = test_command.index(api_key_flag)
+                    if idx + 1 < len(test_command):
+                        test_command[idx + 1] = api_key
+
+            elif test_case.api_key_method == "config":
+                # Create a temporary config file with API key
+                test_command, config_path = _rewrite_config_arg_to_tmpdir(test_command, tmpdir)
+                config_content = f"""version = "2.0"
+
+[general]
+default_mode = "default"
+
+[paths]
+base_output_dir = "./research-outputs"
+checkpoint_dir = "~/.doxa/checkpoints"
+
+[execution]
+poll_interval = 1
+max_wait = 30
+
+[output]
+combine_reports = false
+format = "markdown"
+include_metadata = true
+timestamp_format = "%Y-%m-%d_%H%M%S"
+
+[providers.{test_case.provider}]
+api_key = "{api_key}"
+"""
+                config_path.write_text(config_content)
+
+        test_command = _expand_tmpdir_placeholders(test_command, tmpdir)
+
+        # Create test prompt file if needed
+        if "--prompt-file" in test_command:
+            idx = test_command.index("--prompt-file")
+            if idx + 1 < len(test_command) and test_command[idx + 1] != "-":
+                prompt_file = test_command[idx + 1]
+                if prompt_file == "test_prompt.txt":
+                    with open(prompt_file, "w") as f:
+                        f.write("test prompt from file")
+
+        # Run the command
+        exit_code, stdout, stderr = run_command(
+            test_command,
+            env=test_env,
+            timeout=test_case.timeout,
+            signal_after=test_case.signal_after,
+            stdin_input=test_case.stdin_input,
+        )
+
+        duration = time.time() - start_time
+
+        # Initialize result
+        result = TestResult(
+            test_id=test_case.test_id,
+            passed=True,
+            duration=duration,
+            stdout=stdout,
+            stderr=stderr,
+            exit_code=exit_code,
+        )
+
+        # Check if this is an API key failure
+        if not result.passed or exit_code != 0:
+            result.is_api_key_failure = is_api_key_error(stdout, stderr)
+
+        # Show verbose output if enabled
+        if self.verbose:
+            console.print(f"\n[dim]{'=' * 60}[/dim]")
+            console.print(f"[cyan]Test {test_case.test_id}: {test_case.description}[/cyan]")
+            console.print(f"[dim]Command: {' '.join(test_command)}[/dim]")
+            console.print(f"[dim]Exit Code: {exit_code}[/dim]")
+            if stdout:
+                console.print("[dim]--- STDOUT ---[/dim]")
+                console.print(stdout)
+            if stderr:
+                console.print("[dim]--- STDERR ---[/dim]")
+                console.print(stderr)
+            console.print(f"[dim]{'=' * 60}[/dim]\n")
+
+        # Save output to files if enabled
+        if self.save_output:
+            test_output_dir = self.output_dir / test_case.test_id
+            test_output_dir.mkdir(exist_ok=True)
+
+            # Save command info
+            with open(test_output_dir / "command.txt", "w") as f:
+                f.write(f"Command: {' '.join(test_command)}\n")
+                f.write(f"Exit Code: {exit_code}\n")
+                f.write(f"Expected Exit Code: {test_case.expected_exit_code}\n")
+
+            # Save stdout
+            if stdout:
+                with open(test_output_dir / "stdout.txt", "w") as f:
+                    f.write(stdout)
+
+            # Save stderr
+            if stderr:
+                with open(test_output_dir / "stderr.txt", "w") as f:
+                    f.write(stderr)
+
+            # Save test metadata
+            with open(test_output_dir / "test_info.json", "w") as f:
+                json.dump(
+                    {
+                        "test_id": test_case.test_id,
+                        "description": test_case.description,
+                        "provider": test_case.provider,
+                        "passed": False,  # Will be updated later
+                        "duration": duration,
+                        "timestamp": datetime.now().isoformat(),
+                    },
+                    f,
+                    indent=2,
+                )
+
+        try:
+            # Validate exit code
+            if exit_code != test_case.expected_exit_code:
+                result.passed = False
+                result.error_message = (
+                    f"Expected exit code {test_case.expected_exit_code}, got {exit_code}"
+                )
+                return result
+
+            # Validate stdout
+            passed, error = validate_output(
+                stdout,
+                test_case.expected_stdout_patterns,
+                test_case.not_expected_stdout_patterns,
+            )
+            if not passed:
+                result.passed = False
+                result.error_message = f"Stdout validation failed: {error}"
+                return result
+
+            # Validate stderr
+            passed, error = validate_output(
+                stderr,
+                test_case.expected_stderr_patterns,
+                test_case.not_expected_stderr_patterns,
+            )
+            if not passed:
+                result.passed = False
+                result.error_message = f"Stderr validation failed: {error}"
+                return result
+
+            # Validate file creation
+            if test_case.expected_files:
+                passed, created_files, error = validate_file_creation(
+                    test_case.expected_files,
+                    since=start_time,
+                    base=output_base if output_base is not None else Path("."),
+                )
+                result.created_files = created_files
+                if not passed:
+                    result.passed = False
+                    result.error_message = f"File validation failed: {error}"
+                    return result
+
+            if test_case.not_expected_files:
+                passed, unexpected_files, error = validate_file_absence(
+                    test_case.not_expected_files,
+                    since=start_time,
+                    base=output_base if output_base is not None else Path("."),
+                )
+                result.created_files.extend(unexpected_files)
+                if not passed:
+                    result.passed = False
+                    result.error_message = f"File absence validation failed: {error}"
+                    return result
+
+            if test_case.expected_file_content_patterns:
+                passed, matched_files, error = validate_file_contents(
+                    test_case.expected_file_content_patterns,
+                    since=start_time,
+                    base=output_base if output_base is not None else Path("."),
+                )
+                result.created_files.extend(
+                    p for p in matched_files if p not in result.created_files
+                )
+                if not passed:
+                    result.passed = False
+                    result.error_message = f"File content validation failed: {error}"
+                    return result
+
+            if test_case.not_expected_file_content_patterns:
+                passed, matched_files, error = validate_file_content_absence(
+                    test_case.not_expected_file_content_patterns,
+                    since=start_time,
+                    base=output_base if output_base is not None else Path("."),
+                )
+                result.created_files.extend(
+                    p for p in matched_files if p not in result.created_files
+                )
+                if not passed:
+                    result.passed = False
+                    result.error_message = f"File content absence validation failed: {error}"
+                    return result
+        finally:
+            # Always run teardown function if provided
+            if test_case.teardown_func:
+                try:
+                    test_case.teardown_func(tmpdir)
+                except Exception:
+                    pass
+
+        # Clean up after successful test
+        if result.passed and CLEANUP_ENABLED:
+            cleanup_test_files(test_case.cleanup_files)
+
+        # Update test result in saved output
+        if self.save_output:
+            test_output_dir = self.output_dir / test_case.test_id
+            with open(test_output_dir / "test_info.json") as f:
+                test_info = json.load(f)
+            test_info["passed"] = result.passed
+            test_info["error_message"] = result.error_message
+            with open(test_output_dir / "test_info.json", "w") as f:
+                json.dump(test_info, f, indent=2)
+
+        return result
+
+    def run_all_tests(self, test_cases: list[TestCase]):
+        """Run all test cases and generate report"""
+        self.filtered_tests = test_cases
+        total_tests = len(test_cases)
+        parallel = self.jobs > 1
+
+        if self.quiet:
+            results_by_idx = self._run_dispatch(test_cases, parallel, progress=None, task=None)
+        else:
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                BarColumn(),
+                TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+                console=console,
+            ) as progress:
+                desc = f"Running tests (j={self.jobs})..." if parallel else "Running tests..."
+                task = progress.add_task(desc, total=total_tests)
+                results_by_idx = self._run_dispatch(test_cases, parallel, progress, task)
+
+        # Preserve test_cases order in results regardless of completion order.
+        self.results = [results_by_idx[i] for i in range(len(test_cases))]
+
+        # Generate report
+        self.generate_report()
+
+    def _run_dispatch(
+        self,
+        test_cases: list[TestCase],
+        parallel: bool,
+        progress: "Progress | None",
+        task: Any,
+    ) -> dict[int, TestResult]:
+        """Run tests sequentially or via a thread pool; return idx->TestResult."""
+        results: dict[int, TestResult] = {}
+        total = len(test_cases)
+
+        if not parallel:
+            for current_num, test_case in enumerate(test_cases, 1):
+                if progress is not None and task is not None:
+                    progress.update(
+                        task,
+                        description=f"Running test {current_num}/{total}: {test_case.test_id}: {test_case.description}",
+                    )
+                results[current_num - 1] = self.run_test(test_case)
+                if progress is not None and task is not None:
+                    progress.advance(task)
+            return results
+
+        # Parallel path: each test already isolates state via per-test tmpdir +
+        # XDG_*_HOME, so threads are safe. Subprocess waits release the GIL,
+        # so threads (vs. processes) avoid pickling overhead and import cost.
+        completed = 0
+        with concurrent.futures.ThreadPoolExecutor(max_workers=self.jobs) as pool:
+            futures = {pool.submit(self.run_test, tc): idx for idx, tc in enumerate(test_cases)}
+            for fut in concurrent.futures.as_completed(futures):
+                idx = futures[fut]
+                results[idx] = fut.result()
+                completed += 1
+                if progress is not None and task is not None:
+                    tc = test_cases[idx]
+                    progress.update(
+                        task,
+                        description=f"Completed {completed}/{total}: {tc.test_id}: {tc.description}",
+                    )
+                    progress.advance(task)
+        return results
+
+    def _generate_quiet_report(self):
+        total_time = time.time() - self.start_time
+        passed = sum(1 for r in self.results if r.passed and not r.skipped)
+        failed = sum(1 for r in self.results if not r.passed)
+        skipped = sum(1 for r in self.results if r.skipped)
+
+        tc_by_id = {tc.test_id: tc for tc in self.filtered_tests}
+        for r in self.results:
+            if not r.passed:
+                print_fenced_failure(r, tc_by_id.get(r.test_id))
+
+        sys.stdout.write(
+            f"doxa_test: {passed} passed, {failed} failed, {skipped} skipped "
+            f"in {total_time:.1f}s (cache: {CACHE_FILE.as_posix()})\n"
+        )
+
+        report = serialize_run_report(self, invocation=sys.argv)
+        write_cache_atomic(report)
+        if self._report_json_path:
+            write_cache_atomic(report, Path(self._report_json_path))
+
+        sys.exit(0 if failed == 0 else 1)
+
+    def generate_report(self):
+        """Generate and display test report"""
+        if self.quiet:
+            self._generate_quiet_report()
+            return
+        total_time = time.time() - self.start_time
+        passed_tests = sum(1 for r in self.results if r.passed and not r.skipped)
+        skipped_tests = sum(1 for r in self.results if r.skipped)
+        failed_tests = sum(1 for r in self.results if not r.passed)
+        api_key_failures = sum(1 for r in self.results if not r.passed and r.is_api_key_failure)
+        other_failures = failed_tests - api_key_failures
+
+        # Summary
+        console.print("\n[bold]Test Results Summary[/bold]")
+        console.print(f"Total tests: {len(self.results)}")
+        console.print(f"Passed: [green]{passed_tests}[/green]")
+        console.print(f"Skipped: [yellow]{skipped_tests}[/yellow]")
+        if api_key_failures > 0:
+            console.print(
+                f"Failed: [red]{failed_tests}[/red] ([yellow]{api_key_failures} due to API key[/yellow], [red]{other_failures} other issues[/red])"
+            )
+        else:
+            console.print(f"Failed: [red]{failed_tests}[/red]")
+        console.print(f"Total time: {total_time:.2f}s\n")
+
+        # Provider Coverage
+        console.print("[bold]Provider Coverage:[/bold]")
+
+        # Show what was requested vs what was tested
+        if self.requested_providers:
+            console.print(f"Requested providers: {', '.join(self.requested_providers)}")
+        else:
+            console.print("Requested providers: All available")
+
+        # Count tests by provider
+        provider_test_counts = dict.fromkeys((*PROVIDER_NAMES, "none"), 0)
+        provider_run_counts = dict.fromkeys((*PROVIDER_NAMES, "none"), 0)
+
+        for test_case in self.filtered_tests:
+            provider_key = test_case.provider or "none"
+            if provider_key in provider_test_counts:
+                provider_test_counts[provider_key] += 1
+
+        for result in self.results:
+            test_case = next(
+                (tc for tc in self.filtered_tests if tc.test_id == result.test_id), None
+            )
+            if test_case:
+                provider_key = test_case.provider or "none"
+                if provider_key in provider_run_counts and not result.skipped:
+                    provider_run_counts[provider_key] += 1
+
+        # Display provider matrix
+        console.print("\nProvider Test Matrix:")
+        for provider in PROVIDER_NAMES:
+            total = provider_test_counts[provider]
+            ran = provider_run_counts[provider]
+            skipped = total - ran
+
+            if provider == "mock":
+                status = "[green]Available (auto-generated)[/green]"
+            elif provider in self.available_providers:
+                status = "[green]Available[/green]"
+            else:
+                status = "[yellow]Not available[/yellow]"
+
+            console.print(f"  {provider.capitalize()}: {status} - {ran}/{total} tests run", end="")
+            if skipped > 0:
+                console.print(f" ({skipped} skipped)")
+            else:
+                console.print()
+
+        # Show provider-agnostic tests
+        if provider_test_counts["none"] > 0:
+            console.print(
+                f"  Provider-agnostic: {provider_run_counts['none']}/{provider_test_counts['none']} tests run"
+            )
+
+        console.print("")
+
+        # API Key Warning
+        if api_key_failures > 0:
+            console.print("[yellow]⚠️  API Key Issues Detected[/yellow]")
+            console.print(f"{api_key_failures} tests failed due to missing API keys.")
+            console.print("Set OPENAI_API_KEY and/or PERPLEXITY_API_KEY environment variables.\n")
+
+        # Detailed results table
+        table = Table(title="Test Results", show_header=True, header_style="bold magenta")
+        table.add_column("Test ID", style="cyan", width=12)
+        table.add_column("Description", style="white", width=45)
+        table.add_column("Provider", style="white", width=12)
+        table.add_column("Status", style="white", width=10)
+        table.add_column("Duration", style="white", width=10)
+        table.add_column("Error", style="red", width=35)
+
+        for result in self.results:
+            status = "[green]PASS[/green]" if result.passed else "[red]FAIL[/red]"
+
+            # Handle error message and API key indication
+            if not result.passed and result.is_api_key_failure:
+                error_msg = "🔑 API Key Required"
+            else:
+                error_msg = result.error_message or ""
+                if len(error_msg) > 40:
+                    error_msg = error_msg[:37] + "..."
+
+            # Find matching test case for description and provider
+            test_case = next(
+                (tc for tc in self.filtered_tests if tc.test_id == result.test_id), None
+            )
+            description = test_case.description if test_case else "Unknown test"
+            if len(description) > 45:
+                description = description[:42] + "..."
+
+            # Determine provider info
+            if test_case and test_case.provider:
+                if result.passed:
+                    provider_info = f"[green]{test_case.provider}[/green]"
+                else:
+                    provider_info = f"[red]{test_case.provider}[/red]"
+            else:
+                provider_info = "[dim]-[/dim]"
+
+            table.add_row(
+                result.test_id,
+                description,
+                provider_info,
+                status,
+                f"{result.duration:.2f}s",
+                error_msg,
+            )
+
+        console.print(table)
+
+        # Detailed failure information
+        if failed_tests > 0:
+            console.print("\n[bold red]Failed Test Details[/bold red]")
+
+            # Show API key failures separately
+            api_failures = [r for r in self.results if not r.passed and r.is_api_key_failure]
+            other_failures = [r for r in self.results if not r.passed and not r.is_api_key_failure]
+
+            if api_failures:
+                console.print("\n[yellow]Tests Failed Due to Missing API Keys:[/yellow]")
+                for result in api_failures:
+                    console.print(f"  • {result.test_id}: {result.error_message}")
+
+            if other_failures:
+                console.print("\n[red]Other Test Failures:[/red]")
+                for result in other_failures:
+                    console.print(f"\n[yellow]Test {result.test_id}:[/yellow]")
+                    console.print(f"Error: {result.error_message}")
+                    if result.stdout:
+                        # Show more output for debugging (up to 2000 chars)
+                        console.print(f"Stdout:\n{result.stdout[:2000]}")
+                    if result.stderr:
+                        console.print(f"Stderr:\n{result.stderr[:2000]}")
+
+            # Rerun hint — `--id` is exact-match, avoiding the substring
+            # collisions that `-t` would cause. `--last-failed` reuses the
+            # cache written this run.
+            console.print("\n[bold]To rerun failed tests:[/bold]")
+            console.print("  ./doxa_test -r --last-failed -q")
+            for result in [r for r in self.results if not r.passed]:
+                console.print(f"  ./doxa_test -r --id {result.test_id} -v")
+
+        report = serialize_run_report(self, invocation=sys.argv)
+        write_cache_atomic(report)
+        if self._report_json_path:
+            write_cache_atomic(report, Path(self._report_json_path))
+
+        # Exit with appropriate code
+        sys.exit(0 if failed_tests == 0 else 1)
+
+
+# ============================================================================
+# Test Definitions
+# ============================================================================
+
+
+def mock_stream_patterns(prompt: str, mode: str = "default") -> list[str]:
+    """Expected stdout contract for immediate-mode mock streaming."""
+    return [
+        rf"# Mock streaming response \(mode={re.escape(mode)}\)",
+        rf"Echo: {re.escape(prompt)}",
+        r"Done\.",
+    ]
+
+
+# All test cases
+all_tests = [
+    # Basic CLI Tests (No Provider Required)
+    TestCase(
+        test_id="M1T-01",
+        description="Verify --version displays version",
+        command=[DOXA_EXECUTABLE, "--version"],
+        expected_stdout_patterns=[r"Doxa Research v\d+\.\d+\.\d+"],
+        expected_exit_code=0,
+    ),
+    TestCase(
+        test_id="M1T-02",
+        description="Quick mode with mock provider streams without default result file",
+        command=[DOXA_EXECUTABLE, "test prompt", "--provider", "mock"],
+        expected_stdout_patterns=mock_stream_patterns("test prompt"),
+        not_expected_files=["*_*_*_mock_*.md"],
+        expected_exit_code=0,
+        provider="mock",
+        api_key_method="env",
+    ),
+    TestCase(
+        test_id="M1T-03",
+        description="Filename follows correct pattern",
+        command=[
+            DOXA_EXECUTABLE,
+            "test filename pattern",
+            "--provider",
+            "mock",
+            "--project",
+            "filename_pattern_test",
+        ],
+        expected_stdout_patterns=mock_stream_patterns("test filename pattern") + [r"Saved to:"],
+        expected_files=["research-outputs/filename_pattern_test/????-??-??_??????_*_mock_*.md"],
+        cleanup_files=[
+            "research-outputs/filename_pattern_test/*",
+            "research-outputs/filename_pattern_test",
+            "research-outputs",
+        ],
+        expected_exit_code=0,
+        provider="mock",
+        api_key_method="env",
+    ),
+    TestCase(
+        test_id="M1T-04",
+        description="Help text shows quick mode examples",
+        command=[DOXA_EXECUTABLE, "--help"],
+        expected_stdout_patterns=[
+            r"Usage:",
+            r"Quick usage:",
+            r"doxa \"how does DNS work\"",
+        ],
+        expected_exit_code=0,
+    ),
+    TestCase(
+        test_id="M1T-05",
+        description="Help command works",
+        command=[DOXA_EXECUTABLE, "help"],
+        expected_stdout_patterns=[r"Usage:", r"Quick usage:"],
+        expected_exit_code=0,
+    ),
+    # Mock Provider API Key Tests
+    TestCase(
+        test_id="MOCK-01",
+        description="Mock provider works with environment API key",
+        command=[DOXA_EXECUTABLE, "test env key", "--provider", "mock"],
+        expected_stdout_patterns=mock_stream_patterns("test env key"),
+        not_expected_files=["*_mock_*.md"],
+        expected_exit_code=0,
+        provider="mock",
+        api_key_method="env",
+    ),
+    TestCase(
+        test_id="MOCK-02",
+        description="Mock provider works with command-line API key",
+        command=[
+            DOXA_EXECUTABLE,
+            "test cli key",
+            "--provider",
+            "mock",
+            "--api-key-mock",
+            "dummy-key",
+        ],
+        expected_stdout_patterns=mock_stream_patterns("test cli key"),
+        not_expected_files=["*_mock_*.md"],
+        expected_exit_code=0,
+        provider="mock",
+        api_key_method="cli",
+    ),
+    # Provider flag short form test (F-39/T-CLI-03)
+    TestCase(
+        test_id="T-CLI-03",
+        description="Short form -P works for provider flag",
+        command=[DOXA_EXECUTABLE, "test short provider flag", "-P", "mock"],
+        expected_stdout_patterns=mock_stream_patterns("test short provider flag"),
+        not_expected_files=["*_mock_*.md"],
+        expected_exit_code=0,
+        provider="mock",
+        api_key_method="env",
+    ),
+    # Milestone 2: Configuration System
+    TestCase(
+        test_id="M2T-01",
+        description="Environment variables are read (API key error)",
+        command=[DOXA_EXECUTABLE, "clarification", "test env"],
+        env={"OPENAI_API_KEY": ""},
+        expected_stdout_patterns=[r"openai API key not found"],
+        expected_exit_code=1,
+    ),
+    # P08-TS18: empty perplexity key is routed through resolve_api_key (mirror of M2T-01)
+    TestCase(
+        test_id="P08-TS18",
+        description="Empty PERPLEXITY_API_KEY triggers APIKeyError via resolve_api_key",
+        command=[DOXA_EXECUTABLE, "--provider", "perplexity", "test perplexity missing key"],
+        env={"PERPLEXITY_API_KEY": ""},
+        expected_stdout_patterns=[r"perplexity API key not found"],
+        expected_exit_code=1,
+    ),
+    # API Key Masking Test (F-19/M2-08)
+    TestCase(
+        test_id="M2T-08",
+        description="API keys are masked in all output",
+        command=[DOXA_EXECUTABLE, "test masking", "--provider", "mock", "-v"],
+        env={"MOCK_API_KEY": "sk-secret-key-12345"},
+        not_expected_stdout_patterns=[r"sk-secret-key-12345"],
+        expected_stdout_patterns=[r"API Key: sk-\.\.\.345"],
+        expected_exit_code=0,
+        provider="mock",
+        api_key_method="env",
+    ),
+    TestCase(
+        test_id="M2T-02",
+        description="Init command creates user XDG config directory",
+        command=[DOXA_EXECUTABLE, "init", "--user", "--non-interactive"],
+        expected_stdout_patterns=[r"Configuration saved to"],
+        expected_exit_code=0,
+    ),
+    TestCase(
+        test_id="M2T-INTERACTIVE-INIT",
+        description="Interactive init wizard collects answers and writes config",
+        command=[DOXA_EXECUTABLE, "--config", "./test_interactive.toml", "init"],
+        test_type="interactive",
+        is_interactive=True,
+        env={"OPENAI_API_KEY": "sk-test-fake-1234567890abcdef"},
+        interactive_scenario=[
+            # Q1: Pick providers — wait for menu, pick openai (1)
+            ("Pick providers", "1" + Keys.ENTER),
+            # Q2: env-var detected — wait for detection prompt, say yes
+            (r"OPENAI_API_KEY detected", "y" + Keys.ENTER),
+            # Q3: Default mode — wait for menu, pick thinking (2)
+            ("Default mode", "2" + Keys.ENTER),
+            # Review screen — wait for "Write this", confirm
+            ("Write this", "y" + Keys.ENTER),
+        ],
+        expected_stdout_patterns=[r"Configuration saved to"],
+        expected_exit_code=0,
+        cleanup_files=["test_interactive.toml"],
+    ),
+    # Config flag test (F-40/T-CFG-06)
+    TestCase(
+        test_id="T-CFG-06",
+        description="--config flag loads custom config file",
+        command=[
+            DOXA_EXECUTABLE,
+            "test custom config",
+            "--provider",
+            "mock",
+            "--config",
+            "./test_config.toml",
+        ],
+        expected_stdout_patterns=mock_stream_patterns("test custom config"),
+        not_expected_files=["*_mock_*.md"],
+        cleanup_files=["test_config.toml"],
+        expected_exit_code=0,
+        provider="mock",
+        api_key_method="config",
+    ),
+    # Milestone 3: Provider Architecture
+    TestCase(
+        test_id="M3T-01",
+        description="Mock provider completes successfully",
+        command=[DOXA_EXECUTABLE, "test mock", "--provider", "mock"],
+        expected_stdout_patterns=mock_stream_patterns("test mock"),
+        not_expected_files=["*_mock_*.md"],
+        expected_exit_code=0,
+        provider="mock",
+        api_key_method="env",
+    ),
+    TestCase(
+        test_id="M3T-02",
+        description="--provider flag limits execution",
+        command=[
+            DOXA_EXECUTABLE,
+            "deep_research",
+            "test provider",
+            "--provider",
+            "mock",
+        ],
+        expected_stdout_patterns=[r"Research completed"],
+        expected_files=["*_mock_*.md"],
+        not_expected_stdout_patterns=[r"_openai_", r"_perplexity_"],
+        cleanup_files=["*_mock_*.md"],
+        expected_exit_code=0,
+        provider="mock",
+        api_key_method="env",
+    ),
+    TestCase(
+        test_id="BG-01",
+        description="Background mode works with command-line mock API key",
+        command=[
+            DOXA_EXECUTABLE,
+            "deep_research",
+            "background cli key",
+            "--provider",
+            "mock",
+            "--api-key-mock",
+            "dummy-key",
+        ],
+        expected_stdout_patterns=[r"Research completed", r"Results saved to:"],
+        expected_files=["*_mock_*.md"],
+        expected_file_content_patterns={
+            "*_mock_*.md": [r"Prompt: background cli key", r"Mode: deep_research"]
+        },
+        cleanup_files=["*_mock_*.md"],
+        expected_exit_code=0,
+        provider="mock",
+        api_key_method="cli",
+    ),
+    TestCase(
+        test_id="BG-02",
+        description="Background mode works with custom config file",
+        command=[
+            DOXA_EXECUTABLE,
+            "deep_research",
+            "background config",
+            "--provider",
+            "mock",
+            "--config",
+            "./test_config.toml",
+        ],
+        expected_stdout_patterns=[r"Research completed", r"Results saved to:"],
+        expected_files=["*_mock_*.md"],
+        expected_file_content_patterns={
+            "*_mock_*.md": [r"Prompt: background config", r"Mode: deep_research"]
+        },
+        cleanup_files=["*_mock_*.md", "test_config.toml"],
+        expected_exit_code=0,
+        provider="mock",
+        api_key_method="config",
+    ),
+    TestCase(
+        test_id="BG-03",
+        description="Background mode reads prompt from file",
+        command=[
+            DOXA_EXECUTABLE,
+            "deep_research",
+            "--prompt-file",
+            "test_prompt.txt",
+            "--provider",
+            "mock",
+        ],
+        expected_stdout_patterns=[r"Research completed", r"Results saved to:"],
+        expected_files=["*_mock_*.md"],
+        expected_file_content_patterns={
+            "*_mock_*.md": [r"Prompt: test prompt from file", r"Mode: deep_research"]
+        },
+        cleanup_files=["*_mock_*.md", "test_prompt.txt"],
+        expected_exit_code=0,
+        provider="mock",
+        api_key_method="env",
+    ),
+    TestCase(
+        test_id="BG-04",
+        description="Background mode reads prompt from stdin",
+        command=[DOXA_EXECUTABLE, "deep_research", "--prompt-file", "-", "--provider", "mock"],
+        stdin_input="background prompt from stdin\n",
+        expected_stdout_patterns=[r"Research completed", r"Results saved to:"],
+        expected_files=["*_mock_*.md"],
+        expected_file_content_patterns={
+            "*_mock_*.md": [r"Prompt: background prompt from stdin", r"Mode: deep_research"]
+        },
+        cleanup_files=["*_mock_*.md"],
+        expected_exit_code=0,
+        provider="mock",
+        api_key_method="env",
+    ),
+    TestCase(
+        test_id="BG-05",
+        description="Background mode supports short -P provider flag",
+        command=[DOXA_EXECUTABLE, "deep_research", "background short provider", "-P", "mock"],
+        expected_stdout_patterns=[r"Research completed", r"Results saved to:"],
+        expected_files=["*_mock_*.md"],
+        expected_file_content_patterns={
+            "*_mock_*.md": [r"Prompt: background short provider", r"Mode: deep_research"]
+        },
+        cleanup_files=["*_mock_*.md"],
+        expected_exit_code=0,
+        provider="mock",
+        api_key_method="env",
+    ),
+    TestCase(
+        test_id="BG-06",
+        description="Background mode writes project outputs under --project",
+        command=[
+            DOXA_EXECUTABLE,
+            "deep_research",
+            "background project",
+            "--provider",
+            "mock",
+            "--project",
+            "background-project-bg06",
+        ],
+        expected_stdout_patterns=[r"Research completed", r"Results saved to:"],
+        expected_files=["research-outputs/background-project-bg06/*_mock_*.md"],
+        expected_file_content_patterns={
+            "research-outputs/background-project-bg06/*_mock_*.md": [
+                r"Prompt: background project",
+                r"Mode: deep_research",
+            ]
+        },
+        cleanup_files=[
+            "research-outputs/background-project-bg06/*",
+            "research-outputs/background-project-bg06",
+        ],
+        expected_exit_code=0,
+        provider="mock",
+        api_key_method="env",
+    ),
+    TestCase(
+        test_id="BG-07",
+        description="Background mode reads --input-file as the prompt (alias) and omits input_files metadata",
+        command=[
+            DOXA_EXECUTABLE,
+            "deep_research",
+            "--provider",
+            "mock",
+            "--input-file",
+            "{tmpdir}/input.md",
+        ],
+        setup_func=create_test_input_file,
+        expected_stdout_patterns=[r"Research completed", r"Results saved to:"],
+        expected_files=["*_mock_*.md"],
+        expected_file_content_patterns={
+            "*_mock_*.md": [
+                r"Prompt: background input file content",
+                r"Mode: deep_research",
+            ]
+        },
+        not_expected_file_content_patterns={"*_mock_*.md": [r"input_files:"]},
+        cleanup_files=["*_mock_*.md"],
+        expected_exit_code=0,
+        provider="mock",
+        api_key_method="env",
+    ),
+    TestCase(
+        test_id="BG-08",
+        description="Background mode honors --no-metadata in output files",
+        command=[
+            DOXA_EXECUTABLE,
+            "deep_research",
+            "background no metadata",
+            "--provider",
+            "mock",
+            "--no-metadata",
+        ],
+        expected_stdout_patterns=[r"Research completed", r"Results saved to:"],
+        expected_files=["*_mock_*.md"],
+        expected_file_content_patterns={
+            "*_mock_*.md": [
+                r"# Mock Research Results",
+                r"## Prompt: background no metadata",
+            ]
+        },
+        not_expected_file_content_patterns={
+            "*_mock_*.md": [r"^---$", r"operation_id:", r"### Prompt"]
+        },
+        cleanup_files=["*_mock_*.md"],
+        expected_exit_code=0,
+        provider="mock",
+        api_key_method="env",
+    ),
+    TestCase(
+        test_id="BG-09",
+        description="Background mode honors --quiet while still writing output",
+        command=[
+            DOXA_EXECUTABLE,
+            "deep_research",
+            "background quiet",
+            "--provider",
+            "mock",
+            "--quiet",
+        ],
+        expected_stdout_patterns=[r"_mock_background-quiet\.md"],
+        not_expected_stdout_patterns=[r"Research completed", r"Results saved to:", r"Progress:"],
+        expected_files=["*_mock_*.md"],
+        expected_file_content_patterns={
+            "*_mock_*.md": [r"Prompt: background quiet", r"Mode: deep_research"]
+        },
+        cleanup_files=["*_mock_*.md"],
+        expected_exit_code=0,
+        provider="mock",
+        api_key_method="env",
+    ),
+    TestCase(
+        test_id="M3T-03",
+        description="Invalid provider shows error",
+        command=[DOXA_EXECUTABLE, "test", "--provider", "invalid-provider"],
+        expected_stderr_patterns=[
+            r"Invalid value for '--provider' / '-P': 'invalid-provider' is not one of"
+        ],
+        expected_exit_code=2,
+    ),
+    # Milestone 4: Mode System
+    TestCase(
+        test_id="M4T-01",
+        description="Default mode is 'default' not 'deep_research'",
+        command=[DOXA_EXECUTABLE, "test default mode", "--provider", "mock", "-v"],
+        expected_stdout_patterns=[r"Operation ID:", *mock_stream_patterns("test default mode")],
+        not_expected_files=["*_default_*.md"],
+        not_expected_stdout_patterns=[r"Mode: deep_research"],
+        expected_exit_code=0,
+        provider="mock",
+        api_key_method="env",
+    ),
+    TestCase(
+        test_id="M4T-02",
+        description="All built-in modes are accessible",
+        command=[
+            DOXA_EXECUTABLE,
+            "thinking",
+            "test thinking mode",
+            "--provider",
+            "mock",
+        ],
+        expected_stdout_patterns=mock_stream_patterns("test thinking mode", mode="thinking"),
+        not_expected_files=["*_thinking_*.md"],
+        expected_exit_code=0,
+        provider="mock",
+        api_key_method="env",
+    ),
+    TestCase(
+        test_id="M4T-03",
+        description="Unknown mode shows error",
+        command=[DOXA_EXECUTABLE, "invalid-mode", "test"],
+        expected_stdout_patterns=[r"Unknown mode: invalid-mode"],
+        expected_exit_code=1,
+    ),
+    TestCase(
+        test_id="M4T-04",
+        description="Clarification mode works",
+        command=[
+            DOXA_EXECUTABLE,
+            "clarification",
+            "test clarification",
+            "--provider",
+            "mock",
+        ],
+        expected_stdout_patterns=mock_stream_patterns("test clarification", mode="clarification"),
+        not_expected_files=["*_clarification_*.md"],
+        expected_exit_code=0,
+        provider="mock",
+        api_key_method="env",
+    ),
+    TestCase(
+        test_id="M4T-05",
+        description="Exploration mode works",
+        command=[
+            DOXA_EXECUTABLE,
+            "exploration",
+            "test exploration",
+            "--provider",
+            "mock",
+        ],
+        expected_stdout_patterns=[r"Research completed"],
+        expected_files=["*_exploration_*.md"],
+        cleanup_files=["*_exploration_*.md"],
+        expected_exit_code=0,
+        provider="mock",
+        api_key_method="env",
+    ),
+    # Milestone 5: Async Operations
+    TestCase(
+        test_id="M5T-01",
+        description="--async returns operation ID immediately",
+        command=[DOXA_EXECUTABLE, "test async", "--async", "--provider", "mock"],
+        expected_stdout_patterns=[r"Operation ID: \w+-\d+-\d+-\w+"],
+        expected_exit_code=0,
+        timeout=5,  # Should return immediately
+        provider="mock",
+        api_key_method="env",
+    ),
+    TestCase(
+        test_id="M5T-02",
+        description="Status command shows help when no ID",
+        command=[DOXA_EXECUTABLE, "status"],
+        expected_stderr_patterns=[r"Error: status command requires an operation ID"],
+        expected_exit_code=2,
+    ),
+    TestCase(
+        test_id="M5T-03",
+        description="List command works",
+        command=[DOXA_EXECUTABLE, "list"],
+        expected_stdout_patterns=[r"Research Operations|No operations found"],
+        expected_exit_code=0,
+    ),
+    # Checkpoint Persistence Tests
+    TestCase(
+        test_id="M5T-04",
+        description="Checkpoint persists across process invocations",
+        command=[DOXA_EXECUTABLE, "status", "test-persist-checkpoint-m5t04"],
+        expected_stdout_patterns=[
+            r"Operation Details",
+            r"test-persist-checkpoint-m5t04",
+            r"test checkpoint prompt",
+            r"completed",
+        ],
+        expected_exit_code=0,
+        setup_func=lambda home: create_test_checkpoint(
+            "test-persist-checkpoint-m5t04", config_home=home
+        ),
+        teardown_func=lambda home: remove_test_checkpoint(
+            "test-persist-checkpoint-m5t04", config_home=home
+        ),
+    ),
+    TestCase(
+        test_id="M5T-05",
+        description="Corrupted checkpoint shows warning and recovers",
+        command=[DOXA_EXECUTABLE, "status", "test-corrupt-m5t05"],
+        expected_stdout_patterns=[r"Warning.*[Cc]orrupt|not found"],
+        expected_exit_code=6,
+        setup_func=lambda home: create_corrupted_checkpoint("test-corrupt-m5t05", config_home=home),
+        teardown_func=lambda home: remove_test_checkpoint("test-corrupt-m5t05", config_home=home),
+    ),
+    # Lifecycle Management Tests (M5-10)
+    TestCase(
+        test_id="M5T-10a",
+        description="Operation starts in queued state with --async",
+        command=[DOXA_EXECUTABLE, "test lifecycle", "--async", "--provider", "mock"],
+        expected_stdout_patterns=[r"Operation ID: \w+-\d+-\d+-\w+"],
+        expected_exit_code=0,
+        provider="mock",
+        api_key_method="env",
+        timeout=5,
+    ),
+    TestCase(
+        test_id="M5T-10b",
+        description="Synchronous operation transitions queued→running→completed",
+        command=[DOXA_EXECUTABLE, "test lifecycle sync", "--provider", "mock"],
+        expected_stdout_patterns=mock_stream_patterns("test lifecycle sync"),
+        not_expected_files=["*_mock_*.md"],
+        expected_exit_code=0,
+        provider="mock",
+        api_key_method="env",
+    ),
+    TestCase(
+        test_id="M5T-10c",
+        description="Completed operation status is valid state",
+        command=[DOXA_EXECUTABLE, "status", "test-lifecycle-valid-m5t10c"],
+        expected_stdout_patterns=[
+            r"Status:\s+(queued|running|completed|failed|cancelled)",
+        ],
+        expected_exit_code=0,
+        setup_func=lambda home: create_test_checkpoint(
+            "test-lifecycle-valid-m5t10c", config_home=home, status="completed"
+        ),
+        teardown_func=lambda home: remove_test_checkpoint(
+            "test-lifecycle-valid-m5t10c", config_home=home
+        ),
+    ),
+    TestCase(
+        test_id="M5T-10d",
+        description="Failed operation status is preserved in checkpoint",
+        command=[DOXA_EXECUTABLE, "status", "test-lifecycle-failed-m5t10d"],
+        expected_stdout_patterns=[
+            r"Status:\s+failed",
+        ],
+        expected_exit_code=0,
+        setup_func=lambda home: create_test_checkpoint(
+            "test-lifecycle-failed-m5t10d",
+            config_home=home,
+            status="failed",
+            error="Test error message",
+        ),
+        teardown_func=lambda home: remove_test_checkpoint(
+            "test-lifecycle-failed-m5t10d", config_home=home
+        ),
+    ),
+    # Milestone 6: Output Management
+    TestCase(
+        test_id="M6T-01",
+        description="Explicit --out writes immediate stream to a file",
+        command=[
+            DOXA_EXECUTABLE,
+            "ask",
+            "test output",
+            "--mode",
+            "thinking",
+            "--provider",
+            "mock",
+            "--out",
+            "{tmpdir}/stream-output.md",
+        ],
+        not_expected_stdout_patterns=[r"# Mock streaming response"],
+        expected_files=["stream-output.md"],
+        expected_file_content_patterns={
+            "stream-output.md": mock_stream_patterns("test output", mode="thinking")
+        },
+        expected_exit_code=0,
+        provider="mock",
+        api_key_method="env",
+    ),
+    TestCase(
+        test_id="M6T-02",
+        description="Output directory can be specified",
+        command=[
+            DOXA_EXECUTABLE,
+            "deep_research",
+            "test output dir",
+            "--provider",
+            "mock",
+            "-o",
+            "test_output",
+        ],
+        expected_stdout_patterns=[r"Research completed", r"Results saved to:"],
+        expected_files=["test_output/*_mock_*.md"],
+        expected_file_content_patterns={
+            "test_output/*_mock_*.md": [
+                r"Prompt: test output dir",
+                r"Mode: deep_research",
+                r"mock research result",
+            ]
+        },
+        cleanup_files=["test_output/*", "test_output"],
+        expected_exit_code=0,
+        provider="mock",
+        api_key_method="env",
+    ),
+    TestCase(
+        test_id="M6T-03",
+        description="Immediate --output-dir alone does not create a result file",
+        command=[
+            DOXA_EXECUTABLE,
+            "test output dir immediate",
+            "--provider",
+            "mock",
+            "-o",
+            "immediate_output",
+        ],
+        expected_stdout_patterns=mock_stream_patterns("test output dir immediate"),
+        not_expected_files=["immediate_output/*_mock_*.md"],
+        cleanup_files=["immediate_output"],
+        expected_exit_code=0,
+        provider="mock",
+        api_key_method="env",
+    ),
+    TestCase(
+        test_id="M6T-04",
+        description="Bare prompt leading --out writes immediate stream to a file",
+        command=[
+            DOXA_EXECUTABLE,
+            "--out",
+            "{tmpdir}/bare-output.md",
+            "--provider",
+            "mock",
+            "bare output",
+        ],
+        not_expected_stdout_patterns=[r"# Mock streaming response"],
+        expected_files=["bare-output.md"],
+        expected_file_content_patterns={"bare-output.md": mock_stream_patterns("bare output")},
+        expected_exit_code=0,
+        provider="mock",
+        api_key_method="env",
+    ),
+    TestCase(
+        test_id="M6T-05",
+        description="Bare prompt trailing --out writes immediate stream to a file",
+        command=[
+            DOXA_EXECUTABLE,
+            "bare trailing output",
+            "--provider",
+            "mock",
+            "--out",
+            "{tmpdir}/bare-trailing-output.md",
+        ],
+        not_expected_stdout_patterns=[r"# Mock streaming response"],
+        expected_files=["bare-trailing-output.md"],
+        expected_file_content_patterns={
+            "bare-trailing-output.md": mock_stream_patterns("bare trailing output")
+        },
+        expected_exit_code=0,
+        provider="mock",
+        api_key_method="env",
+    ),
+    # Milestone 7: Progress and UX
+    TestCase(
+        test_id="M7T-02",
+        description="Verbose mode shows detailed info",
+        command=[DOXA_EXECUTABLE, "test verbose", "--provider", "mock", "-v"],
+        expected_stdout_patterns=[r"Operation ID:", *mock_stream_patterns("test verbose")],
+        not_expected_files=["*_mock_*.md"],
+        expected_exit_code=0,
+        provider="mock",
+        api_key_method="env",
+    ),
+    # API Key Tests
+    TestCase(
+        test_id="API-01",
+        description="Missing API key shows helpful error",
+        command=[DOXA_EXECUTABLE, "clarification", "test"],
+        env={"OPENAI_API_KEY": ""},
+        expected_stdout_patterns=[r"openai API key not found", r"export OPENAI_API_KEY"],
+        expected_exit_code=1,
+    ),
+    TestCase(
+        test_id="API-02",
+        description="Missing mock API key in environment",
+        command=[DOXA_EXECUTABLE, "test", "--provider", "mock"],
+        env={"MOCK_API_KEY": ""},
+        expected_stdout_patterns=[r"mock API key not found"],
+        expected_exit_code=1,
+    ),
+    TestCase(
+        test_id="API-03",
+        description="Invalid mock API key format",
+        command=[DOXA_EXECUTABLE, "test", "--provider", "mock"],
+        env={"MOCK_API_KEY": "invalid"},
+        expected_stdout_patterns=[r"Invalid mock API key format"],
+        expected_exit_code=1,
+    ),
+    # Additional Edge Cases
+    TestCase(
+        test_id="EDGE-01",
+        description="Empty prompt shows error",
+        command=[DOXA_EXECUTABLE, ""],
+        expected_stderr_patterns=[r"Prompt cannot be empty"],
+        expected_exit_code=2,
+    ),
+    TestCase(
+        test_id="EDGE-02",
+        description="Very long prompt is handled",
+        command=[DOXA_EXECUTABLE, "a" * 1000, "--provider", "mock"],
+        expected_stdout_patterns=mock_stream_patterns("a" * 1000),
+        not_expected_files=["*_mock_*.md"],
+        expected_exit_code=0,
+        provider="mock",
+        api_key_method="env",
+    ),
+    TestCase(
+        test_id="COMB-02",
+        description="No combined report without --combined flag",
+        command=[DOXA_EXECUTABLE, "test no combined", "--provider", "mock"],
+        expected_stdout_patterns=mock_stream_patterns("test no combined"),
+        not_expected_stdout_patterns=[r"_combined_"],
+        not_expected_files=["*_mock_*.md", "*_combined_*.md"],
+        expected_exit_code=0,
+        provider="mock",
+        api_key_method="env",
+    ),
+    # Prompt File Tests
+    TestCase(
+        test_id="QFILE-01",
+        description="Read prompt from file",
+        command=[
+            DOXA_EXECUTABLE,
+            "--prompt-file",
+            "test_prompt.txt",
+            "--provider",
+            "mock",
+        ],
+        expected_stdout_patterns=mock_stream_patterns("test prompt from file"),
+        not_expected_files=["*_mock_*.md"],
+        cleanup_files=["test_prompt.txt"],
+        expected_exit_code=0,
+        provider="mock",
+        api_key_method="env",
+    ),
+    TestCase(
+        test_id="QFILE-02",
+        description="Read prompt from stdin",
+        command=[DOXA_EXECUTABLE, "--prompt-file", "-", "--provider", "mock"],
+        stdin_input="test prompt from stdin\n",
+        expected_stdout_patterns=mock_stream_patterns("test prompt from stdin"),
+        not_expected_files=["*_mock_*.md"],
+        expected_exit_code=0,
+        provider="mock",
+        api_key_method="env",
+    ),
+    # Config File Tests
+    TestCase(
+        test_id="CFG-01",
+        description="Custom config file with --config",
+        command=[
+            DOXA_EXECUTABLE,
+            "test config",
+            "--config",
+            "custom_config.toml",
+            "--provider",
+            "mock",
+        ],
+        expected_stdout_patterns=mock_stream_patterns("test config"),
+        not_expected_files=["*_mock_*.md"],
+        cleanup_files=["custom_config.toml"],
+        expected_exit_code=0,
+        provider="mock",
+        api_key_method="env",
+    ),
+    # Quiet Mode Tests
+    TestCase(
+        test_id="QUIET-01",
+        description="Quiet mode suppresses output",
+        command=[DOXA_EXECUTABLE, "test quiet", "--quiet", "--provider", "mock"],
+        expected_stdout_patterns=mock_stream_patterns("test quiet"),
+        not_expected_stdout_patterns=[r"Progress:", r"Researching:"],
+        not_expected_files=["*_mock_*.md"],
+        expected_exit_code=0,
+        provider="mock",
+        api_key_method="env",
+    ),
+    TestCase(
+        test_id="QUIET-02",
+        description="Quiet mode short form -Q",
+        command=[DOXA_EXECUTABLE, "test quiet short", "-Q", "--provider", "mock"],
+        expected_stdout_patterns=mock_stream_patterns("test quiet short"),
+        not_expected_stdout_patterns=[r"Progress:", r"Researching:"],
+        not_expected_files=["*_mock_*.md"],
+        expected_exit_code=0,
+        provider="mock",
+        api_key_method="env",
+    ),
+    # Project Mode Tests
+    TestCase(
+        test_id="PROJ-01",
+        description="Project mode creates subdirectory structure",
+        command=[
+            DOXA_EXECUTABLE,
+            "test project",
+            "--project",
+            "test_project",
+            "--provider",
+            "mock",
+        ],
+        expected_stdout_patterns=mock_stream_patterns("test project") + [r"Saved to:"],
+        expected_files=["research-outputs/test_project/*_mock_*.md"],
+        cleanup_files=[
+            "research-outputs/test_project/*",
+            "research-outputs/test_project",
+            "research-outputs",
+        ],
+        expected_exit_code=0,
+        provider="mock",
+        api_key_method="env",
+    ),
+    # Exit Code Tests
+    TestCase(
+        test_id="EXIT-01",
+        description="Missing required argument returns exit code 2",
+        command=[DOXA_EXECUTABLE, "--mode"],
+        expected_stderr_patterns=[r"Error: Option '--mode' requires an argument"],
+        expected_exit_code=2,
+    ),
+    TestCase(
+        test_id="EXIT-02",
+        description="Invalid subcommand op returns exit code 2",
+        command=[DOXA_EXECUTABLE, "modes", "bogus_op"],
+        expected_stderr_patterns=[r"No such command|unknown.*op"],
+        expected_exit_code=2,
+    ),
+    TestCase(
+        test_id="EXIT-03",
+        description="General error returns exit code 1",
+        command=[DOXA_EXECUTABLE, "test", "--provider", "openai"],
+        env={"OPENAI_API_KEY": ""},
+        expected_stdout_patterns=[r"openai API key not found"],
+        expected_exit_code=1,
+    ),
+    # Real Provider Tests (require actual API keys)
+    TestCase(
+        test_id="REAL-01",
+        description="OpenAI provider with real API key",
+        command=[DOXA_EXECUTABLE, "test openai", "--provider", "openai"],
+        expected_stdout_patterns=[r".+"],
+        not_expected_files=["*_openai_*.md"],
+        expected_exit_code=0,
+        provider="openai",
+        api_key_method="env",
+    ),
+    TestCase(
+        test_id="REAL-02",
+        description="Perplexity rejects invalid API key with friendly DoxaError",
+        command=[DOXA_EXECUTABLE, "test perplexity", "--provider", "perplexity"],
+        expected_stdout_patterns=[
+            r"Perplexity API key is invalid",
+        ],
+        expected_exit_code=1,
+        env={"PERPLEXITY_API_KEY": "pplx-test-bogus-key"},
+        provider="perplexity",
+    ),
+    TestCase(
+        test_id="REAL-03",
+        description="Gemini provider with real API key",
+        command=[
+            DOXA_EXECUTABLE,
+            "ask",
+            "Reply in one short sentence.",
+            "--provider",
+            "gemini",
+            "--model",
+            "gemini-2.5-flash-lite",
+        ],
+        expected_stdout_patterns=[r".+"],
+        not_expected_files=["*_gemini_*.md"],
+        expected_exit_code=0,
+        provider="gemini",
+        api_key_method="env",
+        timeout=120,
+    ),
+    # Signal handling tests
+    TestCase(
+        test_id="T-SIG-01",
+        description="Graceful exit on Ctrl-C with checkpoint save",
+        command=[
+            DOXA_EXECUTABLE,
+            "deep_research",
+            "test interrupt handling",
+            "--provider",
+            "mock",
+        ],
+        expected_stdout_patterns=[
+            r"Interrupt received\. Saving checkpoint",
+            r"Checkpoint saved\. Resume with: doxa resume",
+        ],
+        expected_exit_code=1,
+        provider="mock",
+        api_key_method="env",
+        env={
+            "DOXA_POLL_INTERVAL": "30"
+        },  # Keep mock in "running" so signal lands inside polling loop
+        signal_after=4.0,  # After handler is installed and globals are set.
+        # Was 1.5; bumped because P33 (pydantic) + P24 (google-genai) added
+        # transitive imports that push doxa-research's cold-start past 1.5s on
+        # ubuntu CI runners (SIGINT arrives mid-import → exit 130 instead
+        # of the signal handler's clean exit 1). 4.0 leaves headroom for
+        # the slowest CI runners while keeping the test fast on warm caches.
+        cleanup_files=["*_mock_*.md", "~/.doxa/checkpoints/*.json"],
+    ),
+    # Transient / permanent error classification + resumable recovery
+    TestCase(
+        test_id="TR-01",
+        description="Transient errors below threshold are retried and job completes",
+        command=[DOXA_EXECUTABLE, "deep_research", "transient retry", "--provider", "mock"],
+        env={
+            "DOXA_MOCK_BEHAVIOR": "flake:2",
+            "DOXA_POLL_INTERVAL": "0.1",
+        },
+        expected_stdout_patterns=[
+            r"transient error \(1/5\)",
+            r"transient error \(2/5\)",
+            r"Research completed",
+        ],
+        not_expected_stdout_patterns=[
+            r"consecutive transient errors",
+            r"permanent failure",
+        ],
+        expected_files=["*_mock_*.md"],
+        cleanup_files=["*_mock_*.md"],
+        expected_exit_code=0,
+        provider="mock",
+        api_key_method="env",
+    ),
+    TestCase(
+        test_id="TR-02",
+        description="Transient errors above threshold fail with recoverable status and resume hint",
+        command=[DOXA_EXECUTABLE, "deep_research", "transient exhaust", "--provider", "mock"],
+        env={
+            "DOXA_MOCK_BEHAVIOR": "flake:10",
+            "DOXA_POLL_INTERVAL": "0.1",
+        },
+        expected_stdout_patterns=[
+            r"5 consecutive transient errors",
+            r"This failure is recoverable",
+            r"Resume with: .*doxa resume",
+        ],
+        not_expected_stdout_patterns=[r"Research completed"],
+        expected_exit_code=1,
+        provider="mock",
+        api_key_method="env",
+        cleanup_files=["*_mock_*.md"],
+    ),
+    TestCase(
+        test_id="TR-03",
+        description="Permanent error fails immediately with no resume hint",
+        command=[DOXA_EXECUTABLE, "permanent fail", "--provider", "mock"],
+        env={
+            "DOXA_MOCK_BEHAVIOR": "permanent",
+            "DOXA_POLL_INTERVAL": "0.1",
+        },
+        expected_stdout_patterns=[
+            r"permanent failure",
+            r"Mock permanent failure",
+        ],
+        not_expected_stdout_patterns=[
+            r"This failure is recoverable",
+            r"Resume with: .*doxa resume",
+            r"Research completed",
+        ],
+        expected_exit_code=1,
+        provider="mock",
+        api_key_method="env",
+        cleanup_files=["*_mock_*.md"],
+    ),
+    TestCase(
+        test_id="TR-04",
+        description="Immediate transient-like stream failure is permanent and non-resumable",
+        command=[DOXA_EXECUTABLE, "immediate flake fail", "--provider", "mock"],
+        env={
+            "DOXA_MOCK_BEHAVIOR": "flake:2",
+            "DOXA_POLL_INTERVAL": "0.1",
+        },
+        expected_stdout_patterns=[
+            r"permanent failure",
+            r"Mock streaming failure \(behavior=flake:2\)",
+        ],
+        not_expected_stdout_patterns=[
+            r"transient error",
+            r"This failure is recoverable",
+            r"Resume with: .*doxa resume",
+            r"Research completed",
+        ],
+        expected_exit_code=1,
+        provider="mock",
+        api_key_method="env",
+        cleanup_files=["*_mock_*.md"],
+    ),
+    # Provider discovery tests
+    TestCase(
+        test_id="T-PROV-06",
+        description="Providers command shows help with subcommands",
+        command=[DOXA_EXECUTABLE, "providers"],
+        expected_stdout_patterns=[
+            r"doxa providers",
+            r"list|models|check",
+        ],
+        expected_exit_code=2,
+    ),
+    TestCase(
+        test_id="T-PROV-07",
+        description="List mock provider models",
+        command=[DOXA_EXECUTABLE, "providers", "models", "--provider", "mock"],
+        env={"MOCK_API_KEY": "mock-test-key"},
+        expected_stdout_patterns=[r"Mock Models", r"mock-model-v1", r"mock-model-v2"],
+        expected_exit_code=0,
+    ),
+    TestCase(
+        test_id="T-PROV-08",
+        description="List all available models (mock only when no API keys)",
+        command=[DOXA_EXECUTABLE, "providers", "models"],
+        env={"MOCK_API_KEY": "mock-test-key"},
+        expected_stdout_patterns=[r"Fetching available models", r"Mock Models"],
+        expected_exit_code=0,
+    ),
+    TestCase(
+        test_id="T-PROV-09",
+        description="Help for providers command",
+        command=[DOXA_EXECUTABLE, "help", "providers"],
+        expected_stdout_patterns=[
+            r"doxa providers",
+            r"list",
+            r"models",
+            r"check",
+        ],
+        expected_exit_code=0,
+    ),
+    TestCase(
+        test_id="T-PROV-10",
+        description="Invalid provider name shows error",
+        command=[
+            DOXA_EXECUTABLE,
+            "providers",
+            "models",
+            "--provider",
+            "invalid",
+        ],
+        expected_stderr_patterns=[
+            r"Invalid value for '--provider'",
+            r"openai.*perplexity.*gemini.*mock",
+        ],
+        expected_exit_code=2,
+    ),
+    TestCase(
+        test_id="P07-M2-01",
+        description="Providers list marks Perplexity as Ready when API key is set",
+        command=[DOXA_EXECUTABLE, "providers", "list"],
+        env={"PERPLEXITY_API_KEY": "pplx-test-ready"},
+        expected_stdout_patterns=[
+            r"perplexity",
+            r"Perplexity Sonar",
+            r"perplexity\s+│\s+✓ Ready",
+        ],
+        not_expected_stdout_patterns=[
+            r"\(not\s+implemented\)",
+        ],
+        expected_exit_code=0,
+    ),
+    TestCase(
+        test_id="P07-M2-02",
+        description="Direct Perplexity invocation rejects bogus key with friendly DoxaError",
+        command=[
+            DOXA_EXECUTABLE,
+            "test perplexity regression",
+            "--provider",
+            "perplexity",
+            "--api-key-perplexity",
+            "pplx-test-bogus-key",
+        ],
+        expected_stdout_patterns=[
+            r"Perplexity API key is invalid",
+        ],
+        not_expected_stdout_patterns=[
+            r"Unexpected error during submission",
+        ],
+        expected_exit_code=1,
+        provider="perplexity",
+    ),
+    # ============================================================================
+    # Interactive Mode Tests (require pexpect)
+    # ============================================================================
+    TestCase(
+        test_id="INT-01",
+        description="Interactive mode slash commands",
+        command=[DOXA_EXECUTABLE, "-i", "--provider", "mock"],
+        test_type="interactive",
+        is_interactive=True,
+        interactive_scenario=[
+            # Test /help command
+            (None, "/help" + Keys.ENTER),
+            ("Available commands:", None),
+            ("/keybindings", None),  # Should see keybindings in help
+            # Test /keybindings command
+            (None, "/keybindings" + Keys.ENTER),
+            ("Keyboard shortcuts:", None),
+            ("Enter.*Submit prompt", None),
+            # Test /mode command (list)
+            (None, "/mode" + Keys.ENTER),
+            ("Available modes:", None),
+            ("deep_research", None),
+            # Test /mode command (set)
+            (None, "/mode deep_research" + Keys.ENTER),
+            ("Mode set to: deep_research", None),
+        ],
+        provider="mock",
+        expected_exit_code=0,
+    ),
+    TestCase(
+        test_id="INT-02",
+        description="Multiline input using Ctrl+J",
+        command=[DOXA_EXECUTABLE, "-i", "--provider", "mock"],
+        test_type="interactive",
+        is_interactive=True,
+        interactive_scenario=[
+            # Type first line
+            (None, "First line"),
+            # Press Ctrl+J for newline
+            (None, Keys.CTRL_J),
+            # Type second line
+            (None, "Second line"),
+            # Submit with Enter
+            (None, Keys.ENTER),
+            ("Processing prompt:", None),
+            # Should see both lines in the prompt
+            ("First line", None),
+            ("Second line", None),
+        ],
+        provider="mock",
+        expected_exit_code=0,
+    ),
+    TestCase(
+        test_id="INT-03",
+        description="Multiline input using Alt+Enter",
+        command=[DOXA_EXECUTABLE, "-i", "--provider", "mock"],
+        test_type="interactive",
+        is_interactive=True,
+        interactive_scenario=[
+            # Type first line
+            (None, "Line one"),
+            # Press Alt+Enter for newline
+            (None, Keys.ALT_ENTER),
+            # Type second line
+            (None, "Line two"),
+            # Submit with Enter
+            (None, Keys.ENTER),
+            ("Processing prompt:", None),
+            ("Line one", None),
+            ("Line two", None),
+        ],
+        provider="mock",
+        expected_exit_code=0,
+    ),
+    TestCase(
+        test_id="INT-04",
+        description="Multiline input using Shift+Enter (CSI-u)",
+        command=[DOXA_EXECUTABLE, "-i", "--provider", "mock"],
+        test_type="interactive",
+        is_interactive=True,
+        terminal_env={"TERM": "xterm-256color"},  # Enable CSI-u support detection
+        interactive_scenario=[
+            # Type first line
+            (None, "Hello"),
+            # Try Shift+Enter via CSI-u sequence
+            (None, Keys.SHIFT_ENTER_CSI),
+            # Type second line
+            (None, "World"),
+            # Submit with Enter
+            (None, Keys.ENTER),
+            ("Processing prompt:", None),
+        ],
+        provider="mock",
+        expected_exit_code=0,
+    ),
+    TestCase(
+        test_id="INT-05",
+        description="Tab completion for slash commands",
+        command=[DOXA_EXECUTABLE, "-i", "--provider", "mock"],
+        test_type="interactive",
+        is_interactive=True,
+        interactive_scenario=[
+            # Type partial command
+            (None, "/hel"),
+            # Press Tab
+            (None, Keys.TAB),
+            # Should complete to /help
+            ("help", None),
+            # Press Enter to execute
+            (None, Keys.ENTER),
+            ("Available commands:", None),
+        ],
+        provider="mock",
+        expected_exit_code=0,
+    ),
+    TestCase(
+        test_id="INT-06",
+        description="Ctrl+C graceful abort",
+        command=[DOXA_EXECUTABLE, "-i", "--provider", "mock"],
+        test_type="interactive",
+        is_interactive=True,
+        interactive_scenario=[
+            # Type something
+            (None, "test prompt"),
+            # Send Ctrl+C
+            (None, Keys.CTRL_C),
+            # Should see cancellation or process termination
+            (["cancelled", "aborted", "exit", pexpect.EOF], None),
+        ],
+        provider="mock",
+        expected_exit_code=0,
+    ),
+    TestCase(
+        test_id="INT-07",
+        description="Provider selection via slash command",
+        command=[DOXA_EXECUTABLE, "-i", "--provider", "mock"],
+        test_type="interactive",
+        is_interactive=True,
+        interactive_scenario=[
+            # List providers
+            (None, "/provider" + Keys.ENTER),
+            ("Available providers:", None),
+            ("mock", None),
+            ("auto", None),
+            # Set provider
+            (None, "/provider mock" + Keys.ENTER),
+            ("Provider set to: mock", None),
+        ],
+        provider="mock",
+        expected_exit_code=0,
+    ),
+    TestCase(
+        test_id="INT-08",
+        description="Basic prompt submission",
+        command=[DOXA_EXECUTABLE, "-i", "--provider", "mock"],
+        test_type="interactive",
+        is_interactive=True,
+        interactive_scenario=[
+            # Submit a simple prompt
+            (None, "What is Python?" + Keys.ENTER),
+            ("Processing prompt:", None),
+            ("What is Python", None),
+            ("Mode: default", None),
+        ],
+        provider="mock",
+        expected_exit_code=0,
+    ),
+    TestCase(
+        test_id="INT-09",
+        description="Initial prompt population from CLI",
+        command=[DOXA_EXECUTABLE, "-i", "--provider", "mock", "test prompt from CLI"],
+        test_type="interactive",
+        is_interactive=True,
+        interactive_scenario=[
+            # The initial prompt should be in the text area
+            # Just press Enter to submit it
+            (None, Keys.ENTER),
+            # Should see the prompt being processed
+            ("Processing prompt:", None),
+            ("test prompt from CLI", None),
+        ],
+        provider="mock",
+        expected_exit_code=0,
+    ),
+    TestCase(
+        test_id="INT-10",
+        description="Initial mode setting from CLI",
+        command=[
+            DOXA_EXECUTABLE,
+            "-i",
+            "--provider",
+            "mock",
+            "--mode",
+            "deep_research",
+        ],
+        test_type="interactive",
+        is_interactive=True,
+        interactive_scenario=[
+            # Send a test prompt
+            (None, "test" + Keys.ENTER),
+            ("Processing prompt:", None),
+            ("Mode: deep_research", None),
+        ],
+        provider="mock",
+        expected_exit_code=0,
+    ),
+    TestCase(
+        test_id="INT-12",
+        description="Interactive mode with prompt and CLI API key",
+        command=[
+            DOXA_EXECUTABLE,
+            "test prompt",
+            "--provider",
+            "openai",
+            "-i",
+            "--api-key-openai",
+            "sk-test-key-12345",
+        ],
+        test_type="interactive",
+        is_interactive=True,
+        interactive_scenario=[
+            # Should see the initial prompt pre-populated
+            ("test prompt", None),
+            # Exit immediately
+            (None, "/exit" + Keys.ENTER),
+        ],
+        provider="openai",
+        api_key_method="cli",
+        expected_exit_code=0,
+    ),
+    TestCase(
+        test_id="INT-11",
+        description="Initial provider setting from CLI",
+        command=[DOXA_EXECUTABLE, "-i", "--provider", "mock"],
+        test_type="interactive",
+        is_interactive=True,
+        interactive_scenario=[
+            # Just verify mock provider is set
+            (None, "test" + Keys.ENTER),
+            ("Processing prompt:", None),
+        ],
+        provider="mock",
+        expected_exit_code=0,
+    ),
+    TestCase(
+        test_id="INT-12a",
+        description="Combined initial settings from CLI",
+        command=[
+            DOXA_EXECUTABLE,
+            "-i",
+            "--provider",
+            "mock",
+            "--mode",
+            "exploration",
+            "combined test prompt",
+        ],
+        test_type="interactive",
+        is_interactive=True,
+        interactive_scenario=[
+            # Submit the pre-populated prompt
+            (None, Keys.ENTER),
+            ("Processing prompt:", None),
+            ("combined test prompt", None),
+        ],
+        provider="mock",
+        expected_exit_code=0,
+    ),
+    # ============================================================================
+    # Milestone 33: Clarification Mode Tests
+    # ============================================================================
+    TestCase(
+        test_id="INT-13",
+        description="Start in clarification mode with --clarify flag",
+        command=[
+            DOXA_EXECUTABLE,
+            "-i",
+            "--clarify",
+            "--provider",
+            "mock",
+        ],
+        test_type="interactive",
+        is_interactive=True,
+        interactive_scenario=[
+            # Should start in clarification mode
+            ("Clarification Mode", None),
+            # Exit without submitting
+            (None, "/exit"),
+            (None, Keys.ENTER),
+        ],
+        provider="mock",
+        expected_exit_code=0,
+    ),
+    TestCase(
+        test_id="INT-14",
+        description="Toggle between Edit and Clarification modes with Shift+Tab",
+        command=[
+            DOXA_EXECUTABLE,
+            "-i",
+            "--provider",
+            "mock",
+        ],
+        test_type="interactive",
+        is_interactive=True,
+        interactive_scenario=[
+            # Should start in Edit mode
+            ("Edit Mode", None),
+            # Type some text
+            (None, "test prompt"),
+            # Toggle to Clarification mode (escape+tab is Shift+Tab)
+            (None, "\x1b\t"),
+            ("Clarification Mode", None),
+            # Toggle back to Edit mode
+            (None, "\x1b\t"),
+            ("Edit Mode", None),
+            # Cancel cleanly without mutating the existing prompt buffer
+            (None, Keys.CTRL_C),
+            (["cancelled", "aborted", "exit", pexpect.EOF], None),
+        ],
+        provider="mock",
+        expected_exit_code=0,
+    ),
+    TestCase(
+        test_id="INT-15",
+        description="Preserve query when switching modes",
+        command=[
+            DOXA_EXECUTABLE,
+            "-i",
+            "--provider",
+            "mock",
+        ],
+        test_type="interactive",
+        is_interactive=True,
+        interactive_scenario=[
+            # Type a query
+            (None, "original query text"),
+            # Toggle to Clarification mode
+            (None, "\x1b\t"),
+            ("Clarification Mode", None),
+            # Toggle back - should preserve text
+            (None, "\x1b\t"),
+            ("Edit Mode", None),
+            # Submit the preserved text
+            (None, Keys.ENTER),
+            ("Processing prompt:", None),
+            ("original query text", None),
+        ],
+        provider="mock",
+        expected_exit_code=0,
+    ),
+    TestCase(
+        test_id="INT-16",
+        description="Help shows clarification mode instructions",
+        command=[
+            DOXA_EXECUTABLE,
+            "-i",
+            "--provider",
+            "mock",
+        ],
+        test_type="interactive",
+        is_interactive=True,
+        interactive_scenario=[
+            # Show help
+            (None, "/help"),
+            (None, Keys.ENTER),
+            ("Edit Mode", None),
+            ("Clarification Mode", None),
+            # Show keybindings
+            (None, "/keybindings"),
+            (None, Keys.ENTER),
+            (r"Shift\+Tab", None),
+            ("Toggle between Edit and Clarification", None),
+            # Exit
+            (None, "/exit"),
+            (None, Keys.ENTER),
+        ],
+        provider="mock",
+        expected_exit_code=0,
+    ),
+    # Milestone 8: OpenAI Provider Tests
+    TestCase(
+        test_id="M8T-01",
+        description="OpenAI provider initialization with API key",
+        command=[DOXA_EXECUTABLE, "test openai init", "--provider", "openai", "-v"],
+        expected_stdout_patterns=[r"openai API Key: .*\.\.\.", r".+"],
+        expected_exit_code=0,
+        provider="openai",
+        api_key_method="env",
+    ),
+    TestCase(
+        test_id="M8T-02",
+        description="OpenAI provider handles missing API key",
+        command=[DOXA_EXECUTABLE, "test no key", "--provider", "openai"],
+        env={"OPENAI_API_KEY": ""},
+        expected_stdout_patterns=[r"openai API key not found"],
+        expected_exit_code=1,
+    ),
+    TestCase(
+        test_id="M8T-03",
+        description="OpenAI provider handles invalid API key",
+        command=[
+            DOXA_EXECUTABLE,
+            "test invalid key",
+            "--provider",
+            "openai",
+            "--api-key-openai",
+            "invalid-key",
+        ],
+        expected_stdout_patterns=[r"OpenAI API key is invalid"],
+        expected_exit_code=1,
+        timeout=10,
+    ),
+    TestCase(
+        test_id="M8T-04",
+        description="OpenAI timeout configuration from CLI",
+        command=[
+            DOXA_EXECUTABLE,
+            "test timeout",
+            "--provider",
+            "openai",
+            "--timeout",
+            "30.0",
+            "-v",
+        ],
+        expected_stdout_patterns=[r"Timeout: 30\.0"],
+        expected_exit_code=0,
+        provider="openai",
+        api_key_method="env",
+    ),
+    TestCase(
+        test_id="M8T-05",
+        description="OpenAI provider async operation returns job ID",
+        command=[
+            DOXA_EXECUTABLE,
+            "test async openai",
+            "--provider",
+            "openai",
+            "--async",
+        ],
+        expected_stdout_patterns=[r"Operation ID: research-\d+-\w+"],
+        expected_exit_code=0,
+        timeout=60,  # Real OpenAI async submit includes API round-trip
+        provider="openai",
+        api_key_method="env",
+    ),
+    TestCase(
+        test_id="M8T-06",
+        description="OpenAI provider writes explicit --out file",
+        command=[
+            DOXA_EXECUTABLE,
+            "ask",
+            "test output",
+            "--mode",
+            "thinking",
+            "--provider",
+            "openai",
+            "--out",
+            "{tmpdir}/openai-output.md",
+        ],
+        not_expected_stdout_patterns=[r".+"],
+        expected_files=["openai-output.md"],
+        expected_file_content_patterns={"openai-output.md": [r".+"]},
+        expected_exit_code=0,
+        provider="openai",
+        api_key_method="env",
+    ),
+    TestCase(
+        test_id="M8T-07",
+        description="OpenAI provider with verbose shows configuration",
+        command=[DOXA_EXECUTABLE, "test verbose", "--provider", "openai", "-v"],
+        expected_stdout_patterns=[r"openai API Key: .*\.\.\.", r".+"],
+        expected_exit_code=0,
+        provider="openai",
+        api_key_method="env",
+        timeout=120,  # Allow time for OpenAI research to complete
+    ),
+    TestCase(
+        test_id="M8T-08",
+        description="OpenAI provider handles rate limit gracefully",
+        command=[DOXA_EXECUTABLE, "test rate limit", "--provider", "openai"],
+        # This test expects normal completion (rate limits are retried)
+        expected_stdout_patterns=[r".+|Rate limit"],
+        expected_exit_code=0,
+        provider="openai",
+        api_key_method="env",
+        timeout=60,  # Allow time for retries
+    ),
+    TestCase(
+        test_id="M8T-09",
+        description="OpenAI provider with custom config file",
+        command=[
+            DOXA_EXECUTABLE,
+            "test config",
+            "--provider",
+            "openai",
+            "--config",
+            "./test_config.toml",
+        ],
+        expected_stdout_patterns=[r".+"],
+        not_expected_files=["*_openai_*.md"],
+        cleanup_files=["test_config.toml"],
+        expected_exit_code=0,
+        provider="openai",
+        api_key_method="config",
+    ),
+    TestCase(
+        test_id="M8T-10",
+        description="OpenAI provider handles network timeout",
+        command=[
+            DOXA_EXECUTABLE,
+            "test timeout",
+            "--provider",
+            "openai",
+            "--timeout",
+            "0.001",
+            "-v",
+        ],
+        expected_stdout_patterns=[r"Request timed out|Timeout|Connection error"],
+        expected_exit_code=1,
+        timeout=20,
+        provider="openai",
+    ),
+    # ============================================================================
+    # Milestone 34: BUG-03 Poll Interval Tests
+    # ============================================================================
+    TestCase(
+        test_id="BUG03-03",
+        description="polling loop: mock provider research completes correctly with fixed poll loop",
+        command=[
+            DOXA_EXECUTABLE,
+            "deep_research",
+            "test poll fix regression",
+            "--provider",
+            "mock",
+        ],
+        env={"DOXA_POLL_INTERVAL": "2"},
+        expected_stdout_patterns=[r"(?i)research completed|output saved"],
+        cleanup_files=["*_mock_*.md"],
+        expected_exit_code=0,
+        timeout=20,
+        provider="mock",
+        api_key_method="env",
+    ),
+    # ============================================================================
+    # P35: modes set-default / unset-default end-to-end integration
+    # ============================================================================
+    TestCase(
+        test_id="P35-INT-01",
+        description=(
+            "modes set-default deep_research persists, subsequent ask "
+            "(no --mode) honors it, then unset-default removes it cleanly"
+        ),
+        command=[
+            DOXA_EXECUTABLE,
+            "ask",
+            "p35 integration default mode prompt",
+            "--provider",
+            "mock",
+        ],
+        env={"DOXA_POLL_INTERVAL": "2"},
+        expected_stdout_patterns=[r"(?i)research completed"],
+        expected_files=["*_deep_research_mock_*.md"],
+        expected_file_content_patterns={
+            "*_deep_research_mock_*.md": [
+                r"mode:\s*deep_research",
+                r"prompt:\s*p35 integration default mode prompt",
+            ],
+        },
+        cleanup_files=["*_deep_research_mock_*.md"],
+        expected_exit_code=0,
+        timeout=30,
+        provider="mock",
+        api_key_method="env",
+        setup_func=p35_set_default_deep_research_setup,
+        teardown_func=p35_unset_default_teardown,
+    ),
+]
+
+# ============================================================================
+# Main Test Execution
+# ============================================================================
+
+
+@click.command()
+@click.option("--run", "-r", is_flag=True, help="Run tests (required to execute tests)")
+@click.option(
+    "--all",
+    "-a",
+    is_flag=True,
+    help="Run all tests with all providers (shorthand for -r --all-providers)",
+)
+@click.option("--verbose", "-v", is_flag=True, help="Show full output for each test")
+@click.option("--test", "-t", help="Run only tests matching this pattern")
+@click.option(
+    "--provider",
+    "-p",
+    help="Run tests for specific provider(s), comma-separated (e.g., mock,openai)",
+)
+@click.option(
+    "--all-providers",
+    is_flag=True,
+    help="Run tests for all providers (requires all API keys)",
+)
+@click.option("--interactive", is_flag=True, help="Run only interactive mode tests")
+@click.option(
+    "--skip-interactive",
+    is_flag=True,
+    help="Skip interactive mode tests (useful in CI/non-TTY environments)",
+)
+@click.option("--no-cleanup", is_flag=True, help="Do not clean up test files")
+@click.option("--save-output", is_flag=True, help="Save test output to files for debugging")
+@click.option("--list", "list_flag", is_flag=True, help="Print tests without running them (TSV).")
+@click.option(
+    "--list-json", "list_json_flag", is_flag=True, help="Print tests without running them (JSON)."
+)
+@click.option(
+    "--id",
+    "ids",
+    multiple=True,
+    help="Exact-match test IDs to run (repeatable). Overrides other filters.",
+)
+@click.option(
+    "--last-failed",
+    "last_failed",
+    is_flag=True,
+    help="Rerun tests that failed in the most recent run.",
+)
+@click.option(
+    "--report-json",
+    "report_json",
+    type=click.Path(dir_okay=False),
+    default=None,
+    help="Also write the JSON report to PATH.",
+)
+@click.option(
+    "-q",
+    "--quiet",
+    "quiet",
+    is_flag=True,
+    help="Silent on pass; fenced failure blocks on fail.",
+)
+@click.option(
+    "-j",
+    "--jobs",
+    "jobs",
+    default="1",
+    show_default=True,
+    help="Run tests in parallel with N worker threads. 'auto' uses CPU count.",
+)
+def main(
+    run,
+    all,
+    verbose,
+    test,
+    provider,
+    all_providers,
+    interactive,
+    skip_interactive,
+    no_cleanup,
+    save_output,
+    list_flag,
+    list_json_flag,
+    ids,
+    last_failed,
+    report_json,
+    quiet,
+    jobs,
+):
+    """Doxa Research Test Suite - Comprehensive regression tests for Doxa Research CLI
+
+    \b
+    Examples:
+      # Show help (default when no options given)
+      ./doxa_test
+
+      # Run all tests with all providers (requires all API keys)
+      ./doxa_test -a
+
+      # Run all tests with available providers
+      ./doxa_test -r
+
+      # Run only mock provider tests (no API keys needed)
+      ./doxa_test -r --provider mock
+
+      # Run tests for specific provider (requires API key)
+      ./doxa_test -r --provider openai
+
+      # Run tests for multiple providers
+      ./doxa_test -r --provider mock,perplexity
+
+      # Run all provider tests (long form)
+      ./doxa_test -r --all-providers
+
+      # Run specific test with mock provider
+      ./doxa_test -r --provider mock -t M4T-01
+
+      # Run tests matching pattern with verbose output
+      ./doxa_test -r -t "async" -v
+
+      # Run only interactive mode tests
+      ./doxa_test -r --interactive
+
+      # Skip interactive mode tests (for CI/non-TTY environments)
+      ./doxa_test -r --provider mock --skip-interactive
+
+      # Save test outputs for debugging
+      ./doxa_test -r --provider mock --save-output
+
+    \b
+    Provider Test Matrix:
+      - mock: Always available (auto-generates API key)
+      - openai: Requires OPENAI_API_KEY environment variable
+      - perplexity: Requires PERPLEXITY_API_KEY environment variable
+
+    \b
+    Notes:
+      - Use -r or --run to execute tests (otherwise shows help)
+      - Use -a as shorthand for -r --all-providers
+      - When using --provider, only the specified providers' API keys are required
+      - When using --all-providers, all API keys must be set
+      - Default -r behavior runs tests for all available providers
+    """
+    global CLEANUP_ENABLED
+
+    # Isolate test checkpoints and config from the user's real doxa config dir.
+    # Done before any subprocess is spawned so children inherit XDG_CONFIG_HOME.
+    _ensure_test_config_home()
+
+    if list_flag and list_json_flag:
+        click.echo("--list and --list-json are mutually exclusive", err=True)
+        sys.exit(2)
+
+    # Resolve --last-failed BEFORE --list so `--list --last-failed` previews
+    # exactly what the next `-r --last-failed` would rerun.
+    if last_failed:
+        try:
+            failed_ids = read_last_failed()
+        except FileNotFoundError:
+            click.echo(
+                f"No cached run found at {CACHE_FILE}. "
+                "Run the suite first (e.g. ./doxa_test -r --provider mock).",
+                err=True,
+            )
+            sys.exit(2)
+        if not failed_ids:
+            click.echo(
+                "Last run had no failures — nothing to rerun.",
+                err=True,
+            )
+            sys.exit(2)
+        known_ids = {t.test_id for t in all_tests}
+        unknown = [fid for fid in failed_ids if fid not in known_ids]
+        if unknown and not any(fid in known_ids for fid in failed_ids):
+            click.echo(
+                f"All cached failures refer to removed tests ({', '.join(unknown)}); "
+                "nothing to rerun.",
+                err=True,
+            )
+            sys.exit(2)
+        # Merge with any explicit --id (union, preserving --id order first).
+        ids = tuple(list(ids) + [i for i in failed_ids if i not in ids])
+        run = True  # --last-failed implies -r
+
+    if list_flag or list_json_flag:
+        preview_providers: list[str] | None = None
+        if provider and all_providers:
+            click.echo("Error: Cannot specify both --provider and --all-providers", err=True)
+            sys.exit(2)
+        if provider:
+            preview_providers = [p.strip() for p in provider.split(",")]
+        elif all_providers:
+            preview_providers = list(PROVIDER_NAMES)
+
+        preview_tests, _ = resolve_selection(
+            all_tests,
+            test=test,
+            provider_filter=preview_providers,
+            interactive=interactive,
+            skip_interactive=skip_interactive,
+            ids=list(ids),
+            last_failed=False,
+        )
+        if list_flag:
+            print_list_tsv(preview_tests)
+        else:
+            print_list_json(preview_tests)
+        sys.exit(0)
+
+    # Handle -a shorthand
+    if all:
+        run = True
+        all_providers = True
+
+    # If no run flag, show help and exit
+    if not run:
+        ctx = click.get_current_context()
+        click.echo(ctx.get_help())
+        ctx.exit()
+
+    if no_cleanup:
+        CLEANUP_ENABLED = False
+
+    console.print("[bold cyan]Doxa Research Test Suite[/bold cyan]")
+    console.print(f"Testing executable: {DOXA_EXECUTABLE}")
+
+    # Parse provider selection
+    requested_providers = None
+    if provider and all_providers:
+        console.print("[red]Error: Cannot specify both --provider and --all-providers[/red]")
+        sys.exit(1)
+
+    if provider:
+        requested_providers = [p.strip() for p in provider.split(",")]
+        # Validate provider names
+        valid_providers = list(PROVIDER_NAMES)
+        invalid = [p for p in requested_providers if p not in valid_providers]
+        if invalid:
+            console.print(f"[red]Error: Invalid provider(s): {', '.join(invalid)}[/red]")
+            console.print(f"Valid providers: {', '.join(valid_providers)}")
+            sys.exit(1)
+    elif all_providers:
+        requested_providers = list(PROVIDER_NAMES)
+
+    tests_to_run, selection_warnings = resolve_selection(
+        all_tests,
+        test=test,
+        provider_filter=requested_providers,
+        interactive=interactive,
+        skip_interactive=skip_interactive,
+        ids=list(ids),
+        last_failed=False,
+    )
+    for w in selection_warnings:
+        click.echo(f"Warning: {w}", err=True)
+
+    if interactive:
+        console.print(f"Running {len(tests_to_run)} interactive mode tests")
+    elif test:
+        console.print(f"Running {len(tests_to_run)} tests matching '{test}'")
+    else:
+        console.print(f"Total tests: {len(tests_to_run)}")
+
+    if requested_providers:
+        provider_counts: dict[str, int] = {p: 0 for p in requested_providers}
+        provider_counts["none"] = 0
+        for t in tests_to_run:
+            key = (
+                t.provider
+                if t.provider in requested_providers
+                else ("none" if not t.provider else t.provider)
+            )
+            if key in provider_counts:
+                provider_counts[key] += 1
+        console.print(
+            f"Filtered to {len(tests_to_run)} tests for provider(s): {', '.join(requested_providers)}"
+        )
+        breakdown = [
+            f"{p}: {provider_counts[p]}" for p in requested_providers if provider_counts[p]
+        ]
+        if provider_counts["none"]:
+            breakdown.append(f"provider-agnostic: {provider_counts['none']}")
+        if breakdown:
+            console.print(f"Test breakdown: {', '.join(breakdown)}")
+
+    if verbose:
+        console.print("[yellow]Verbose mode enabled - showing full output for each test[/yellow]")
+
+    # Verify executable exists
+    if not Path(DOXA_EXECUTABLE).exists():
+        console.print(f"[red]Error: Executable '{DOXA_EXECUTABLE}' not found[/red]")
+        sys.exit(1)
+
+    # Validate test environment
+    test_api_keys = get_test_api_keys()
+    validate_test_environment(test_api_keys, requested_providers)
+
+    # Resolve --jobs: 'auto' -> cpu_count, integer otherwise.
+    if isinstance(jobs, str) and jobs.lower() == "auto":
+        jobs_n = os.cpu_count() or 1
+    else:
+        try:
+            jobs_n = int(jobs)
+        except (TypeError, ValueError):
+            click.echo(f"--jobs must be an integer or 'auto', got: {jobs!r}", err=True)
+            sys.exit(2)
+        if jobs_n < 1:
+            click.echo("--jobs must be >= 1", err=True)
+            sys.exit(2)
+
+    # Fail-fast on parallel-safety hazards. Serial runs warn but proceed since
+    # they're unaffected; parallel runs abort to prevent flaky cross-test races.
+    hazards = detect_parallel_hazards(tests_to_run)
+    if hazards:
+        msg = "\n  ".join(hazards)
+        if jobs_n > 1:
+            click.echo(
+                f"doxa_test: parallel-execution hazards found:\n  {msg}",
+                err=True,
+            )
+            sys.exit(2)
+        else:
+            click.echo(
+                f"doxa_test: WARNING: parallel-execution hazards "
+                f"(currently running with -j 1):\n  {msg}",
+                err=True,
+            )
+
+    # Create test runner and execute tests
+    runner = TestRunner(
+        verbose=verbose,
+        save_output=save_output,
+        requested_providers=requested_providers,
+        quiet=quiet,
+        report_json_path=report_json,
+        jobs=jobs_n,
+    )
+    runner.run_all_tests(tests_to_run)
+
+    if save_output and runner.output_dir:
+        console.print(f"\n[green]Test outputs saved to: {runner.output_dir}[/green]")
+
+
+if __name__ == "__main__":
+    main()

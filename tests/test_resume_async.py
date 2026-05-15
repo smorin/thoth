@@ -1,4 +1,4 @@
-"""P18-T38: tests for `thoth resume <op-id> --async` non-blocking single-tick path.
+"""P18-T38: tests for `doxa resume <op-id> --async` non-blocking single-tick path.
 
 Covers seven contract points from `projects/P18-resume-async.md`:
 
@@ -26,22 +26,22 @@ from unittest.mock import patch
 
 import pytest
 
-from tests._fixture_helpers import run_thoth, write_test_checkpoint
-from thoth import signals as thoth_signals
-from thoth.checkpoint import CheckpointManager
-from thoth.config import get_config
-from thoth.context import AppContext
-from thoth.models import OperationStatus
-from thoth.output import OutputManager
-from thoth.providers.base import ResearchProvider
-from thoth.run import _resume_one_tick, resume_operation
+from doxa_research import signals as doxa_signals
+from doxa_research.checkpoint import CheckpointManager
+from doxa_research.config import get_config
+from doxa_research.context import AppContext
+from doxa_research.models import OperationStatus
+from doxa_research.output import OutputManager
+from doxa_research.providers.base import ResearchProvider
+from doxa_research.run import _resume_one_tick, resume_operation
+from tests._fixture_helpers import run_doxa, write_test_checkpoint
 
 
 @pytest.fixture(autouse=True)
 def _reset_interrupt() -> Any:
-    thoth_signals._interrupt_event.clear()
+    doxa_signals._interrupt_event.clear()
     yield
-    thoth_signals._interrupt_event.clear()
+    doxa_signals._interrupt_event.clear()
 
 
 # ---------------------------------------------------------------------------
@@ -99,7 +99,7 @@ def _make_ctx(checkpoint_dir: Path, *, as_json: bool = False) -> AppContext:
 
 
 def test_resume_async_does_not_enter_polling_loop(
-    isolated_thoth_home: Path,
+    isolated_doxa_home: Path,
     checkpoint_dir: Path,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -127,8 +127,8 @@ def test_resume_async_does_not_enter_polling_loop(
         raise AssertionError("polling loop must NOT run when async_check=True")
 
     with (
-        patch("thoth.run.create_provider", side_effect=lambda *a, **kw: stub),
-        patch("thoth.run._run_polling_loop", side_effect=_fake_polling_loop),
+        patch("doxa_research.run.create_provider", side_effect=lambda *a, **kw: stub),
+        patch("doxa_research.run._run_polling_loop", side_effect=_fake_polling_loop),
     ):
         asyncio.run(resume_operation(op_id, verbose=False, async_check=True, quiet=True))
 
@@ -142,7 +142,7 @@ def test_resume_async_does_not_enter_polling_loop(
 
 
 def test_resume_async_all_running_writes_no_files(
-    isolated_thoth_home: Path,
+    isolated_doxa_home: Path,
     checkpoint_dir: Path,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -181,7 +181,7 @@ def test_resume_async_all_running_writes_no_files(
 
 
 def test_resume_async_partial_completion_saves_only_completed(
-    isolated_thoth_home: Path,
+    isolated_doxa_home: Path,
     checkpoint_dir: Path,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -229,7 +229,7 @@ def test_resume_async_partial_completion_saves_only_completed(
 
 
 def test_resume_async_all_completed_flips_aggregate(
-    isolated_thoth_home: Path,
+    isolated_doxa_home: Path,
     checkpoint_dir: Path,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -274,12 +274,12 @@ def test_resume_async_all_completed_flips_aggregate(
 
 
 def test_resume_async_json_envelope_includes_newly_completed(
-    isolated_thoth_home: Path,
+    isolated_doxa_home: Path,
     checkpoint_dir: Path,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """`thoth resume OP --async --json` emits the snapshot + newly_completed field."""
+    """`doxa resume OP --async --json` emits the snapshot + newly_completed field."""
     monkeypatch.chdir(tmp_path)
 
     op_id = "research-20260430-async05"
@@ -293,9 +293,9 @@ def test_resume_async_json_envelope_includes_newly_completed(
         providers={"mock": {"status": "running", "job_id": "mock-existing"}},
     )
 
-    exit_code, stdout, _stderr = run_thoth(
+    exit_code, stdout, _stderr = run_doxa(
         ["resume", op_id, "--async", "--json"],
-        env_overrides={"THOTH_MOCK_BEHAVIOR": "default", "THOTH_POLL_INTERVAL": "0.1"},
+        env_overrides={"DOXA_MOCK_BEHAVIOR": "default", "DOXA_POLL_INTERVAL": "0.1"},
     )
 
     assert exit_code == 0, f"expected exit 0, got {exit_code}\nstdout={stdout!r}"
@@ -316,7 +316,7 @@ def test_resume_async_json_envelope_includes_newly_completed(
 
 
 def test_resume_async_missing_op_id_exits_6(
-    isolated_thoth_home: Path,
+    isolated_doxa_home: Path,
     checkpoint_dir: Path,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -324,7 +324,7 @@ def test_resume_async_missing_op_id_exits_6(
     """Missing operation id with --async exits 6 (matches default resume)."""
     monkeypatch.chdir(tmp_path)
 
-    exit_code, _stdout, stderr = run_thoth(["resume", "op_does_not_exist", "--async"])
+    exit_code, _stdout, stderr = run_doxa(["resume", "op_does_not_exist", "--async"])
 
     assert exit_code == 6, f"expected exit 6, got {exit_code}\nstderr={stderr!r}"
 
@@ -335,7 +335,7 @@ def test_resume_async_missing_op_id_exits_6(
 
 
 def test_resume_async_already_completed_is_noop(
-    isolated_thoth_home: Path,
+    isolated_doxa_home: Path,
     checkpoint_dir: Path,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -358,7 +358,7 @@ def test_resume_async_already_completed_is_noop(
         calls.append(args)
         raise AssertionError("create_provider must not run for an already-completed op")
 
-    with patch("thoth.run.create_provider", side_effect=_spy_create_provider):
+    with patch("doxa_research.run.create_provider", side_effect=_spy_create_provider):
         asyncio.run(resume_operation(op_id, verbose=False, async_check=True, quiet=True))
 
     assert calls == [], "create_provider was called for a completed op"

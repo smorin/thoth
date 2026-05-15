@@ -8,7 +8,7 @@ Always check CLAUDE.md for appropriate rules
 
 After making any code changes, follow this verification workflow:
 
-1. **Main Executable Verification** (thoth):
+1. **Main Executable Verification** (doxa-research):
    ```bash
    make env-check  # Verify bootstrap dependencies are installed
    just fix        # Auto-fix any issues found
@@ -17,10 +17,10 @@ After making any code changes, follow this verification workflow:
 
 2. **Run Tests**:
    ```bash
-   ./thoth_test -r  # Run the test suite to ensure functionality
+   ./doxa_test -r  # Run the test suite to ensure functionality
    ```
 
-3. **Test Suite Verification** (thoth_test):
+3. **Test Suite Verification** (doxa_test):
    ```bash
    just test-fix        # Auto-fix any issues in test suite
    just test-lint       # Run lint on test suite
@@ -51,12 +51,12 @@ When working through a multi-commit task, do not save the full pre-commit gate f
 - When a test fails, start by running the test suite with only the failing tests
 - Fix the specific tests while running the subset of tests
 - Once fixed, run the full test suite to ensure no regressions
-- Systematically run `./thoth_test` with targeted test subsets
+- Systematically run `./doxa_test` with targeted test subsets
 - Always follow the verification steps:
   1. `make env-check`
   2. `just fix`
   3. `just check`
-  4. `./thoth_test`
+  4. `./doxa_test`
   5. `just test-fix`
   6. `just test-lint`
   7. `just test-typecheck`
@@ -72,20 +72,20 @@ When working through a multi-commit task, do not save the full pre-commit gate f
 
 ### Versioning Format
 Planning documents follow this versioning format:
-- **PRD Documents**: `thoth.prd.vXX.md` (e.g., `thoth.prd.v22.md`)
-- **Plan Documents**: `thoth.plan.vX.md` (e.g., `thoth.plan.v5.md`)
+- **PRD Documents**: `doxa-research.prd.vXX.md` (e.g., `doxa-research.prd.v22.md`)
+- **Plan Documents**: `doxa-research.plan.vX.md` (e.g., `doxa-research.plan.v5.md`)
 - **Other Documents**: `[name].vX.md` (e.g., `temp.v5.md`)
 
 ### Version Detection and Incrementing
 1. **Finding Latest Version**:
    - List files in `planning/` directory
-   - Use regex pattern: `thoth\.(prd\.)?v([0-9]+)\.md`
+   - Use regex pattern: `doxa-research\.(prd\.)?v([0-9]+)\.md`
    - Extract version numbers and find the highest
 
 2. **Creating New Version**:
    - Increment the highest version number by 1
-   - For PRDs: `thoth.prd.v[N+1].md`
-   - For Plans: `thoth.plan.v[N+1].md`
+   - For PRDs: `doxa-research.prd.v[N+1].md`
+   - For Plans: `doxa-research.plan.v[N+1].md`
 
 ### Archiving Process
 When creating a new version:
@@ -93,12 +93,12 @@ When creating a new version:
 2. After completing updates to the new version:
    - Move the old version to `archive/` directory using git commands:
    ```bash
-   git mv planning/thoth.prd.v22.md archive/
-   git mv planning/thoth.plan.v5.md archive/
+   git mv planning/doxa-research.prd.v22.md archive/
+   git mv planning/doxa-research.plan.v5.md archive/
    ```
 3. Commit both the move and the new file:
    ```bash
-   git add planning/thoth.prd.v23.md
+   git add planning/doxa-research.prd.v23.md
    git commit -m "Archive v22 PRD and create v23 PRD"
    ```
 

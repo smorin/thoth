@@ -5,7 +5,7 @@ from __future__ import annotations
 import click
 from click.testing import CliRunner
 
-from thoth.cli_subcommands._options import _RESEARCH_OPTIONS, _research_options
+from doxa_research.cli_subcommands._options import _RESEARCH_OPTIONS, _research_options
 
 
 def test_research_options_decorator_adds_all_research_flags():

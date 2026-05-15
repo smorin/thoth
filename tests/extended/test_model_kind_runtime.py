@@ -26,7 +26,7 @@ import os
 
 import pytest
 
-from thoth.models import KNOWN_MODELS
+from doxa_research.models import KNOWN_MODELS
 
 # Skip the entire module unless explicit `extended` marker is selected. The
 # `pytest.mark.extended` decorator ALSO does this, but the early skip avoids
@@ -75,8 +75,8 @@ def test_model_kind_matches_runtime_behavior(spec) -> None:
     if missing:
         pytest.skip(f"{spec.provider}: required env vars missing: {missing}")
 
-    from thoth.config import ConfigManager
-    from thoth.providers import create_provider
+    from doxa_research.config import ConfigManager
+    from doxa_research.providers import create_provider
 
     cm = ConfigManager()
     cm.load_all_layers({})
@@ -105,7 +105,7 @@ def test_model_kind_matches_runtime_behavior(spec) -> None:
     if spec.kind == "immediate":
         assert status.get("status") == "completed", (
             f"{spec.provider}/{spec.id} declared kind='immediate' but first "
-            f"check_status returned {status!r} — drift between thoth's "
+            f"check_status returned {status!r} — drift between doxa_research's "
             f"KNOWN_MODELS registry and the upstream API."
         )
     else:  # background

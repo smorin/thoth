@@ -4,10 +4,10 @@ This document tracks defects and near-term OpenAI provider improvements discover
 
 ## Sources
 
-- Code under review: [`src/thoth/__main__.py`](src/thoth/__main__.py)
+- Code under review: [`src/doxa_research/__main__.py`](src/doxa_research/__main__.py)
 - Research packet: [`research/openai-deep-research-api.v1.md`](research/openai-deep-research-api.v1.md)
 - Repo references: [`planning/references.md`](planning/references.md)
-- Current test coverage: [`thoth_test`](thoth_test)
+- Current test coverage: [`doxa_test`](doxa_test)
 - Official OpenAI deep research guide: <https://developers.openai.com/api/docs/guides/deep-research>
 - Official OpenAI cookbook example: <https://cookbook.openai.com/examples/deep_research_api/introduction_to_deep_research_api>
 - Official OpenAI models list reference: <https://platform.openai.com/docs/api-reference/models/list>
@@ -31,8 +31,8 @@ This document tracks defects and near-term OpenAI provider improvements discover
 **Evidence**
 
 - Code evidence:
-  - [`src/thoth/__main__.py#L2046-L2084`](src/thoth/__main__.py#L2046-L2084)
-  - [`src/thoth/__main__.py#L2810-L2843`](src/thoth/__main__.py#L2810-L2843)
+  - [`src/doxa_research/__main__.py#L2046-L2084`](src/doxa_research/__main__.py#L2046-L2084)
+  - [`src/doxa_research/__main__.py#L2810-L2843`](src/doxa_research/__main__.py#L2810-L2843)
 - Research evidence:
   - [`research/openai-deep-research-api.v1.md#L281-L288`](research/openai-deep-research-api.v1.md#L281-L288)
   - [`research/openai-deep-research-api.v1.md#L298-L339`](research/openai-deep-research-api.v1.md#L298-L339)
@@ -76,8 +76,8 @@ Update `OpenAIProvider.check_status()` to map the documented status values exact
 **Evidence**
 
 - Code evidence:
-  - [`src/thoth/__main__.py#L2086-L2188`](src/thoth/__main__.py#L2086-L2188)
-  - [`src/thoth/__main__.py#L1541-L1591`](src/thoth/__main__.py#L1541-L1591)
+  - [`src/doxa_research/__main__.py#L2086-L2188`](src/doxa_research/__main__.py#L2086-L2188)
+  - [`src/doxa_research/__main__.py#L1541-L1591`](src/doxa_research/__main__.py#L1541-L1591)
 - Research evidence:
   - [`research/openai-deep-research-api.v1.md#L185-L192`](research/openai-deep-research-api.v1.md#L185-L192)
   - [`research/openai-deep-research-api.v1.md#L201-L279`](research/openai-deep-research-api.v1.md#L201-L279)
@@ -121,9 +121,9 @@ Refactor `get_result()` so it reads the final assistant report from the document
 **Evidence**
 
 - Code evidence:
-  - [`src/thoth/__main__.py#L2829-L2842`](src/thoth/__main__.py#L2829-L2842)
-  - [`src/thoth/__main__.py#L2848-L2854`](src/thoth/__main__.py#L2848-L2854)
-  - [`src/thoth/__main__.py#L2886-L2913`](src/thoth/__main__.py#L2886-L2913)
+  - [`src/doxa_research/__main__.py#L2829-L2842`](src/doxa_research/__main__.py#L2829-L2842)
+  - [`src/doxa_research/__main__.py#L2848-L2854`](src/doxa_research/__main__.py#L2848-L2854)
+  - [`src/doxa_research/__main__.py#L2886-L2913`](src/doxa_research/__main__.py#L2886-L2913)
 - Research evidence:
   - [`research/openai-deep-research-api.v1.md#L298-L339`](research/openai-deep-research-api.v1.md#L298-L339)
 - Official docs:
@@ -168,7 +168,7 @@ Change the polling loop to issue network status checks on the configured interva
 **Evidence**
 
 - Code evidence:
-  - [`src/thoth/__main__.py#L1910-L1932`](src/thoth/__main__.py#L1910-L1932)
+  - [`src/doxa_research/__main__.py#L1910-L1932`](src/doxa_research/__main__.py#L1910-L1932)
 - Research evidence:
   - [`research/openai-deep-research-api.v1.md#L50-L61`](research/openai-deep-research-api.v1.md#L50-L61)
   - [`research/openai-deep-research-api.v1.md#L127-L147`](research/openai-deep-research-api.v1.md#L127-L147)
@@ -213,7 +213,7 @@ Extend the provider configuration schema to support explicit tool configuration 
 **Evidence**
 
 - Code evidence:
-  - [`src/thoth/__main__.py#L1910-L1915`](src/thoth/__main__.py#L1910-L1915)
+  - [`src/doxa_research/__main__.py#L1910-L1915`](src/doxa_research/__main__.py#L1910-L1915)
 - Research evidence:
   - [`research/openai-deep-research-api.v1.md#L102-L125`](research/openai-deep-research-api.v1.md#L102-L125)
   - [`research/openai-deep-research-api.v1.md#L1293-L1319`](research/openai-deep-research-api.v1.md#L1293-L1319)
@@ -256,7 +256,7 @@ Add provider-level configuration for optional `file_search` and `mcp` tools, val
 **Evidence**
 
 - Code evidence:
-  - [`src/thoth/__main__.py#L102-L181`](src/thoth/__main__.py#L102-L181)
+  - [`src/doxa_research/__main__.py#L102-L181`](src/doxa_research/__main__.py#L102-L181)
 - Research evidence:
   - [`research/openai-deep-research-api.v1.md#L13-L22`](research/openai-deep-research-api.v1.md#L13-L22)
   - [`research/openai-deep-research-api.v1.md#L563-L576`](research/openai-deep-research-api.v1.md#L563-L576)
@@ -352,7 +352,7 @@ Choose a minimum OpenAI SDK version that is known to support stable async Respon
 **Evidence**
 
 - Code evidence:
-  - [`thoth_test#L2182-L2314`](thoth_test#L2182-L2314)
+  - [`doxa_test#L2182-L2314`](doxa_test#L2182-L2314)
 - Research evidence:
   - [`research/openai-deep-research-api.v1.md#L197-L279`](research/openai-deep-research-api.v1.md#L197-L279)
   - [`research/openai-deep-research-api.v1.md#L281-L339`](research/openai-deep-research-api.v1.md#L281-L339)

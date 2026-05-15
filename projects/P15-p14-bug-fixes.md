@@ -34,12 +34,12 @@
 ### Automated Verification
 - `uv run pytest tests/test_pick_model.py tests/test_prompt_file_limit.py tests/test_picker_user_modes.py tests/test_progress_spinner.py -v`
 - `just check` (lint + typecheck)
-- `./thoth_test -r --provider mock --skip-interactive -q`
+- `./doxa_test -r --provider mock --skip-interactive -q`
 - Final: full pre-commit gate before commit
 
 ### Manual Verification
-- `thoth providers list --pick-model` → rejected with helpful message
-- `thoth --pick-model -i` → rejected
-- `thoth deep_research "X"` in TTY → spinner shows, no garbled output
-- `thoth --prompt-file /dev/null deep_research` (empty) → "Prompt cannot be empty"
+- `doxa-research providers list --pick-model` → rejected with helpful message
+- `doxa-research --pick-model -i` → rejected
+- `doxa-research deep_research "X"` in TTY → spinner shows, no garbled output
+- `doxa-research --prompt-file /dev/null deep_research` (empty) → "Prompt cannot be empty"
 - Config knob: set `[execution] prompt_max_bytes = 100` → file >100 bytes rejected

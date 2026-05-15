@@ -12,7 +12,7 @@ import pytest
 
 
 def test_prompy_prefix_typo_produces_one_warning_no_raise() -> None:
-    from thoth.config_schema import ConfigSchema
+    from doxa_research.config_schema import ConfigSchema
 
     data = {"general": {"prompy_prefix": "x"}}
     report = ConfigSchema.validate(data, layer="user")
@@ -23,13 +23,13 @@ def test_prompy_prefix_typo_produces_one_warning_no_raise() -> None:
 
 
 def test_validate_does_not_raise_on_unknown_field() -> None:
-    from thoth.config_schema import ConfigSchema
+    from doxa_research.config_schema import ConfigSchema
 
     ConfigSchema.validate({"general": {"prompy_prefix": "x"}}, layer="user")
 
 
 def test_no_validate_global_suppresses_warnings() -> None:
-    from thoth import config_schema as cs
+    from doxa_research import config_schema as cs
 
     cs._no_validate = True
     try:
@@ -42,7 +42,7 @@ def test_no_validate_global_suppresses_warnings() -> None:
 def test_strict_mode_raises_on_unknown_field() -> None:
     from pydantic import ValidationError
 
-    from thoth.config_schema import ConfigSchema
+    from doxa_research.config_schema import ConfigSchema
 
     with pytest.raises(ValidationError):
         ConfigSchema.validate({"general": {"prompy_prefix": "x"}}, layer="user", strict=True)
@@ -52,7 +52,7 @@ def test_strict_mode_raises_on_unknown_field() -> None:
 
 
 def test_experimental_table_accepts_arbitrary_keys() -> None:
-    from thoth.config_schema import ConfigSchema
+    from doxa_research.config_schema import ConfigSchema
 
     data = {
         "experimental": {
@@ -66,7 +66,7 @@ def test_experimental_table_accepts_arbitrary_keys() -> None:
 
 
 def test_experimental_in_strict_mode_also_accepts() -> None:
-    from thoth.config_schema import ConfigSchema
+    from doxa_research.config_schema import ConfigSchema
 
     ConfigSchema.validate({"experimental": {"plugin_name": "foo"}}, layer="user", strict=True)
 
@@ -75,10 +75,10 @@ def test_experimental_in_strict_mode_also_accepts() -> None:
 
 
 def test_no_validate_flag_suppresses_runtime_warnings(tmp_path) -> None:
-    """`thoth --no-validate ...` must not surface warnings for config typos."""
+    """`doxa --no-validate ...` must not surface warnings for config typos."""
     import subprocess
 
-    cfg = tmp_path / "thoth.config.toml"
+    cfg = tmp_path / "doxa.config.toml"
     cfg.write_text(
         "\n".join(
             [
@@ -90,7 +90,7 @@ def test_no_validate_flag_suppresses_runtime_warnings(tmp_path) -> None:
     )
 
     result = subprocess.run(
-        ["uv", "run", "thoth", "--no-validate", "--config", str(cfg), "config", "list"],
+        ["uv", "run", "doxa", "--no-validate", "--config", str(cfg), "config", "list"],
         capture_output=True,
         text=True,
     )
@@ -104,7 +104,7 @@ def test_validate_flag_omitted_surfaces_warning(tmp_path) -> None:
     """Without --no-validate, the same typo should warn on stdout."""
     import subprocess
 
-    cfg = tmp_path / "thoth.config.toml"
+    cfg = tmp_path / "doxa.config.toml"
     cfg.write_text(
         "\n".join(
             [
@@ -116,7 +116,7 @@ def test_validate_flag_omitted_surfaces_warning(tmp_path) -> None:
     )
 
     result = subprocess.run(
-        ["uv", "run", "thoth", "--config", str(cfg), "config", "list"],
+        ["uv", "run", "doxa", "--config", str(cfg), "config", "list"],
         capture_output=True,
         text=True,
     )
@@ -126,9 +126,9 @@ def test_validate_flag_omitted_surfaces_warning(tmp_path) -> None:
 
 def test_validation_reports_populated_per_layer(tmp_path) -> None:
     """ConfigManager.validation_reports must contain a report per layer."""
-    from thoth.config import ConfigManager
+    from doxa_research.config import ConfigManager
 
-    cfg = tmp_path / "thoth.config.toml"
+    cfg = tmp_path / "doxa.config.toml"
     cfg.write_text(
         "\n".join(
             [
@@ -155,9 +155,9 @@ def test_validation_reports_populated_per_layer(tmp_path) -> None:
 
 def test_existing_test_fixtures_produce_zero_warnings(tmp_path) -> None:
     """A *valid* P21-shape config produces no warnings."""
-    from thoth.config import ConfigManager
+    from doxa_research.config import ConfigManager
 
-    cfg = tmp_path / "thoth.config.toml"
+    cfg = tmp_path / "doxa.config.toml"
     cfg.write_text(
         "\n".join(
             [

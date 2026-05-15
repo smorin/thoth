@@ -9,25 +9,25 @@ from typing import Any
 import pytest
 import vcr
 
-from tests.conftest_p16 import baseline, run_thoth  # noqa: F401
-from thoth.config import ConfigManager
-from thoth.models import OperationStatus
-from thoth.paths import user_checkpoints_dir
+from doxa_research.config import ConfigManager
+from doxa_research.models import OperationStatus
+from doxa_research.paths import user_checkpoints_dir
+from tests.conftest_p16 import baseline, run_doxa  # noqa: F401
 
-CASSETTE_DIR = Path(__file__).resolve().parent.parent / "thoth_test_cassettes"
+CASSETTE_DIR = Path(__file__).resolve().parent.parent / "doxa_test_cassettes"
 
 # Shared VCR instance:
 # - record_mode="none": never make real HTTP requests
 # - match_on=["uri", "method"]: ignore body differences between SDK-generated
 #   requests (structured input_messages) and cassette bodies (plain strings)
-thoth_vcr = vcr.VCR(
+doxa_vcr = vcr.VCR(
     record_mode="none",
     match_on=["uri", "method"],
 )
 
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
-_LEAK_PATHS = (_REPO_ROOT / "thoth.config.toml", _REPO_ROOT / ".thoth.config.toml")
+_LEAK_PATHS = (_REPO_ROOT / "doxa.config.toml", _REPO_ROOT / ".doxa.config.toml")
 
 
 def _detect_repo_root_leaks() -> list[Path]:
@@ -36,11 +36,11 @@ def _detect_repo_root_leaks() -> list[Path]:
 
 @pytest.fixture(scope="session", autouse=True)
 def _guard_repo_root_config_leaks() -> Any:
-    """Fail fast if any test leaks a Thoth config into the repo root.
+    """Fail fast if any test leaks a Doxa Research config into the repo root.
 
     The parity tests (and any subprocess that loads ConfigManager) resolve
     project_config_paths relative to the parent's cwd. A stray
-    ./thoth.config.toml or ./.thoth.config.toml in the repo root would be
+    ./doxa.config.toml or ./.doxa.config.toml in the repo root would be
     silently loaded and silently break baselines or env-tied assertions.
     Catch leaks at session boundaries so the offender is obvious.
     """
@@ -48,7 +48,7 @@ def _guard_repo_root_config_leaks() -> Any:
     if pre:
         names = ", ".join(str(p.relative_to(_REPO_ROOT)) for p in pre)
         pytest.exit(
-            f"Pre-existing Thoth config leak in repo root: {names}. Delete before running tests.",
+            f"Pre-existing Doxa Research config leak in repo root: {names}. Delete before running tests.",
             returncode=2,
         )
     yield
@@ -58,14 +58,14 @@ def _guard_repo_root_config_leaks() -> Any:
         for p in post:
             p.unlink(missing_ok=True)
         pytest.fail(
-            f"Test session leaked Thoth config(s) into repo root: {names}. "
+            f"Test session leaked Doxa Research config(s) into repo root: {names}. "
             f"They have been removed; identify the offending test and add "
             f"runner.isolated_filesystem(temp_dir=tmp_path) or cwd=tmpdir."
         )
 
 
 @pytest.fixture
-def isolated_thoth_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+def isolated_doxa_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """Per-test XDG_* roots so config/state/cache never hit the real user dir."""
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
     monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
@@ -74,8 +74,8 @@ def isolated_thoth_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path
 
 
 @pytest.fixture
-def checkpoint_dir(isolated_thoth_home: Path) -> Path:
-    """Thoth's checkpoint directory under the isolated test state dir."""
+def checkpoint_dir(isolated_doxa_home: Path) -> Path:
+    """Doxa Research's checkpoint directory under the isolated test state dir."""
     path = user_checkpoints_dir()
     path.mkdir(parents=True, exist_ok=True)
     return path

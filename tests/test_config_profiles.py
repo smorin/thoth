@@ -5,21 +5,21 @@ from pathlib import Path
 import pytest
 from click.testing import CliRunner
 
-from thoth.cli import cli
-from thoth.config import ConfigManager
-from thoth.config_profiles import (
+from doxa_research.cli import cli
+from doxa_research.config import ConfigManager
+from doxa_research.config_profiles import (
     ProfileSelection,
     collect_profile_catalog,
     resolve_profile_layer,
     resolve_profile_selection,
 )
-from thoth.errors import ConfigProfileError
+from doxa_research.errors import ConfigProfileError
 
 
 def test_resolve_profile_selection_prefers_flag_over_env_and_config(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("THOTH_PROFILE", "env-profile")
+    monkeypatch.setenv("DOXA_PROFILE", "env-profile")
     selection = resolve_profile_selection(
         cli_profile="flag-profile",
         base_config={"general": {"default_profile": "config-profile"}},
@@ -34,20 +34,20 @@ def test_resolve_profile_selection_prefers_flag_over_env_and_config(
 def test_resolve_profile_selection_uses_env_before_config(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("THOTH_PROFILE", "env-profile")
+    monkeypatch.setenv("DOXA_PROFILE", "env-profile")
     selection = resolve_profile_selection(
         cli_profile=None,
         base_config={"general": {"default_profile": "config-profile"}},
     )
     assert selection.name == "env-profile"
     assert selection.source == "env"
-    assert selection.source_detail == "THOTH_PROFILE"
+    assert selection.source_detail == "DOXA_PROFILE"
 
 
 def test_resolve_profile_selection_uses_config_pointer_when_flag_and_env_absent(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.delenv("THOTH_PROFILE", raising=False)
+    monkeypatch.delenv("DOXA_PROFILE", raising=False)
     selection = resolve_profile_selection(
         cli_profile=None,
         base_config={"general": {"default_profile": "config-profile"}},
@@ -58,7 +58,7 @@ def test_resolve_profile_selection_uses_config_pointer_when_flag_and_env_absent(
 
 
 def test_resolve_profile_selection_none_when_unset(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("THOTH_PROFILE", raising=False)
+    monkeypatch.delenv("DOXA_PROFILE", raising=False)
     selection = resolve_profile_selection(cli_profile=None, base_config={"general": {}})
     assert selection.name is None
     assert selection.source == "none"
@@ -70,7 +70,7 @@ def test_project_profile_shadows_user_profile_wholesale(tmp_path: Path) -> None:
         user_config={"profiles": {"prod": {"general": {"default_mode": "thinking"}}}},
         project_config={"profiles": {"prod": {"execution": {"poll_interval": 5}}}},
         user_path=tmp_path / "user.toml",
-        project_path=tmp_path / "thoth.config.toml",
+        project_path=tmp_path / "doxa.config.toml",
     )
     layer = resolve_profile_layer(
         ProfileSelection("prod", "flag", "--profile flag"),
@@ -111,7 +111,7 @@ def test_missing_selected_profile_raises_with_source(tmp_path: Path) -> None:
 @pytest.mark.parametrize(
     "selection,detail_substring",
     [
-        (ProfileSelection("ghost", "env", "THOTH_PROFILE"), "THOTH_PROFILE"),
+        (ProfileSelection("ghost", "env", "DOXA_PROFILE"), "DOXA_PROFILE"),
         (ProfileSelection("ghost", "config", "general.default_profile"), "general.default_profile"),
     ],
 )
@@ -137,10 +137,10 @@ def _write(path: Path, text: str) -> None:
 
 
 def test_config_manager_no_profile_keeps_existing_effective_config(
-    isolated_thoth_home: Path,
+    isolated_doxa_home: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.delenv("THOTH_PROFILE", raising=False)
+    monkeypatch.delenv("DOXA_PROFILE", raising=False)
     cm = ConfigManager()
     cm.load_all_layers({})
     assert cm.get("general.default_mode") == "default"
@@ -149,13 +149,13 @@ def test_config_manager_no_profile_keeps_existing_effective_config(
 
 
 def test_config_manager_applies_profile_between_project_and_env(
-    isolated_thoth_home: Path,
+    isolated_doxa_home: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from thoth.paths import user_config_file
+    from doxa_research.paths import user_config_file
 
-    monkeypatch.setenv("THOTH_PROFILE", "fast")
-    monkeypatch.setenv("THOTH_DEFAULT_MODE", "clarification")
+    monkeypatch.setenv("DOXA_PROFILE", "fast")
+    monkeypatch.setenv("DOXA_DEFAULT_MODE", "clarification")
     _write(
         user_config_file(),
         """
@@ -180,8 +180,8 @@ default_mode = "thinking"
     assert cm.active_profile.tier == "user"
 
 
-def test_cli_setting_override_beats_active_profile(isolated_thoth_home: Path) -> None:
-    from thoth.paths import user_config_file
+def test_cli_setting_override_beats_active_profile(isolated_doxa_home: Path) -> None:
+    from doxa_research.paths import user_config_file
 
     _write(
         user_config_file(),
@@ -202,12 +202,12 @@ poll_interval = 5
 
 
 def test_default_profile_pointer_survives_profile_splitting(
-    isolated_thoth_home: Path,
+    isolated_doxa_home: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from thoth.paths import user_config_file
+    from doxa_research.paths import user_config_file
 
-    monkeypatch.delenv("THOTH_PROFILE", raising=False)
+    monkeypatch.delenv("DOXA_PROFILE", raising=False)
     _write(
         user_config_file(),
         """
@@ -230,16 +230,16 @@ default_mode = "thinking"
     assert cm.profile_selection.source == "config"
 
 
-def test_config_manager_uses_dot_thoth_project_file_when_present(
-    isolated_thoth_home: Path,
+def test_config_manager_uses_dot_doxa_project_file_when_present(
+    isolated_doxa_home: Path,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Catalog must report the actual project file used (covers both project_config_paths)."""
     monkeypatch.chdir(tmp_path)
-    monkeypatch.delenv("THOTH_PROFILE", raising=False)
+    monkeypatch.delenv("DOXA_PROFILE", raising=False)
     _write(
-        tmp_path / ".thoth.config.toml",
+        tmp_path / ".doxa.config.toml",
         """
 version = "2.0"
 
@@ -255,51 +255,51 @@ default_mode = "thinking"
     assert cm.active_profile is not None
     assert cm.active_profile.tier == "project"
     assert (
-        cm.active_profile.path == Path(".thoth.config.toml")
-        or cm.active_profile.path.name == "thoth.config.toml"
+        cm.active_profile.path == Path(".doxa.config.toml")
+        or cm.active_profile.path.name == "doxa.config.toml"
     )
 
 
-def test_thoth_profile_is_not_a_per_setting_env_override() -> None:
-    """Regression guard (structural): THOTH_PROFILE must not be added to env_mappings.
+def test_doxa_profile_is_not_a_per_setting_env_override() -> None:
+    """Regression guard (structural): DOXA_PROFILE must not be added to env_mappings.
 
     Brittle under refactor — a future move of env_mappings to a module-level
     constant would silently bypass this check. See the companion behavioral
-    guard ``test_thoth_profile_does_not_leak_into_env_layer_at_runtime`` for
+    guard ``test_doxa_profile_does_not_leak_into_env_layer_at_runtime`` for
     the refactor-safe check (BUG-06).
     """
     import inspect
 
-    from thoth import config as thoth_config
+    from doxa_research import config as doxa_config
 
-    src = inspect.getsource(thoth_config.ConfigManager._get_env_overrides)
-    assert "THOTH_PROFILE" not in src, (
-        "THOTH_PROFILE belongs to Stage 1 selection (read by resolve_profile_selection), "
+    src = inspect.getsource(doxa_config.ConfigManager._get_env_overrides)
+    assert "DOXA_PROFILE" not in src, (
+        "DOXA_PROFILE belongs to Stage 1 selection (read by resolve_profile_selection), "
         "not Stage 2 per-setting overrides. See CPP REQ-CPP-004."
     )
 
 
-def test_thoth_profile_does_not_leak_into_env_layer_at_runtime(
-    isolated_thoth_home: Path,
+def test_doxa_profile_does_not_leak_into_env_layer_at_runtime(
+    isolated_doxa_home: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """BUG-06 (behavioral): regardless of how env mappings are structured
-    (literal-in-method or module-level constant), setting THOTH_PROFILE in
+    (literal-in-method or module-level constant), setting DOXA_PROFILE in
     the environment must NOT produce a per-setting override in the env
-    layer. THOTH_PROFILE is a Stage 1 selector (read by
+    layer. DOXA_PROFILE is a Stage 1 selector (read by
     ``resolve_profile_selection``), not a Stage 2 per-setting value.
     """
-    monkeypatch.setenv("THOTH_PROFILE", "ghost-profile")
+    monkeypatch.setenv("DOXA_PROFILE", "ghost-profile")
     cm = ConfigManager()
     overrides = cm._get_env_overrides()
     # The selector value must not appear anywhere in the env-override layer.
     assert "ghost-profile" not in repr(overrides), (
-        f"THOTH_PROFILE leaked into env overrides as a per-setting value: {overrides!r}"
+        f"DOXA_PROFILE leaked into env overrides as a per-setting value: {overrides!r}"
     )
 
 
-def test_root_profile_reaches_config_get(isolated_thoth_home: Path) -> None:
-    from thoth.paths import user_config_file
+def test_root_profile_reaches_config_get(isolated_doxa_home: Path) -> None:
+    from doxa_research.paths import user_config_file
 
     _write(
         user_config_file(),
@@ -321,7 +321,7 @@ default_mode = "thinking"
     assert result.output.strip().splitlines()[-1] == "thinking"
 
 
-def test_unknown_root_profile_errors_before_config_get(isolated_thoth_home: Path) -> None:
+def test_unknown_root_profile_errors_before_config_get(isolated_doxa_home: Path) -> None:
     result = CliRunner().invoke(
         cli,
         ["--profile", "missing", "config", "get", "general.default_mode"],

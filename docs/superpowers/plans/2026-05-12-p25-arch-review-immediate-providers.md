@@ -6,16 +6,16 @@
 
 **Status when planned:** P25 is `[ ]` Scoped; **blocked on P24** (`[~]` In progress — main contract shipped, 7 follow-up tasks tracked).
 
-**Tech stack:** Python 3.11+, existing `ResearchProvider` ABC in `src/thoth/providers/base.py`, pytest, `ty`, `ruff`.
+**Tech stack:** Python 3.11+, existing `ResearchProvider` ABC in `src/doxa_research/providers/base.py`, pytest, `ty`, `ruff`.
 
 **References**
 - Trunk: [PROJECTS.md](../../../PROJECTS.md)
 - Project file: [`projects/P25-arch-review-immediate-providers.md`](../../../projects/P25-arch-review-immediate-providers.md)
 - Immediate providers (subject of review):
-  - `src/thoth/providers/openai.py` (~829 lines)
-  - `src/thoth/providers/perplexity.py` (~1015 lines)
-  - `src/thoth/providers/gemini.py` (~576 lines)
-- Base contract: `src/thoth/providers/base.py` (~144 lines)
+  - `src/doxa_research/providers/openai.py` (~829 lines)
+  - `src/doxa_research/providers/perplexity.py` (~1015 lines)
+  - `src/doxa_research/providers/gemini.py` (~576 lines)
+- Base contract: `src/doxa_research/providers/base.py` (~144 lines)
 - Predecessor projects: P22 (OpenAI sync), P23 (Perplexity sync), P24 (Gemini sync — in progress)
 - Successor: P29 (background DR arch review)
 
@@ -59,7 +59,7 @@ If P24 isn't done, **do not start P25**. Surface the blocker and pick a differen
 | ID | Task | Depends on | Description |
 |----|------|-----------|-------------|
 | P25-TS01 | Define review criteria | — | Same rubric as Variant A. |
-| P25-TS02 | Regression-test snapshot | TS01 | Capture current behavior with a frozen test set: full `live_api` + `extended` + `pytest` runs, save reports as `.thoth_test_cache/p25-baseline.json` and a tagged git ref. Any post-extraction divergence vs. this baseline is a regression. |
+| P25-TS02 | Regression-test snapshot | TS01 | Capture current behavior with a frozen test set: full `live_api` + `extended` + `pytest` runs, save reports as `.doxa_test_cache/p25-baseline.json` and a tagged git ref. Any post-extraction divergence vs. this baseline is a regression. |
 | P25-T01 | Duplication inventory | TS01 | Same as Variant A. |
 | P25-T02 | Design shared abstractions | T01 | For every "warranted" row: design the extraction. Most likely targets: `_helpers.py` expansion, a new `providers/_immediate.py` mixin or strategy module, error-mapper consolidation in `errors.py`. Document the API in the ADR. |
 | P25-T03 | TDD: write tests against new shared API | T02 | Add `tests/test_immediate_providers_shared.py` exercising the proposed shared module(s) — these must fail until extraction lands. |
@@ -67,7 +67,7 @@ If P24 isn't done, **do not start P25**. Surface the blocker and pick a differen
 | P25-T05 | Migrate Perplexity | T04 | Apply the shared module. Resolve any drift surfaced during migration with an explicit decision (extend the abstraction or carve out a provider-specific override). |
 | P25-T06 | Migrate Gemini | T05 | Final migration. Confirm all three providers now use the shared surface. |
 | P25-T07 | ADR + project files | T06 | Document outcome. Update each provider file's `**References**` block to point at the shared module. |
-| P25-T08 | Full-gate verification | T07 | `make env-check` → `just check` → `./thoth_test -r` → `just test-lint` → `just test-typecheck` → `just test-extended` → `just test-live-api` against the P25-TS02 baseline. |
+| P25-T08 | Full-gate verification | T07 | `make env-check` → `just check` → `./doxa_test -r` → `just test-lint` → `just test-typecheck` → `just test-extended` → `just test-live-api` against the P25-TS02 baseline. |
 
 **Trade-offs:** Highest payoff (lasting maintainability win), but biggest blast radius. Risk: extraction surfaces hidden behavioral differences mid-migration, expanding scope.
 
@@ -82,14 +82,14 @@ If P24 isn't done, **do not start P25**. Surface the blocker and pick a differen
 | ID | Task | Depends on | Description |
 |----|------|-----------|-------------|
 | P25-TS01 | Define review criteria | — | Same rubric. |
-| P25-TS02 | Baseline test snapshot | TS01 | Run `./thoth_test -r --skip-interactive -q` + `pytest -q` + (if API keys available) `just test-extended-{openai,perplexity,gemini}` and store reports. Acts as regression oracle. |
+| P25-TS02 | Baseline test snapshot | TS01 | Run `./doxa_test -r --skip-interactive -q` + `pytest -q` + (if API keys available) `just test-extended-{openai,perplexity,gemini}` and store reports. Acts as regression oracle. |
 | P25-T01 | Duplication inventory | TS01 | Markdown table; same as A/B. |
 | P25-T02 | Triage: extract-now vs. defer | T01 | For each "warranted" row, score effort × risk. Move only **low-effort, low-risk** items into this project; borderline / high-risk items go to a new `[?]` P25b. |
 | P25-T03 | TDD: tests for in-scope extractions | T02 | Failing tests against the new shared surface. |
-| P25-T04 | Extract in-scope items | T03 | One commit per extraction (per row). Each commit must keep `./thoth_test -r` green vs. the TS02 baseline. |
+| P25-T04 | Extract in-scope items | T03 | One commit per extraction (per row). Each commit must keep `./doxa_test -r` green vs. the TS02 baseline. |
 | P25-T05 | Migrate all three providers row-by-row | T04 | One commit per `(row × provider)`, smallest reversible units. |
 | P25-T06 | ADR + create P25b if needed | T05 | Document extracted vs. deferred, rationale for each, and seed `projects/P25b-...-.md` as `[?]` for deferred items. |
-| P25-T07 | Full-gate verification | T06 | `make env-check` → `just check` → `./thoth_test -r` → `just test-lint` → `just test-typecheck`. Periodic full-gate per `CLAUDE.md` (every 2–3 commits during T04/T05). |
+| P25-T07 | Full-gate verification | T06 | `make env-check` → `just check` → `./doxa_test -r` → `just test-lint` → `just test-typecheck`. Periodic full-gate per `CLAUDE.md` (every 2–3 commits during T04/T05). |
 
 **Trade-offs:** Real cleanup without committing to a possibly-painful all-or-nothing migration. Borderline calls deferred rather than litigated under deadline pressure.
 
@@ -130,7 +130,7 @@ It also matches this repo's prior practice: P21 / P21b / P21c was the same "extr
 
 ### Regression oracle
 
-- **P25-TS02 baseline** — captured before any code changes. `./thoth_test -r --skip-interactive -q`, `pytest -q`, optionally `just test-extended-*` per provider. Any post-extraction divergence is a regression unless explicitly justified in the ADR.
+- **P25-TS02 baseline** — captured before any code changes. `./doxa_test -r --skip-interactive -q`, `pytest -q`, optionally `just test-extended-*` per provider. Any post-extraction divergence is a regression unless explicitly justified in the ADR.
 
 ### Unit tests (Variant B & C)
 
@@ -139,14 +139,14 @@ It also matches this repo's prior practice: P21 / P21b / P21c was the same "extr
 
 ### Integration tests
 
-- `./thoth_test -r --provider openai|perplexity|gemini` per provider (`live_api` marker).
+- `./doxa_test -r --provider openai|perplexity|gemini` per provider (`live_api` marker).
 - Cross-provider parity matrix (already exercised by P24's tests under the `extended` marker).
 
 ### Verification Checklist (Variant C)
 
 - [ ] Pre-conditions met (P24 `[x]`)
 - [ ] `P25-TS01` rubric committed
-- [ ] `P25-TS02` baseline stored in `.thoth_test_cache/p25-baseline.json` (or referenced commit SHA)
+- [ ] `P25-TS02` baseline stored in `.doxa_test_cache/p25-baseline.json` (or referenced commit SHA)
 - [ ] `P25-T01` duplication inventory committed (Markdown table)
 - [ ] `P25-T02` triage table committed with extract-now vs. defer columns
 - [ ] `P25-T03` failing tests committed

@@ -13,8 +13,8 @@ import asyncio
 
 import pytest
 
-from thoth.providers.base import ResearchProvider, StreamEvent
-from thoth.providers.mock import MockProvider
+from doxa_research.providers.base import ResearchProvider, StreamEvent
+from doxa_research.providers.mock import MockProvider
 
 
 def test_stream_event_carries_kind_and_text() -> None:

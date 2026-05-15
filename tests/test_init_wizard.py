@@ -1,4 +1,4 @@
-"""Unit tests for src/thoth/init_wizard.py — P31."""
+"""Unit tests for src/doxa_research/init_wizard.py — P31."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from thoth.init_wizard import ProviderChoice, ScriptedPrompts, WizardAnswers
+from doxa_research.init_wizard import ProviderChoice, ScriptedPrompts, WizardAnswers
 
 
 def test_provider_choice_is_frozen() -> None:
@@ -20,7 +20,7 @@ def test_wizard_answers_is_frozen(tmp_path: Path) -> None:
     a = WizardAnswers(
         providers=(ProviderChoice("openai", "env_ref", None),),
         default_mode="thinking",
-        target_path=tmp_path / "thoth.config.toml",
+        target_path=tmp_path / "doxa.config.toml",
     )
     with pytest.raises(dataclasses.FrozenInstanceError):
         a.default_mode = "default"  # type: ignore[misc]  # ty: ignore[invalid-assignment]
@@ -40,8 +40,8 @@ def test_scripted_prompts_raises_when_exhausted() -> None:
         sp("p2")
 
 
-from thoth.errors import ThothError  # noqa: E402
-from thoth.init_wizard import pick_many, pick_one  # noqa: E402
+from doxa_research.errors import DoxaError  # noqa: E402
+from doxa_research.init_wizard import pick_many, pick_one  # noqa: E402
 
 
 def test_pick_one_returns_indexed_value() -> None:
@@ -56,7 +56,7 @@ def test_pick_one_default_on_empty_input() -> None:
 
 def test_pick_one_retries_then_errors_on_garbage() -> None:
     sp = ScriptedPrompts(["x", "0", "99"])  # 3 bad answers
-    with pytest.raises(ThothError, match="invalid selection"):
+    with pytest.raises(DoxaError, match="invalid selection"):
         pick_one(["a", "b"], prompt_fn=sp, default_index=0)
 
 
@@ -92,12 +92,12 @@ def test_pick_many_retries_three_malformed_inputs_before_error() -> None:
             return answer
 
     sp = CountingPrompts(["x", "0", "99"])
-    with pytest.raises(ThothError, match="invalid selection"):
+    with pytest.raises(DoxaError, match="invalid selection"):
         pick_many(["a", "b"], prompt_fn=sp)
     assert sp.calls == 3
 
 
-from thoth.init_wizard import prompt_providers  # noqa: E402
+from doxa_research.init_wizard import prompt_providers  # noqa: E402
 
 
 def test_prompt_providers_picks_openai_only() -> None:
@@ -122,7 +122,7 @@ def test_prompt_providers_empty_then_empty_is_skip_all() -> None:
     assert prompt_providers(prompt_fn=sp) == []
 
 
-from thoth.init_wizard import prompt_key_for_provider  # noqa: E402
+from doxa_research.init_wizard import prompt_key_for_provider  # noqa: E402
 
 
 def test_key_env_detected_user_accepts() -> None:
@@ -195,7 +195,7 @@ def test_key_literal_value_trimmed_once() -> None:
     assert pc == ProviderChoice("openai", "literal", "sk-pad")
 
 
-from thoth.init_wizard import DEFAULT_MODE_OPTIONS, prompt_default_mode  # noqa: E402
+from doxa_research.init_wizard import DEFAULT_MODE_OPTIONS, prompt_default_mode  # noqa: E402
 
 
 def test_default_mode_options_do_not_offer_interactive() -> None:
@@ -217,12 +217,12 @@ def test_default_mode_empty_with_no_current_uses_default() -> None:
     assert prompt_default_mode(prompt_fn=sp, current=None) == "default"
 
 
-from thoth.init_wizard import run  # noqa: E402
+from doxa_research.init_wizard import run  # noqa: E402
 
 
 def test_run_happy_path_openai_only(tmp_path: Path) -> None:
     answers = run(
-        target=tmp_path / "thoth.config.toml",
+        target=tmp_path / "doxa.config.toml",
         prefill=None,
         prompt_fn=ScriptedPrompts(
             [
@@ -241,7 +241,7 @@ def test_run_happy_path_openai_only(tmp_path: Path) -> None:
 
 def test_run_review_cancel_returns_none(tmp_path: Path) -> None:
     result = run(
-        target=tmp_path / "thoth.config.toml",
+        target=tmp_path / "doxa.config.toml",
         prefill=None,
         prompt_fn=ScriptedPrompts(["4", "1", "n"]),  # skip all, mode default, cancel
         env={},
@@ -251,7 +251,7 @@ def test_run_review_cancel_returns_none(tmp_path: Path) -> None:
 
 def test_run_review_edit_reprompts(tmp_path: Path) -> None:
     answers = run(
-        target=tmp_path / "thoth.config.toml",
+        target=tmp_path / "doxa.config.toml",
         prefill=None,
         prompt_fn=ScriptedPrompts(
             [
@@ -282,7 +282,7 @@ def test_run_keyboard_interrupt_aborts(tmp_path: Path) -> None:
 
     with pytest.raises(click.Abort):
         run(
-            target=tmp_path / "thoth.config.toml",
+            target=tmp_path / "doxa.config.toml",
             prefill=None,
             prompt_fn=boom,
             env={},
@@ -291,7 +291,7 @@ def test_run_keyboard_interrupt_aborts(tmp_path: Path) -> None:
 
 def test_run_skip_all_zero_providers(tmp_path: Path) -> None:
     answers = run(
-        target=tmp_path / "thoth.config.toml",
+        target=tmp_path / "doxa.config.toml",
         prefill=None,
         prompt_fn=ScriptedPrompts(["4", "1", "y"]),  # skip all, default, write
         env={},

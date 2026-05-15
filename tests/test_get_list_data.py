@@ -30,7 +30,7 @@ def _write_checkpoint(checkpoint_dir: Path, op) -> None:
 
 
 def test_get_list_data_returns_dict_with_operations_list(checkpoint_dir):
-    from thoth.commands import get_list_data
+    from doxa_research.commands import get_list_data
 
     op1 = make_operation("research-20260427-000000-aaaaaaaaaaaaaaaa", status="running")
     op2 = make_operation("research-20260427-000001-bbbbbbbbbbbbbbbb", status="completed")
@@ -44,14 +44,14 @@ def test_get_list_data_returns_dict_with_operations_list(checkpoint_dir):
     assert len(data["operations"]) == 2
 
 
-def test_get_list_data_signature_excludes_as_json(isolated_thoth_home):
-    from thoth.commands import get_list_data
+def test_get_list_data_signature_excludes_as_json(isolated_doxa_home):
+    from doxa_research.commands import get_list_data
 
     assert "as_json" not in inspect.signature(get_list_data).parameters
 
 
 def test_get_list_data_filters_by_show_all_false(checkpoint_dir):
-    from thoth.commands import get_list_data
+    from doxa_research.commands import get_list_data
 
     op_running = make_operation("research-20260427-000000-aaaaaaaaaaaaaaaa", status="running")
     _write_checkpoint(checkpoint_dir, op_running)

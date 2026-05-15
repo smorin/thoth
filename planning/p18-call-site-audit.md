@@ -20,7 +20,7 @@ records the disposition for the Phase A → C migration.
 
 ## Call-site inventory (post-Phase A)
 
-`grep -rn "is_background_mode\|is_background_model" src/thoth/` on `feat/p18-immediate-vs-background` after Phase A:
+`grep -rn "is_background_mode\|is_background_model" src/doxa_research/` on `feat/p18-immediate-vs-background` after Phase A:
 
 | # | Call site | Helper used | Today | Disposition | Phase |
 |---|---|---|---|---|---|
@@ -30,7 +30,7 @@ records the disposition for the Phase A → C migration.
 | 4 | `interactive_picker.py:35,44` | `is_background_model(model)` | filters `--pick-model` candidates ("immediate models only") | **Migrate to `mode_kind(mode_cfg) == "immediate"`** if mode_cfg in scope; else stay as model-level helper if only `model` is available. | C |
 | 5 | `cli.py:284` | `is_background_model(model_name)` | gates a CLI behavior on the resolved model | **Migrate to `mode_kind(mode_cfg) == "background"`** if mode_cfg in scope at this call site; else keep as model-level helper. | C |
 | 6 | `progress.py:33` | `is_background_model(model)` | spinner gate | **Unchanged at the helper level.** Phase C extends `should_show_spinner` to **also** suppress the Progress bar for immediate runs (gate becomes mode-aware via a new `mode_cfg` parameter). | C |
-| 7 | `modes_cmd.py:51` | (was) `is_background_mode(cfg)` | derives display kind for `thoth modes` table | **Migrated to read `cfg["kind"]` first, fall back via `mode_kind`.** Done in Phase A. | A (done) |
+| 7 | `modes_cmd.py:51` | (was) `is_background_mode(cfg)` | derives display kind for `doxa-research modes` table | **Migrated to read `cfg["kind"]` first, fall back via `mode_kind`.** Done in Phase A. | A (done) |
 | 8 | `providers/openai.py:176` | `is_background_model(self.model)` | branches submission tools (`web_search_preview`, `code_interpreter`) on whether model is deep-research | **Unchanged.** Model-level helper — provider's internal taxonomy. | (no change) |
 | 9 | `providers/openai.py:183` | `is_background_model(self.model)` | sets `use_background` request param | **Unchanged.** Same reason as #8. Could optionally read `self.config.get("kind") == "background"` after Phase B threads kind through; not load-bearing for this PR. | (no change) |
 | 10 | `providers/__init__.py:111` (`create_provider`) | `is_background_mode(provider_config)` | sets `provider_config["background"] = True` for openai when mode is background | **Migrate to `mode_kind(provider_config) == "background"`** so the resolution is explicit and uses the declared `kind` first. | B |
@@ -44,7 +44,7 @@ records the disposition for the Phase A → C migration.
 
 ## Phase B / C migration target
 
-Post-Phases B + C, `grep -rnE 'is_background_(mode|model)' src/thoth/` should return only:
+Post-Phases B + C, `grep -rnE 'is_background_(mode|model)' src/doxa_research/` should return only:
 - `config.py` (the two defs + the thin `is_background_mode` wrapper)
 - `progress.py:33` (model-level spinner gate; unchanged)
 - `providers/openai.py:176, 183` (model-level provider taxonomy; unchanged)

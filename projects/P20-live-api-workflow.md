@@ -16,13 +16,13 @@
 - `extended_slow` gate for completion-required deep_research jobs — defer until cost data justifies.
 - Updates to existing tests (e.g. extending `test_model_kind_runtime.py`) — slim scope adds files only.
 - Notification/issue-creation on red badge — manual badge-watching matches the existing `extended.yml` posture.
-- Status/cancel real-API tests (`thoth status <op-id>`, `thoth cancel <op-id>`) — already covered by `tests/extended/test_openai_cli_lifecycle.py` (P18-T38).
+- Status/cancel real-API tests (`doxa-research status <op-id>`, `doxa-research cancel <op-id>`) — already covered by `tests/extended/test_openai_cli_lifecycle.py` (P18-T38).
 
 ### Tests & Tasks
 - [x] [P20-TS01] `live_cli_env` fixture: skip-unless `OPENAI_API_KEY`; isolated `HOME` / `XDG_CONFIG_HOME` / `XDG_STATE_HOME` / `XDG_CACHE_HOME`; bounded subprocess timeout; secret-scrub on captured failure output. (Satisfied by pre-existing fixture in `tests/extended/conftest.py` from P18-T38; no new code needed.)
 - [x] [P20-TS02] Assertion helpers: `assert_nonempty_file`, `assert_metadata_present`, `assert_metadata_absent`, `assert_secret_not_leaked`.
-- [x] [P20-TS03] `thoth ask "live api streaming smoke" --mode thinking --provider openai` streams non-empty stdout, exits 0, creates no default result file, emits no background completion/status/resume hints.
-- [x] [P20-TS04] `thoth ask "live api file" --mode thinking --provider openai --out answer.md` writes a non-empty `answer.md`, suppresses streamed stdout, creates no default result file.
+- [x] [P20-TS03] `doxa-research ask "live api streaming smoke" --mode thinking --provider openai` streams non-empty stdout, exits 0, creates no default result file, emits no background completion/status/resume hints.
+- [x] [P20-TS04] `doxa-research ask "live api file" --mode thinking --provider openai --out answer.md` writes a non-empty `answer.md`, suppresses streamed stdout, creates no default result file.
 - [x] [P20-TS05] `--append`: run the file-output command twice to the same path; assert file size grew and the first run's content prefix is preserved.
 - [x] [P20-TS06] `--no-metadata`: written file is non-empty but has no YAML front-matter, no `operation_id:`, no `### Prompt` section. (Reframed as a regression guard: `--no-metadata` is a no-op on the immediate `--out` path; test asserts the flag is innocuous and locks in metadata-free output.)
 - [x] [P20-TS07] `--api-key-openai sk-...` succeeds with `OPENAI_API_KEY` unset in the test env; assert exit 0 AND key not echoed in stdout/stderr.

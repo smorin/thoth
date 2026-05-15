@@ -14,10 +14,10 @@ import tomlkit
 
 
 def test_starter_doc_round_trips() -> None:
-    from thoth._starter_data import STARTER_PROFILES
-    from thoth.commands import _build_starter_document
-    from thoth.config import ConfigSchema
-    from thoth.config_schema import ConfigSchema as CSNew  # public façade
+    from doxa_research._starter_data import STARTER_PROFILES
+    from doxa_research.commands import _build_starter_document
+    from doxa_research.config import ConfigSchema
+    from doxa_research.config_schema import ConfigSchema as CSNew  # public façade
 
     doc = _build_starter_document()
     rendered = tomlkit.dumps(doc)
@@ -70,6 +70,6 @@ def test_starter_doc_round_trips() -> None:
     # tomlkit renders nested tables as their full dotted-path headers, so the
     # parent `[profiles]` and `[profiles.daily]` headers are NOT emitted.
     # We assert the deepest level headers actually present in the output.
-    assert "# Thoth Configuration File" in rendered
+    assert "# Doxa Research Configuration File" in rendered
     assert "[profiles.daily.general]" in rendered
     assert "[profiles.deep_research.general]" in rendered

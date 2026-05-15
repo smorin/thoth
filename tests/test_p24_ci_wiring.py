@@ -53,8 +53,8 @@ def test_gemini_models_in_known_models_registry() -> None:
     gemini_exploration / deep_dive / tutorial / solution / prd / tdd /
     comparison) — these also auto-derive.
     """
-    from thoth.config import BUILTIN_MODES
-    from thoth.models import KNOWN_MODELS
+    from doxa_research.config import BUILTIN_MODES
+    from doxa_research.models import KNOWN_MODELS
 
     gemini_built_ins = {
         mode for mode, cfg in BUILTIN_MODES.items() if cfg.get("provider") == "gemini"

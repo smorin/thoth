@@ -6,7 +6,7 @@
 - **Adjacent:** P25 (`projects/P25-arch-review-immediate-providers.md`) - cross-immediate-provider review after P23/P24 ship.
 - **Adjacent:** P27 (`projects/P27-perplexity-background-deep-research.md`) - owns Perplexity async/background deep research.
 - **Follow-up:** P38 (`projects/P38-perplexity-sync-vcr-replay.md`) - owns Perplexity sync VCR replay; P23 does not depend on it.
-- **Code:** `src/thoth/providers/openai.py`, `src/thoth/providers/base.py`, `src/thoth/run.py`, `src/thoth/providers/__init__.py`, `src/thoth/config.py`, `src/thoth/errors.py`.
+- **Code:** `src/doxa_research/providers/openai.py`, `src/doxa_research/providers/base.py`, `src/doxa_research/run.py`, `src/doxa_research/providers/__init__.py`, `src/doxa_research/config.py`, `src/doxa_research/errors.py`.
 - **Research:** `research/perplexity-deep-research-api.v1.md` - useful background, but not canonical when it disagrees with current official Perplexity docs.
 - **External:** https://docs.perplexity.ai/docs/sonar/openai-compatibility
 - **External:** https://docs.perplexity.ai/api-reference/sonar-post
@@ -14,15 +14,15 @@
 
 **Status:** `[x]` Completed 2026-05-03 after remediation.
 
-**Goal**: Implement Perplexity synchronous Sonar support for immediate Thoth runs using the OpenAI Python SDK compatibility path. P23 adds Perplexity built-in immediate modes, request construction, streaming, non-stream execution, side-channel output handling, live coverage, and user-facing provider surfaces.
+**Goal**: Implement Perplexity synchronous Sonar support for immediate Doxa Research runs using the OpenAI Python SDK compatibility path. P23 adds Perplexity built-in immediate modes, request construction, streaming, non-stream execution, side-channel output handling, live coverage, and user-facing provider surfaces.
 
 ### Scope
 
 - Implement `PerplexityProvider` with `AsyncOpenAI(api_key=..., base_url="https://api.perplexity.ai")` and `client.chat.completions.create(...)`. Perplexity accepts `/chat/completions` as an OpenAI SDK compatibility alias for the canonical `/v1/sonar` endpoint.
 - Supported synchronous models in built-ins: `sonar`, `sonar-pro`, `sonar-reasoning-pro`. `PerplexityProvider` defaults to `sonar` only when no effective mode or CLI model is present.
 - Add `--model MODEL` to the shared research CLI surface. Model strings are passed through to the selected provider without local provider/model compatibility validation, except for the known immediate-vs-background guard below. Invalid provider/model combinations should surface provider/API errors.
-- Existing mode model values remain pass-through. Example: `thoth ask "hi" --provider perplexity` with the default OpenAI-owned mode may pass the default OpenAI model to Perplexity and fail; users can choose `--mode perplexity_quick` or `--model sonar`.
-- Add built-in modes in `src/thoth/config.py:BUILTIN_MODES`, all `kind: "immediate"`:
+- Existing mode model values remain pass-through. Example: `doxa-research ask "hi" --provider perplexity` with the default OpenAI-owned mode may pass the default OpenAI model to Perplexity and fail; users can choose `--mode perplexity_quick` or `--model sonar`.
+- Add built-in modes in `src/doxa_research/config.py:BUILTIN_MODES`, all `kind: "immediate"`:
   - `perplexity_quick`: `provider = "perplexity"`, `model = "sonar"`, `perplexity.web_search_options.search_context_size = "low"`, `perplexity.stream_mode = "full"`.
   - `perplexity_pro`: `provider = "perplexity"`, `model = "sonar-pro"`, `perplexity.web_search_options.search_context_size = "high"`, `perplexity.stream_mode = "full"`.
   - `perplexity_reasoning`: `provider = "perplexity"`, `model = "sonar-reasoning-pro"`, `perplexity.web_search_options.search_context_size = "medium"`, `perplexity.stream_mode = "concise"`.
@@ -58,7 +58,7 @@ web_search_options = { search_context_size = "high" }
 - Real stream errors are failures. Do not retry/fallback to non-stream after a stream request has started.
 - Non-stream `submit()` performs one-shot synchronous chat completion. `check_status()` returns completed immediately. `get_result()` extracts answer text and appends deduped `## Sources`.
 - Known background-only guard: P23 must not implement or call Perplexity async/deep-research endpoints and must not add `sonar-deep-research` as a supported immediate model. P23 may recognize `sonar-deep-research` only to reject immediate-kind usage before any HTTP call with the existing generic `ModeKindMismatchError` suggestion. P27 owns background submission/polling.
-- Error mapping uses OpenAI SDK exception classes because P23 uses the OpenAI SDK compatibility path. Map `openai.AuthenticationError`, `openai.RateLimitError`, `openai.BadRequestError`, `openai.PermissionDeniedError`, `openai.InternalServerError`, `openai.APITimeoutError`, `openai.APIConnectionError`, and `openai.APIError` to Thoth errors under provider name `"perplexity"`. Distinguish quota/credits exhaustion from ordinary rate limiting via `APIQuotaError` vs `APIRateLimitError`.
+- Error mapping uses OpenAI SDK exception classes because P23 uses the OpenAI SDK compatibility path. Map `openai.AuthenticationError`, `openai.RateLimitError`, `openai.BadRequestError`, `openai.PermissionDeniedError`, `openai.InternalServerError`, `openai.APITimeoutError`, `openai.APIConnectionError`, and `openai.APIError` to Doxa Research errors under provider name `"perplexity"`. Distinguish quota/credits exhaustion from ordinary rate limiting via `APIQuotaError` vs `APIRateLimitError`.
 - Retry policy for non-stream `submit()` mirrors OpenAI precedent: tenacity `stop_after_attempt(3)`, `wait_exponential(multiplier=1, min=4, max=10)`, retrying `openai.APITimeoutError` and `openai.APIConnectionError` only. Streaming failures are mapped but not retried after start.
 - Update all user-facing provider surfaces that currently say Perplexity is not implemented: provider list/model output, interactive provider menus, provider status/docstrings, and tests/specs that assert the old text. README/docs audit found no P23-specific stale user-facing docs copy to update.
 
@@ -94,12 +94,12 @@ web_search_options = { search_context_size = "high" }
 - [x] [P23-TS02] Add failing built-in mode and request-construction tests. Mock `AsyncOpenAI.chat.completions.create` and assert exact `messages`, direct SDK kwargs, `extra_body`, Perplexity namespace passthrough, explicit built-in `search_context_size` / `stream_mode`, fallback `search_context_size = "medium"`, fallback `stream_mode = "concise"`, and `system_prompt` as a system message.
       Added `tests/test_provider_perplexity.py` (10 tests across built-in modes, messages, model passthrough, namespace `[modes.X.perplexity]→extra_body`, direct SDK kwargs, fallbacks).
 - [x] [P23-T02] Add the three built-in Perplexity modes and implement Perplexity request construction. Make P23-TS02 pass.
-      Rewrote `src/thoth/providers/perplexity.py` to use OpenAI SDK against perplexity base_url, namespaced `extra_body` builder with default fallbacks, direct SDK kwargs gate; added `perplexity_quick` / `perplexity_pro` / `perplexity_reasoning` to `BUILTIN_MODES`.
+      Rewrote `src/doxa_research/providers/perplexity.py` to use OpenAI SDK against perplexity base_url, namespaced `extra_body` builder with default fallbacks, direct SDK kwargs gate; added `perplexity_quick` / `perplexity_pro` / `perplexity_reasoning` to `BUILTIN_MODES`.
 
 - [x] [P23-TS03] Add failing `_map_perplexity_error` and retry tests using OpenAI SDK exception objects. Cover auth, quota/rate limit, bad request/model hints, permission denied, 5xx, timeout, connection error, generic SDK errors, raw unknown exceptions, and non-stream retry count for timeout/connection failures.
       Added 12 cases to `tests/test_provider_perplexity.py`: parametrized error-mapping table (8 OpenAI-SDK exception classes), provider-name suffix check, unknown-exception fallback, retry-on-transient (succeeds after 2 timeouts), no-retry-on-auth.
 - [x] [P23-T03] Implement `_map_perplexity_error(...)` and non-stream retry policy. Make P23-TS03 pass.
-      Added module-level `_map_perplexity_error()` covering 8 OpenAI SDK exception classes plus a generic Exception fallback. Wrapped `submit()` with tenacity retry (`stop_after_attempt(3)`, `wait_exponential(min=4, max=10)`, retry on `APITimeoutError | APIConnectionError`). Updated thoth_test cases REAL-02/P07-M2-02 from "not implemented" to "rejects invalid key with mapped APIKeyError".
+      Added module-level `_map_perplexity_error()` covering 8 OpenAI SDK exception classes plus a generic Exception fallback. Wrapped `submit()` with tenacity retry (`stop_after_attempt(3)`, `wait_exponential(min=4, max=10)`, retry on `APITimeoutError | APIConnectionError`). Updated doxa_test cases REAL-02/P07-M2-02 from "not implemented" to "rejects invalid key with mapped APIKeyError".
 
 - [x] [P23-TS04] Add failing provider stream tests for Perplexity chunk translation. Cover text deltas, cumulative-content guard, final `search_results`/citations, terminal `done`, `<think>` extraction, missing `<think>` tolerance, `stream_mode = "full"`, and `stream_mode = "concise"`.
       Added 8 stream tests using a fake async iterator over chunk SimpleNamespaces.
@@ -131,8 +131,8 @@ web_search_options = { search_context_size = "high" }
 - [x] [P23-T09] Implement the extended and weekly live-api Perplexity test coverage. Update `.github/workflows/extended.yml` and `.github/workflows/live-api.yml` to pass `PERPLEXITY_API_KEY: ${{ secrets.PERPLEXITY_API_KEY }}` alongside `OPENAI_API_KEY`. Make P23-TS09 pass.
       `KNOWN_MODELS` auto-derives from `BUILTIN_MODES` so the Perplexity triple landed automatically when T02 added the modes; removed the explicit skip block in `tests/extended/test_model_kind_runtime.py`. Both CI workflows now pass `PERPLEXITY_API_KEY`. Added `live_perplexity_env` fixture and `require_perplexity_key()` helper to `tests/extended/conftest.py`; `assert_no_secret_leaked` extended to redact both keys.
 
-- [x] [P23-T10] Final verification and project closeout. Run targeted pytest for new/changed tests, `just check`, `./thoth_test -r`, `just test-lint`, `just test-typecheck`, and the Perplexity live-api command when `PERPLEXITY_API_KEY` is available. Flip P23 to `[x]` only after the full gate passes.
-      Gate results (2026-05-02): `make env-check` ✅; `just check` (ruff + ty on src) ✅; `just test-lint` ✅; `just test-typecheck` ✅; `./thoth_test -r --provider mock --skip-interactive`: 76 passed, 0 failed, 1 skipped; full pytest: 1035 passed, 23 deselected (gated extended/live_api markers). Live-api manual run deferred — runs in CI weekly via `live-api.yml`.
+- [x] [P23-T10] Final verification and project closeout. Run targeted pytest for new/changed tests, `just check`, `./doxa_test -r`, `just test-lint`, `just test-typecheck`, and the Perplexity live-api command when `PERPLEXITY_API_KEY` is available. Flip P23 to `[x]` only after the full gate passes.
+      Gate results (2026-05-02): `make env-check` ✅; `just check` (ruff + ty on src) ✅; `just test-lint` ✅; `just test-typecheck` ✅; `./doxa_test -r --provider mock --skip-interactive`: 76 passed, 0 failed, 1 skipped; full pytest: 1035 passed, 23 deselected (gated extended/live_api markers). Live-api manual run deferred — runs in CI weekly via `live-api.yml`.
 
 ### Remediation
 
@@ -153,19 +153,19 @@ Reopened after factor-scan found P23 closeout gaps in provider config passthroug
 - [x] [P23-R07] Replace new citation events' `title|url` encoding with structured `Citation(title, url)` metadata until render time.
 - [x] [P23-R08] Render reasoning side-channel output in a distinct `## Reasoning` section.
 - [x] [P23-RS07] Add extended provider-specific passthrough tests for OpenAI and Perplexity, and live Perplexity coverage that uses env/config instead of argv for the real key.
-- [x] [P23-R09] Mark Perplexity `thoth_test` cases as provider-scoped and remove the live Perplexity real-key argv path.
+- [x] [P23-R09] Mark Perplexity `doxa_test` cases as provider-scoped and remove the live Perplexity real-key argv path.
 - [x] [P23-R10] Parse workflow YAML in P23 CI wiring tests instead of scanning comments/whole-file substrings.
 - [x] [P23-R11] Cleanup: update live workflow comments to OpenAI + Perplexity, fix stale provider-config comments, and narrow TS08 tracker wording to actual provider/interactive surfaces.
 
-Remediation gate results (2026-05-03): `make env-check` ✅; `just fix` ✅; `just check` ✅; targeted P23 remediation pytest ✅ (`105 passed`); full pytest ✅ (`1045 passed, 25 deselected`); `./thoth_test -r --skip-interactive -q` ✅ (`85 passed, 1 skipped` with OpenAI and Perplexity keys present); `just test-fix` ✅; `just test-lint` ✅; `just test-typecheck` ✅; `uv run ruff check src/ tests/` ✅; `uv run ruff format --check src/ tests/` ✅. Live `live_api` tests remain gated for CI/manual runs.
+Remediation gate results (2026-05-03): `make env-check` ✅; `just fix` ✅; `just check` ✅; targeted P23 remediation pytest ✅ (`105 passed`); full pytest ✅ (`1045 passed, 25 deselected`); `./doxa_test -r --skip-interactive -q` ✅ (`85 passed, 1 skipped` with OpenAI and Perplexity keys present); `just test-fix` ✅; `just test-lint` ✅; `just test-typecheck` ✅; `uv run ruff check src/ tests/` ✅; `uv run ruff format --check src/ tests/` ✅. Live `live_api` tests remain gated for CI/manual runs.
 
 ### Acceptance Criteria
 
-- `thoth ask "What's new in CRISPR?" --mode perplexity_quick` returns a grounded answer with a `## Sources` section using `sonar`.
-- `thoth ask "What's new in CRISPR?" --provider perplexity --model sonar` returns a grounded answer with a `## Sources` section.
-- `thoth ask "hello" --provider perplexity --model future-model-id` passes the model string to Perplexity without local compatibility validation; any invalid model error is surfaced from the provider/API layer.
-- `thoth ask --mode perplexity_reasoning ...` exposes reasoning separately from answer text and strips `<think>...</think>` from the answer when present.
-- `thoth ask --provider perplexity --model sonar-deep-research ...` with immediate kind raises `ModeKindMismatchError` before any HTTP call, with the existing generic suggestion.
+- `doxa-research ask "What's new in CRISPR?" --mode perplexity_quick` returns a grounded answer with a `## Sources` section using `sonar`.
+- `doxa-research ask "What's new in CRISPR?" --provider perplexity --model sonar` returns a grounded answer with a `## Sources` section.
+- `doxa-research ask "hello" --provider perplexity --model future-model-id` passes the model string to Perplexity without local compatibility validation; any invalid model error is surfaced from the provider/API layer.
+- `doxa-research ask --mode perplexity_reasoning ...` exposes reasoning separately from answer text and strips `<think>...</think>` from the answer when present.
+- `doxa-research ask --provider perplexity --model sonar-deep-research ...` with immediate kind raises `ModeKindMismatchError` before any HTTP call, with the existing generic suggestion.
 - `stream = false` in Perplexity mode config uses non-stream one-shot execution and still appends sources.
 - stdout, file-only, tee, and project output contain the same final rendered answer/reasoning/sources for side-channel stream events.
 - `--api-key-perplexity sk-...` works without `PERPLEXITY_API_KEY` in env; the key never appears in stdout/stderr/logs.

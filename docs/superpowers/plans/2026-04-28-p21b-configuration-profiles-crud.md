@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add `thoth config profiles list/show/current/set-default/unset-default/add/set/unset/remove` so users can manage profiles from the CLI without hand-editing TOML.
+**Goal:** Add `doxa-research config profiles list/show/current/set-default/unset-default/add/set/unset/remove` so users can manage profiles from the CLI without hand-editing TOML.
 
-**Architecture:** Reuse `src/thoth/config_cmd.py` data-function patterns and `tomlkit` helpers. Add nine `get_config_profile_*_data` functions and a nested Click group `profiles` under `thoth config`. Active-state readers (`list`/`current`) honor inherited `--profile`; raw lookup `show NAME` and mutator leaves (`add`/`set`/`unset`/`remove`/`set-default`/`unset-default`) reject it.
+**Architecture:** Reuse `src/doxa_research/config_cmd.py` data-function patterns and `tomlkit` helpers. Add nine `get_config_profile_*_data` functions and a nested Click group `profiles` under `doxa-research config`. Active-state readers (`list`/`current`) honor inherited `--profile`; raw lookup `show NAME` and mutator leaves (`add`/`set`/`unset`/`remove`/`set-default`/`unset-default`) reject it.
 
 **Tech Stack:** Python 3.11+, Click 8.x, tomlkit, pytest.
 
@@ -18,9 +18,9 @@
 
 P21 must be merged before starting P21b. P21b assumes:
 
-- `src/thoth/config_profiles.py` exists with `ProfileSelection`, `ProfileLayer`, `collect_profile_catalog`, `resolve_profile_selection`, `resolve_profile_layer`.
+- `src/doxa_research/config_profiles.py` exists with `ProfileSelection`, `ProfileLayer`, `collect_profile_catalog`, `resolve_profile_selection`, `resolve_profile_layer`.
 - `ConfigManager` exposes `profile_selection`, `active_profile`, `profile_catalog`.
-- `ConfigProfileError` is in `src/thoth/errors.py`.
+- `ConfigProfileError` is in `src/doxa_research/errors.py`.
 - Root `--profile` option is registered, threaded through `_load_manager`, and honored by existing `config get` / `config list`.
 - `DEFAULT_HONOR` already includes `"profile"`.
 
@@ -30,9 +30,9 @@ If any of these are missing, finish P21 first.
 
 ## File Map
 
-- Modify: `src/thoth/config_cmd.py` — add nine `get_config_profile_*_data` functions and TOML helpers (`_profiles_table`, `_profile_table`).
-- Modify: `src/thoth/cli_subcommands/config.py` — add `config profiles` Click group with nine leaves.
-- Modify: `src/thoth/help.py`, `README.md`, `manual_testing_instructions.md`, `PROJECTS.md` — document command examples and the persisted-vs-runtime distinction.
+- Modify: `src/doxa_research/config_cmd.py` — add nine `get_config_profile_*_data` functions and TOML helpers (`_profiles_table`, `_profile_table`).
+- Modify: `src/doxa_research/cli_subcommands/config.py` — add `config profiles` Click group with nine leaves.
+- Modify: `src/doxa_research/help.py`, `README.md`, `manual_testing_instructions.md`, `PROJECTS.md` — document command examples and the persisted-vs-runtime distinction.
 - Create: `tests/test_config_profiles_cmd.py` — data functions + Click commands + comment preservation + deep-path + B12/B16/B17/B20 invariants.
 - Modify: `tests/test_json_envelopes.py` — add rows for new JSON-capable profile commands.
 - Modify: `tests/test_ci_lint_rules.py` — add the new commands to the JSON command inventory.
@@ -43,7 +43,7 @@ If any of these are missing, finish P21 first.
 
 **Files:**
 - Create: `tests/test_config_profiles_cmd.py`
-- Modify: `src/thoth/config_cmd.py`
+- Modify: `src/doxa_research/config_cmd.py`
 
 - [ ] **Step 1: Write failing command data tests**
 
@@ -58,7 +58,7 @@ import tomllib
 
 import pytest
 
-from thoth.config_cmd import (
+from doxa-research.config_cmd import (
     get_config_profile_add_data,
     get_config_profile_current_data,
     get_config_profile_list_data,
@@ -71,7 +71,7 @@ from thoth.config_cmd import (
 )
 
 
-def test_profile_add_set_show_unset_remove_round_trip(isolated_thoth_home: Path) -> None:
+def test_profile_add_set_show_unset_remove_round_trip(isolated_doxa_home: Path) -> None:
     add = get_config_profile_add_data("fast", project=False, config_path=None)
     assert add["created"] is True
 
@@ -105,7 +105,7 @@ def test_profile_add_set_show_unset_remove_round_trip(isolated_thoth_home: Path)
 
 
 def test_profile_set_default_and_unset_default_write_general_default_profile(
-    isolated_thoth_home: Path,
+    isolated_doxa_home: Path,
 ) -> None:
     get_config_profile_add_data("fast", project=False, config_path=None)
     set_default = get_config_profile_set_default_data(
@@ -113,7 +113,7 @@ def test_profile_set_default_and_unset_default_write_general_default_profile(
     )
     assert set_default["default_profile"] == "fast"
 
-    from thoth.paths import user_config_file
+    from doxa-research.paths import user_config_file
 
     data = tomllib.loads(user_config_file().read_text())
     assert data["general"]["default_profile"] == "fast"
@@ -135,7 +135,7 @@ def test_profile_project_conflicts_with_config_path(tmp_path: Path) -> None:
     assert data["error"] == "PROJECT_CONFIG_CONFLICT"
 
 
-def test_profile_list_reports_active_and_source(isolated_thoth_home: Path) -> None:
+def test_profile_list_reports_active_and_source(isolated_doxa_home: Path) -> None:
     get_config_profile_add_data("fast", project=False, config_path=None)
     get_config_profile_set_default_data("fast", project=False, config_path=None)
     data = get_config_profile_list_data(config_path=None)
@@ -145,12 +145,12 @@ def test_profile_list_reports_active_and_source(isolated_thoth_home: Path) -> No
 
 
 def test_profile_list_show_shadowed_includes_hidden_user_profile(
-    isolated_thoth_home: Path,
+    isolated_doxa_home: Path,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """B21: project same-name profile shadows user by default; --show-shadowed reveals it."""
-    from thoth.paths import user_config_file
+    from doxa-research.paths import user_config_file
 
     user_config_file().write_text(
         'version = "2.0"\n'
@@ -160,7 +160,7 @@ def test_profile_list_show_shadowed_includes_hidden_user_profile(
         'default_mode = "thinking"\n'
     )
     monkeypatch.chdir(tmp_path)
-    (tmp_path / "thoth.config.toml").write_text(
+    (tmp_path / "doxa-research.config.toml").write_text(
         'version = "2.0"\n[profiles.prod.execution]\npoll_interval = 5\n'
     )
 
@@ -180,16 +180,16 @@ def test_profile_list_show_shadowed_includes_hidden_user_profile(
     assert rows[("prod", "user")]["shadowed_by"]["tier"] == "project"
 
 
-def test_profile_set_default_rejects_unknown_profile(isolated_thoth_home: Path) -> None:
+def test_profile_set_default_rejects_unknown_profile(isolated_doxa_home: Path) -> None:
     """B16: `set-default NAME` validates against the resolved catalog before persisting."""
-    from thoth.errors import ConfigProfileError
+    from doxa-research.errors import ConfigProfileError
 
     with pytest.raises(ConfigProfileError) as exc:
         get_config_profile_set_default_data("ghost", project=False, config_path=None)
     assert "ghost" in exc.value.message
 
 
-def test_profile_add_is_idempotent(isolated_thoth_home: Path) -> None:
+def test_profile_add_is_idempotent(isolated_doxa_home: Path) -> None:
     """add NAME for an existing profile succeeds with created=False (no-op)."""
     first = get_config_profile_add_data("fast", project=False, config_path=None)
     assert first["created"] is True
@@ -199,7 +199,7 @@ def test_profile_add_is_idempotent(isolated_thoth_home: Path) -> None:
     assert second["profile"] == "fast"
 
 
-def test_profile_remove_is_idempotent(isolated_thoth_home: Path) -> None:
+def test_profile_remove_is_idempotent(isolated_doxa_home: Path) -> None:
     """remove NAME for a missing profile succeeds with removed=False (no-op)."""
     out = get_config_profile_remove_data("ghost", project=False, config_path=None)
     assert out["removed"] is False
@@ -207,13 +207,13 @@ def test_profile_remove_is_idempotent(isolated_thoth_home: Path) -> None:
 
 
 def test_profile_set_default_accepts_project_only_profile_against_user_config(
-    isolated_thoth_home: Path,
+    isolated_doxa_home: Path,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """B16 cross-tier: `set-default prod` when prod lives in project tier writes pointer to user config."""
     monkeypatch.chdir(tmp_path)
-    (tmp_path / "thoth.config.toml").write_text(
+    (tmp_path / "doxa-research.config.toml").write_text(
         'version = "2.0"\n[profiles.prod.general]\ndefault_mode = "thinking"\n'
     )
 
@@ -222,7 +222,7 @@ def test_profile_set_default_accepts_project_only_profile_against_user_config(
 
 
 def test_profile_set_default_validates_against_custom_config_path(
-    isolated_thoth_home: Path,
+    isolated_doxa_home: Path,
     tmp_path: Path,
 ) -> None:
     """B16: inherited --config PATH participates in set-default validation."""
@@ -243,12 +243,12 @@ def test_profile_set_default_validates_against_custom_config_path(
 
 
 def test_profile_unset_default_leaves_empty_general_table_in_place(
-    isolated_thoth_home: Path,
+    isolated_doxa_home: Path,
 ) -> None:
     """B17: unset-default removes only general.default_profile; [general] remains."""
     import tomllib
 
-    from thoth.paths import user_config_file
+    from doxa-research.paths import user_config_file
 
     get_config_profile_add_data("fast", project=False, config_path=None)
     get_config_profile_set_default_data("fast", project=False, config_path=None)
@@ -260,25 +260,25 @@ def test_profile_unset_default_leaves_empty_general_table_in_place(
 
 
 def test_profile_current_reports_runtime_active_and_source(
-    isolated_thoth_home: Path,
+    isolated_doxa_home: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """B12: `config profiles current` shows runtime active selection + source."""
-    monkeypatch.delenv("THOTH_PROFILE", raising=False)
+    monkeypatch.delenv("DOXA_PROFILE", raising=False)
     get_config_profile_add_data("fast", project=False, config_path=None)
     get_config_profile_set_default_data("fast", project=False, config_path=None)
 
-    monkeypatch.setenv("THOTH_PROFILE", "fast")
+    monkeypatch.setenv("DOXA_PROFILE", "fast")
     data = get_config_profile_current_data(config_path=None)
     assert data["active_profile"] == "fast"
     assert data["selection_source"] == "env"
 
 
 def test_profile_set_unset_preserves_tomlkit_comments(
-    isolated_thoth_home: Path,
+    isolated_doxa_home: Path,
 ) -> None:
     """B9: TOML comments around the profile section survive set/unset."""
-    from thoth.paths import user_config_file
+    from doxa-research.paths import user_config_file
 
     user_config_file().write_text(
         '# pinned profile\n[profiles.fast.general]\n# default mode\ndefault_mode = "thinking"\n'
@@ -300,12 +300,12 @@ def test_profile_set_unset_preserves_tomlkit_comments(
 
 
 def test_profile_unset_leaves_empty_parent_table_in_place(
-    isolated_thoth_home: Path,
+    isolated_doxa_home: Path,
 ) -> None:
     """B17: unset removes only the leaf; empty parent tables remain."""
     import tomllib
 
-    from thoth.paths import user_config_file
+    from doxa-research.paths import user_config_file
 
     get_config_profile_add_data("fast", project=False, config_path=None)
     get_config_profile_set_data(
@@ -323,12 +323,12 @@ def test_profile_unset_leaves_empty_parent_table_in_place(
 
 
 def test_profile_set_unset_handles_deep_four_level_path(
-    isolated_thoth_home: Path,
+    isolated_doxa_home: Path,
 ) -> None:
     """B10: depth-4 path `profiles.fast.general.default_mode` set/unset round-trip."""
     import tomllib
 
-    from thoth.paths import user_config_file
+    from doxa-research.paths import user_config_file
 
     get_config_profile_add_data("fast", project=False, config_path=None)
     set_out = get_config_profile_set_data(
@@ -356,7 +356,7 @@ Expected: import failures for new data functions.
 
 - [ ] **Step 3: Add TOML helpers**
 
-In `src/thoth/config_cmd.py`, add helpers near `_load_toml_doc`:
+In `src/doxa_research/config_cmd.py`, add helpers near `_load_toml_doc`:
 
 ```python
 def _profiles_table(doc: tomlkit.TOMLDocument) -> Any:
@@ -385,7 +385,7 @@ profile_key = f"profiles.{name}.{key}"
 
 Use the existing `get_config_set_data(...)` and `get_config_unset_data(...)` patterns where possible, but keep profile commands explicit so error data includes `profile`, `key`, `path`, and command-specific booleans.
 
-**`set-default NAME` validation (B16):** before writing `general.default_profile = NAME`, build a transient `ConfigManager` with the same target config path the command will write, then call `load_all_layers({})` and check `NAME` against `cm.profile_catalog`. Use `ConfigManager(_normalize_config_path(config_path))` or the existing `_load_manager(config_path)` helper when inherited `--config PATH` is present; do not pass `config_path` through `load_all_layers(...)`, which intentionally rejects metadata keys. If absent, raise `ConfigProfileError(f"Profile {name!r} not found", available_profiles=..., source="thoth config profiles set-default")`. The cross-tier case (e.g. `prod` defined only in the project tier) is allowed because the catalog spans both tiers, and a custom-config case (e.g. `fast` defined only in `--config /tmp/custom.toml`) must validate against that custom file before writing the pointer there.
+**`set-default NAME` validation (B16):** before writing `general.default_profile = NAME`, build a transient `ConfigManager` with the same target config path the command will write, then call `load_all_layers({})` and check `NAME` against `cm.profile_catalog`. Use `ConfigManager(_normalize_config_path(config_path))` or the existing `_load_manager(config_path)` helper when inherited `--config PATH` is present; do not pass `config_path` through `load_all_layers(...)`, which intentionally rejects metadata keys. If absent, raise `ConfigProfileError(f"Profile {name!r} not found", available_profiles=..., source="doxa-research config profiles set-default")`. The cross-tier case (e.g. `prod` defined only in the project tier) is allowed because the catalog spans both tiers, and a custom-config case (e.g. `fast` defined only in `--config /tmp/custom.toml`) must validate against that custom file before writing the pointer there.
 
 **`list` data function (B21):** accepts `show_shadowed: bool = False`, loads a fresh `ConfigManager`, and builds rows from `cm.profile_catalog`. Default output collapses duplicate names to the same winning layer that `resolve_profile_layer(...)` would choose (project beats user), so users see one effective row per profile name. With `show_shadowed=True`, include lower-precedence same-name rows. Sort rows by profile name; for duplicate names, emit the winning row first and the shadowed row immediately after it. Rows use:
 
@@ -412,9 +412,9 @@ Use the existing `get_config_set_data(...)` and `get_config_unset_data(...)` pat
 }
 ```
 
-It honors inherited `--profile` so `thoth --profile foo config profiles current` reports `flag` as the source.
+It honors inherited `--profile` so `doxa-research --profile foo config profiles current` reports `flag` as the source.
 
-**`unset` semantics (B17):** profile unsets remove only the leaf key. Do **not** prune empty parent tables. Leave `[profiles.fast.general] = {}` and `[general] = {}` in place; users can `remove fast` to delete a whole profile and hand-edit if they want a parent table gone. The existing `_unset_in_doc` in `config_cmd.py` prunes empty ancestors for `thoth config unset`; keep that behavior isolated from P21b unless it is deliberately refactored with regression coverage for both pruning and no-prune callers.
+**`unset` semantics (B17):** profile unsets remove only the leaf key. Do **not** prune empty parent tables. Leave `[profiles.fast.general] = {}` and `[general] = {}` in place; users can `remove fast` to delete a whole profile and hand-edit if they want a parent table gone. The existing `_unset_in_doc` in `config_cmd.py` prunes empty ancestors for `doxa-research config unset`; keep that behavior isolated from P21b unless it is deliberately refactored with regression coverage for both pruning and no-prune callers.
 
 **`add` and `remove` idempotence (Q7):** both commands are no-ops when the target state already holds.
 
@@ -440,17 +440,17 @@ Expected: data-function tests pass.
 - [ ] **Step 7: Commit Task 1**
 
 ```bash
-git add src/thoth/config_cmd.py tests/test_config_profiles_cmd.py
+git add src/doxa_research/config_cmd.py tests/test_config_profiles_cmd.py
 git commit -m "feat: add profile config data functions"
 ```
 
 ---
 
-## Task 2: `thoth config profiles` Click Commands
+## Task 2: `doxa-research config profiles` Click Commands
 
 **Files:**
 - Modify: `tests/test_config_profiles_cmd.py`
-- Modify: `src/thoth/cli_subcommands/config.py`
+- Modify: `src/doxa_research/cli_subcommands/config.py`
 - Modify: `tests/test_json_envelopes.py`
 - Modify: `tests/test_ci_lint_rules.py`
 
@@ -461,10 +461,10 @@ Append to `tests/test_config_profiles_cmd.py`:
 ```python
 from click.testing import CliRunner
 
-from thoth.cli import cli
+from doxa-research.cli import cli
 
 
-def test_config_profiles_click_set_and_set_default(isolated_thoth_home: Path) -> None:
+def test_config_profiles_click_set_and_set_default(isolated_doxa_home: Path) -> None:
     runner = CliRunner()
     result = runner.invoke(cli, ["config", "profiles", "add", "fast"])
     assert result.exit_code == 0, result.output
@@ -483,7 +483,7 @@ def test_config_profiles_click_set_and_set_default(isolated_thoth_home: Path) ->
     assert result.output.strip().splitlines()[-1] == "thinking"
 
 
-def test_config_profiles_click_list_json(isolated_thoth_home: Path) -> None:
+def test_config_profiles_click_list_json(isolated_doxa_home: Path) -> None:
     import json
 
     runner = CliRunner()
@@ -496,14 +496,14 @@ def test_config_profiles_click_list_json(isolated_thoth_home: Path) -> None:
 
 
 def test_config_profiles_click_list_show_shadowed_json(
-    isolated_thoth_home: Path,
+    isolated_doxa_home: Path,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """B21: list --show-shadowed is wired through Click and JSON."""
     import json
 
-    from thoth.paths import user_config_file
+    from doxa-research.paths import user_config_file
 
     user_config_file().write_text(
         'version = "2.0"\n'
@@ -511,7 +511,7 @@ def test_config_profiles_click_list_show_shadowed_json(
         'default_mode = "thinking"\n'
     )
     monkeypatch.chdir(tmp_path)
-    (tmp_path / "thoth.config.toml").write_text(
+    (tmp_path / "doxa-research.config.toml").write_text(
         'version = "2.0"\n[profiles.prod.execution]\npoll_interval = 5\n'
     )
 
@@ -528,7 +528,7 @@ def test_config_profiles_click_list_show_shadowed_json(
 
 
 def test_config_profiles_mutators_reject_root_profile_flag(
-    isolated_thoth_home: Path,
+    isolated_doxa_home: Path,
 ) -> None:
     """B7: --profile is not honored by mutator leaves."""
     runner = CliRunner()
@@ -546,7 +546,7 @@ def test_config_profiles_mutators_reject_root_profile_flag(
 
 
 def test_config_profiles_state_readers_honor_root_profile_flag(
-    isolated_thoth_home: Path,
+    isolated_doxa_home: Path,
 ) -> None:
     """B7: --profile is honored by active-state readers."""
     runner = CliRunner()
@@ -560,7 +560,7 @@ def test_config_profiles_state_readers_honor_root_profile_flag(
 
 
 def test_config_profiles_show_rejects_root_profile_flag(
-    isolated_thoth_home: Path,
+    isolated_doxa_home: Path,
 ) -> None:
     """show NAME is a raw profile lookup; root --profile is a conflicting selector."""
     runner = CliRunner()
@@ -573,7 +573,7 @@ def test_config_profiles_show_rejects_root_profile_flag(
 
 
 def test_config_profiles_current_reports_flag_source(
-    isolated_thoth_home: Path,
+    isolated_doxa_home: Path,
 ) -> None:
     """B12: profiles current reports the runtime source as 'flag' under --profile."""
     import json
@@ -590,9 +590,9 @@ def test_config_profiles_current_reports_flag_source(
 
 
 def test_runtime_selection_does_not_mutate_persisted_pointer(
-    isolated_thoth_home: Path,
+    isolated_doxa_home: Path,
 ) -> None:
-    """B20 end-to-end: --profile/THOTH_PROFILE are read-only; persisted default_profile is unchanged.
+    """B20 end-to-end: --profile/DOXA_PROFILE are read-only; persisted default_profile is unchanged.
 
     With persisted general.default_profile = "fast", running with --profile bar:
       - `config get general.default_profile` returns "fast" (the persisted file value).
@@ -636,7 +636,7 @@ Expected: Click reports no `profiles` command.
 
 - [ ] **Step 3: Add nested Click group**
 
-In `src/thoth/cli_subcommands/config.py`, add:
+In `src/doxa_research/cli_subcommands/config.py`, add:
 
 ```python
 @config.group(name="profiles", invoke_without_command=True)
@@ -671,7 +671,7 @@ For `list --show-shadowed`, human output marks hidden lower-precedence rows with
 
 Active-state readers (`list`, `current`) honor `DEFAULT_HONOR` (which already includes both `"config_path"` and `"profile"` from P21).
 
-`show NAME` and mutator leaves (`add`, `set`, `unset`, `remove`, `set-default`, `unset-default`) call `validate_inherited_options(ctx, "config profiles <op>", honored_options={"config_path"})` — explicitly drop `"profile"` from honored options. This makes `thoth --profile foo config profiles show bar` and `thoth --profile foo config profiles add bar` error with the standard "no such option" message rather than silently ignoring `--profile foo`. These leaves forward only `config_path` via `inherited_value(ctx, "config_path")`.
+`show NAME` and mutator leaves (`add`, `set`, `unset`, `remove`, `set-default`, `unset-default`) call `validate_inherited_options(ctx, "config profiles <op>", honored_options={"config_path"})` — explicitly drop `"profile"` from honored options. This makes `doxa-research --profile foo config profiles show bar` and `doxa-research --profile foo config profiles add bar` error with the standard "no such option" message rather than silently ignoring `--profile foo`. These leaves forward only `config_path` via `inherited_value(ctx, "config_path")`.
 
 - [ ] **Step 5: Add JSON envelope rows**
 
@@ -709,7 +709,7 @@ Expected: profile Click commands and JSON envelope tests pass.
 - [ ] **Step 7: Commit Task 2**
 
 ```bash
-git add src/thoth/cli_subcommands/config.py tests/test_config_profiles_cmd.py tests/test_json_envelopes.py tests/test_ci_lint_rules.py
+git add src/doxa_research/cli_subcommands/config.py tests/test_config_profiles_cmd.py tests/test_json_envelopes.py tests/test_ci_lint_rules.py
 git commit -m "feat: add config profile commands"
 ```
 
@@ -718,7 +718,7 @@ git commit -m "feat: add config profile commands"
 ## Task 3: Help, Docs, and Tracker
 
 **Files:**
-- Modify: `src/thoth/help.py`
+- Modify: `src/doxa_research/help.py`
 - Modify: `README.md`
 - Modify: `manual_testing_instructions.md`
 - Modify: `PROJECTS.md`
@@ -728,7 +728,7 @@ git commit -m "feat: add config profile commands"
 Add a test to `tests/test_config_profiles_cmd.py`:
 
 ```python
-def test_config_profiles_appears_in_config_help(isolated_thoth_home: Path) -> None:
+def test_config_profiles_appears_in_config_help(isolated_doxa_home: Path) -> None:
     result = CliRunner().invoke(cli, ["config", "--help"])
     assert result.exit_code == 0
     assert "profiles" in result.output
@@ -744,14 +744,14 @@ Expected: fail until help output includes the subgroup.
 
 - [ ] **Step 3: Update help text**
 
-Update `src/thoth/help.py` config help text to include:
+Update `src/doxa_research/help.py` config help text to include:
 
 ```text
-thoth config profiles list
-thoth config profiles current
-thoth config profiles add fast
-thoth config profiles set fast general.default_mode thinking
-thoth config profiles set-default fast
+doxa config profiles list
+doxa config profiles current
+doxa config profiles add fast
+doxa config profiles set fast general.default_mode thinking
+doxa config profiles set-default fast
 ```
 
 - [ ] **Step 4: Update README**
@@ -764,16 +764,16 @@ P21 already added a README "Configuration Profiles" section with hand-edit examp
 Once P21b ships, you no longer need to hand-edit `[profiles.<name>]` blocks. The same profile from the hand-edit example above can be created end-to-end with:
 
 ```bash
-thoth config profiles add fast
-thoth config profiles set fast general.default_mode thinking
-thoth config profiles set-default fast    # persists general.default_profile = "fast"
-thoth config profiles current             # shows fast (from general.default_profile)
-thoth config profiles list                # lists all profiles, marks active
-thoth config profiles list --show-shadowed  # also shows user profiles shadowed by project profiles
-thoth config profiles show fast --json    # full profile contents
-thoth config profiles unset fast general.default_mode  # remove a single key
-thoth config profiles remove fast         # delete the entire profile
-thoth config profiles unset-default       # clear the persisted pointer
+doxa config profiles add fast
+doxa config profiles set fast general.default_mode thinking
+doxa config profiles set-default fast    # persists general.default_profile = "fast"
+doxa config profiles current             # shows fast (from general.default_profile)
+doxa config profiles list                # lists all profiles, marks active
+doxa config profiles list --show-shadowed  # also shows user profiles shadowed by project profiles
+doxa config profiles show fast --json    # full profile contents
+doxa config profiles unset fast general.default_mode  # remove a single key
+doxa config profiles remove fast         # delete the entire profile
+doxa config profiles unset-default       # clear the persisted pointer
 ```
 
 `--profile` is honored only by `list` and `current`. `show NAME` and mutator commands reject `--profile` because the profile they inspect or operate on is the positional argument.
@@ -784,19 +784,19 @@ thoth config profiles unset-default       # clear the persisted pointer
 Append to `manual_testing_instructions.md`:
 
 ```bash
-thoth config profiles add fast
-thoth config profiles set fast general.default_mode thinking
-thoth config profiles set-default fast
-thoth config get general.default_mode
-THOTH_PROFILE=fast thoth config get general.default_mode
-thoth config profiles current
-thoth --profile fast config profiles current
-thoth --profile missing config get general.default_mode
-thoth config profiles set-default ghost      # expect ConfigProfileError
-thoth --profile foo config profiles add bar  # expect 'no such option' error
-thoth config profiles add interactive
-thoth config profiles set interactive general.default_mode interactive
-thoth config profiles show interactive
+doxa config profiles add fast
+doxa config profiles set fast general.default_mode thinking
+doxa config profiles set-default fast
+doxa config get general.default_mode
+DOXA_PROFILE=fast doxa-research config get general.default_mode
+doxa config profiles current
+doxa --profile fast config profiles current
+doxa --profile missing config get general.default_mode
+doxa config profiles set-default ghost      # expect ConfigProfileError
+doxa --profile foo config profiles add bar  # expect 'no such option' error
+doxa config profiles add interactive
+doxa config profiles set interactive general.default_mode interactive
+doxa config profiles show interactive
 ```
 
 - [ ] **Step 6: Update P21b tracker**
@@ -815,7 +815,7 @@ Expected: tests pass and no whitespace errors.
 - [ ] **Step 8: Commit Task 3**
 
 ```bash
-git add src/thoth/help.py README.md manual_testing_instructions.md PROJECTS.md tests/test_config_profiles_cmd.py
+git add src/doxa_research/help.py README.md manual_testing_instructions.md PROJECTS.md tests/test_config_profiles_cmd.py
 git commit -m "docs: document config profile CLI commands"
 ```
 
@@ -830,7 +830,7 @@ make env-check
 just fix
 just check
 uv run pytest tests/test_config_profiles_cmd.py tests/test_config_profiles.py tests/test_config_cmd.py tests/test_json_envelopes.py tests/test_ci_lint_rules.py -v
-./thoth_test -r --skip-interactive -q
+./doxa_test -r --skip-interactive -q
 just test-fix
 just test-lint
 just test-typecheck
@@ -842,7 +842,7 @@ Expected:
 - `make env-check` exits 0.
 - `just check` exits 0.
 - Targeted pytest exits 0.
-- `./thoth_test -r --skip-interactive -q` exits 0.
+- `./doxa_test -r --skip-interactive -q` exits 0.
 - `just test-lint` and `just test-typecheck` exit 0.
 - `git diff --check` exits 0.
 

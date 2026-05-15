@@ -3,14 +3,14 @@
   "release-type": "python",
   "packages": {
     ".": {
-      "package-name": "thoth",
+      "package-name": "doxa-research",
       "include-v-in-tag": true,
       "include-component-in-tag": false,
       "bump-minor-pre-major": true,
       "bump-patch-for-minor-pre-major": false,
       "changelog-path": "CHANGELOG.md",
       "extra-files": [
-        "src/thoth/__init__.py"
+        "src/doxa-research/__init__.py"
       ]
     }
   },

@@ -9,12 +9,12 @@
 P18 introduces an optional `provider.cancel(job_id)` capability on
 `ResearchProvider`. Each upstream provider has its own cancellation
 semantics (or lack thereof). Before implementing per-provider, we need to
-know what each API actually exposes so we can map it to a uniform thoth
+know what each API actually exposes so we can map it to a uniform doxa-research
 contract. Providers without upstream cancel support raise
-`NotImplementedError` from the base — the `thoth cancel` CLI catches it and
+`NotImplementedError` from the base — the `doxa-research cancel` CLI catches it and
 reports "upstream cancel not supported, local checkpoint marked cancelled".
 
-## Uniform contract (re: how thoth callers see cancel)
+## Uniform contract (re: how doxa-research callers see cancel)
 
 ```python
 # providers/base.py
@@ -28,7 +28,7 @@ async def cancel(self, job_id: str) -> dict[str, Any]:
     """
 ```
 
-`thoth cancel <op-id>` invokes this for each non-completed provider on the
+`doxa-research cancel <op-id>` invokes this for each non-completed provider on the
 operation, swallowing `NotImplementedError` (to mark only local checkpoint),
 and updates the operation's checkpoint to `cancelled` regardless.
 
@@ -63,7 +63,7 @@ Cancellation does NOT refund billing. This is fine for our use case
 ```python
 async def cancel(self, job_id: str) -> dict[str, Any]:
     if job_id not in self.jobs:
-        # Reattach lazily — cancel may be invoked from `thoth cancel` after
+        # Reattach lazily — cancel may be invoked from `doxa-research cancel` after
         # a fresh process start where self.jobs is empty.
         try:
             await self.reconnect(job_id)
@@ -92,8 +92,8 @@ async def cancel(self, job_id: str) -> dict[str, Any]:
 
 ## Perplexity Sonar — needs verification, likely orphan-only
 
-**Status:** **Not yet implemented in thoth** (`PerplexityProvider.submit`
-raises NotImplementedError; the provider exists only for `thoth providers
+**Status:** **Not yet implemented in doxa-research** (`PerplexityProvider.submit`
+raises NotImplementedError; the provider exists only for `doxa-research providers
 models` listing). Cancel research is forward-compat for when the provider
 lands.
 
@@ -107,7 +107,7 @@ chat-completions endpoint. The async submission flow returns a
 There is no `DELETE` or `POST .../cancel` endpoint listed in the public
 docs.
 
-**Mapping to thoth contract:**
+**Mapping to doxa-research contract:**
 
 If verification confirms there is no upstream cancel:
 
@@ -116,7 +116,7 @@ async def cancel(self, job_id: str) -> dict[str, Any]:
     # Perplexity does not expose upstream cancel. Drop our local job-id
     # tracking (so we stop polling) and return cancelled. The upstream
     # request will run to completion and bill normally; the user has
-    # accepted that by issuing `thoth cancel`.
+    # accepted that by issuing `doxa-research cancel`.
     self.jobs.pop(job_id, None)
     return {
         "status": "cancelled",
@@ -126,7 +126,7 @@ async def cancel(self, job_id: str) -> dict[str, Any]:
 ```
 
 **Alternative (recommended):** Leave `PerplexityProvider.cancel` as the
-inherited `NotImplementedError` and let the `thoth cancel` CLI display the
+inherited `NotImplementedError` and let the `doxa-research cancel` CLI display the
 "upstream cancel not supported" message. That communicates the limitation
 honestly rather than papering over it with a half-truth.
 
@@ -143,7 +143,7 @@ docs.
 
 ## Gemini Deep Research — needs verification
 
-**Status:** **Not yet implemented in thoth.** The provider scaffold is
+**Status:** **Not yet implemented in doxa-research.** The provider scaffold is
 referenced in `planning/references.md` but does not exist as a module.
 
 **API:** Gemini exposes deep-research via an "Interactions API" at
@@ -154,7 +154,7 @@ asynchronously, you poll for completion.
 **Cancel endpoint:** Not explicitly documented as of 2026-04. Session
 abandonment (closing the client / not polling) is the implicit cancel.
 
-**Mapping to thoth contract:**
+**Mapping to doxa-research contract:**
 
 Likely the same recommendation as Perplexity: leave inherited
 NotImplementedError until the provider's `submit()` lands. Then
@@ -186,7 +186,7 @@ Used by the `test_provider_cancel.py` hermetic suite and by the
 | `PerplexityProvider` | Inherits `NotImplementedError` | Provider not yet operational; revisit when `submit()` lands |
 | `GeminiProvider` | Not present | Provider doesn't exist yet |
 
-The `thoth cancel` CLI catches `NotImplementedError` and reports
+The `doxa-research cancel` CLI catches `NotImplementedError` and reports
 "upstream cancel not supported" — preserving the user-visible behavior
 contract regardless of which providers eventually grow real cancel
 support.

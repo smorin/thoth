@@ -17,8 +17,8 @@ import asyncio
 
 import pytest
 
-from thoth.errors import ModeKindMismatchError, ThothError
-from thoth.providers.openai import OpenAIProvider
+from doxa_research.errors import DoxaError, ModeKindMismatchError
+from doxa_research.providers.openai import OpenAIProvider
 
 
 @pytest.fixture
@@ -112,7 +112,7 @@ def test_error_carries_user_facing_suggestion(fake_openai_key: str) -> None:
     assert "kind" in err.suggestion
 
 
-def test_error_subclasses_thotherror(fake_openai_key: str) -> None:
+def test_error_subclasses_doxaerror(fake_openai_key: str) -> None:
     p = _provider(model="o3-deep-research", kind="immediate")
-    with pytest.raises(ThothError):
+    with pytest.raises(DoxaError):
         asyncio.run(p.submit("hello", mode="thinking"))

@@ -1,4 +1,4 @@
-"""Tests for `thoth.context.AppContext`.
+"""Tests for `doxa_research.context.AppContext`.
 
 These pin the dataclass's public surface so Phase 5 DI wiring (threading
 `ctx: AppContext` through `run_research` et al.) has a stable contract.
@@ -10,8 +10,8 @@ import threading
 
 from rich.console import Console
 
-from thoth.config import ConfigManager
-from thoth.context import AppContext
+from doxa_research.config import ConfigManager
+from doxa_research.context import AppContext
 
 
 def _stub_config() -> ConfigManager:

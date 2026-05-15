@@ -7,7 +7,7 @@
 **Predecessors:** Defers from `planning/project_promote_commands.md`; supersedes that file's task draft
 **Related:**
 - P12 (CLI Mode Editing) lands `add/set/unset` *inside* this project's `modes` subgroup
-- **P18** (`docs/superpowers/specs/2026-04-26-p18-immediate-vs-background-design.md`, target v2.16.0) — splits execution into immediate (streaming) and background (polling) paths. Once P18 lands, `thoth ask "..." --mode <immediate-mode>` (e.g., `--mode thinking`, `--mode default`) **automatically streams to stdout** and emits no operation ID or resume hint. PR2's `ask` subcommand inherits this behavior at the dispatch layer below — no PR2-side change required. Merge-order independent: either project can land first; the other realizes the combined UX on its own merge.
+- **P18** (`docs/superpowers/specs/2026-04-26-p18-immediate-vs-background-design.md`, target v2.16.0) — splits execution into immediate (streaming) and background (polling) paths. Once P18 lands, `doxa-research ask "..." --mode <immediate-mode>` (e.g., `--mode thinking`, `--mode default`) **automatically streams to stdout** and emits no operation ID or resume hint. PR2's `ask` subcommand inherits this behavior at the dispatch layer below — no PR2-side change required. Merge-order independent: either project can land first; the other realizes the combined UX on its own merge.
 
 **Closes:** PRD F-70 (`shell completion support`), Plan M21-07 (same)
 
@@ -15,12 +15,12 @@
 
 ## 1. Goal
 
-Refactor `thoth`'s CLI from a single `@click.command()` with positional pseudo-dispatch into a real `@click.group()` with first-class subcommands, deliver shell completion as a built-in surface, and grow `--json` coverage to every data/action admin command — landing as v3.0.0.
+Refactor `doxa-research`'s CLI from a single `@click.command()` with positional pseudo-dispatch into a real `@click.group()` with first-class subcommands, deliver shell completion as a built-in surface, and grow `--json` coverage to every data/action admin command — landing as v3.0.0.
 
 ## 2. Motivation
 
-1. **Self-documenting surface.** `thoth --help` should make the two-namespace model (admin commands vs research) immediately visible to new users. The current ~130-line imperative dispatch in `cli.py:292-421` is invisible at help time.
-2. **Shell completion.** Click's built-in completion machinery requires a real `Group`. Without it, no `thoth resume <TAB>` op-id completion, no `thoth config get <TAB>` key completion. Today there is **zero** shell completion (verified: only an in-process `SlashCommandCompleter` in `interactive.py:235` for the prompt_toolkit REPL — unrelated to shell-level completion).
+1. **Self-documenting surface.** `doxa-research --help` should make the two-namespace model (admin commands vs research) immediately visible to new users. The current ~130-line imperative dispatch in `cli.py:292-421` is invisible at help time.
+2. **Shell completion.** Click's built-in completion machinery requires a real `Group`. Without it, no `doxa-research resume <TAB>` op-id completion, no `doxa-research config get <TAB>` key completion. Today there is **zero** shell completion (verified: only an in-process `SlashCommandCompleter` in `interactive.py:235` for the prompt_toolkit REPL — unrelated to shell-level completion).
 3. **First-class commands for automation.** External tools (justfiles, CI scripts, shell pipelines) need stable, predictable, machine-readable surfaces — not a positional pseudo-dispatch with awkward separators. JSON output coverage is currently inconsistent: `config list` and `modes` have `--json`; `status`, `list`, `providers`, `init` do not.
 
 ## 3. Out of scope
@@ -29,7 +29,7 @@ Refactor `thoth`'s CLI from a single `@click.command()` with positional pseudo-d
 - Changing the *behavior* of any existing handler (handlers in `commands.py`/`config_cmd.py`/`modes_cmd.py` keep their semantics)
 - Modifying `interactive.py` (verified decoupled from CLI dispatch; optional polish only — `SlashCommandCompleter` *may* migrate to importing from `completion/sources.py` if trivial)
 - New mode-editing operations (`modes set/add/unset`) — those land in **P12** and slot into this project's `modes` subgroup
-- A `thoth admin` namespace prefix (rejected — doubles invocation length, breaks every existing script for no help-clarity gain over the two-section split)
+- A `doxa-research admin` namespace prefix (rejected — doubles invocation length, breaks every existing script for no help-clarity gain over the two-section split)
 - Performance-tuning the dispatch (refactor is structural; if Click groups are noticeably slower than the imperative dispatch, address as follow-up)
 
 ## 4. Decisions locked during brainstorming
@@ -37,52 +37,52 @@ Refactor `thoth`'s CLI from a single `@click.command()` with positional pseudo-d
 | # | Question | Decision |
 |---|---|---|
 | Q1 | Primary motivation | **B+ plus automation/scripting as a first-class motivator.** Self-documenting surface AND shell completion AND scriptable verbs. |
-| Q2 | What about `thoth "bare prompt"`? | **D — keep bare-prompt indefinitely + add `thoth ask PROMPT` as the canonical scripted form**. `ask` is a positional-argument equivalent to the existing top-level `-q/--prompt` flag; both forms continue to work. The bare form (`thoth "..."`) also keeps working. |
-| Q3 | What about `--resume OP_ID`? | **D — subcommand-only.** `thoth resume OP_ID` is the only form. `--resume` flag is REMOVED in this release. Breaking change → MAJOR bump. |
-| Q4 | Shell completion scope | **C — `thoth completion bash\|zsh\|fish` subcommand + dynamic completers**, with shared-data-source design constraint: completer data sources live in `completion/sources.py`, importable by both shell completers and the existing interactive REPL `SlashCommandCompleter`. |
+| Q2 | What about `doxa-research "bare prompt"`? | **D — keep bare-prompt indefinitely + add `doxa-research ask PROMPT` as the canonical scripted form**. `ask` is a positional-argument equivalent to the existing top-level `-q/--prompt` flag; both forms continue to work. The bare form (`doxa-research "..."`) also keeps working. |
+| Q3 | What about `--resume OP_ID`? | **D — subcommand-only.** `doxa-research resume OP_ID` is the only form. `--resume` flag is REMOVED in this release. Breaking change → MAJOR bump. |
+| Q4 | Shell completion scope | **C — `doxa-research completion bash\|zsh\|fish` subcommand + dynamic completers**, with shared-data-source design constraint: completer data sources live in `completion/sources.py`, importable by both shell completers and the existing interactive REPL `SlashCommandCompleter`. |
 | Q5 | `--json` coverage | **C — full data/action coverage.** Every data/action admin command grows `--json`; `help` stays human-only and completion scripts stay raw shell output on success. `init --json` requires `--non-interactive` (errors clearly if missing). `config edit --json` emits success envelope after editor closes. |
-| Q6 | Help section structure | **D — two sections + labeled epilog.** "Run research" cluster (`ask`, `resume`, `status`, `list`) + "Manage thoth" cluster (`init`, `config`, `modes`, `providers`, `completion`, `help`) + "Modes (positional)" epilog block + worked examples. |
+| Q6 | Help section structure | **D — two sections + labeled epilog.** "Run research" cluster (`ask`, `resume`, `status`, `list`) + "Manage doxa-research" cluster (`init`, `config`, `modes`, `providers`, `completion`, `help`) + "Modes (positional)" epilog block + worked examples. |
 | Q7 | Rollout shape | **B — three-PR sequence into single v3.0.0 release.** PR1 refactor only (no behavior change), PR2 breakage + new verbs (`ask`, `resume`, removals), PR3 automation polish (`completion` + data/action `--json` coverage). |
 
 **Follow-up clarifications:**
 
-- **Legacy removal is aggressive.** No backward-compat shims for any removed surface. `--resume` flag → gone. `thoth providers -- --list` shim → gone (folded in from the original proposal's `[P##-T08]` "remove deprecation shim" task; cheapest moment is now since we're already breaking). `COMMAND_NAMES` frozenset, `ThothCommand` class, `nargs=-1` top-level `args`, `ignore_unknown_options=True` group flag — all gone.
-- **`thoth help [TOPIC]`** — kept as thin alias forwarding to `thoth [TOPIC] --help` for real subcommands. PR2 removed the parse-time `thoth --help <topic>` hijack and the virtual `auth` topic; `render_auth_help()` stays internal for docs/future command reuse.
+- **Legacy removal is aggressive.** No backward-compat shims for any removed surface. `--resume` flag → gone. `doxa-research providers -- --list` shim → gone (folded in from the original proposal's `[P##-T08]` "remove deprecation shim" task; cheapest moment is now since we're already breaking). `COMMAND_NAMES` frozenset, `DoxaCommand` class, `nargs=-1` top-level `args`, `ignore_unknown_options=True` group flag — all gone.
+- **`doxa-research help [TOPIC]`** — kept as thin alias forwarding to `doxa-research [TOPIC] --help` for real subcommands. PR2 removed the parse-time `doxa-research --help <topic>` hijack and the virtual `auth` topic; `render_auth_help()` stays internal for docs/future command reuse.
 - **Exit codes** — keep today's 0/1/2 scheme. JSON envelopes expose granular `error.code` strings as advisory metadata, but the OS exit code stays coarse. No new 3/4 codes.
 - **JSON-vs-handler seam** — Option **B-deferred-to-PR3**: handlers stay 100% untouched in PR1+PR2; each one gets a `get_*_data() -> dict` extraction at the moment its `--json` lands in PR3. Existing handler-level `as_json` branches in `config_cmd.py`/`modes_cmd.py` are migrated out by PR3, and no handler-level JSON flag remains in the end state.
-- **Surprising parses** — `thoth init` (subcommand) vs `thoth "init the database"` (bare-prompt) disambiguated by Click's argv parsing. Documented in `--help` epilog and CHANGELOG; no runtime warning.
+- **Surprising parses** — `doxa-research init` (subcommand) vs `doxa-research "init the database"` (bare-prompt) disambiguated by Click's argv parsing. Documented in `--help` epilog and CHANGELOG; no runtime warning.
 
 ## 5. Architecture
 
 ### 5.1 The shape
 
-`thoth` becomes `@click.group(cls=ThothGroup, ...)`. `ThothGroup` is a custom `click.Group` subclass that handles three dispatch paths the default group can't:
+`doxa-research` becomes `@click.group(cls=DoxaGroup, ...)`. `DoxaGroup` is a custom `click.Group` subclass that handles three dispatch paths the default group can't:
 
 1. **Registered subcommand** — standard Click dispatch (the common case)
 2. **Mode-name positional** — `args[0] ∈ BUILTIN_MODES` → routes to research execution path
 3. **Bare-prompt fallback** — `args[0]` is neither subcommand nor mode → routes to default-mode research
 
-`ThothGroup` is also where the two-section help layout (Q6-D) is rendered.
+`DoxaGroup` is also where the two-section help layout (Q6-D) is rendered.
 
 ### 5.2 File layout
 
 | File | State | Responsibility |
 |---|---|---|
-| `src/thoth/cli.py` | shrinks ~280 lines | `@click.group(cls=ThothGroup)` + bare-prompt/mode-fallback callback + explicit `cli.add_command(...)` registrations |
-| `src/thoth/help.py` | shrinks ~200 lines | `ThothGroup` class + two-section help renderer + retained rich help helpers (`show_config_help()`, `render_auth_help()` / `show_auth_help()`) |
-| `src/thoth/cli_subcommands/` | NEW directory | One module per subcommand cluster; each defines `@click.command()` decorated function(s) delegating to existing handlers |
-| `src/thoth/completion/` | NEW directory | `script.py` (shell init script generation) + `sources.py` (dynamic completer data: op-ids, mode names, config keys, provider names) |
-| `src/thoth/json_output.py` | NEW file | Uniform JSON envelope contract: `emit_json(data)` and `emit_error(code, message, details)` |
-| `src/thoth/commands.py` | unchanged in PR1+PR2; refactored per-handler in PR3 | Existing handlers; gain `get_*_data() -> dict` siblings as `--json` for each lands |
-| `src/thoth/config_cmd.py`, `modes_cmd.py` | same as `commands.py` | Same B-deferred pattern |
-| `src/thoth/interactive.py` | unchanged | Decoupled from CLI dispatch; optional polish to import from `completion/sources.py` |
-| `src/thoth/__main__.py` | unchanged | Entry-point shim |
+| `src/doxa_research/cli.py` | shrinks ~280 lines | `@click.group(cls=DoxaGroup)` + bare-prompt/mode-fallback callback + explicit `cli.add_command(...)` registrations |
+| `src/doxa_research/help.py` | shrinks ~200 lines | `DoxaGroup` class + two-section help renderer + retained rich help helpers (`show_config_help()`, `render_auth_help()` / `show_auth_help()`) |
+| `src/doxa_research/cli_subcommands/` | NEW directory | One module per subcommand cluster; each defines `@click.command()` decorated function(s) delegating to existing handlers |
+| `src/doxa_research/completion/` | NEW directory | `script.py` (shell init script generation) + `sources.py` (dynamic completer data: op-ids, mode names, config keys, provider names) |
+| `src/doxa_research/json_output.py` | NEW file | Uniform JSON envelope contract: `emit_json(data)` and `emit_error(code, message, details)` |
+| `src/doxa_research/commands.py` | unchanged in PR1+PR2; refactored per-handler in PR3 | Existing handlers; gain `get_*_data() -> dict` siblings as `--json` for each lands |
+| `src/doxa_research/config_cmd.py`, `modes_cmd.py` | same as `commands.py` | Same B-deferred pattern |
+| `src/doxa_research/interactive.py` | unchanged | Decoupled from CLI dispatch; optional polish to import from `completion/sources.py` |
+| `src/doxa_research/__main__.py` | unchanged | Entry-point shim |
 
 ### 5.3 What gets removed
 
-**PR1:** `if args[0] in COMMAND_NAMES` block (`cli.py:292-421`) · `nargs=-1` positional `args` on top-level command · `ThothCommand` class entirely · `COMMAND_NAMES` frozenset · most legacy `show_*_help()` helpers · help-string examples in `cli.py:184-188` rewritten from `thoth help X` to `thoth X --help`.
+**PR1:** `if args[0] in COMMAND_NAMES` block (`cli.py:292-421`) · `nargs=-1` positional `args` on top-level command · `DoxaCommand` class entirely · `COMMAND_NAMES` frozenset · most legacy `show_*_help()` helpers · help-string examples in `cli.py:184-188` rewritten from `doxa-research help X` to `doxa-research X --help`.
 
-**PR2:** `--resume` global option declaration (`cli.py:97`) · `providers -- --` and in-group provider flag shims · `modes --json/--show-secrets/--full/--name/--source` legacy shims and bare-`modes` shortcut · parse-time `thoth --help <topic>` hijack and `auth` virtual help topic · `ctx.args` plumbing (verify all uses; remove if safe) · `ignore_unknown_options=True` on top-level group (no longer needed once shim is gone — Click reverts to strict option parsing, catching script typos).
+**PR2:** `--resume` global option declaration (`cli.py:97`) · `providers -- --` and in-group provider flag shims · `modes --json/--show-secrets/--full/--name/--source` legacy shims and bare-`modes` shortcut · parse-time `doxa-research --help <topic>` hijack and `auth` virtual help topic · `ctx.args` plumbing (verify all uses; remove if safe) · `ignore_unknown_options=True` on top-level group (no longer needed once shim is gone — Click reverts to strict option parsing, catching script typos).
 
 **PR3:** Nothing removed; pure addition.
 
@@ -90,11 +90,11 @@ Refactor `thoth`'s CLI from a single `@click.command()` with positional pseudo-d
 
 ### 5.4 What stays the same (user-visible)
 
-All current invocation strings except the PR2 removals continue to work bit-identically: `thoth init`, `thoth status OP_ID`, `thoth list`, `thoth deep_research "topic"`, `thoth "bare prompt"`, `thoth -i`, `thoth -m deep_research -q "..."`, `thoth providers list`, `thoth config list`, `thoth modes list`, `thoth -V`, `thoth --version`. Removed forms are `thoth --resume OP_ID`, `thoth providers -- --...`, in-group provider flag shims (`thoth providers --list`, etc.), bare `thoth providers`, bare `thoth modes`, `thoth modes --json/--name/--source/...`, and the parse-time `thoth --help <topic>` hijack. All non-removed global flags (`--project`, `--async`, `--auto`, `--input-file`, `--verbose`, `--quiet`, `--config`, `--output-dir`, etc.) stay on the top-level group.
+All current invocation strings except the PR2 removals continue to work bit-identically: `doxa-research init`, `doxa-research status OP_ID`, `doxa-research list`, `doxa-research deep_research "topic"`, `doxa-research "bare prompt"`, `doxa-research -i`, `doxa-research -m deep_research -q "..."`, `doxa-research providers list`, `doxa-research config list`, `doxa-research modes list`, `doxa-research -V`, `doxa-research --version`. Removed forms are `doxa-research --resume OP_ID`, `doxa-research providers -- --...`, in-group provider flag shims (`doxa-research providers --list`, etc.), bare `doxa-research providers`, bare `doxa-research modes`, `doxa-research modes --json/--name/--source/...`, and the parse-time `doxa-research --help <topic>` hijack. All non-removed global flags (`--project`, `--async`, `--auto`, `--input-file`, `--verbose`, `--quiet`, `--config`, `--output-dir`, etc.) stay on the top-level group.
 
 ## 6. Components
 
-### 6.1 `ThothGroup` (in `help.py`)
+### 6.1 `DoxaGroup` (in `help.py`)
 
 - **Purpose:** Single chokepoint for dispatch + help rendering.
 - **Interface:** ~3 overrides (`invoke`, `format_commands`, `resolve_command`), ~50 lines total.
@@ -104,27 +104,27 @@ All current invocation strings except the PR2 removals continue to work bit-iden
 
 | File | Subcommand(s) |
 |---|---|
-| `init.py` | `thoth init [--non-interactive] [--json]` |
-| `status.py` | `thoth status OP_ID [--json]` (OP_ID has dynamic completer) |
-| `list_cmd.py` | `thoth list [--all] [--json]` (file name avoids Python keyword shadow) |
-| `providers.py` | Click subgroup with leaves `list`, `models`, `check` (UX is flat: `thoth providers list`) |
+| `init.py` | `doxa-research init [--non-interactive] [--json]` |
+| `status.py` | `doxa-research status OP_ID [--json]` (OP_ID has dynamic completer) |
+| `list_cmd.py` | `doxa-research list [--all] [--json]` (file name avoids Python keyword shadow) |
+| `providers.py` | Click subgroup with leaves `list`, `models`, `check` (UX is flat: `doxa-research providers list`) |
 | `config.py` | Click subgroup with leaves `get`, `set`, `unset`, `list`, `path`, `edit` |
 | `modes.py` | Click subgroup with leaves `list` (P16); `add`, `set`, `unset` slot in via P12 |
-| `ask.py` | `thoth ask PROMPT [--mode] [--async] [--auto] [--input-file] [--json] ...` (full inheriting flag set) |
-| `resume.py` | `thoth resume OP_ID [--json]` (OP_ID has dynamic completer) |
-| `completion.py` | `thoth completion {bash,zsh,fish} [--install] [--force] [--json]`; validate `shell` inside the command body so invalid-shell errors can emit `UNSUPPORTED_SHELL` JSON |
-| `help_cmd.py` | `thoth help [TOPIC]` — thin forwarder for real subcommands only |
+| `ask.py` | `doxa-research ask PROMPT [--mode] [--async] [--auto] [--input-file] [--json] ...` (full inheriting flag set) |
+| `resume.py` | `doxa-research resume OP_ID [--json]` (OP_ID has dynamic completer) |
+| `completion.py` | `doxa-research completion {bash,zsh,fish} [--install] [--force] [--json]`; validate `shell` inside the command body so invalid-shell errors can emit `UNSUPPORTED_SHELL` JSON |
+| `help_cmd.py` | `doxa-research help [TOPIC]` — thin forwarder for real subcommands only |
 
 Registered explicitly in `cli.py` via `cli.add_command(...)` — no auto-discovery (explicit beats magic; the surface is visible at one place).
 
 ### 6.3 `completion/`
 
 - **`sources.py`** — pure functions for completer data:
-  - `operation_ids(ctx, param, incomplete)` — globs `~/.thoth/operations/*.json`
+  - `operation_ids(ctx, param, incomplete)` — globs `~/.doxa-research/operations/*.json`
   - `mode_names(ctx, param, incomplete)` — filters `BUILTIN_MODES`
   - `config_keys(ctx, param, incomplete)` — flattens TOML keys from current resolved config
   - `provider_names(ctx, param, incomplete)` — reads from the same source as the `--provider` Click choice (`["openai", "perplexity", "mock"]` today, sourced from `cli.py:103`'s `click.Choice`). If the provider list moves to a registry in the future, this function follows.
-- **`script.py`** — wraps Click's `_THOTH_COMPLETE=<shell>_source thoth` machinery with friendlier UX (better error messages, `completion <shell> --install` writes to conventional shell rc location with prompt-before-overwrite in tty, refusal in non-tty unless `--force`).
+- **`script.py`** — wraps Click's `_DOXA_COMPLETE=<shell>_source doxa-research` machinery with friendlier UX (better error messages, `completion <shell> --install` writes to conventional shell rc location with prompt-before-overwrite in tty, refusal in non-tty unless `--force`).
 - **Shared with `interactive.py`** — `SlashCommandCompleter` MAY migrate to importing `mode_names`. Polish, not blocker.
 
 ### 6.4 `json_output.py`
@@ -142,15 +142,15 @@ Registered explicitly in `cli.py` via `cli.add_command(...)` — no auto-discove
 
 ### 7.1 Five paths through the group
 
-1. **Registered subcommand** (common): Click parses → `ThothGroup.invoke` → `cli_subcommands/<name>.py::<name>(...)` → handler delegate (or `get_*_data()` → `emit_json` if `--json`).
-2. **Mode positional**: `thoth deep_research "topic"` → `resolve_command` returns None → `invoke` detects `args[0] ∈ BUILTIN_MODES` → packages and calls `_run_research_default(mode, prompt, **opts)`.
-3. **Bare-prompt fallback**: `thoth "explain X"` → same as path 2 with `mode=DEFAULT_MODE`, `prompt=" ".join(args)`.
-4. **Completion** (install + runtime): `eval "$(thoth completion zsh)"` registers shell handler; subsequent TAB invocations re-call `thoth` with `COMP_WORDS` env, Click matches command + arg position, looks up the registered `shell_complete` callback in `completion/sources.py`.
-5. **`thoth help [TOPIC]` alias**: dispatches to `cli_subcommands/help_cmd.py` → looks up target subcommand → renders that command's Click help. Unknown topics, including `auth`, exit 2.
+1. **Registered subcommand** (common): Click parses → `DoxaGroup.invoke` → `cli_subcommands/<name>.py::<name>(...)` → handler delegate (or `get_*_data()` → `emit_json` if `--json`).
+2. **Mode positional**: `doxa-research deep_research "topic"` → `resolve_command` returns None → `invoke` detects `args[0] ∈ BUILTIN_MODES` → packages and calls `_run_research_default(mode, prompt, **opts)`.
+3. **Bare-prompt fallback**: `doxa-research "explain X"` → same as path 2 with `mode=DEFAULT_MODE`, `prompt=" ".join(args)`.
+4. **Completion** (install + runtime): `eval "$(doxa-research completion zsh)"` registers shell handler; subsequent TAB invocations re-call `doxa-research` with `COMP_WORDS` env, Click matches command + arg position, looks up the registered `shell_complete` callback in `completion/sources.py`.
+5. **`doxa-research help [TOPIC]` alias**: dispatches to `cli_subcommands/help_cmd.py` → looks up target subcommand → renders that command's Click help. Unknown topics, including `auth`, exit 2.
 
 ### 7.2 The critical invariant
 
-**The subcommand wrapper is the only place that knows about `--json`.** Handlers below never see the flag. This is what makes B-deferred work; if a handler ever started branching on a JSON flag, the architecture would degrade. CI lint rule recommended for the PR3 end state: `! grep -rnE "as_json" src/thoth/commands.py src/thoth/config_cmd.py src/thoth/modes_cmd.py`.
+**The subcommand wrapper is the only place that knows about `--json`.** Handlers below never see the flag. This is what makes B-deferred work; if a handler ever started branching on a JSON flag, the architecture would degrade. CI lint rule recommended for the PR3 end state: `! grep -rnE "as_json" src/doxa_research/commands.py src/doxa_research/config_cmd.py src/doxa_research/modes_cmd.py`.
 
 ## 8. Error handling
 
@@ -162,11 +162,11 @@ Unknown subcommand · bad option type · missing required argument · `--help` r
 
 | Case | Behavior |
 |---|---|
-| `thoth init --json` (no `--non-interactive`) | `emit_error("JSON_REQUIRES_NONINTERACTIVE", ...)`. Exit 2. |
-| `thoth config edit --json` | Success: `{"status":"ok","data":{"config_path":"...","editor":"vim","editor_exit_code":0}}`. Editor failure: `emit_error("EDITOR_FAILED", ..., {"exit_code": N})`. |
-| `thoth resume INVALID_ID --json` | `emit_error("OPERATION_NOT_FOUND", ...)`. Exit 1. |
-| `thoth completion <unsupported>` | `emit_error("UNSUPPORTED_SHELL", ...)`. Exit 2. |
-| `thoth completion <shell> --install` overwrite | Detect existing `_thoth_completion` block; preview + prompt y/n in tty; refuse in non-tty unless `--force`. |
+| `doxa-research init --json` (no `--non-interactive`) | `emit_error("JSON_REQUIRES_NONINTERACTIVE", ...)`. Exit 2. |
+| `doxa-research config edit --json` | Success: `{"status":"ok","data":{"config_path":"...","editor":"vim","editor_exit_code":0}}`. Editor failure: `emit_error("EDITOR_FAILED", ..., {"exit_code": N})`. |
+| `doxa-research resume INVALID_ID --json` | `emit_error("OPERATION_NOT_FOUND", ...)`. Exit 1. |
+| `doxa-research completion <unsupported>` | `emit_error("UNSUPPORTED_SHELL", ...)`. Exit 2. |
+| `doxa-research completion <shell> --install` overwrite | Detect existing `_doxa_completion` block; preview + prompt y/n in tty; refuse in non-tty unless `--force`. |
 | Bare-prompt with first word matching a subcommand | NOT an error; subcommand wins. Disambiguation via quoting documented in `--help` epilog. |
 
 ### 8.3 Backward compat for exit codes
@@ -183,28 +183,28 @@ Today's exit codes (0=success, 1=runtime, 2=usage) preserved for non-`--json` in
 
 | ID | Category | Scope |
 |---|---|---|
-| A | Snapshot tests — help output | `thoth --help`, every subcommand `--help`, completion script output for each shell |
+| A | Snapshot tests — help output | `doxa-research --help`, every subcommand `--help`, completion script output for each shell |
 | B | `CliRunner` invocation tests | Per subcommand: happy + sad + `--json` happy + `--json` sad + missing-arg |
 | C | **Dispatch parity** (PR1 gate) | Pre-refactor baselines captured; CI compares post-refactor exit + stdout for every existing invocation pattern |
-| D | `ThothGroup` unit tests | `resolve_command`, `invoke` mode-routing, `invoke` bare-prompt routing, `format_commands` two-section structure |
-| E | Surprising parses | `thoth init` vs `thoth "init the database"`, `thoth deep_research` (no prompt), `thoth ask` (no arg) |
-| F | **Breakage** (PR2 gate) | Removed PR2 forms exit 2 with helpful suggestions, including `thoth --resume OP_ID`, `thoth providers -- --list`, in-group provider flags, and legacy `thoth modes --...` forms |
+| D | `DoxaGroup` unit tests | `resolve_command`, `invoke` mode-routing, `invoke` bare-prompt routing, `format_commands` two-section structure |
+| E | Surprising parses | `doxa-research init` vs `doxa-research "init the database"`, `doxa-research deep_research` (no prompt), `doxa-research ask` (no arg) |
+| F | **Breakage** (PR2 gate) | Removed PR2 forms exit 2 with helpful suggestions, including `doxa-research --resume OP_ID`, `doxa-research providers -- --list`, in-group provider flags, and legacy `doxa-research modes --...` forms |
 | G | JSON envelope contract | Parametrized over every data/action `--json` success-envelope command: top-level object, has `status`, parses cleanly. Completion `--json` error/install paths are covered under H. |
 | H | Completion | `sources.py` unit tests + script-output snapshots + `install` integration test (writes safely, doesn't clobber) |
-| I | `thoth_test` integration | One-time sweep of cases using `thoth --resume` → migrate to `thoth resume`; new cases for `ask`/`resume`/`completion` |
-| J | Regression | Every pre-existing pytest + thoth_test case continues to pass after each PR |
+| I | `doxa_test` integration | One-time sweep of cases using `doxa-research --resume` → migrate to `doxa-research resume`; new cases for `ask`/`resume`/`completion` |
+| J | Regression | Every pre-existing pytest + doxa_test case continues to pass after each PR |
 
 ### 9.2 Per-PR gates
 
 | PR | Required green |
 |---|---|
 | PR1 | C, D, E, J. (No new behavior → A and B for *new* commands not yet relevant.) |
-| PR2 | All above + F. Sweep thoth_test cases using `--resume`. |
+| PR2 | All above + F. Sweep doxa_test cases using `--resume`. |
 | PR3 | All above + A, B (full coverage), G, H. |
 
 ### 9.3 TDD ordering
 
-Per CLAUDE.md "Test-driven development": for every task, **write the test first** (red), then minimal implementation (green), then widen to file-level pytest, then full gate (`just check && ./thoth_test -r --skip-interactive -q`) before commit. Pre-commit hook enforces full gate.
+Per CLAUDE.md "Test-driven development": for every task, **write the test first** (red), then minimal implementation (green), then widen to file-level pytest, then full gate (`just check && ./doxa_test -r --skip-interactive -q`) before commit. Pre-commit hook enforces full gate.
 
 ### 9.4 Estimates
 
@@ -218,7 +218,7 @@ Click's own dispatch correctness · existing handlers' Rich rendering byte-for-b
 
 ### PR1 — refactor only (no behavior change)
 
-Click group · `ThothGroup` · `cli_subcommands/*` (delegating to existing handlers) · two-section help renderer · `help.py` shrink · removal of `COMMAND_NAMES`/`ThothCommand`/imperative dispatch · `thoth help [TOPIC]` thin alias.
+Click group · `DoxaGroup` · `cli_subcommands/*` (delegating to existing handlers) · two-section help renderer · `help.py` shrink · removal of `COMMAND_NAMES`/`DoxaCommand`/imperative dispatch · `doxa-research help [TOPIC]` thin alias.
 
 **Test gate:** Categories C, D, E, J. Pre-refactor baselines captured as **P16-T01** before any other code is written.
 
@@ -228,7 +228,7 @@ Click group · `ThothGroup` · `cli_subcommands/*` (delegating to existing handl
 
 `ask` subcommand · `resume` subcommand · `--resume` flag REMOVED · `providers -- --` shim REMOVED · `ignore_unknown_options=True` removed · CHANGELOG breaking-change entries.
 
-**Test gate:** Above + Category F. Sweep `thoth_test` cases.
+**Test gate:** Above + Category F. Sweep `doxa_test` cases.
 
 **Lands as:** intermediate commit on `main`; not yet a release.
 
@@ -248,30 +248,30 @@ All three PRs merge to `main` consecutively. release-please observes the breakin
 
 ## 11. Acceptance criteria
 
-- [ ] `thoth --help` shows two clearly-labeled sections ("Run research" / "Manage thoth") + "Modes (positional)" epilog block + worked examples
+- [ ] `doxa-research --help` shows two clearly-labeled sections ("Run research" / "Manage doxa-research") + "Modes (positional)" epilog block + worked examples
 - [ ] Every admin command is a real Click subcommand (verified by `cli.commands` keys)
-- [ ] `thoth init`, `thoth status OP_ID`, `thoth list`, `thoth providers list`, `thoth config list`, `thoth modes list`, `thoth deep_research "topic"`, `thoth "bare prompt"`, `thoth -i`, `thoth -m X -q Y` — all work bit-identically except for PR2's intentional removal of bare `thoth modes`
-- [ ] `thoth ask "prompt"` runs default-mode research (canonical scripted form)
-- [ ] `thoth resume OP_ID` resumes operations; `thoth --resume OP_ID` exits 2 with suggestion
-- [ ] `thoth providers -- --list` exits 2 with suggestion
-- [ ] `thoth modes --json` exits 2 with suggestion to use `thoth modes list --json`
-- [ ] `thoth completion bash` and `thoth completion zsh` emit working init scripts (required for v3.0.0)
-- [ ] `thoth completion fish` emits a working init script (`pyproject.toml` already pins `click>=8.0`; `uv.lock` currently resolves Click 8.3.1)
-- [ ] `thoth resume <TAB>`, `thoth status <TAB>`, `thoth config get <TAB>` complete with live data
+- [ ] `doxa-research init`, `doxa-research status OP_ID`, `doxa-research list`, `doxa-research providers list`, `doxa-research config list`, `doxa-research modes list`, `doxa-research deep_research "topic"`, `doxa-research "bare prompt"`, `doxa-research -i`, `doxa-research -m X -q Y` — all work bit-identically except for PR2's intentional removal of bare `doxa-research modes`
+- [ ] `doxa-research ask "prompt"` runs default-mode research (canonical scripted form)
+- [ ] `doxa-research resume OP_ID` resumes operations; `doxa-research --resume OP_ID` exits 2 with suggestion
+- [ ] `doxa-research providers -- --list` exits 2 with suggestion
+- [ ] `doxa-research modes --json` exits 2 with suggestion to use `doxa-research modes list --json`
+- [ ] `doxa-research completion bash` and `doxa-research completion zsh` emit working init scripts (required for v3.0.0)
+- [ ] `doxa-research completion fish` emits a working init script (`pyproject.toml` already pins `click>=8.0`; `uv.lock` currently resolves Click 8.3.1)
+- [ ] `doxa-research resume <TAB>`, `doxa-research status <TAB>`, `doxa-research config get <TAB>` complete with live data
 - [ ] Every data/action admin command supports `--json`; output is a valid top-level JSON object with `status` field. `completion` keeps raw shell-script stdout on success and supports JSON envelopes for structured errors/install metadata; `help` stays human-only.
-- [ ] `thoth init --json --non-interactive` works end-to-end without prompting
-- [ ] `thoth init --json` (no `--non-interactive`) errors clearly with code 2
+- [ ] `doxa-research init --json --non-interactive` works end-to-end without prompting
+- [ ] `doxa-research init --json` (no `--non-interactive`) errors clearly with code 2
 - [ ] CHANGELOG documents v3.0.0 with the breaking changes and migration paths
 - [ ] PRD F-70 and Plan M21-07 marked complete (shell completion shipped)
-- [ ] PRD `thoth.prd.v24.md:96` "Added shell completion support" line moved from aspirational to actually-shipped
+- [ ] PRD `doxa-research.prd.v24.md:96` "Added shell completion support" line moved from aspirational to actually-shipped
 - [ ] All pre-existing tests pass (J)
-- [ ] `make env-check && just check && ./thoth_test -r` green
+- [ ] `make env-check && just check && ./doxa_test -r` green
 - [ ] `just test-fix && just test-lint && just test-typecheck` green
 
 ## 12. Dependencies & coordination
 
 - **P12 (CLI Mode Editing)** is `[ ]` not-started and overlaps. P16 ships the `modes` Click subgroup with `list` only; P12's `add/set/unset` slot in as additional `@modes.command()` decorations. **Coordination required:** decide order. Recommendation: P16 ships first (P12 then has a Click subgroup to add commands to, instead of having to invent the dispatch); P12 follows in v3.1.0.
-- **P14 (Thoth CLI Ergonomics v1)** is `[x]` complete. The `providers list/models/check` subcommands and `--pick-model` interactive picker land cleanly into the new structure. P14-T01 (`format_config_context`) is reused by `--json` API-key error paths.
+- **P14 (Doxa Research CLI Ergonomics v1)** is `[x]` complete. The `providers list/models/check` subcommands and `--pick-model` interactive picker land cleanly into the new structure. P14-T01 (`format_config_context`) is reused by `--json` API-key error paths.
 - **P08 (Typed Exceptions)** is `[-]` in-progress; doesn't conflict (different code surface).
 
 ## 13. Open items / risks
@@ -280,4 +280,4 @@ All three PRs merge to `main` consecutively. release-please observes the breakin
 - **Click version pinning.** Resolved for PR3 planning: `pyproject.toml` pins `click>=8.0`, and `uv.lock` currently resolves Click 8.3.1. Fish support stays in scope unless implementation discovers a concrete Click regression.
 - **Discipline risk on three-PR sequence.** If team stalls between PR1 and PR2, codebase carries un-shipped breakage intentions. Mitigation in §10.
 - **`syrupy` snapshot library** — verify it's a project dependency before relying on it for category A; if not, hand-rolled fixtures in `tests/snapshots/` are fine. Decide in plan phase.
-- **Stale PRD line** at `planning/thoth.prd.v24.md:96` ("Added shell completion support") needs correction as part of PR3's documentation pass.
+- **Stale PRD line** at `planning/doxa-research.prd.v24.md:96` ("Added shell completion support") needs correction as part of PR3's documentation pass.

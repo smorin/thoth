@@ -1,6 +1,6 @@
 """OpenAI provider config → request payload tests.
 
-Migrated from thoth_test GAP01-01…03.
+Migrated from doxa_test GAP01-01…03.
 """
 
 from __future__ import annotations
@@ -14,13 +14,13 @@ from unittest.mock import patch
 
 import pytest
 
-from thoth.errors import ThothError
-from thoth.providers.openai import OpenAIProvider
+from doxa_research.errors import DoxaError
+from doxa_research.providers.openai import OpenAIProvider
 
 
 @pytest.fixture(autouse=True)
-def _isolate_config(isolated_thoth_home: Path) -> Path:
-    return isolated_thoth_home
+def _isolate_config(isolated_doxa_home: Path) -> Path:
+    return isolated_doxa_home
 
 
 def test_max_tool_calls_reaches_request_payload() -> None:
@@ -105,8 +105,8 @@ def test_create_provider_sets_background_for_deep_research_model() -> None:
     test_oai_background.py — this pins the contract at the factory."""
     from types import SimpleNamespace
 
-    from thoth.config import ConfigManager
-    from thoth.providers import create_provider
+    from doxa_research.config import ConfigManager
+    from doxa_research.providers import create_provider
 
     config = cast(
         ConfigManager,
@@ -130,8 +130,8 @@ def test_create_provider_no_background_for_plain_model() -> None:
     """Inverse: a plain (non-deep-research) model does NOT get background=True."""
     from types import SimpleNamespace
 
-    from thoth.config import ConfigManager
-    from thoth.providers import create_provider
+    from doxa_research.config import ConfigManager
+    from doxa_research.providers import create_provider
 
     config = cast(
         ConfigManager,
@@ -158,8 +158,8 @@ def test_create_provider_passes_perplexity_model_from_mode_config() -> None:
     """P23-TS01: mode-config model passes through to PerplexityProvider."""
     from types import SimpleNamespace
 
-    from thoth.config import ConfigManager
-    from thoth.providers import create_provider
+    from doxa_research.config import ConfigManager
+    from doxa_research.providers import create_provider
 
     config = cast(
         ConfigManager,
@@ -178,9 +178,9 @@ def test_create_provider_perplexity_default_model_is_sonar() -> None:
     """
     from types import SimpleNamespace
 
-    from thoth.config import ConfigManager
-    from thoth.providers import create_provider
-    from thoth.providers.perplexity import PerplexityProvider
+    from doxa_research.config import ConfigManager
+    from doxa_research.providers import create_provider
+    from doxa_research.providers.perplexity import PerplexityProvider
 
     config = cast(
         ConfigManager,
@@ -195,13 +195,13 @@ def test_create_provider_perplexity_default_model_is_sonar() -> None:
 def test_create_provider_perplexity_passes_arbitrary_model_string() -> None:
     """P23-TS01: no local provider/model compatibility validation.
 
-    A model string thoth has never seen passes through unchanged; any
+    A model string doxa_research has never seen passes through unchanged; any
     invalid-model error is surfaced from the provider/API layer.
     """
     from types import SimpleNamespace
 
-    from thoth.config import ConfigManager
-    from thoth.providers import create_provider
+    from doxa_research.config import ConfigManager
+    from doxa_research.providers import create_provider
 
     config = cast(
         ConfigManager,
@@ -220,8 +220,8 @@ def test_create_provider_passes_perplexity_namespace_from_mode_config() -> None:
     """P23-RS01: mode_config['perplexity'] reaches PerplexityProvider.config."""
     from types import SimpleNamespace
 
-    from thoth.config import ConfigManager
-    from thoth.providers import create_provider
+    from doxa_research.config import ConfigManager
+    from doxa_research.providers import create_provider
 
     config = cast(
         ConfigManager,
@@ -251,8 +251,8 @@ def test_create_provider_passes_openai_request_settings_from_mode_config() -> No
     """OpenAI common and provider-namespaced mode settings reach config."""
     from types import SimpleNamespace
 
-    from thoth.config import ConfigManager
-    from thoth.providers import create_provider
+    from doxa_research.config import ConfigManager
+    from doxa_research.providers import create_provider
 
     config = cast(
         ConfigManager,
@@ -280,8 +280,8 @@ def test_create_provider_preserves_legacy_flat_openai_max_tool_calls() -> None:
     """Historical flat mode max_tool_calls still reaches OpenAI without warning."""
     from types import SimpleNamespace
 
-    from thoth.config import ConfigManager
-    from thoth.providers import create_provider
+    from doxa_research.config import ConfigManager
+    from doxa_research.providers import create_provider
 
     config = cast(
         ConfigManager,
@@ -309,8 +309,8 @@ def test_create_provider_preserves_legacy_flat_openai_max_tool_calls() -> None:
 def test_create_provider_preserves_perplexity_extra_body_extension_bag() -> None:
     from types import SimpleNamespace
 
-    from thoth.config import ConfigManager
-    from thoth.providers import create_provider
+    from doxa_research.config import ConfigManager
+    from doxa_research.providers import create_provider
 
     config = cast(
         ConfigManager,
@@ -426,7 +426,7 @@ def _capture_openai_stream_request(provider: OpenAIProvider) -> dict[str, Any]:
 
 def test_openai_reasoning_builtin_mode_enables_reasoning_and_web_search() -> None:
     """Built-in OpenAI reasoning mode opts into reasoning summaries + web search."""
-    from thoth.config import BUILTIN_MODES
+    from doxa_research.config import BUILTIN_MODES
 
     mode = BUILTIN_MODES["openai_reasoning"]
     assert mode["provider"] == "openai"
@@ -495,9 +495,9 @@ def test_create_provider_returns_gemini_when_provider_is_gemini() -> None:
     from types import SimpleNamespace
     from unittest.mock import patch
 
-    from thoth.config import ConfigManager
-    from thoth.providers import create_provider
-    from thoth.providers.gemini import GeminiProvider
+    from doxa_research.config import ConfigManager
+    from doxa_research.providers import create_provider
+    from doxa_research.providers.gemini import GeminiProvider
 
     mock_client = SimpleNamespace()
     mock_client.aio = SimpleNamespace()
@@ -516,22 +516,22 @@ def test_create_provider_returns_gemini_when_provider_is_gemini() -> None:
 
 def test_provider_env_vars_includes_gemini() -> None:
     """P24-T07: PROVIDER_ENV_VARS['gemini'] = 'GEMINI_API_KEY'."""
-    from thoth.providers import PROVIDER_ENV_VARS
+    from doxa_research.providers import PROVIDER_ENV_VARS
 
     assert PROVIDER_ENV_VARS.get("gemini") == "GEMINI_API_KEY"
 
 
 def test_providers_dict_includes_gemini() -> None:
     """P24-T07: the PROVIDERS dict registers GeminiProvider under 'gemini' key."""
-    from thoth.providers import PROVIDERS
-    from thoth.providers.gemini import GeminiProvider
+    from doxa_research.providers import PROVIDERS
+    from doxa_research.providers.gemini import GeminiProvider
 
     assert PROVIDERS.get("gemini") is GeminiProvider
 
 
 def test_provider_cli_flags_includes_gemini() -> None:
     """P24-T07: PROVIDER_CLI_FLAGS['gemini'] = '--api-key-gemini'."""
-    from thoth.providers import PROVIDER_CLI_FLAGS
+    from doxa_research.providers import PROVIDER_CLI_FLAGS
 
     assert PROVIDER_CLI_FLAGS.get("gemini") == "--api-key-gemini"
 
@@ -541,8 +541,8 @@ def test_create_provider_passes_gemini_model_from_mode_config() -> None:
     from types import SimpleNamespace
     from unittest.mock import patch
 
-    from thoth.config import ConfigManager
-    from thoth.providers import create_provider
+    from doxa_research.config import ConfigManager
+    from doxa_research.providers import create_provider
 
     mock_client = SimpleNamespace()
     mock_client.aio = SimpleNamespace()
@@ -564,8 +564,8 @@ def test_create_provider_passes_gemini_namespace_from_mode_config() -> None:
     from types import SimpleNamespace
     from unittest.mock import patch
 
-    from thoth.config import ConfigManager
-    from thoth.providers import create_provider
+    from doxa_research.config import ConfigManager
+    from doxa_research.providers import create_provider
 
     mock_client = SimpleNamespace()
     mock_client.aio = SimpleNamespace()
@@ -607,8 +607,8 @@ def test_create_provider_passes_gemini_namespace_from_mode_config() -> None:
 def test_providers_defaults_temperature_flows_to_openai_without_deprecation() -> None:
     from types import SimpleNamespace
 
-    from thoth.config import ConfigManager
-    from thoth.providers import create_provider
+    from doxa_research.config import ConfigManager
+    from doxa_research.providers import create_provider
 
     config = cast(
         ConfigManager,
@@ -638,8 +638,8 @@ def test_providers_defaults_temperature_flows_to_perplexity_and_gemini() -> None
     from types import SimpleNamespace
     from unittest.mock import patch
 
-    from thoth.config import ConfigManager
-    from thoth.providers import create_provider
+    from doxa_research.config import ConfigManager
+    from doxa_research.providers import create_provider
 
     config = cast(
         ConfigManager,
@@ -677,8 +677,8 @@ def test_root_providers_namespace_temperature_flows_to_openai_provider() -> None
     """
     from types import SimpleNamespace
 
-    from thoth.config import ConfigManager
-    from thoth.providers import create_provider
+    from doxa_research.config import ConfigManager
+    from doxa_research.providers import create_provider
 
     config = cast(
         ConfigManager,
@@ -702,8 +702,8 @@ def test_mode_level_openai_temperature_overrides_root_providers_default() -> Non
     """[modes.X.openai].temperature wins over [providers.openai].temperature."""
     from types import SimpleNamespace
 
-    from thoth.config import ConfigManager
-    from thoth.providers import create_provider
+    from doxa_research.config import ConfigManager
+    from doxa_research.providers import create_provider
 
     config = cast(
         ConfigManager,
@@ -722,11 +722,11 @@ def test_mode_level_openai_temperature_overrides_root_providers_default() -> Non
 
 
 def test_root_providers_namespace_unknown_keys_are_rejected() -> None:
-    """Unrecognized keys at [providers.X] surface as user-facing ThothError."""
+    """Unrecognized keys at [providers.X] surface as user-facing DoxaError."""
     from types import SimpleNamespace
 
-    from thoth.config import ConfigManager
-    from thoth.providers import create_provider
+    from doxa_research.config import ConfigManager
+    from doxa_research.providers import create_provider
 
     config = cast(
         ConfigManager,
@@ -735,7 +735,7 @@ def test_root_providers_namespace_unknown_keys_are_rejected() -> None:
         ),
     )
     with pytest.raises(
-        ThothError,
+        DoxaError,
         match=r"Unsupported provider parameter: providers\.openai\.definitely_not_a_real_key",
     ):
         create_provider("openai", config)
@@ -746,8 +746,8 @@ def test_root_providers_namespace_works_for_perplexity_and_gemini() -> None:
     from types import SimpleNamespace
     from unittest.mock import patch
 
-    from thoth.config import ConfigManager
-    from thoth.providers import create_provider
+    from doxa_research.config import ConfigManager
+    from doxa_research.providers import create_provider
 
     # Perplexity: a root-level key should be reachable as a default.
     pplx_config = cast(

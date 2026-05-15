@@ -3,11 +3,11 @@ from __future__ import annotations
 import tomllib
 from pathlib import Path
 
-from thoth.config_document import ConfigDocument
+from doxa_research.config_document import ConfigDocument
 
 
 def test_profile_value_keeps_dotted_profile_name_literal(tmp_path: Path) -> None:
-    path = tmp_path / "thoth.config.toml"
+    path = tmp_path / "doxa.config.toml"
 
     doc = ConfigDocument.load(path)
     assert doc.ensure_profile("foo.bar") is True
@@ -22,7 +22,7 @@ def test_profile_value_keeps_dotted_profile_name_literal(tmp_path: Path) -> None
 
 
 def test_unset_profile_value_preserves_empty_parent_table(tmp_path: Path) -> None:
-    path = tmp_path / "thoth.config.toml"
+    path = tmp_path / "doxa.config.toml"
     doc = ConfigDocument.load(path)
     doc.set_profile_value("foo.bar", "general.default_mode", "thinking")
     doc.save()
@@ -36,7 +36,7 @@ def test_unset_profile_value_preserves_empty_parent_table(tmp_path: Path) -> Non
 
 
 def test_unset_config_value_can_prune_empty_parent_tables(tmp_path: Path) -> None:
-    path = tmp_path / "thoth.config.toml"
+    path = tmp_path / "doxa.config.toml"
     doc = ConfigDocument.load(path)
     doc.set_config_value("general.default_mode", "thinking")
     doc.save()
@@ -50,7 +50,7 @@ def test_unset_config_value_can_prune_empty_parent_tables(tmp_path: Path) -> Non
 
 
 def test_unset_default_profile_preserves_general_table(tmp_path: Path) -> None:
-    path = tmp_path / "thoth.config.toml"
+    path = tmp_path / "doxa.config.toml"
     doc = ConfigDocument.load(path)
     doc.set_default_profile("fast")
     doc.save()
@@ -64,7 +64,7 @@ def test_unset_default_profile_preserves_general_table(tmp_path: Path) -> None:
 
 
 def test_unset_default_profile_if_only_removes_matching_name(tmp_path: Path) -> None:
-    path = tmp_path / "thoth.config.toml"
+    path = tmp_path / "doxa.config.toml"
     doc = ConfigDocument.load(path)
     doc.set_default_profile("fast")
     doc.save()
@@ -80,7 +80,7 @@ def test_unset_default_profile_if_only_removes_matching_name(tmp_path: Path) -> 
 
 
 def test_profile_mutations_preserve_comments(tmp_path: Path) -> None:
-    path = tmp_path / "thoth.config.toml"
+    path = tmp_path / "doxa.config.toml"
     path.write_text(
         '# pinned profile\n[profiles.fast.general]\n# default mode\ndefault_mode = "thinking"\n'
     )

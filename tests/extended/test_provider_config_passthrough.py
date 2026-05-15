@@ -19,8 +19,8 @@ pytestmark = pytest.mark.extended
 @pytest.mark.provider_openai
 def test_ext_oai_mode_request_settings_reach_request_payload() -> None:
     """P23-RS07: OpenAI mode-level request settings reach Responses API kwargs."""
-    from thoth.config import ConfigManager
-    from thoth.providers import create_provider
+    from doxa_research.config import ConfigManager
+    from doxa_research.providers import create_provider
 
     config = cast(
         ConfigManager,
@@ -54,8 +54,8 @@ def test_ext_oai_mode_request_settings_reach_request_payload() -> None:
 @pytest.mark.provider_perplexity
 def test_ext_pplx_mode_provider_namespace_reaches_extra_body() -> None:
     """P23-RS07: Perplexity nested mode namespace reaches extra_body."""
-    from thoth.config import ConfigManager
-    from thoth.providers import create_provider
+    from doxa_research.config import ConfigManager
+    from doxa_research.providers import create_provider
 
     config = cast(
         ConfigManager,
@@ -97,8 +97,8 @@ def test_ext_pplx_mode_provider_namespace_reaches_extra_body() -> None:
 @pytest.mark.provider_gemini
 def test_ext_gem_mode_provider_namespace_reaches_generate_content_config() -> None:
     """P24: Gemini nested mode namespace reaches GenerateContentConfig."""
-    from thoth.config import ConfigManager
-    from thoth.providers import create_provider
+    from doxa_research.config import ConfigManager
+    from doxa_research.providers import create_provider
 
     config = cast(
         ConfigManager,

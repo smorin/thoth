@@ -1,6 +1,6 @@
-"""Resume-after-failure tests — migrated from thoth_test RES-01..03.
+"""Resume-after-failure tests — migrated from doxa_test RES-01..03.
 
-Each test uses `isolated_thoth_home` for XDG_CONFIG_HOME isolation and
+Each test uses `isolated_doxa_home` for XDG_CONFIG_HOME isolation and
 `monkeypatch.chdir(tmp_path)` so the `*_mock_*.md` output files land in a
 per-test tmp dir and never cross xdist workers.
 """
@@ -14,12 +14,12 @@ import pytest
 from tests._fixture_helpers import (
     extract_resume_id,
     load_checkpoint,
-    run_thoth,
+    run_doxa,
 )
 
 
 def test_recoverable_failure_resume_reconnects_and_completes(
-    isolated_thoth_home: Path,
+    isolated_doxa_home: Path,
     checkpoint_dir: Path,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -33,9 +33,9 @@ def test_recoverable_failure_resume_reconnects_and_completes(
     """
     monkeypatch.chdir(tmp_path)
 
-    exit_code, stdout, stderr = run_thoth(
+    exit_code, stdout, stderr = run_doxa(
         ["--mode", "deep_research", "res01 first", "--provider", "mock"],
-        env_overrides={"THOTH_MOCK_BEHAVIOR": "flake:10", "THOTH_POLL_INTERVAL": "0.1"},
+        env_overrides={"DOXA_MOCK_BEHAVIOR": "flake:10", "DOXA_POLL_INTERVAL": "0.1"},
     )
     combined = stdout + stderr
     assert exit_code != 0, f"expected non-zero on flake exhaustion, got {exit_code}"
@@ -50,9 +50,9 @@ def test_recoverable_failure_resume_reconnects_and_completes(
         f"expected job_id persisted in checkpoint, got {checkpoint!r}"
     )
 
-    exit_code2, stdout2, stderr2 = run_thoth(
+    exit_code2, stdout2, stderr2 = run_doxa(
         ["resume", op_id],
-        env_overrides={"THOTH_MOCK_BEHAVIOR": "default", "THOTH_POLL_INTERVAL": "0.1"},
+        env_overrides={"DOXA_MOCK_BEHAVIOR": "default", "DOXA_POLL_INTERVAL": "0.1"},
     )
     combined2 = stdout2 + stderr2
     assert exit_code2 == 0, (
@@ -62,7 +62,7 @@ def test_recoverable_failure_resume_reconnects_and_completes(
 
 
 def test_permanent_failure_resume_refused_with_exit_code_7(
-    isolated_thoth_home: Path,
+    isolated_doxa_home: Path,
     checkpoint_dir: Path,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -71,9 +71,9 @@ def test_permanent_failure_resume_refused_with_exit_code_7(
     monkeypatch.chdir(tmp_path)
 
     before = {p.stem for p in checkpoint_dir.glob("research-*.json")}
-    exit_code, stdout, stderr = run_thoth(
+    exit_code, stdout, stderr = run_doxa(
         ["res02 first", "--provider", "mock"],
-        env_overrides={"THOTH_MOCK_BEHAVIOR": "permanent", "THOTH_POLL_INTERVAL": "0.1"},
+        env_overrides={"DOXA_MOCK_BEHAVIOR": "permanent", "DOXA_POLL_INTERVAL": "0.1"},
     )
     combined = stdout + stderr
     assert exit_code != 0, f"expected non-zero on permanent failure, got {exit_code}"
@@ -92,9 +92,9 @@ def test_permanent_failure_resume_refused_with_exit_code_7(
         f"expected failure_type=permanent, got {checkpoint!r}"
     )
 
-    exit_code2, stdout2, stderr2 = run_thoth(
+    exit_code2, stdout2, stderr2 = run_doxa(
         ["resume", op_id],
-        env_overrides={"THOTH_MOCK_BEHAVIOR": "default", "THOTH_POLL_INTERVAL": "0.1"},
+        env_overrides={"DOXA_MOCK_BEHAVIOR": "default", "DOXA_POLL_INTERVAL": "0.1"},
     )
     combined2 = stdout2 + stderr2
     assert exit_code2 == 7, (
@@ -107,7 +107,7 @@ def test_permanent_failure_resume_refused_with_exit_code_7(
 
 
 def test_resume_of_already_completed_operation_is_noop(
-    isolated_thoth_home: Path,
+    isolated_doxa_home: Path,
     checkpoint_dir: Path,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -116,9 +116,9 @@ def test_resume_of_already_completed_operation_is_noop(
     monkeypatch.chdir(tmp_path)
 
     before = {p.stem for p in checkpoint_dir.glob("research-*.json")}
-    exit_code, stdout, stderr = run_thoth(
+    exit_code, stdout, stderr = run_doxa(
         ["res03 first", "--provider", "mock"],
-        env_overrides={"THOTH_MOCK_BEHAVIOR": "default", "THOTH_POLL_INTERVAL": "0.1"},
+        env_overrides={"DOXA_MOCK_BEHAVIOR": "default", "DOXA_POLL_INTERVAL": "0.1"},
     )
     combined = stdout + stderr
     assert exit_code == 0, f"expected successful first run, got exit={exit_code}\n{combined!r}"
@@ -133,9 +133,9 @@ def test_resume_of_already_completed_operation_is_noop(
         f"expected status=completed before resume, got {checkpoint!r}"
     )
 
-    exit_code2, stdout2, stderr2 = run_thoth(
+    exit_code2, stdout2, stderr2 = run_doxa(
         ["resume", op_id],
-        env_overrides={"THOTH_MOCK_BEHAVIOR": "default", "THOTH_POLL_INTERVAL": "0.1"},
+        env_overrides={"DOXA_MOCK_BEHAVIOR": "default", "DOXA_POLL_INTERVAL": "0.1"},
     )
     combined2 = stdout2 + stderr2
     assert exit_code2 == 0, (
