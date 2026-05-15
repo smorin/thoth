@@ -10,7 +10,7 @@
       "bump-patch-for-minor-pre-major": false,
       "changelog-path": "CHANGELOG.md",
       "extra-files": [
-        "src/doxa-research/__init__.py"
+        "src/doxa_research/__init__.py"
       ]
     }
   },
