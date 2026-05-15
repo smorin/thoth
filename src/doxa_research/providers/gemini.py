@@ -108,9 +108,12 @@ _DIRECT_SDK_KEYS_GEMINI: tuple[str, ...] = (
 
 # Mapping from Gemini interaction status strings (spike §5) to Doxa Research provider-
 # status dicts. The 6 SDK-documented values are enumerated here; unknown future
-# values fall through to in_progress (safe — caller will poll again).
+# values fall through to "running" (safe — caller will poll again). The canonical
+# Doxa Research polling-status set is {"running", "queued", "completed"} per the
+# P18 design spec, matching the convention OpenAIProvider and PerplexityProvider
+# use to translate their own in-progress literals.
 _DR_STATUS_MAPPING: dict[str, dict[str, Any]] = {
-    "in_progress": {"status": "in_progress"},
+    "in_progress": {"status": "running", "progress": 0.5},
     "completed": {"status": "completed"},
     "cancelled": {"status": "cancelled"},
     "failed": {"status": "permanent_error", "failure_type": "permanent"},
@@ -795,8 +798,8 @@ class GeminiProvider(ResearchProvider):
         self.jobs[job_id]["last_status"] = live
         self.jobs[job_id]["last_interaction"] = interaction
 
-        # Unknown future SDK status values default to in_progress (safe — runtime polls again).
-        mapped = _DR_STATUS_MAPPING.get(live, {"status": "in_progress"})
+        # Unknown future SDK status values default to "running" (safe — runtime polls again).
+        mapped = _DR_STATUS_MAPPING.get(live, {"status": "running", "progress": 0.5})
         return {**mapped, "raw_status": live}
 
     async def _deep_research_get_result(self, job_id: str, verbose: bool = False) -> str:

@@ -1440,7 +1440,11 @@ class TestGeminiDeepResearchCheckStatus:
     @pytest.mark.parametrize(
         "live_status,expected_doxa_status,expected_failure_type",
         [
-            ("in_progress", "in_progress", None),
+            # Per P18 design spec §245, the canonical polling-status set for
+            # background-kind providers is {"running", "queued", "completed"};
+            # Gemini's raw "in_progress" SDK literal must translate to canonical
+            # "running" (matching OpenAIProvider and PerplexityProvider).
+            ("in_progress", "running", None),
             ("requires_action", "permanent_error", "requires_action"),
             ("completed", "completed", None),
             ("failed", "permanent_error", "permanent"),
