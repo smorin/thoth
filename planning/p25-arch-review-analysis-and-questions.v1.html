@@ -1,0 +1,1004 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>P25 Arch Review — Interactive Question Form (v1)</title>
+<style>
+  :root {
+    --bg: #fafaf8;
+    --fg: #1a1a1a;
+    --muted: #5a5a5a;
+    --rule: #d8d6cf;
+    --accent: #1f4d8a;
+    --accent-soft: #e8eef7;
+    --good: #1a6b3a;
+    --warn: #a05a00;
+    --bad: #9b1c1c;
+    --code-bg: #f1efe9;
+    --card-bg: #ffffff;
+    --recommend-bg: #f1f8f1;
+    --recommend-edge: #1a6b3a;
+    --skip-bg: #f3eee4;
+    --skip-edge: #a05a00;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #15171a;
+      --fg: #e7e5df;
+      --muted: #9aa0a6;
+      --rule: #2c3036;
+      --accent: #82b1ff;
+      --accent-soft: #1c2733;
+      --good: #7fc090;
+      --warn: #d49a4a;
+      --bad: #e88080;
+      --code-bg: #1d2024;
+      --card-bg: #1a1d21;
+      --recommend-bg: #1b2820;
+      --recommend-edge: #7fc090;
+      --skip-bg: #2a241a;
+      --skip-edge: #d49a4a;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--fg);
+    font: 16px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+          "Helvetica Neue", Arial, sans-serif;
+  }
+  .wrap {
+    display: grid;
+    grid-template-columns: 260px minmax(0, 1fr);
+    max-width: 1280px;
+    margin: 0 auto;
+    gap: 0 32px;
+  }
+  nav.toc {
+    position: sticky;
+    top: 0;
+    align-self: start;
+    height: 100vh;
+    overflow-y: auto;
+    padding: 24px 16px 24px 24px;
+    border-right: 1px solid var(--rule);
+    background: var(--bg);
+    font-size: 13.5px;
+  }
+  nav.toc h2 {
+    margin: 0 0 8px 0;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+  }
+  nav.toc ul { list-style: none; padding: 0; margin: 0 0 12px 0; }
+  nav.toc li { margin: 3px 0; }
+  nav.toc a {
+    color: var(--fg);
+    text-decoration: none;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    padding: 2px 6px;
+    border-radius: 4px;
+  }
+  nav.toc a:hover { background: var(--accent-soft); color: var(--accent); }
+  nav.toc .toc-questions a { font-family: ui-monospace, Menlo, monospace; font-size: 12.5px; }
+  nav.toc .status-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--rule);
+    flex-shrink: 0;
+  }
+  nav.toc .status-dot.answered { background: var(--good); }
+  nav.toc .status-dot.skipped  { background: var(--warn); }
+  main {
+    padding: 32px 24px 80px 0;
+    min-width: 0;
+  }
+  h1 {
+    font-size: 26px;
+    margin: 0 0 6px 0;
+    line-height: 1.25;
+  }
+  h2 {
+    font-size: 20px;
+    margin: 36px 0 8px 0;
+    padding-bottom: 4px;
+    border-bottom: 1px solid var(--rule);
+    scroll-margin-top: 16px;
+  }
+  h3 {
+    font-size: 17px;
+    margin: 22px 0 6px 0;
+    scroll-margin-top: 16px;
+  }
+  h4 {
+    font-size: 13px;
+    margin: 14px 0 4px 0;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  .subtitle {
+    color: var(--muted);
+    margin: 0 0 24px 0;
+    font-size: 14px;
+  }
+  .meta-card {
+    background: var(--card-bg);
+    border: 1px solid var(--rule);
+    border-radius: 6px;
+    padding: 12px 16px;
+    margin: 14px 0 24px 0;
+    font-size: 14px;
+  }
+  .meta-card p { margin: 4px 0; }
+  .meta-card strong { color: var(--accent); }
+  p { margin: 8px 0; }
+  ul, ol { padding-left: 22px; }
+  ul li, ol li { margin: 3px 0; }
+  code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    background: var(--code-bg);
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-size: 0.92em;
+  }
+  pre {
+    background: var(--code-bg);
+    padding: 12px;
+    border-radius: 6px;
+    overflow-x: auto;
+    font-size: 13px;
+    line-height: 1.45;
+  }
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 12px 0;
+    font-size: 14px;
+  }
+  th, td {
+    text-align: left;
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--rule);
+    vertical-align: top;
+  }
+  th {
+    background: var(--accent-soft);
+    color: var(--accent);
+    font-weight: 600;
+    font-size: 12.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    border-bottom: 2px solid var(--rule);
+  }
+  blockquote {
+    margin: 12px 0;
+    padding: 8px 14px;
+    border-left: 3px solid var(--accent);
+    background: var(--accent-soft);
+    color: var(--fg);
+    border-radius: 0 6px 6px 0;
+  }
+  .badge {
+    display: inline-block;
+    padding: 2px 8px;
+    font-size: 11.5px;
+    font-weight: 600;
+    border-radius: 999px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .badge.good { background: rgba(26,107,58,0.12); color: var(--good); }
+  .badge.warn { background: rgba(160,90,0,0.12); color: var(--warn); }
+  .badge.bad  { background: rgba(155,28,28,0.12); color: var(--bad);  }
+  .badge.info { background: var(--accent-soft); color: var(--accent); }
+
+  /* === Question form === */
+  .question-card {
+    background: var(--card-bg);
+    border: 1px solid var(--rule);
+    border-left: 4px solid var(--accent);
+    border-radius: 6px;
+    padding: 16px 18px;
+    margin: 20px 0;
+    scroll-margin-top: 16px;
+  }
+  .question-card h3 {
+    margin: 0 0 4px 0;
+    color: var(--accent);
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+  }
+  .qid {
+    font-family: ui-monospace, Menlo, monospace;
+    font-size: 13px;
+    background: var(--accent-soft);
+    color: var(--accent);
+    padding: 1px 6px;
+    border-radius: 3px;
+  }
+  .options {
+    list-style: none;
+    padding: 0;
+    margin: 8px 0 0 0;
+  }
+  .options li { margin: 6px 0; }
+  .options label {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    padding: 8px 10px;
+    border-radius: 6px;
+    background: var(--code-bg);
+    border: 1px solid transparent;
+    cursor: pointer;
+    transition: background 80ms ease, border-color 80ms ease;
+  }
+  .options label:hover { border-color: var(--accent); }
+  .options input[type=radio] {
+    margin-top: 3px;
+    accent-color: var(--accent);
+    flex-shrink: 0;
+  }
+  .options label:has(input[type=radio]:checked) {
+    background: var(--accent-soft);
+    border-color: var(--accent);
+  }
+  .options li.skip label {
+    background: var(--skip-bg);
+  }
+  .options li.skip label:has(input[type=radio]:checked) {
+    background: var(--skip-bg);
+    border-color: var(--skip-edge);
+  }
+  .opt-key {
+    font-family: ui-monospace, Menlo, monospace;
+    font-weight: 600;
+    color: var(--accent);
+    flex-shrink: 0;
+    min-width: 28px;
+  }
+  .options li.skip .opt-key { color: var(--skip-edge); }
+  .rec-marker {
+    display: inline-block;
+    margin-left: 6px;
+    padding: 1px 6px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--recommend-edge);
+    background: var(--recommend-bg);
+    border: 1px solid var(--recommend-edge);
+    border-radius: 999px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  .recommend {
+    margin: 10px 0 0 0;
+    padding: 8px 12px;
+    background: var(--recommend-bg);
+    border-left: 3px solid var(--recommend-edge);
+    border-radius: 0 4px 4px 0;
+    font-size: 14px;
+  }
+  .recommend strong { color: var(--recommend-edge); }
+  .notes-row {
+    margin-top: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .notes-row label {
+    font-size: 12px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  .notes-row textarea {
+    width: 100%;
+    min-height: 48px;
+    padding: 8px;
+    border-radius: 4px;
+    border: 1px solid var(--rule);
+    background: var(--bg);
+    color: var(--fg);
+    font: 13.5px/1.45 ui-monospace, Menlo, Consolas, monospace;
+    resize: vertical;
+  }
+
+  /* === Status bar & export panel === */
+  .status-bar {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    margin: 0 -24px 16px 0;
+    padding: 10px 24px;
+    background: var(--bg);
+    border-bottom: 1px solid var(--rule);
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
+    font-size: 14px;
+  }
+  .status-bar .progress {
+    flex: 1;
+    min-width: 180px;
+  }
+  .status-bar .progress-bar {
+    height: 6px;
+    background: var(--rule);
+    border-radius: 3px;
+    overflow: hidden;
+    margin-top: 4px;
+  }
+  .status-bar .progress-fill {
+    height: 100%;
+    background: var(--good);
+    width: 0%;
+    transition: width 120ms ease;
+  }
+  .status-bar .progress-fill.skipped {
+    background: var(--warn);
+  }
+  .btn {
+    appearance: none;
+    border: 1px solid var(--rule);
+    background: var(--card-bg);
+    color: var(--fg);
+    padding: 7px 14px;
+    border-radius: 6px;
+    font: 600 13.5px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    cursor: pointer;
+    transition: background 80ms ease, border-color 80ms ease, transform 80ms ease;
+  }
+  .btn:hover { border-color: var(--accent); color: var(--accent); }
+  .btn:active { transform: translateY(1px); }
+  .btn.primary {
+    background: var(--accent);
+    color: white;
+    border-color: var(--accent);
+  }
+  .btn.primary:hover {
+    background: var(--accent);
+    filter: brightness(1.08);
+    color: white;
+  }
+  .btn.ghost { background: transparent; }
+  .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  .export-panel {
+    background: var(--card-bg);
+    border: 1px solid var(--rule);
+    border-radius: 8px;
+    padding: 16px;
+    margin: 24px 0;
+  }
+  .export-panel .btn-row {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin: 0 0 12px 0;
+  }
+  .json-preview {
+    max-height: 360px;
+    overflow: auto;
+    background: var(--code-bg);
+    border: 1px solid var(--rule);
+    border-radius: 4px;
+    padding: 10px;
+    font: 12.5px/1.4 ui-monospace, Menlo, Consolas, monospace;
+    white-space: pre;
+  }
+  .toast {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    background: var(--good);
+    color: white;
+    padding: 10px 16px;
+    border-radius: 6px;
+    font-weight: 600;
+    font-size: 14px;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.18);
+    opacity: 0;
+    transform: translateY(8px);
+    transition: opacity 160ms ease, transform 160ms ease;
+    pointer-events: none;
+    z-index: 100;
+  }
+  .toast.show { opacity: 1; transform: translateY(0); }
+  .toast.error { background: var(--bad); }
+
+  hr { border: 0; border-top: 1px solid var(--rule); margin: 30px 0; }
+  .small { font-size: 13px; color: var(--muted); }
+  .legend {
+    display: flex;
+    gap: 14px;
+    flex-wrap: wrap;
+    font-size: 13px;
+    color: var(--muted);
+    margin: 8px 0 0 0;
+  }
+  details {
+    margin: 8px 0;
+    border: 1px solid var(--rule);
+    border-radius: 6px;
+    padding: 8px 12px;
+    background: var(--card-bg);
+  }
+  details > summary {
+    cursor: pointer;
+    font-weight: 600;
+    color: var(--accent);
+  }
+  @media (max-width: 880px) {
+    .wrap { grid-template-columns: 1fr; }
+    nav.toc {
+      position: static;
+      height: auto;
+      border-right: 0;
+      border-bottom: 1px solid var(--rule);
+      padding: 16px;
+    }
+    main { padding: 24px 16px 60px 16px; }
+    .status-bar { margin: 0 -16px 16px -16px; padding: 10px 16px; }
+  }
+  @media print {
+    nav.toc, .status-bar, .export-panel, .toast { display: none; }
+    .wrap { display: block; }
+    main { padding: 0; }
+    body { background: white; color: black; }
+    .question-card { break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <nav class="toc" aria-label="Table of contents">
+    <h2>Contents</h2>
+    <ul>
+      <li><a href="#s1"><span>§1 Executive Summary</span></a></li>
+      <li><a href="#s2"><span>§2 Evidence</span></a></li>
+      <li><a href="#s3"><span>§3 Findings</span></a></li>
+      <li><a href="#s4"><span>§4 Questions (form)</span></a></li>
+      <li><a href="#export"><span>§5 Export</span></a></li>
+    </ul>
+
+    <h2>Questions</h2>
+    <ul class="toc-questions" id="toc-questions"></ul>
+  </nav>
+
+  <main>
+    <h1>P25 Arch Review — Interactive Question Form</h1>
+    <p class="subtitle">Variant C, pre-execution review. Pick a choice for each question (or Skip), then export answers as JSON.</p>
+
+    <div class="meta-card">
+      <p><strong>How this works:</strong> Each question is pre-selected to the recommendation. Override where you disagree, or pick <em>Skip / decide later</em>. Optional notes per question. Click <em>Copy JSON</em> to copy answers to clipboard.</p>
+      <p><strong>Source plan:</strong> <code>docs/superpowers/plans/2026-05-12-p25-arch-review-immediate-providers.md</code></p>
+      <div class="legend">
+        <span><span class="badge good">Done</span> already extracted</span>
+        <span><span class="badge warn">Open</span> remaining duplication</span>
+        <span><span class="badge bad">Wrong</span> plan claim incorrect</span>
+        <span><span class="badge info">Note</span> contextual</span>
+      </div>
+    </div>
+
+    <div class="status-bar" role="status" aria-live="polite">
+      <div class="progress">
+        <div><strong id="progress-text">0 of 14 answered</strong> · <span id="skip-text" class="small">0 skipped</span></div>
+        <div class="progress-bar"><div class="progress-fill" id="progress-fill"></div></div>
+      </div>
+      <button type="button" class="btn ghost" id="accept-defaults">Accept all recommendations</button>
+      <button type="button" class="btn ghost" id="skip-all">Skip all</button>
+      <button type="button" class="btn ghost" id="reset-all">Reset</button>
+      <button type="button" class="btn primary" id="copy-top">Copy JSON</button>
+    </div>
+
+    <h2 id="s1">§1 Executive Summary</h2>
+    <ul>
+      <li>~50–60% of the duplication the plan called out as "warranted extraction targets" has <strong>already shipped</strong> via P24 follow-ups (TS20/T21), P27 (<code>_status.py</code>), and P33 (<code>parameter_config.py</code>).</li>
+      <li>A cross-provider contract test (<code>tests/test_provider_stream_contract.py</code>) <strong>already exists</strong>.</li>
+      <li>P28 (Gemini Background DR) is <strong>actively in-flight on a branch</strong> — merge contention if P25 touches provider files.</li>
+      <li>P24 "blocker" is functionally null — remaining P24 tasks are CLI alias work, zero overlap with provider architecture.</li>
+    </ul>
+    <blockquote>Net: P25's center of gravity has shifted from "extract duplicates" to <strong>"audit + canonicalize + decide explicitly what stays divergent."</strong></blockquote>
+
+    <h2 id="s2">§2 Evidence — what is still duplicated</h2>
+    <table>
+      <thead>
+        <tr><th>Pattern</th><th>OpenAI</th><th>Perplexity</th><th>Gemini</th><th>Verdict</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>async def stream()</code> body</td><td>91 LOC</td><td>90 LOC</td><td>60 LOC</td><td><span class="badge warn">Open</span></td></tr>
+        <tr><td><code>_map_*_error</code></td><td>1 fn</td><td>2 fns</td><td>1 fn</td><td><span class="badge info">Different SDKs</span></td></tr>
+        <tr><td><code>_map_*_error_async</code> (intra-Perplexity)</td><td>—</td><td>yes</td><td>—</td><td><span class="badge warn">Open</span></td></tr>
+        <tr><td><code>Citation(...)</code> calls</td><td>1</td><td>3</td><td>3</td><td><span class="badge good">Settled (per-provider)</span></td></tr>
+        <tr><td><code>## Reasoning</code> render</td><td>ad hoc</td><td>—</td><td>ad hoc</td><td><span class="badge warn">Open</span></td></tr>
+        <tr><td>Empty-content debug ladder</td><td>shared</td><td>shared</td><td>shared</td><td><span class="badge good">Done</span></td></tr>
+        <tr><td>Sources block</td><td>shared</td><td>shared</td><td>shared</td><td><span class="badge good">Done</span></td></tr>
+        <tr><td>Background-status translation</td><td>shared</td><td>shared</td><td>n/a (P28)</td><td><span class="badge good">Done</span></td></tr>
+      </tbody>
+    </table>
+
+    <details id="s3">
+      <summary>§3 Findings — benefits, risks, and lossy areas (open to expand)</summary>
+      <p><strong>Top added benefits:</strong> audit + canonicalize framing; documents intentional divergence; de-risks P29; closes planning-doc debt; clarifies "shared vs divergent" map for future providers.</p>
+      <p><strong>Top added risks:</strong> premature kind-boundary consolidation; P28 branch contention; <code>MockProvider</code> parity; <code>parameter_config.py</code> recency; cross-SDK leaky-abstraction trap; <code>live_api</code> spend; multi-commit review fatigue.</p>
+      <p><strong>Top lossy areas:</strong> plan's extraction targets list isn't current; contract test "should create" framing is obsolete (file exists); P24 blocker is functionally null; missing audit-first task; SDK divergence implicit; ADR location undefined; <code>MockProvider</code> as refactor constraint not as duplication target.</p>
+    </details>
+
+    <h2 id="s4">§4 Questions</h2>
+    <form id="answers-form">
+      <div id="questions"></div>
+    </form>
+
+    <h2 id="export">§5 Export</h2>
+    <div class="export-panel">
+      <div class="btn-row">
+        <button type="button" class="btn primary" id="copy-btn">Copy JSON to clipboard</button>
+        <button type="button" class="btn" id="download-btn">Download JSON file</button>
+        <button type="button" class="btn ghost" id="select-preview">Select preview</button>
+      </div>
+      <p class="small">Live preview of the JSON that will be exported. Updates as you change answers. Tip: ⌘/Ctrl + Enter copies.</p>
+      <pre class="json-preview" id="json-preview" aria-live="polite"></pre>
+    </div>
+
+    <hr>
+    <p class="small">Source: <code>planning/p25-arch-review-analysis-and-questions.v1.md</code> · This HTML is interactive; the Markdown view is read-only.</p>
+  </main>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+"use strict";
+
+// ─── Data ────────────────────────────────────────────────────────────────
+const QUESTIONS = [
+  {
+    id: "Q1",
+    title: "Reframe the project purpose",
+    context: "~50–60% of duplication is already extracted. Remaining work is architectural, not extraction-driven.",
+    options: {
+      a: "Keep framing as “find and extract new duplicates”",
+      b: "Reframe as audit + canonicalize + ADR + close planning debt",
+      c: "Split: P25 = audit + ADR only; P25b = extractions"
+    },
+    recommended: "b",
+    rationale: "The codebase already did the extraction incrementally; what is missing is the ADR and the explicit “which divergence is intentional” list."
+  },
+  {
+    id: "Q2",
+    title: "Real blocker: P28 branch contention",
+    context: "P28 has an active branch with live spike commits touching Gemini-adjacent code.",
+    options: {
+      a: "Run P25 first; merge P28 onto it",
+      b: "Wait until P28 merges to main",
+      c: "Scope-bounded P25 (touch only helpers/tests, never gemini.py) so P28 lands in parallel"
+    },
+    recommended: "c",
+    rationale: "Minimizes merge cost; matches the “audit + canonicalize” framing. Any provider-file extraction waits for P28 merge."
+  },
+  {
+    id: "Q3",
+    title: "P24 post-ship TS22/T25 blocker treatment",
+    context: "Remaining P24 tasks are --input-file alias work; zero overlap with provider architecture.",
+    options: {
+      a: "Strict: P24 must be [x]",
+      b: "Relax: P25 may start while TS22/T25 are pending",
+      c: "Promote P24-TS22/T25 to its own P24d micro-project"
+    },
+    recommended: "b",
+    rationale: "Bureaucratic blocker only; no real risk."
+  },
+  {
+    id: "Q4",
+    title: "Audit step (the missing T0)",
+    context: "Plan jumps straight to T01 = duplication inventory without first auditing what is already shared.",
+    options: {
+      a: "Add explicit P25-T00 — inventory existing shared surface (_helpers, _status, parameter_config, base)",
+      b: "Fold the existing-surface inventory into T01",
+      c: "Skip — trust engineer to read those files first"
+    },
+    recommended: "a",
+    rationale: "Makes the audit explicit, produces a durable artifact, prevents over-counting duplication."
+  },
+  {
+    id: "Q5",
+    title: "_map_*_error cross-SDK divergence",
+    context: "OpenAI/Perplexity share OpenAI SDK exceptions; Gemini uses google-genai. Unifying all three is a leaky-abstraction trap.",
+    options: {
+      a: "Try to unify — strategy pattern with provider-keyed tables",
+      b: "Leave fully divergent; document the SDK split in the ADR",
+      c: "Half-extract OpenAI/Perplexity pair only; leave Gemini alone"
+    },
+    recommended: "b",
+    rationale: "SDK divergence is real architectural truth, not a duplication smell."
+  },
+  {
+    id: "Q6",
+    title: "Perplexity intra-provider duplication",
+    context: "Perplexity has _map_perplexity_error and _map_perplexity_error_async — intra-file, not cross-provider.",
+    options: {
+      a: "In scope for P25 — fold into the audit",
+      b: "Out of scope; spin a separate [?] idea",
+      c: "In scope only if it falls out cleanly from the audit; otherwise defer"
+    },
+    recommended: "c",
+    rationale: "P25's name is cross-provider; include only if the audit makes it cheap."
+  },
+  {
+    id: "Q7",
+    title: "Reasoning side-channel rendering",
+    context: "OpenAI wires reasoning_summary in stream(); Perplexity has a <think>...</think> parser; Gemini wires Part.thought events.",
+    options: {
+      a: "Audit as first-class row; potentially extract render_reasoning_block()",
+      b: "Leave each provider's reasoning rendering divergent; document why in the ADR",
+      c: "Consumer side only; leave provider-side extraction divergent"
+    },
+    recommended: "a",
+    rationale: "If ## Sources was worth extracting, ## Reasoning likely is too. Output shape is already converged."
+  },
+  {
+    id: "Q8",
+    title: "Deliverable shape: ADR location",
+    context: "Plan says docs/architecture/... but that directory doesn't exist. Repo uses docs/superpowers/specs/ for design docs.",
+    options: {
+      a: "Create docs/architecture/ convention; P25 is its inaugural document",
+      b: "Use docs/superpowers/specs/ (matches existing convention)",
+      c: "Use planning/ with versioned filename"
+    },
+    recommended: "b",
+    rationale: "Matches existing convention; indexed alongside the immediate-vs-background design spec."
+  },
+  {
+    id: "Q9",
+    title: "PR shape and review burden",
+    context: "Up to ~9 commits if every extraction × every provider is a separate commit.",
+    options: {
+      a: "Single PR with all commits; rely on per-commit review",
+      b: "Audit + ADR in PR #1; each extraction in its own PR",
+      c: "Audit + ADR + small obvious extractions in PR #1; defer larger to PR #2/#3 via P25b"
+    },
+    recommended: "c",
+    rationale: "Lands architectural decisions fast; subsequent extraction PRs stay reviewable."
+  },
+  {
+    id: "Q10",
+    title: "Measurable Definition of Done",
+    context: "Plan's DoD is “all checkboxes flipped” — not measurable.",
+    options: {
+      a: "Quantitative: no behavior present in ≥2 providers via inline duplication, unless documented in ADR",
+      b: "Behavioral: ADR referenced from each provider's module docstring and from base.py",
+      c: "Both (a) and (b)"
+    },
+    recommended: "c",
+    rationale: "(a) drives the technical decision; (b) makes it discoverable from code. Together they prevent ADR rot."
+  },
+  {
+    id: "Q11",
+    title: "Contract test extension scope",
+    context: "tests/test_provider_stream_contract.py already exists; question is extend vs. create new.",
+    options: {
+      a: "Extend the existing contract file; add assertions for every shared helper used by ≥2 providers",
+      b: "Create a new tests/test_immediate_providers_contract.py; existing stays focused on StreamEvent",
+      c: "No contract-test changes in scope; audit only"
+    },
+    recommended: "a",
+    rationale: "Adding a new file fractures the contract surface; rename the existing file's scope docstring if needed."
+  },
+  {
+    id: "Q12",
+    title: "Planning-doc debt treatment",
+    context: "planning/p24-providers-root-namespace-investigation.v1.md and planning/p24-openai-stream-audit.v1.md are superseded but not archived.",
+    options: {
+      a: "Out of scope; leave planning docs alone",
+      b: "Move superseded notes to archive/ as part of P25's ADR landing",
+      c: "Archive only what the audit references and the ADR supersedes"
+    },
+    recommended: "c",
+    rationale: "Minimal-touch but principled; ADR becomes canonical, superseded notes are archived in the same commit."
+  },
+  {
+    id: "Q13",
+    title: "Real-API test budget",
+    context: "Cross-provider live tests multiply API spend by 3 every run.",
+    options: {
+      a: "Keep all new contract tests mock-only; no live_api additions",
+      b: "Add live_api tests with per-provider gating and a documented spend ceiling",
+      c: "Add extended-marked tests (cassette-backed where possible); no live_api additions"
+    },
+    recommended: "c",
+    rationale: "Matches the repo's pattern: extended runs nightly, live_api weekly. P25 shouldn't grow live_api cost."
+  },
+  {
+    id: "Q14",
+    title: "Successor project shape (P25b)",
+    context: "Variant C creates P25b for deferred items; question is whether to pre-reserve the ID.",
+    options: {
+      a: "Pre-register P25b as [?] even if the audit surfaces nothing",
+      b: "Only create P25b if the audit surfaces ≥1 deferred item",
+      c: "No sibling; append a “Deferred” section to the ADR; capture [?] ideas later"
+    },
+    recommended: "b",
+    rationale: "Don't reserve trunk IDs that may not be used; register via project-add if items emerge."
+  }
+];
+
+const SKIP_VALUE = "skip";
+const SKIP_LABEL = "Skip / decide later";
+
+// ─── Safe DOM construction (no innerHTML) ────────────────────────────────
+function el(tag, attrs, children) {
+  const node = document.createElement(tag);
+  if (attrs) {
+    for (const [k, v] of Object.entries(attrs)) {
+      if (v === null || v === undefined || v === false) continue;
+      if (k === "class") node.className = v;
+      else if (k === "for") node.htmlFor = v;
+      else if (k === "checked" || k === "disabled") node[k] = !!v;
+      else if (k.startsWith("data-")) node.setAttribute(k, v);
+      else if (k === "text") node.textContent = v;
+      else node.setAttribute(k, v);
+    }
+  }
+  if (children) {
+    for (const c of children) {
+      if (c === null || c === undefined) continue;
+      node.appendChild(typeof c === "string" ? document.createTextNode(c) : c);
+    }
+  }
+  return node;
+}
+
+function buildOption(q, key, label, isRecommended, isSkip) {
+  const input = el("input", {
+    type: "radio",
+    name: q.id,
+    value: key,
+    checked: isRecommended
+  });
+  const keySpan = el("span", { class: "opt-key", text: isSkip ? "[skip]" : "(" + key + ")" });
+  const labelSpan = el("span", { text: label });
+  if (isRecommended) {
+    labelSpan.appendChild(document.createTextNode(" "));
+    labelSpan.appendChild(el("span", { class: "rec-marker", text: "★ Recommended" }));
+  }
+  const lbl = el("label", null, [input, keySpan, labelSpan]);
+  const li = el("li", isSkip ? { class: "skip" } : null, [lbl]);
+  return li;
+}
+
+function buildQuestionCard(q) {
+  const card = el("div", { class: "question-card", id: q.id.toLowerCase() });
+  const title = el("h3", null, [
+    el("span", { class: "qid", text: q.id }),
+    document.createTextNode(" " + q.title)
+  ]);
+  card.appendChild(title);
+  card.appendChild(el("p", { class: "small", text: q.context }));
+  card.appendChild(el("h4", { text: "Choices" }));
+
+  const ul = el("ul", { class: "options" });
+  for (const [key, label] of Object.entries(q.options)) {
+    ul.appendChild(buildOption(q, key, label, key === q.recommended, false));
+  }
+  ul.appendChild(buildOption(q, SKIP_VALUE, SKIP_LABEL, false, true));
+  card.appendChild(ul);
+
+  const rec = el("div", { class: "recommend" }, [
+    el("strong", { text: "Recommendation:" }),
+    document.createTextNode(" (" + q.recommended + ") " + q.options[q.recommended] + " — " + q.rationale)
+  ]);
+  card.appendChild(rec);
+
+  const notesRow = el("div", { class: "notes-row" }, [
+    el("label", { for: q.id + "-notes", text: "Notes (optional)" }),
+    el("textarea", {
+      id: q.id + "-notes",
+      "data-notes-for": q.id,
+      placeholder: "Override rationale, additional context, follow-up question..."
+    })
+  ]);
+  card.appendChild(notesRow);
+  return card;
+}
+
+function buildTocEntry(q) {
+  const dot = el("span", { class: "status-dot", id: "dot-" + q.id });
+  const text = el("span", { text: q.id + " — " + q.title });
+  const a = el("a", { href: "#" + q.id.toLowerCase() }, [text, dot]);
+  return el("li", null, [a]);
+}
+
+// ─── Render ──────────────────────────────────────────────────────────────
+const questionsRoot = document.getElementById("questions");
+const tocList = document.getElementById("toc-questions");
+const fragQ = document.createDocumentFragment();
+const fragToc = document.createDocumentFragment();
+for (const q of QUESTIONS) {
+  fragQ.appendChild(buildQuestionCard(q));
+  fragToc.appendChild(buildTocEntry(q));
+}
+questionsRoot.appendChild(fragQ);
+tocList.appendChild(fragToc);
+
+// ─── State collection ────────────────────────────────────────────────────
+function collectAnswers() {
+  const out = {
+    schema: "p25-arch-review-answers/v1",
+    project: "P25 — Architecture Review & Cleanup (Immediate Providers)",
+    plan_source: "docs/superpowers/plans/2026-05-12-p25-arch-review-immediate-providers.md",
+    generated_at: new Date().toISOString(),
+    variant: "C",
+    summary: { total: QUESTIONS.length, answered: 0, skipped: 0, matches_recommendation: 0, overrides: 0 },
+    answers: {}
+  };
+
+  for (const q of QUESTIONS) {
+    const checked = document.querySelector(`input[name="${q.id}"]:checked`);
+    const notesEl = document.querySelector(`textarea[data-notes-for="${q.id}"]`);
+    const choice = checked ? checked.value : null;
+    const skipped = choice === SKIP_VALUE;
+    const answered = choice !== null && !skipped;
+    const matches = answered && choice === q.recommended;
+    const labelMap = Object.assign({}, q.options, { [SKIP_VALUE]: SKIP_LABEL });
+
+    out.answers[q.id] = {
+      title: q.title,
+      choice: choice,
+      choice_label: choice ? labelMap[choice] : null,
+      recommended: q.recommended,
+      matches_recommendation: matches,
+      skipped: skipped,
+      notes: notesEl ? notesEl.value.trim() : ""
+    };
+
+    if (answered) out.summary.answered += 1;
+    if (skipped) out.summary.skipped += 1;
+    if (matches) out.summary.matches_recommendation += 1;
+    if (answered && !matches) out.summary.overrides += 1;
+  }
+  return out;
+}
+
+// ─── UI updates ──────────────────────────────────────────────────────────
+const progressText = document.getElementById("progress-text");
+const skipText = document.getElementById("skip-text");
+const progressFill = document.getElementById("progress-fill");
+const jsonPreview = document.getElementById("json-preview");
+
+function updateUI() {
+  const data = collectAnswers();
+  const { answered, skipped, total } = data.summary;
+  progressText.textContent = `${answered} of ${total} answered`;
+  skipText.textContent = `${skipped} skipped`;
+  const pct = ((answered + skipped) / total) * 100;
+  progressFill.style.width = pct + "%";
+  progressFill.classList.toggle("skipped", skipped > 0 && answered === 0);
+
+  for (const q of QUESTIONS) {
+    const dot = document.getElementById("dot-" + q.id);
+    if (!dot) continue;
+    dot.classList.remove("answered", "skipped");
+    const a = data.answers[q.id];
+    if (a.skipped) dot.classList.add("skipped");
+    else if (a.choice) dot.classList.add("answered");
+  }
+
+  jsonPreview.textContent = JSON.stringify(data, null, 2);
+}
+
+document.getElementById("answers-form").addEventListener("change", updateUI);
+document.getElementById("answers-form").addEventListener("input", updateUI);
+
+// ─── Buttons ─────────────────────────────────────────────────────────────
+function showToast(message, kind) {
+  const toast = document.getElementById("toast");
+  toast.textContent = message;
+  toast.classList.remove("error");
+  if (kind === "error") toast.classList.add("error");
+  toast.classList.add("show");
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => toast.classList.remove("show"), 1800);
+}
+
+async function copyJson() {
+  const json = JSON.stringify(collectAnswers(), null, 2);
+  try {
+    await navigator.clipboard.writeText(json);
+    showToast("Copied JSON to clipboard");
+  } catch (e) {
+    const ta = document.createElement("textarea");
+    ta.value = json;
+    ta.style.position = "fixed";
+    ta.style.opacity = "0";
+    document.body.appendChild(ta);
+    ta.select();
+    try {
+      document.execCommand("copy");
+      showToast("Copied JSON to clipboard (fallback)");
+    } catch (err) {
+      showToast("Copy failed — select & copy the preview manually", "error");
+    } finally {
+      document.body.removeChild(ta);
+    }
+  }
+}
+
+function downloadJson() {
+  const json = JSON.stringify(collectAnswers(), null, 2);
+  const blob = new Blob([json], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+  a.download = "p25-answers-" + stamp + ".json";
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 0);
+  showToast("Downloaded JSON file");
+}
+
+function acceptDefaults() {
+  for (const q of QUESTIONS) {
+    const sel = document.querySelector(`input[name="${q.id}"][value="${q.recommended}"]`);
+    if (sel) sel.checked = true;
+  }
+  updateUI();
+  showToast("All recommendations selected");
+}
+
+function skipAll() {
+  for (const q of QUESTIONS) {
+    const sel = document.querySelector(`input[name="${q.id}"][value="${SKIP_VALUE}"]`);
+    if (sel) sel.checked = true;
+  }
+  updateUI();
+  showToast("All questions skipped");
+}
+
+function resetAll() {
+  document.querySelectorAll("#answers-form input[type=radio]").forEach(r => { r.checked = false; });
+  document.querySelectorAll("#answers-form textarea").forEach(t => { t.value = ""; });
+  updateUI();
+  showToast("Form reset");
+}
+
+function selectPreview() {
+  const node = document.getElementById("json-preview");
+  const range = document.createRange();
+  range.selectNodeContents(node);
+  const sel = window.getSelection();
+  sel.removeAllRanges();
+  sel.addRange(range);
+}
+
+document.getElementById("copy-btn").addEventListener("click", copyJson);
+document.getElementById("copy-top").addEventListener("click", copyJson);
+document.getElementById("download-btn").addEventListener("click", downloadJson);
+document.getElementById("accept-defaults").addEventListener("click", acceptDefaults);
+document.getElementById("skip-all").addEventListener("click", skipAll);
+document.getElementById("reset-all").addEventListener("click", resetAll);
+document.getElementById("select-preview").addEventListener("click", selectPreview);
+
+document.addEventListener("keydown", (e) => {
+  if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+    e.preventDefault();
+    copyJson();
+  }
+});
+
+updateUI();
+</script>
+</body>
+</html>
