@@ -2,6 +2,19 @@
 
 All notable changes to Doxa Research are documented here.
 
+## [3.0.7](https://github.com/smorin/doxa-research/compare/v3.0.6...v3.0.7) (2026-05-16)
+
+
+### Bug Fixes
+
+* **deps:** bump ty dev dependency to &gt;=0.0.33 (PR [#42](https://github.com/smorin/doxa-research/issues/42)) ([fccc245](https://github.com/smorin/doxa-research/commit/fccc245fe09e07003502016ac007201339d44d50))
+
+
+### Documentation
+
+* **claude:** add release coordination + drift prevention rules ([b46d86d](https://github.com/smorin/doxa-research/commit/b46d86d9b33d1d1ce9190bb078b2bff0d537c678))
+* **release:** document publish-manual emergency-only + hooksPath gotcha ([2ad8e22](https://github.com/smorin/doxa-research/commit/2ad8e22ab0991d3701ec8e6ebbb75c99d86f6cf3))
+
 ## [3.0.6](https://github.com/smorin/doxa-research/compare/v3.0.3...v3.0.6) (2026-05-16)
 
 Consolidated release of all work between v3.0.3 and 2026-05-16. Supersedes
