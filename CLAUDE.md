@@ -366,6 +366,158 @@ always tags from main so the check is invisible in normal flow, but
 prevents attacker- or accident-tagged non-main commits from triggering
 a release.
 
+## Worktree Discipline & Main-Sync Patterns
+
+### Default to worktrees for feature work
+
+When making any change beyond a 1-2 line fix, work from a feature
+branch in a separate worktree, NOT on main directly. Worktrees give
+you:
+
+- A separate working directory immune to release-please activity on
+  main while you're working
+- Your own remote-tracking branch with `[ahead/behind]` counters
+  against your feature branch, not against main
+- The main worktree (this repo) stays at HEAD-of-main, ready for
+  quick sanity checks, lefthook-hook testing, etc.
+
+Setup:
+
+```bash
+# From the main repo (/Users/stevemorin/c/doxa-research):
+git worktree add ../doxa-research-worktrees/feat-my-thing -b feat/my-thing
+cd ../doxa-research-worktrees/feat-my-thing
+# Work, commit, push -u origin feat/my-thing
+# Open PR via gh pr create
+```
+
+Cleanup after merge:
+
+```bash
+cd /Users/stevemorin/c/doxa-research            # back to main
+git worktree remove ../doxa-research-worktrees/feat-my-thing
+git branch -D feat/my-thing                     # if locally still around
+git fetch --prune                               # clear gone remote branches
+```
+
+### Main is for releases only
+
+Direct commits to main are reserved for:
+
+- Hot-fix releases sized for a single commit
+- Dependabot merges (when CI is green)
+- release-please's own bump commits (via Release PR merge)
+- Documentation-only changes too small to justify a PR
+
+Everything else: branch → PR → merge. The `pypi` GitHub environment's
+reviewer gate is the LAST defense; the first is your own discipline.
+
+### The "fetch + status -sb" prelude
+
+ALWAYS at the top of any work session in the main repo:
+
+```bash
+git fetch origin
+git status -sb     # check [ahead N, behind M]
+```
+
+If `[behind M]` for any `M > 0`, STOP and rebase before doing anything
+else:
+
+```bash
+git pull --rebase origin main
+```
+
+If uv.lock conflicts (common when release-please tagged a release
+that your local missed):
+
+```bash
+git checkout --theirs uv.lock      # take origin's lock as canonical
+uv sync                            # absorb new pyproject version
+git add uv.lock
+git rebase --continue              # if mid-rebase
+```
+
+### After every release-please tag, `uv sync` locally
+
+release-please bumps pyproject.toml + __init__.py + manifest when it
+tags. The CI `sync-uv-lock` job in `release-please.yml` ALSO commits
+the new uv.lock — but only on the CI side. Your local clone won't
+have those commits until you pull.
+
+After every Release PR merge:
+
+```bash
+git pull --rebase origin main      # pulls both the release bump AND the sync-uv-lock commit
+uv sync                            # idempotent; should be a no-op if CI already synced
+```
+
+If `git diff uv.lock` shows changes after `uv sync`, something's out
+of sync; investigate before committing.
+
+### "Fetch first" push rejection — the recovery dance
+
+When you push and see:
+
+```
+! [rejected]        main -> main (fetch first)
+```
+
+Origin moved while you were working. Don't force-push. Run:
+
+```bash
+git fetch origin
+git pull --rebase origin main
+git push
+```
+
+Repeat if origin moves AGAIN during your rebase (rare but happens
+when multiple Release PRs cascade or dependabot is also merging).
+
+### uv.lock conflict resolution recipe (memorize)
+
+This happened five times in one session. The recipe:
+
+```bash
+# During a rebase, uv.lock shows as conflict (UU in `git status`):
+git checkout --theirs uv.lock      # accept origin's resolution
+uv sync                            # apply local pyproject changes on top
+git add uv.lock
+git rebase --continue              # OR: git commit, if not in rebase
+```
+
+Why `--theirs` instead of `--ours`: origin's `uv.lock` incorporates
+the latest dependabot / release-please bumps already merged on main.
+Yours is from your local edit session. Origin's is canonical for the
+DEPENDENCIES; we re-apply OUR pyproject change on top of it via
+`uv sync`.
+
+### When NOT to use a worktree
+
+- Single-line typo fixes that don't need their own PR
+- Touching files outside the Python module (README, CHANGELOG entries)
+  where conflict probability is near zero
+- Emergency hot-fixes where the overhead of branch/PR/merge is too much
+- Active session where the main worktree is clean AND main hasn't moved
+  since you fetched
+
+Trust your judgment — but when in doubt, branch.
+
+### Hook discipline under main-sync
+
+See also CONTRIBUTING.md → "If Hooks Stop Firing (post-rename gotcha)".
+
+After a `git worktree remove` + parent-dir rename, the hooks path can
+silently break. Verify with:
+
+```bash
+git config --get core.hooksPath
+ls -d "$(git config --get core.hooksPath)" 2>&1
+```
+
+If the path is set but missing, `git config --unset core.hooksPath`
+to fall back to in-tree hooks.
+
 ## API and UV References
 Please check @planning/references.md URLs to look up detail about the openai, perplexity, and UV documentation.
 
