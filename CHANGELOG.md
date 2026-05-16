@@ -2,6 +2,13 @@
 
 All notable changes to Doxa Research are documented here.
 
+## [3.0.8](https://github.com/smorin/doxa-research/compare/v3.0.7...v3.0.8) (2026-05-16)
+
+
+### CI/CD
+
+* **release-please:** auto-sync uv.lock after release tag ([5164488](https://github.com/smorin/doxa-research/commit/51644885f1a003293b10d2f5d79d18cd1c4a0aef))
+
 ## [3.0.7](https://github.com/smorin/doxa-research/compare/v3.0.6...v3.0.7) (2026-05-16)
 
 
