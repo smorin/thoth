@@ -2,6 +2,18 @@
 
 All notable changes to Doxa Research are documented here.
 
+## [3.0.4](https://github.com/smorin/doxa-research/compare/v3.0.3...v3.0.4) (2026-05-16)
+
+
+### Bug Fixes
+
+* **ci:** wrap long publish.yml line to satisfy yamllint line-length(120) ([839b838](https://github.com/smorin/doxa-research/commit/839b83821be28c15d3e0affb7b017ee2ac2ecc92))
+
+
+### Miscellaneous
+
+* **release:** customize PR title to make publish action clearer ([8768d48](https://github.com/smorin/doxa-research/commit/8768d486de2ce21a95c50e2f093f3ef57f1c5f4e))
+
 ## [3.0.3](https://github.com/smorin/doxa-research/compare/v3.0.2...v3.0.3) (2026-05-16)
 
 
