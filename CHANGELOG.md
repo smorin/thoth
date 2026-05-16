@@ -2,6 +2,14 @@
 
 All notable changes to Doxa Research are documented here.
 
+## [3.0.2](https://github.com/smorin/doxa-research/compare/v3.0.1...v3.0.2) (2026-05-16)
+
+
+### Miscellaneous
+
+* retrigger release-please after credentials fix ([f2fca18](https://github.com/smorin/doxa-research/commit/f2fca1865e24931d04f52c92c56e98a7820313c9))
+* trigger release-please after App credentials setup ([4ea31a9](https://github.com/smorin/doxa-research/commit/4ea31a90c68ddc6ef57348213b158fecb33410a4))
+
 ## [3.0.1] — 2026-05-16
 
 ### Changed
