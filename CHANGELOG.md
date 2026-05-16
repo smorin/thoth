@@ -2,30 +2,64 @@
 
 All notable changes to Doxa Research are documented here.
 
-## [3.0.5](https://github.com/smorin/doxa-research/compare/v3.0.4...v3.0.5) (2026-05-16)
+## [3.0.6](https://github.com/smorin/doxa-research/compare/v3.0.3...v3.0.6) (2026-05-16)
 
+Consolidated release of all work between v3.0.3 and 2026-05-16. Supersedes
+the unpublished v3.0.4 and v3.0.5 tags (see notes below for context).
 
 ### CI/CD
 
-* **publish:** verify tag is reachable from origin/main before release ([2139ee4](https://github.com/smorin/doxa-research/commit/2139ee47efccf7d722f1ba6900c85c80bd1d4bf2))
-* **release-please:** upgrade create-github-app-token v1 -&gt; v3 ([ca64dfd](https://github.com/smorin/doxa-research/commit/ca64dfdab4d05735c7ca3f254346700071b14cc3))
-
-
-### Testing
-
-* **sigint:** use real ConfigManager + CheckpointManager instead of stubs ([651d037](https://github.com/smorin/doxa-research/commit/651d037861efc1bdd1800cfd487b71d5000c0ef2))
-
-## [3.0.4](https://github.com/smorin/doxa-research/compare/v3.0.3...v3.0.4) (2026-05-16)
-
+* **publish:** verify tag is reachable from origin/main before release; defense
+  in depth against an attacker-tagged feature-branch commit triggering a
+  release ([2139ee4](https://github.com/smorin/doxa-research/commit/2139ee47efccf7d722f1ba6900c85c80bd1d4bf2))
+* **release-please:** upgrade `actions/create-github-app-token` v1 → v3 for
+  Node.js 24 support; v1 was deprecated and would be force-migrated on
+  2026-06-02 ([ca64dfd](https://github.com/smorin/doxa-research/commit/ca64dfdab4d05735c7ca3f254346700071b14cc3))
+* **release-please:** customize PR title to clarify publish action; titles now
+  read `chore(release): publish vX.Y.Z — review and merge to ship to PyPI`
+  ([8768d48](https://github.com/smorin/doxa-research/commit/8768d486de2ce21a95c50e2f093f3ef57f1c5f4e))
+* **release-please:** stop chore commits from triggering version bumps; sets
+  `"hidden": true` on chore in `changelog-sections`, preventing recursive
+  release PR loops from chore-only commits
+  ([0600676](https://github.com/smorin/doxa-research/commit/0600676ce3a3e0f60f127b6cee3f25ff85e4daa1))
 
 ### Bug Fixes
 
-* **ci:** wrap long publish.yml line to satisfy yamllint line-length(120) ([839b838](https://github.com/smorin/doxa-research/commit/839b83821be28c15d3e0affb7b017ee2ac2ecc92))
+* **ci:** wrap long `publish.yml` line as a YAML folded scalar to satisfy
+  yamllint `line-length: max: 120`; the failure had been preventing CI
+  Hygiene from passing on every commit since the `--check-url` flag was
+  added ([4336f09](https://github.com/smorin/doxa-research/commit/4336f0907a85e6fee37ada008b46a35c0bdb6862))
 
+### Testing
 
-### Miscellaneous
+* **sigint:** replace `SimpleNamespace` stubs with real `ConfigManager` /
+  `CheckpointManager` instances; resolves 8 long-standing `ty` type errors
+  without any `# type: ignore` comments
+  ([651d037](https://github.com/smorin/doxa-research/commit/651d037861efc1bdd1800cfd487b71d5000c0ef2))
 
-* **release:** customize PR title to make publish action clearer ([8768d48](https://github.com/smorin/doxa-research/commit/8768d486de2ce21a95c50e2f093f3ef57f1c5f4e))
+### Notes
+
+The intermediate tags v3.0.4 and v3.0.5 were created by release-please's
+cascading-chore mechanism but never published to PyPI (the publish workflow's
+required-reviewer gate was rejected for both). The tags + GitHub Releases
+existed transiently; this 3.0.6 release contains the same code as v3.0.5 plus
+the chore-hidden config that prevents the cascade from repeating.
+
+There is no v3.0.4 or v3.0.5 on PyPI. Users upgrading from v3.0.3 go directly
+to v3.0.6.
+
+## ~~[3.0.5]~~ (never published)
+
+Tagged on 2026-05-16; rejected at the PyPI approval gate. Same code as
+v3.0.6 minus the chore-hidden config commit. Tag and GitHub Release have
+been removed; this entry is preserved for history. The substantive changes
+under this tag are listed under v3.0.6 above.
+
+## ~~[3.0.4]~~ (never published)
+
+Tagged on 2026-05-16; rejected at the PyPI approval gate. Tag and GitHub
+Release have been removed; this entry is preserved for history. The
+substantive changes under this tag are listed under v3.0.6 above.
 
 ## [3.0.3](https://github.com/smorin/doxa-research/compare/v3.0.2...v3.0.3) (2026-05-16)
 
