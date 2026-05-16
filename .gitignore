@@ -59,6 +59,7 @@ openai.env
 !CONTRIBUTING.md
 !PUBLISH.md
 !RELEASE.md
+!RELEASE-PLEASE-APP.md
 !AGENTS.md
 !CLAUDE.md
 !doxa-research.*.md

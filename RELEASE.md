@@ -301,6 +301,8 @@ Optionally add required reviewers to the `pypi` environment for an approval gate
 
 ## GitHub App Setup for release-please
 
+> **Canonical guide**: see [RELEASE-PLEASE-APP.md](RELEASE-PLEASE-APP.md) for the full, step-by-step setup with field-level guidance, security considerations, key-rotation procedure, multi-repo onboarding, and troubleshooting. The summary below is the quick reference.
+
 `release-please.yml` uses a GitHub App to authenticate tag pushes. This is necessary because tags pushed with the default `GITHUB_TOKEN` do **not** retrigger `push`-triggered workflows — so `publish.yml` would never fire on release. A GitHub App installation token does retrigger them.
 
 This is one-time setup, per repo.
