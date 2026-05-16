@@ -28,7 +28,7 @@ idna==3.10
     # via
     #   anyio
     #   httpx
-jiter==0.10.0
+jiter==0.14.0
     # via openai
 markdown-it-py==3.0.0
     # via rich
