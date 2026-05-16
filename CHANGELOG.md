@@ -2,6 +2,19 @@
 
 All notable changes to Doxa Research are documented here.
 
+## [3.0.1] — 2026-05-16
+
+### Changed
+
+- Re-release of 3.0.0 under a new version number. TestPyPI's permanent
+  file-name-reuse policy blocked re-upload of `doxa_research-3.0.0-*`
+  files after the original laptop-built artifacts were deleted (they had
+  a different hash than the CI-built artifacts; deleting was the
+  recovery, but PyPI/TestPyPI never allow reusing a filename even after
+  deletion). 3.0.1 is the first publicly installable release of the
+  doxa-research rebrand. No functional changes from the unpublished
+  3.0.0 tag.
+
 ## [3.0.0] — 2026-05-15
 
 ### Renamed (BREAKING)
