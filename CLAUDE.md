@@ -257,6 +257,115 @@ Never say in commits:
 
    Co-Authored-By: Claude <noreply@anthropic.com>
 
+## Release Coordination & Drift Prevention
+
+This repo uses release-please for version management. Releases publish to
+PyPI via `publish.yml` when a `vX.Y.Z` tag is pushed. The chain is:
+Release PR merge → release-please tags → tag push → publish.yml runs →
+PyPI gate awaits approval → upload.
+
+**Direct commits to main never publish.** Only the chain above ships.
+
+### Always sync with origin/main before substantive work
+
+You are NOT the only actor pushing. release-please opens Release PRs
+that the maintainer may merge at any time, landing new commits on
+origin/main while you're working locally. Stale-base commits cause
+push rejections, painful rebases, and `uv.lock` drift.
+
+Mandatory at the top of any session that may produce commits:
+
+```bash
+git fetch origin
+git status -sb     # check ahead/behind status
+# if behind: rebase before doing anything else
+git pull --rebase origin main
+```
+
+If `git status -sb` shows `[ahead N, behind M]` with `M > 0`, **STOP**
+and rebase before committing or pushing. Pushing a stale branch will
+fail with "fetch first" — and any local commits may need re-doing if
+release-please bumped versions in the meantime.
+
+### After ANY release-please tag, refresh uv.lock
+
+release-please bumps `pyproject.toml`, `src/<pkg>/__init__.py`, and
+`.release-please-manifest.json` when it tags — but it does NOT touch
+`uv.lock`. Every release leaves the lock's self-version one patch
+behind reality, making `git diff uv.lock` noisy on the next `uv` call.
+
+After every merged Release PR:
+
+```bash
+git pull --rebase origin main
+uv sync                # regenerates uv.lock to match new pyproject version
+git add uv.lock
+git commit -m "chore(release): sync uv.lock to match pyproject X.Y.Z"
+git push
+```
+
+This commit is `chore(release):` which is HIDDEN from release-please
+(`chore` is `"hidden": true` in `release-please-config.json`) — so it
+does NOT trigger another Release PR. Safe to commit standalone.
+
+**Open follow-up**: wire `uv.lock` into release-please's `extra-files`
+config so its self-version is bumped automatically. The generic regex
+updater is fiddly because of TOML quoting; deferred.
+
+### Don't batch chore-only commits alone with substantive work
+
+Each chore commit pushes a new origin/main commit, which may race
+against release-please's PR updates or against the maintainer merging.
+If you need to make multiple chore-style fixes (uv.lock sync, config
+tweaks), squash them into a single commit at the end of the session.
+
+### Releases happen on Release-PR merge, not on regular push
+
+Full sequence:
+
+1. Land a `feat:`, `fix:`, `perf:`, `refactor:`, `docs:`, `ci:`, or
+   `test:` commit on main. NOT `chore:` — that's hidden.
+2. release-please.yml fires; opens (or updates) a Release PR titled
+   `chore(release): publish vX.Y.Z — review and merge to ship to PyPI`.
+3. Review the Release PR's diff. The CHANGELOG entry should honestly
+   reflect what will ship. (release-please can occasionally propose
+   stale content if the manifest drifted from reality — see CHANGELOG
+   entry for v3.0.6 for one such recovery.)
+4. Merge the Release PR. release-please tags `vX.Y.Z` via the GitHub
+   App token (the App token can retrigger downstream workflows; the
+   default `GITHUB_TOKEN` cannot).
+5. `publish.yml` fires on the tag push. Build → TestPyPI (auto OIDC)
+   → PyPI (required-reviewer gate).
+6. Maintainer approves the `pypi` deployment in the Actions UI. PyPI
+   uploads the wheel + sdist.
+7. After publish succeeds, locally `git pull --rebase origin main` to
+   absorb the release commit, then `uv sync` + chore commit if uv.lock
+   drifted (see above).
+
+The `pypi` GitHub environment is reviewer-gated (maintainer = smorin)
+on purpose; the `testpypi` environment is auto-approve.
+
+### Never use `--no-verify` or `LEFTHOOK=0`
+
+The `core.hooksPath` post-rename bug silently bypassed hooks for days
+in this repo — combined with `--no-verify` use, problems land on main
+undetected. If a hook fails, fix the underlying issue. The only
+acceptable bypass is a documented short-lived WIP commit that will be
+squashed before push, AND only after you've run the equivalent checks
+manually.
+
+If hooks appear to stop firing across all commits, suspect the
+`core.hooksPath` setting first (see CONTRIBUTING.md → "If Hooks Stop
+Firing (post-rename gotcha)").
+
+### Tag protection
+
+`publish.yml` verifies the tagged commit is reachable from
+`origin/main` before building. This is defense in depth — release-please
+always tags from main so the check is invisible in normal flow, but
+prevents attacker- or accident-tagged non-main commits from triggering
+a release.
+
 ## API and UV References
 Please check @planning/references.md URLs to look up detail about the openai, perplexity, and UV documentation.
 
