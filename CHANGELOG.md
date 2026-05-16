@@ -2,6 +2,13 @@
 
 All notable changes to Doxa Research are documented here.
 
+## [3.0.3](https://github.com/smorin/doxa-research/compare/v3.0.2...v3.0.3) (2026-05-16)
+
+
+### Documentation
+
+* **release:** add RELEASE-PLEASE-APP.md canonical App setup guide ([abb0742](https://github.com/smorin/doxa-research/commit/abb0742ed1a370dfb8381ac0f2166a91dd7028d4))
+
 ## [3.0.2](https://github.com/smorin/doxa-research/compare/v3.0.1...v3.0.2) (2026-05-16)
 
 
