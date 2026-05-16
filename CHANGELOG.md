@@ -2,6 +2,13 @@
 
 All notable changes to Doxa Research are documented here.
 
+## [3.0.6](https://github.com/smorin/doxa-research/compare/v3.0.5...v3.0.6) (2026-05-16)
+
+
+### Miscellaneous
+
+* **release:** sync uv.lock to match pyproject 3.0.4 ([4d72e33](https://github.com/smorin/doxa-research/commit/4d72e33f47b75058b9ecae2956cec7b22af4efdb))
+
 ## [3.0.5](https://github.com/smorin/doxa-research/compare/v3.0.4...v3.0.5) (2026-05-16)
 
 
