@@ -143,6 +143,23 @@ uv publish --token pypi-...
 
 ## Manual Fallback (uv + `.pypirc`)
 
+> ⚠️ **EMERGENCY ONLY. DO NOT USE FOR NORMAL RELEASES.**
+>
+> The CI path (`publish.yml` triggered by tag push) is the canonical
+> publisher. Using laptop builds creates a permanent obstacle: laptop
+> wheels and CI wheels are NOT bit-reproducible (different file mtimes,
+> macOS xattrs, uv versions). Once you upload a wheel under filename
+> `doxa_research-X.Y.Z-py3-none-any.whl` from a laptop, neither PyPI nor
+> TestPyPI will EVER accept a re-upload under that same filename — even
+> after deletion. You lock the registry to that exact byte-blob forever.
+> The only recovery is to bump to a new version (see CHANGELOG entry for
+> v3.0.1 for the post-mortem of when this happened).
+>
+> When to actually use this path:
+> - CI is down for an extended period and a hot-fix release must ship
+> - OIDC trusted publisher is misconfigured and can't be fixed quickly
+> - You are intentionally publishing a non-tag pre-release for testing
+
 Use this path only when OIDC trusted publishing is unavailable (CI down,
 release-please blocked, urgent laptop publish). The primary path remains
 release-please → `publish.yml`.
