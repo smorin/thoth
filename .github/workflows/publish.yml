@@ -61,7 +61,10 @@ jobs:
           path: dist/
 
       - name: Publish to TestPyPI
-        run: uv publish --trusted-publishing always --publish-url https://test.pypi.org/legacy/ --check-url https://test.pypi.org/simple/
+        run: >-
+          uv publish --trusted-publishing always
+          --publish-url https://test.pypi.org/legacy/
+          --check-url https://test.pypi.org/simple/
 
   publish-pypi:
     name: Publish to PyPI
