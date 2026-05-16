@@ -23,6 +23,6 @@
     { "type": "docs",     "section": "Documentation" },
     { "type": "ci",       "section": "CI/CD" },
     { "type": "test",     "section": "Testing" },
-    { "type": "chore",    "section": "Miscellaneous", "hidden": false }
+    { "type": "chore",    "section": "Miscellaneous", "hidden": true }
   ]
 }
