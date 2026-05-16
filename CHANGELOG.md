@@ -2,6 +2,19 @@
 
 All notable changes to Doxa Research are documented here.
 
+## [3.0.5](https://github.com/smorin/doxa-research/compare/v3.0.4...v3.0.5) (2026-05-16)
+
+
+### CI/CD
+
+* **publish:** verify tag is reachable from origin/main before release ([2139ee4](https://github.com/smorin/doxa-research/commit/2139ee47efccf7d722f1ba6900c85c80bd1d4bf2))
+* **release-please:** upgrade create-github-app-token v1 -&gt; v3 ([ca64dfd](https://github.com/smorin/doxa-research/commit/ca64dfdab4d05735c7ca3f254346700071b14cc3))
+
+
+### Testing
+
+* **sigint:** use real ConfigManager + CheckpointManager instead of stubs ([651d037](https://github.com/smorin/doxa-research/commit/651d037861efc1bdd1800cfd487b71d5000c0ef2))
+
 ## [3.0.4](https://github.com/smorin/doxa-research/compare/v3.0.3...v3.0.4) (2026-05-16)
 
 
