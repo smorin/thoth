@@ -7,7 +7,6 @@ import json
 import signal
 from datetime import datetime
 from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
 
@@ -19,6 +18,7 @@ from doxa_research.__main__ import (
     OutputManager,
     handle_sigint,
 )
+from doxa_research.config import ConfigManager
 
 
 def _make_operation(tmp_path: Path) -> OperationStatus:
@@ -32,25 +32,31 @@ def _make_operation(tmp_path: Path) -> OperationStatus:
     )
 
 
-def _make_stub_config(tmp_path: Path) -> SimpleNamespace:
-    """Minimal Config shape for OutputManager."""
-    return SimpleNamespace(
-        data={
-            "paths": {"base_output_dir": str(tmp_path)},
-            "output": {
-                "format": "markdown",
-                "timestamp_format": "%Y%m%d-%H%M%S",
-                "include_metadata": False,
-            },
-        }
-    )
+def _make_stub_config(tmp_path: Path) -> ConfigManager:
+    """Build a real ConfigManager with the minimum in-memory data this test file needs.
+
+    `ConfigManager.__init__` performs no file I/O; it only stores paths. After
+    construction we set `.data` directly to the layered-config shape that
+    `OutputManager` and `CheckpointManager` read from.
+    """
+    cm = ConfigManager(config_path=tmp_path / "doxa.config.toml")
+    cm.data = {
+        "paths": {
+            "base_output_dir": str(tmp_path),
+            "checkpoint_dir": str(tmp_path / "checkpoints"),
+        },
+        "output": {
+            "format": "markdown",
+            "timestamp_format": "%Y%m%d-%H%M%S",
+            "include_metadata": False,
+        },
+    }
+    return cm
 
 
-def _make_stub_checkpoint_manager(tmp_path: Path) -> SimpleNamespace:
-    """Minimal CheckpointManager shape for handle_sigint."""
-    checkpoint_dir = tmp_path / "checkpoints"
-    checkpoint_dir.mkdir(parents=True, exist_ok=True)
-    return SimpleNamespace(checkpoint_dir=checkpoint_dir)
+def _make_stub_checkpoint_manager(tmp_path: Path) -> CheckpointManager:
+    """Build a real CheckpointManager rooted at `tmp_path / "checkpoints"`."""
+    return CheckpointManager(_make_stub_config(tmp_path))
 
 
 @pytest.fixture(autouse=True)
@@ -204,6 +210,7 @@ class TestHandleSigint:
 
         assert doxa_signals._interrupt_event.is_set()
         assert doxa_signals._last_interrupt_at is not None
+        assert first_ts is not None
         assert doxa_signals._last_interrupt_at > first_ts
 
     def test_first_press_with_no_active_operation_is_noop(self) -> None:
@@ -219,7 +226,8 @@ class TestCheckpointManagerStillWorks:
     """Regression: real CheckpointManager.save is unchanged."""
 
     def test_checkpoint_save_round_trip(self, tmp_path: Path) -> None:
-        config = SimpleNamespace(data={"paths": {"checkpoint_dir": str(tmp_path / "ckpt")}})
+        config = ConfigManager(config_path=tmp_path / "doxa.config.toml")
+        config.data = {"paths": {"checkpoint_dir": str(tmp_path / "ckpt")}}
         cm = CheckpointManager(config)
         op = _make_operation(tmp_path)
         asyncio.run(cm.save(op))
