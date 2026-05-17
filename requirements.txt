@@ -37,9 +37,9 @@ mdurl==0.1.2
 openai==2.36.0
 platformdirs==4.9.6
 prompt-toolkit==3.0.52
-pydantic==2.13.3
+pydantic==2.13.4
     # via openai
-pydantic-core==2.46.3
+pydantic-core==2.46.4
     # via pydantic
 pygments==2.20.0
     # via rich
