@@ -5,9 +5,26 @@ on:
   push:
     branches: [main]
 
+# Deny all GITHUB_TOKEN permissions at top level; per-job permissions
+# re-grant only what's needed. Mutating release work uses the GitHub App
+# token minted inside each job, not the default GITHUB_TOKEN.
+permissions: {}
+
+concurrency:
+  # Serialize per-ref runs. Rapid push sequences on main (which we hit
+  # during the doxa-research rename session) can fire multiple
+  # release-please runs that step on each other when updating the
+  # Release PR. Don't cancel in-flight runs — release-please's PR-update
+  # is incremental and a cancelled half-update can leave the PR
+  # inconsistent.
+  group: release-please-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   release-please:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read  # actual write goes via App token below
     outputs:
       release_created: ${{ steps.release.outputs.release_created }}
       tag_name: ${{ steps.release.outputs.tag_name }}

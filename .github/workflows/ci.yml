@@ -7,6 +7,12 @@ on:
   pull_request:
     branches: [main]
 
+# Explicit minimal permissions; the repo's default is already "read" but
+# pinning here makes the workflow's security posture self-evident from
+# this file alone (independent of repo-level settings).
+permissions:
+  contents: read
+
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}

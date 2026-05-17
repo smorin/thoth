@@ -24,10 +24,19 @@ name: Live-API Workflow Tests (weekly)
 permissions:
   contents: read
 
+concurrency:
+  group: live-api
+  # Don't cancel an in-flight weekly — same reasoning as extended.yml.
+  cancel-in-progress: false
+
 jobs:
   live_api:
     name: pytest -m "live_api and not extended_slow"
     runs-on: ubuntu-latest
+    # Only run live-provider scheduled/manual jobs in the canonical repo.
+    # Forks do not receive upstream secrets, and these tests can spend
+    # provider quota.
+    if: github.repository == 'smorin/doxa-research'
     steps:
       - uses: actions/checkout@v6.0.2
       - uses: astral-sh/setup-uv@v8.1.0

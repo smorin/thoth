@@ -5,11 +5,22 @@ on:
   pull_request:
     branches: [main]
 
+# commitlint just reads PR commits; no writes needed.
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  # Cancel stale runs when a PR is force-pushed (saves 2-3 redundant runs
+  # per push-iteration).
+  group: commitlint-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
 jobs:
   commitlint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6.0.2
         with:
           fetch-depth: 0
       - uses: wagoid/commitlint-github-action@v6

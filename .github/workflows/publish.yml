@@ -5,6 +5,19 @@ on:
     tags:
       - "v*"
 
+# Deny-all at top level; per-job permissions re-grant exactly what's needed.
+# This is the most security-sensitive workflow in the repo (it talks to PyPI),
+# so any new step or job added later requires an explicit grant.
+permissions: {}
+
+concurrency:
+  # Serialize publish runs per tag. If a tag is ever re-pushed (delete + recreate),
+  # the second run waits for the first to finish instead of racing it.
+  group: publish-${{ github.ref }}
+  # NEVER cancel an in-flight publish — a mid-upload abort can leave half-uploaded
+  # state on PyPI (rare but the registries lock filenames on first byte).
+  cancel-in-progress: false
+
 jobs:
   build:
     name: Build distribution
