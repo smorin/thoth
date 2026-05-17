@@ -2,6 +2,13 @@
 
 All notable changes to Doxa Research are documented here.
 
+## [3.0.10](https://github.com/smorin/doxa-research/compare/v3.0.9...v3.0.10) (2026-05-17)
+
+
+### Documentation
+
+* **claude:** compress CLAUDE.md from 529 to 256 lines without losing info ([#75](https://github.com/smorin/doxa-research/issues/75)) ([9c56468](https://github.com/smorin/doxa-research/commit/9c5646816f5f5d484f7552866c85d16e2353fdf9))
+
 ## [3.0.9](https://github.com/smorin/doxa-research/compare/v3.0.8...v3.0.9) (2026-05-17)
 
 
