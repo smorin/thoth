@@ -141,15 +141,9 @@ A `.pem` file downloads to your browser, named like `smorin-release-please.YYYY-
 
 **Treat this file as a credential.** Anyone with its contents can act as the App.
 
-Open the file in a text editor. It contains:
+Open the file in a text editor. It is a standard PEM-encoded RSA private key — a header line, then many lines of base64-encoded key data, then a matching footer line.
 
-```
------BEGIN RSA PRIVATE KEY-----
-MIIEpAIBAAKCAQEA...lots of base64...
------END RSA PRIVATE KEY-----
-```
-
-You'll paste this entire content into the per-repo secret in the next phase.
+You'll paste the entire file contents (header, body, and footer) into the per-repo secret in the next phase.
 
 After you've stored it in GitHub Secrets for each repo, delete the local file:
 

@@ -9,6 +9,17 @@ on:
   schedule:
     - cron: "10 20 * * 4" # Thursdays 20:10 UTC
 
+# Deny-all at top level; per-job permissions re-grant exactly what's needed.
+# A new job added later without thinking won't accidentally inherit broad
+# perms.
+permissions: {}
+
+concurrency:
+  group: codeql-${{ github.ref }}
+  # Don't cancel an in-flight scan — partial security results are worse
+  # than slightly-delayed full ones.
+  cancel-in-progress: false
+
 jobs:
   analyze:
     name: Analyze (Python)

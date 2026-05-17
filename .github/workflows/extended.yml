@@ -17,10 +17,20 @@ name: Extended Contract Tests (nightly)
 permissions:
   contents: read
 
+concurrency:
+  group: extended
+  # Don't cancel an in-flight nightly — half-finished real-API runs pollute
+  # the test report and burn API quota for no gain.
+  cancel-in-progress: false
+
 jobs:
   extended:
     name: pytest -m "extended and not extended_slow"
     runs-on: ubuntu-latest
+    # Only run live-provider scheduled/manual jobs in the canonical repo.
+    # Forks do not receive upstream secrets, and these tests can spend
+    # provider quota.
+    if: github.repository == 'smorin/doxa-research'
     steps:
       - uses: actions/checkout@v6.0.2
       - uses: astral-sh/setup-uv@v8.1.0

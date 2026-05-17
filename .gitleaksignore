@@ -1,0 +1,11 @@
+# gitleaks finding fingerprints to ignore.
+# Format: <commit-sha>:<path>:<rule-id>:<line>
+# https://github.com/gitleaks/gitleaks#additional-configuration
+
+# RELEASE-PLEASE-APP.md documentation example showing the SHAPE of a PEM-
+# encoded RSA private key file. The placeholder content
+# (`MIIEpAIBAAKCAQEA...lots of base64...`) matches gitleaks' private-key
+# regex by structure, not by content. The doc was rewritten in a follow-up
+# commit to use prose instead of a code block; this entry whitelists the
+# historical finding so full-history scans don't trip on it.
+abb0742ed1a370dfb8381ac0f2166a91dd7028d4:RELEASE-PLEASE-APP.md:private-key:147
