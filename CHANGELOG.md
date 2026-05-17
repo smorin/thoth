@@ -2,6 +2,13 @@
 
 All notable changes to Doxa Research are documented here.
 
+## [3.0.9](https://github.com/smorin/doxa-research/compare/v3.0.8...v3.0.9) (2026-05-17)
+
+
+### CI/CD
+
+* harden all 7 workflows with explicit permissions + concurrency ([#74](https://github.com/smorin/doxa-research/issues/74)) ([14b4d1d](https://github.com/smorin/doxa-research/commit/14b4d1d34553bb8cf1a8411b47ec191656733907))
+
 ## [3.0.8](https://github.com/smorin/doxa-research/compare/v3.0.7...v3.0.8) (2026-05-16)
 
 
