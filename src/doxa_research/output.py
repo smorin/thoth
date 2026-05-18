@@ -37,16 +37,21 @@ class OutputManager:
         timestamp = operation.created_at.strftime(self.config.data["output"]["timestamp_format"])
         slug = sanitize_slug(operation.prompt)
 
-        # Determine output directory
+        # Determine output directory. Standardization #3: ad-hoc background
+        # runs (no --project, no --output-dir) default to `base_output_dir`
+        # (./research-outputs/ unless overridden in config). Previously they
+        # silently fell through to cwd, which was the README's documented
+        # default but didn't match runtime behavior — a footgun. Users who
+        # want cwd can opt in explicitly via `--output-dir .`.
         if output_dir:
-            # Explicit override - takes precedence over everything
+            # Explicit override — takes precedence over everything
             base_dir = Path(output_dir)
         elif operation.project:
-            # Project mode
+            # Project mode — nest under base_output_dir/<project>/
             base_dir = self.base_output_dir / operation.project
         else:
-            # Ad-hoc mode - current directory
-            base_dir = Path.cwd()
+            # Ad-hoc mode — base_output_dir (no project subdirectory)
+            base_dir = self.base_output_dir
 
         # Ensure directory exists
         base_dir.mkdir(parents=True, exist_ok=True)
