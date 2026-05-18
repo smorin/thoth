@@ -113,20 +113,32 @@ def test_all_deep_research_mode_fans_out_with_per_provider_models() -> None:
     assert mode["gemini"]["model"] == "deep-research-preview-04-2026"
 
 
-def test_all_quick_mode_fans_out_immediate_with_per_provider_models() -> None:
-    """all_quick is the synchronous counterpart of all_deep_research: parallel
-    fan-out to all three providers using each provider's fast immediate model.
-    Returns in seconds; suitable for hero demos and quick comparisons.
+def test_openai_quick_immediate_mode_uses_gpt_4_1_mini_with_web_search() -> None:
+    """openai_quick is the OpenAI counterpart of perplexity_quick / gemini_quick.
+
+    Modern fast immediate model (gpt-4.1-mini, April 2025) with web search
+    grounding enabled. Provides symmetric `*_quick` naming across the three
+    providers so users can grep `doxa modes list | grep quick` to find the
+    fast variant of any provider.
     """
     cm = ConfigManager()
     cm.load_all_layers({})
-    mode = cm.get_mode_config("all_quick")
+    mode = cm.get_mode_config("openai_quick")
     assert mode["kind"] == "immediate"
-    assert mode["providers"] == ["openai", "perplexity", "gemini"]
-    assert mode["parallel"] is True
-    assert mode["openai"]["model"] == "o3"
-    assert mode["perplexity"]["model"] == "sonar"
-    assert mode["gemini"]["model"] == "gemini-2.5-flash-lite"
+    assert mode["provider"] == "openai"
+    assert mode["model"] == "gpt-4.1-mini"
+    assert mode["openai"]["web_search"] is True
+
+
+def test_all_three_providers_have_symmetric_quick_modes() -> None:
+    """Every provider should have a *_quick immediate built-in so users can
+    discover the fast variant via `doxa modes list | grep quick`.
+    """
+    cm = ConfigManager()
+    cm.load_all_layers({})
+    for mode_name in ("openai_quick", "perplexity_quick", "gemini_quick"):
+        mode = cm.get_mode_config(mode_name)
+        assert mode["kind"] == "immediate", f"{mode_name} should be immediate kind"
 
 
 def test_deep_research_profile_carries_prompt_prefix(init_run: Path) -> None:

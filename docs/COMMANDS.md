@@ -106,21 +106,28 @@ Research workflows where each stage's output can feed the next.
 
 | Mode | Kind | Per-provider models | Notes |
 |---|---|---|---|
-| `all_quick` | immediate | openai → `o3`, perplexity → `sonar`, gemini → `gemini-2.5-flash-lite` | Parallel **synchronous** fan-out across all three providers using each provider's fast immediate model. Returns in seconds. Stdout interleaves; pair with `--out FILE1 --out FILE2 --out FILE3` if you want per-provider files. |
 | `all_deep_research` | background | openai → `o3-deep-research`, perplexity → `sonar-deep-research`, gemini → `deep-research-preview-04-2026` | Parallel **Deep Research** across all three providers. Each provider runs concurrently with its own Deep Research model and writes its own output file under `./research-outputs/`. Used by the `all_deep` starter profile. |
+
+Multi-provider fan-out requires `kind: background`. Immediate modes are
+single-provider by design — the CLI rejects any immediate mode declared
+with multiple providers at preflight.
 
 ### Provider-pinned variants
 
-| Mode | Provider | Default model |
-|---|---|---|
-| `openai_reasoning` | OpenAI | `o3` |
-| `perplexity_quick` | Perplexity | `sonar` |
-| `perplexity_pro` | Perplexity | `sonar-pro` |
-| `perplexity_reasoning` | Perplexity | `sonar-reasoning-pro` |
-| `perplexity_deep_research` | Perplexity | `sonar-deep-research` |
-| `gemini_quick` | Gemini | `gemini-2.5-flash-lite` |
-| `gemini_pro` | Gemini | `gemini-2.5-pro` |
-| `gemini_reasoning` | Gemini | `gemini-2.5-pro` |
+Single-provider immediate built-ins. Symmetric `*_quick` naming so the
+fast variant of any provider is easy to discover (`doxa modes list | grep quick`).
+
+| Mode | Provider | Default model | Notes |
+|---|---|---|---|
+| `openai_quick` | OpenAI | `gpt-4.1-mini` | Fast immediate mode with web search grounding |
+| `openai_reasoning` | OpenAI | `o3` | Reasoning model with surfaced reasoning summaries + web grounding |
+| `perplexity_quick` | Perplexity | `sonar` | Cheapest Perplexity immediate |
+| `perplexity_pro` | Perplexity | `sonar-pro` | More capable Perplexity immediate |
+| `perplexity_reasoning` | Perplexity | `sonar-reasoning-pro` | Perplexity reasoning model |
+| `perplexity_deep_research` | Perplexity | `sonar-deep-research` | Background DR |
+| `gemini_quick` | Gemini | `gemini-2.5-flash-lite` | Fast Gemini with web grounding |
+| `gemini_pro` | Gemini | `gemini-2.5-pro` | Gemini Pro with web grounding |
+| `gemini_reasoning` | Gemini | `gemini-2.5-pro` | Gemini Pro with surfaced thoughts |
 
 ### Gemini Deep Research modes
 
