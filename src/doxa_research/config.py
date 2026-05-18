@@ -329,6 +329,23 @@ BUILTIN_MODES = {
         "previous": None,
         "next": None,
     },
+    "all_deep_research": {
+        "providers": ["openai", "perplexity", "gemini"],
+        "parallel": True,
+        "kind": "background",
+        "system_prompt": (
+            "Conduct comprehensive research with citations and multiple "
+            "perspectives. Organize findings clearly and highlight key insights."
+        ),
+        "description": (
+            "Parallel Deep Research across OpenAI, Perplexity, and Gemini. "
+            "Fans one prompt out to all three providers concurrently, each "
+            "using its own Deep Research model."
+        ),
+        "openai": {"model": "o3-deep-research"},
+        "perplexity": {"model": "sonar-deep-research"},
+        "gemini": {"model": "deep-research-preview-04-2026"},
+    },
 }
 
 

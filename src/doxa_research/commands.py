@@ -917,6 +917,23 @@ def get_providers_models_data(config: ConfigManager, filter_provider: str | None
         # P18: alias stubs (`_deprecated_alias_for`) don't carry provider/model.
         if "_deprecated_alias_for" in cfg:
             continue
+        # Multi-provider fan-out modes (e.g. all_deep_research) declare
+        # `providers` (plural) + per-provider namespace models; iterate
+        # those namespaces instead of expecting singular fields.
+        providers_list = cfg.get("providers")
+        if cfg.get("provider") is None and isinstance(providers_list, list):
+            for p_raw in providers_list:
+                if not isinstance(p_raw, str):
+                    continue
+                if filter_provider and p_raw != filter_provider:
+                    continue
+                namespace = cfg.get(p_raw)
+                if not isinstance(namespace, dict):
+                    continue
+                model = namespace.get("model")
+                if isinstance(model, str):
+                    seen.setdefault(p_raw, set()).add(model)
+            continue
         p = str(cfg["provider"])
         if filter_provider and p != filter_provider:
             continue

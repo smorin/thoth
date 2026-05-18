@@ -35,10 +35,16 @@ def test_known_models_unique_provider_model_pairs() -> None:
 
 
 def test_every_builtin_appears_in_known_models() -> None:
-    """Every (provider, model, kind) triple from a non-alias builtin is in the registry."""
+    """Every (provider, model, kind) triple from a non-alias singular-provider
+    builtin is in the registry. Multi-provider fan-out modes (e.g.
+    `all_deep_research`) are dispatch constructs, not (provider, model)
+    pairs, so they're excluded from KNOWN_MODELS.
+    """
     triples = {(m.provider, m.id, m.kind) for m in KNOWN_MODELS}
     for name, cfg in BUILTIN_MODES.items():
         if "_deprecated_alias_for" in cfg:
+            continue
+        if cfg.get("provider") is None and isinstance(cfg.get("providers"), list):
             continue
         triple = (cfg["provider"], cfg["model"], cfg["kind"])
         assert triple in triples, f"Builtin {name!r} triple {triple} missing from KNOWN_MODELS"

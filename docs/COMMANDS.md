@@ -102,6 +102,12 @@ The chain `exploration` → `deep_dive` → `tutorial` → `solution` → `prd` 
 mirrors the Gemini chain (below) and is intended for multi-stage Deep
 Research workflows where each stage's output can feed the next.
 
+### Multi-provider fan-out
+
+| Mode | Per-provider models | Notes |
+|---|---|---|
+| `all_deep_research` | openai → `o3-deep-research`, perplexity → `sonar-deep-research`, gemini → `deep-research-preview-04-2026` | Parallel Deep Research across all three providers. Each provider runs concurrently with its own Deep Research model and writes its own output file under `./research-outputs/`. Used by the `all_deep` starter profile. |
+
 ### Provider-pinned variants
 
 | Mode | Provider | Default model |

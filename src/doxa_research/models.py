@@ -56,6 +56,12 @@ def derive_known_models(builtin_modes: dict[str, dict[str, Any]] | None = None) 
     for mode_name, cfg in modes.items():
         if "_deprecated_alias_for" in cfg:
             continue
+        # Multi-provider fan-out modes (e.g. all_deep_research) declare a
+        # `providers` list plus per-provider namespace models instead of a
+        # singular provider/model pair. They are dispatch constructs, not
+        # (provider, model) pairs, so skip them in KNOWN_MODELS.
+        if cfg.get("provider") is None and isinstance(cfg.get("providers"), list):
+            continue
         provider_raw = cfg.get("provider")
         model_raw = cfg.get("model")
         kind_raw = cfg.get("kind")
