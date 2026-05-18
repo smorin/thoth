@@ -635,9 +635,16 @@ async def _execute_immediate(
     final_text = "".join(aggregated)
     operation.providers[provider_name]["status"] = "completed"
 
-    # Persist via output_manager only when the user asked for it via
-    # --project. Otherwise the streamed output is the user-visible result.
-    if project:
+    # Persist via output_manager when the user opted in via ANY destination
+    # flag — either --project NAME (project subdirectory namespace) or
+    # --output-dir DIR (explicit directory). Both flags express "I want a
+    # file here"; without either, the streamed output is the user-visible
+    # result and no auto-named file is also written. Standardization note:
+    # `--project` was previously the sole gate; making `--output-dir` an
+    # equal trigger fixes a silent-ignore bug and removes the side-effect
+    # overload of `--project` (which previously meant both "subdirectory
+    # namespace" AND "please persist").
+    if project or output_dir:
         provider_model = getattr(provider_instance, "model", None)
         output_path = await output_manager.save_result(
             operation,
@@ -652,10 +659,12 @@ async def _execute_immediate(
     operation.transition_to("completed")
     await checkpoint_manager.save(operation)
 
-    if not quiet and project:
-        target_console.print(
-            f"\n[green]✓[/green] Saved to: [dim]{output_dir or 'current directory'}/{project}/[/dim]"
-        )
+    if not quiet and (project or output_dir):
+        if project:
+            saved_to = f"{output_dir or 'current directory'}/{project}/"
+        else:
+            saved_to = str(output_dir)
+        target_console.print(f"\n[green]✓[/green] Saved to: [dim]{saved_to}[/dim]")
 
 
 async def _maybe_cancel_upstream_and_raise(
