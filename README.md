@@ -25,6 +25,24 @@ The result lands as a markdown file in `./research-outputs/`.
 - ↩️ **Resumable** — checkpoint/resume after Ctrl-C; reconnect to long-running background jobs across process restarts.
 - 🚀 **Zero setup** — `uvx doxa-research` runs straight from PyPI. UV-native, no virtualenv juggling.
 
+## How it works
+
+```
+                   ┌────────────┐
+   prompt  ──────▶ │    doxa    │ ──────▶  research-outputs/<timestamp>_<mode>_combined.md
+                   └────────────┘
+                          │
+                          │  fans out concurrently
+                          │
+            ┌─────────────┼─────────────┐
+            ▼             ▼             ▼
+         OpenAI       Perplexity      Gemini
+        (o3-DR /     (sonar-DR)     (deep-research-
+       o4-mini-DR)                   preview-04-2026)
+```
+
+Each enabled provider runs in parallel. Doxa polls each one until completion (or timeout / cancel), then merges the results into a single markdown report with per-provider sections and citation blocks. Long-running background jobs (Deep Research) are checkpointed: you can `Ctrl-C` and resume later, or fire-and-forget with `--async` and pick the result up from a different terminal session via `doxa resume <op-id>`.
+
 ## 30-second quickstart
 
 ```bash
@@ -43,7 +61,7 @@ doxa ask "Compare Paxos, Raft, and Viewstamped Replication."
 
 Prefer `pip install doxa-research` or `uv tool install doxa-research` if you want a permanent install instead of running via `uvx`.
 
-For per-provider config and resumable / cancellable workflows see [Usage](#usage). For a full migration from the previous `thoth` releases see [MIGRATION.md](CHANGELOG.md).
+For per-provider config and resumable / cancellable workflows see [Usage](#usage). For a full migration from the previous `thoth` releases see [MIGRATION.md](MIGRATION.md).
 
 ## What a Doxa report looks like
 
@@ -83,6 +101,39 @@ protocols that achieve agreement among distributed nodes despite failures.
 ```
 
 Each provider contributes a self-contained section with its own citations. Pass `--combined false` to write per-provider files instead.
+
+## Why Doxa?
+
+If you only need a single Deep Research response, the vendor tools (ChatGPT Deep Research, Perplexity Pro, Gemini Deep Research) work fine. Doxa is for when you want **multiple perspectives in one report** — different models reason differently, cite different sources, and miss different things.
+
+| Feature | ChatGPT DR | Perplexity Pro | Gemini DR | Manual orchestration | **Doxa Research** |
+|---|---|---|---|---|---|
+| Multi-provider in parallel | ❌ | ❌ | ❌ | ✅ (DIY) | ✅ |
+| One merged markdown report | ❌ | ❌ | ❌ | ❌ | ✅ |
+| Mode chaining (clarify → explore → research) | ❌ | ❌ | ❌ | ❌ | ✅ |
+| Resumable after Ctrl-C / process restart | ❌ | ❌ | ❌ | ❌ | ✅ |
+| CLI / scriptable / pipe-friendly | ❌ | ❌ | ❌ | ✅ (DIY) | ✅ |
+| Local config, no vendor lock-in | ❌ | ❌ | ❌ | ✅ (DIY) | ✅ |
+| Per-provider model selection per mode | ❌ | ❌ | ❌ | ✅ (DIY) | ✅ |
+| Cost transparency (you pay APIs directly) | n/a — subscription | n/a — subscription | n/a — subscription | ✅ | ✅ |
+
+The "Manual orchestration" column is what you'd build yourself by wiring the three Deep Research APIs together and merging the results. Doxa is that, packaged.
+
+## How much does it cost?
+
+You pay each provider's API directly — Doxa does not add cost or take a cut. Rough per-run cost (subject to provider pricing changes; see each provider's pricing page for current rates):
+
+| Provider | Model | Typical cost per Deep Research run |
+|---|---|---|
+| OpenAI | `o3-deep-research` | $1–$8 (varies with depth and prompt complexity) |
+| OpenAI | `o4-mini-deep-research` | $0.30–$3 (cheaper tier) |
+| Perplexity | `sonar-deep-research` | $0.05–$0.50 |
+| Gemini | `deep-research-preview-04-2026` | $1–$3 (preview pricing; paid Tier 1+ required) |
+| Gemini | `deep-research-max-preview-04-2026` | $3–$7 (max comprehensiveness) |
+
+A single `doxa ask` run with all three providers active typically costs **$2–$15** depending on the prompt and which models are enabled. Provider keys come from environment variables or `~/.config/doxa/`; providers without keys are skipped, so you only pay for what runs.
+
+Immediate (non-Deep-Research) modes — `gemini_quick`, `gemini_pro`, plain chat completions — are much cheaper, typically **$0.001–$0.10 per run**.
 
 ## Authentication
 
@@ -944,6 +995,12 @@ doxa list --json | jq '.data.operations[]'
 ```
 
 See `docs/json-output.md` for the envelope contract and per-command schemas.
+
+## About the name
+
+*Doxa* (Greek: δόξα) means "opinion", "belief", or "received wisdom" in ancient Greek philosophy. The name reflects what the tool does: it gathers multiple AI perspectives — OpenAI, Perplexity, Gemini — on a single question and merges them into one report, surfacing consensus and divergence across views in the spirit of dialectical inquiry.
+
+> Previously published as `thoth` (versions ≤ 2.5.0 on PyPI). See [MIGRATION.md](MIGRATION.md) for the rename details and migration guide.
 
 ## License
 
