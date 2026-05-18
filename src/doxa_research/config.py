@@ -346,6 +346,20 @@ BUILTIN_MODES = {
         "perplexity": {"model": "sonar-deep-research"},
         "gemini": {"model": "deep-research-preview-04-2026"},
     },
+    "all_quick": {
+        "providers": ["openai", "perplexity", "gemini"],
+        "parallel": True,
+        "kind": "immediate",
+        "description": (
+            "Parallel immediate fan-out to OpenAI, Perplexity, and Gemini "
+            "using each provider's fast non-Deep-Research model. Returns in "
+            "seconds; pair with --out file1 --out file2 --out file3 to "
+            "capture results to disk."
+        ),
+        "openai": {"model": "o3"},
+        "perplexity": {"model": "sonar"},
+        "gemini": {"model": "gemini-2.5-flash-lite"},
+    },
 }
 
 

@@ -104,9 +104,10 @@ Research workflows where each stage's output can feed the next.
 
 ### Multi-provider fan-out
 
-| Mode | Per-provider models | Notes |
-|---|---|---|
-| `all_deep_research` | openai → `o3-deep-research`, perplexity → `sonar-deep-research`, gemini → `deep-research-preview-04-2026` | Parallel Deep Research across all three providers. Each provider runs concurrently with its own Deep Research model and writes its own output file under `./research-outputs/`. Used by the `all_deep` starter profile. |
+| Mode | Kind | Per-provider models | Notes |
+|---|---|---|---|
+| `all_quick` | immediate | openai → `o3`, perplexity → `sonar`, gemini → `gemini-2.5-flash-lite` | Parallel **synchronous** fan-out across all three providers using each provider's fast immediate model. Returns in seconds. Stdout interleaves; pair with `--out FILE1 --out FILE2 --out FILE3` if you want per-provider files. |
+| `all_deep_research` | background | openai → `o3-deep-research`, perplexity → `sonar-deep-research`, gemini → `deep-research-preview-04-2026` | Parallel **Deep Research** across all three providers. Each provider runs concurrently with its own Deep Research model and writes its own output file under `./research-outputs/`. Used by the `all_deep` starter profile. |
 
 ### Provider-pinned variants
 

@@ -113,6 +113,22 @@ def test_all_deep_research_mode_fans_out_with_per_provider_models() -> None:
     assert mode["gemini"]["model"] == "deep-research-preview-04-2026"
 
 
+def test_all_quick_mode_fans_out_immediate_with_per_provider_models() -> None:
+    """all_quick is the synchronous counterpart of all_deep_research: parallel
+    fan-out to all three providers using each provider's fast immediate model.
+    Returns in seconds; suitable for hero demos and quick comparisons.
+    """
+    cm = ConfigManager()
+    cm.load_all_layers({})
+    mode = cm.get_mode_config("all_quick")
+    assert mode["kind"] == "immediate"
+    assert mode["providers"] == ["openai", "perplexity", "gemini"]
+    assert mode["parallel"] is True
+    assert mode["openai"]["model"] == "o3"
+    assert mode["perplexity"]["model"] == "sonar"
+    assert mode["gemini"]["model"] == "gemini-2.5-flash-lite"
+
+
 def test_deep_research_profile_carries_prompt_prefix(init_run: Path) -> None:
     cm = ConfigManager()
     cm.load_all_layers({"_profile": "deep_research"})
