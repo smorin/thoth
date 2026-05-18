@@ -2,6 +2,13 @@
 
 All notable changes to Doxa Research are documented here.
 
+## [3.0.11](https://github.com/smorin/doxa-research/compare/v3.0.10...v3.0.11) (2026-05-18)
+
+
+### Documentation
+
+* **claude-md:** add 4 sub-CLAUDE.md files capturing conventions ([#78](https://github.com/smorin/doxa-research/issues/78)) ([b14b2a1](https://github.com/smorin/doxa-research/commit/b14b2a179fee15e0ca2d813f0a4af43d53d6fdc1))
+
 ## [3.0.10](https://github.com/smorin/doxa-research/compare/v3.0.9...v3.0.10) (2026-05-17)
 
 
