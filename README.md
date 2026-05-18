@@ -23,6 +23,8 @@ doxa ask "What are the latest advances in distributed consensus?"
 
 The result lands as a markdown file in `./research-outputs/`.
 
+![Doxa Research fanning out to OpenAI, Perplexity, and Gemini in parallel](docs/assets/hero.svg)
+
 > ⭐ **Like what you see?** [Star the repo](https://github.com/smorin/doxa-research) — it helps others find Doxa and signals which Deep Research integrations to prioritize next.
 
 <details>
