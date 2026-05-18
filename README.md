@@ -1,63 +1,88 @@
-# Doxa Research - AI-Powered Research Assistant
+# Doxa Research
 
 [![PyPI version](https://img.shields.io/pypi/v/doxa-research.svg)](https://pypi.org/project/doxa-research/)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![CI](https://github.com/smorin/doxa-research/actions/workflows/ci.yml/badge.svg)](https://github.com/smorin/doxa-research/actions/workflows/ci.yml)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](LICENSE)
 
-Doxa Research is a command-line tool that automates deep technical research using multiple LLM providers. It orchestrates parallel execution of OpenAI's Deep Research API and Perplexity's research models to deliver comprehensive, multi-perspective research reports.
+> **Deep Research across OpenAI, Perplexity, and Gemini — in parallel, from one command.**
+
+Doxa Research fans a single prompt out to multiple LLM Deep-Research providers concurrently and merges the results into one markdown report with citations. One command, multiple perspectives, comprehensive coverage.
+
+```bash
+uvx doxa-research init                                  # one-time setup
+export OPENAI_API_KEY="sk-..."                          # any subset of providers works
+doxa ask "What are the latest advances in distributed consensus?"
+```
+
+The result lands as a markdown file in `./research-outputs/`.
 
 ## Features
 
-- **Multi-provider intelligence**: Parallel execution of OpenAI and Perplexity for comprehensive results
-- **Interactive prompt mode**: Enhanced terminal UI with slash commands, tab completion, and multiline input
-- **Provider discovery**: List available providers, models, and API key configuration
-- **Zero-configuration deployment**: UV inline script dependencies eliminate setup complexity
-- **Flexible operation modes**: Support both interactive (wait) and background (submit and exit) workflows
-- **Production-ready reliability**: Checkpoint/resume, graceful error handling, and operation persistence
-- **Simple output structure**: Intuitive file placement with ad-hoc and project modes
-- **Mode chaining**: Seamless workflow from clarification through exploration to deep research
-- **Rich metadata**: Output files include model information and exact prompts sent to LLMs
+- 🔀 **Parallel multi-provider** — OpenAI, Perplexity, and Gemini run concurrently. One report, multiple perspectives.
+- 🎯 **Mode chaining** — clarification → exploration → deep research. Each step feeds the next.
+- 💬 **Interactive prompt mode** — slash commands, tab completion, and multiline input via an enhanced terminal UI.
+- ↩️ **Resumable** — checkpoint/resume after Ctrl-C; reconnect to long-running background jobs across process restarts.
+- 🚀 **Zero setup** — `uvx doxa-research` runs straight from PyPI. UV-native, no virtualenv juggling.
 
-**Origin of the name:** *Doxa* (Greek: δόξα) means "opinion", "belief", or "received wisdom" in ancient Greek philosophy. Doxa Research synthesizes multiple AI perspectives — OpenAI, Perplexity, Gemini — to surface consensus and divergence across views, in the spirit of dialectical inquiry.
-
-> **Renamed in 3.0.0:** This project was previously released as `thoth` (versions ≤ 2.5.0 on PyPI). The CLI command (`thoth` → `doxa`), Python module (`thoth` → `doxa_research`), PyPI distribution (`thoth` → `doxa-research`), environment variables (`THOTH_*` → `DOXA_*`), and config directory (`~/.config/thoth/` → `~/.config/doxa/`) have all changed. Existing users must migrate manually — there is no automatic config migration. See [CHANGELOG.md](CHANGELOG.md) for the full migration guide.
-
-## Prerequisites
-
-- Python ≥ 3.11
-- [UV](https://github.com/astral-sh/uv) package manager
-- OpenAI API key (for OpenAI provider)
-- Perplexity API key (for Perplexity provider)
-
-## Installation
-
-### From PyPI (recommended)
+## 30-second quickstart
 
 ```bash
-# Install and run with uvx (no setup required)
-uvx doxa-research
+# 1. Install (one-time)
+uvx doxa-research init
 
-# Or install permanently with uv
-uv tool install doxa-research
+# 2. Set keys for any provider(s) you want — Doxa skips providers without keys
+export OPENAI_API_KEY="sk-..."
+export PERPLEXITY_API_KEY="pplx-..."
+export GEMINI_API_KEY="..."        # paid Tier 1+ required for Gemini Deep Research
 
-# Or with pip
-pip install doxa-research
+# 3. Ask
+doxa ask "Compare Paxos, Raft, and Viewstamped Replication."
+# → ./research-outputs/<timestamp>_default_combined.md
 ```
 
-### From source
+Prefer `pip install doxa-research` or `uv tool install doxa-research` if you want a permanent install instead of running via `uvx`.
 
-```bash
-# Clone the repository
-git clone https://github.com/smorin/doxa-research.git
-cd doxa-research
+For per-provider config and resumable / cancellable workflows see [Usage](#usage). For a full migration from the previous `thoth` releases see [MIGRATION.md](CHANGELOG.md).
 
-# Install in editable mode
-uv sync
+## What a Doxa report looks like
 
-# Or run directly without installing
-./doxa --help
+A combined multi-provider report (excerpt):
+
+```markdown
+---
+prompt: Compare Paxos, Raft, and Viewstamped Replication.
+mode: default
+providers: openai, perplexity, gemini
+operation_id: research-20260517-103412-a38d159848984fa8
+created_at: 2026-05-17T10:34:12Z
+---
+
+### Prompt
+
+Compare Paxos, Raft, and Viewstamped Replication.
+
+## OpenAI — o3-deep-research
+
+Paxos, Raft, and Viewstamped Replication (VR) are three foundational consensus
+protocols that achieve agreement among distributed nodes despite failures.
+[…3-8 pages of analysis, with inline citation anchors…]
+
+### Sources
+- [Paxos Made Simple — Lamport (lamport.azurewebsites.net)](https://...)
+- [In Search of an Understandable Consensus Algorithm (usenix.org)](https://...)
+- [Viewstamped Replication Revisited (pmg.csail.mit.edu)](https://...)
+
+## Perplexity — sonar-deep-research
+
+[parallel synthesis from Perplexity with its own ### Sources block]
+
+## Gemini — deep-research-preview-04-2026
+
+[parallel synthesis from Gemini Deep Research with its own ### Sources block]
 ```
+
+Each provider contributes a self-contained section with its own citations. Pass `--combined false` to write per-provider files instead.
 
 ## Authentication
 
@@ -80,31 +105,7 @@ Authentication — recommended order:
    doxa-research --api-key-openai sk-... deep_research "..."
    ```
 
-For related command help, run `doxa-research config --help`.
-
-## Quick Start
-
-1. **Initialize configuration:**
-   ```bash
-   doxa-research init
-   ```
-
-2. **Set API keys:**
-   ```bash
-   export OPENAI_API_KEY="your-openai-key"
-   export PERPLEXITY_API_KEY="your-perplexity-key"
-   export GEMINI_API_KEY="your-gemini-key"
-   ```
-
-3. **Check provider configuration:**
-   ```bash
-   doxa-research providers list
-   ```
-
-4. **Run your first research:**
-   ```bash
-   doxa-research "impact of quantum computing on cryptography"
-   ```
+For related command help, run `doxa config --help`.
 
 ## Usage
 
@@ -167,7 +168,7 @@ doxa "prompt" --no-metadata
 doxa "prompt" --quiet
 ```
 
-### Streaming output for immediate modes (P18, v3.1.0+)
+### Streaming output for immediate modes (v3.1.0+)
 
 Immediate-kind modes (`default`, `thinking`, `clarification`, `openai_reasoning`,
 `perplexity_quick`, `perplexity_pro`, `perplexity_reasoning`, `gemini_quick`,
@@ -230,7 +231,7 @@ cancelled. Providers without upstream cancel (e.g., Perplexity at the
 time of writing) have the local checkpoint marked cancelled but the
 upstream job runs to completion.
 
-### Filtering modes by execution kind (P18)
+### Filtering modes by execution kind
 
 Each mode is declared as `kind = "immediate"` (synchronous, streaming)
 or `kind = "background"` (async, polling-loop). User-defined modes in
@@ -424,7 +425,7 @@ parallel = true
 doxa --profile all_deep "compare vector databases"
 ```
 
-> **Gemini support.** The `gemini` provider supports immediate grounded modes such as `gemini_quick`, `gemini_pro`, and `gemini_reasoning`, plus nine background deep-research modes (`gemini_quick_research`, `gemini_exploration`, `gemini_deep_dive`, `gemini_tutorial`, `gemini_solution`, `gemini_prd`, `gemini_tdd`, `gemini_deep_research`, `gemini_comparison`) added in P28.
+> **Gemini support.** The `gemini` provider supports immediate grounded modes such as `gemini_quick`, `gemini_pro`, and `gemini_reasoning`, plus nine background deep-research modes (`gemini_quick_research`, `gemini_exploration`, `gemini_deep_dive`, `gemini_tutorial`, `gemini_solution`, `gemini_prd`, `gemini_tdd`, `gemini_deep_research`, `gemini_comparison`).
 
 #### Use one deep-research provider
 
@@ -459,7 +460,7 @@ doxa --profile quick "give me the short version"
 default_mode = "interactive"
 ```
 
-This profile can be stored, listed, and selected by P21 today (via hand-edit). The command behavior for a default interactive mode ships with a later interactive-default project.
+This profile can be stored, listed, and selected today via the configuration-profile commands (or hand-edit). Command behavior for choosing a default interactive mode ships in a later release.
 
 #### Prepending a prompt prefix
 
@@ -569,7 +570,7 @@ doxa "prompt" --provider openai -v
 - Deep research: 60-120 seconds
 - Complex analysis: 180+ seconds
 
-### Gemini Deep Research costs (P28)
+### Gemini Deep Research costs
 
 Gemini Deep Research is a paid-tier feature (Tier 1+ on Google AI Studio).
 Estimated cost per task:
@@ -581,9 +582,9 @@ The 60-minute hard research-time limit is enforced upstream — if you hit
 this with longer prompts, set `[execution].max_wait = 60` in your config
 (default is 30 minutes).
 
-### Gemini modes (P28)
+### Gemini modes
 
-The 9 background deep-research modes added in P28 each map to the
+The 9 background deep-research modes each map to the
 `deep-research-preview-04-2026` model via the Gemini Interactions API:
 
 | Mode | Description |
