@@ -1,13 +1,18 @@
 # Doxa Research
 
 [![PyPI version](https://img.shields.io/pypi/v/doxa-research.svg)](https://pypi.org/project/doxa-research/)
-[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
+[![Python versions](https://img.shields.io/pypi/pyversions/doxa-research)](https://pypi.org/project/doxa-research/)
+[![Downloads](https://img.shields.io/pypi/dm/doxa-research)](https://pypi.org/project/doxa-research/)
 [![CI](https://github.com/smorin/doxa-research/actions/workflows/ci.yml/badge.svg)](https://github.com/smorin/doxa-research/actions/workflows/ci.yml)
-[![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](LICENSE)
+[![Last commit](https://img.shields.io/github/last-commit/smorin/doxa-research)](https://github.com/smorin/doxa-research/commits/main)
+[![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue)](LICENSE)
+[![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
+[![uv](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/uv/main/assets/badge/v0.json)](https://github.com/astral-sh/uv)
+[![Conventional Commits](https://img.shields.io/badge/Conventional%20Commits-1.0.0-FE5196?logo=conventionalcommits&logoColor=white)](https://www.conventionalcommits.org)
 
 > **Deep Research across OpenAI, Perplexity, and Gemini — in parallel, from one command.**
 
-Doxa Research fans a single prompt out to multiple LLM Deep-Research providers concurrently and merges the results into one markdown report with citations. One command, multiple perspectives, comprehensive coverage.
+Doxa Research is a CLI for AI-powered deep research automation. It fans a single prompt out to multiple LLM Deep-Research providers — OpenAI, Perplexity, and Gemini — concurrently and merges the results into one markdown report with citations. One command, multiple perspectives, comprehensive coverage.
 
 ```bash
 uvx doxa-research init                                  # one-time setup
@@ -16,6 +21,43 @@ doxa ask "What are the latest advances in distributed consensus?"
 ```
 
 The result lands as a markdown file in `./research-outputs/`.
+
+<details>
+<summary><strong>Table of contents</strong></summary>
+
+**Get started**
+- [Features](#features)
+- [How it works](#how-it-works)
+- [30-second quickstart](#30-second-quickstart)
+- [What a Doxa report looks like](#what-a-doxa-report-looks-like)
+- [Why Doxa?](#why-doxa)
+- [How much does it cost?](#how-much-does-it-cost)
+- [Example use cases](#example-use-cases)
+
+**Configuration**
+- [Authentication](#authentication)
+- [Usage](#usage)
+- [Configuration](#configuration)
+- [Provider Configuration](#provider-configuration)
+
+**Reference**
+- [Error Handling](#error-handling)
+- [Output Structure](#output-structure)
+- [Environment Variables](#environment-variables)
+- [Exit Codes](#exit-codes)
+- [Commands Reference](#commands-reference)
+- [Shell completion](#shell-completion)
+- [JSON output](#json-output)
+
+**Project**
+- [Development](#development)
+- [Version History](#version-history)
+- [Roadmap](#roadmap)
+- [Discussion & support](#discussion--support)
+- [About the name](#about-the-name)
+- [License](#license)
+
+</details>
 
 ## Features
 
@@ -131,9 +173,61 @@ You pay each provider's API directly — Doxa does not add cost or take a cut. R
 | Gemini | `deep-research-preview-04-2026` | $1–$3 (preview pricing; paid Tier 1+ required) |
 | Gemini | `deep-research-max-preview-04-2026` | $3–$7 (max comprehensiveness) |
 
-A single `doxa ask` run with all three providers active typically costs **$2–$15** depending on the prompt and which models are enabled. Provider keys come from environment variables or `~/.config/doxa/`; providers without keys are skipped, so you only pay for what runs.
+A single `doxa ask` run with all three providers active typically costs **$2–$15** depending on the prompt and which models are enabled. Provider keys come from environment variables or `~/.config/doxa-research/doxa-research.config.toml`; providers without keys are skipped, so you only pay for what runs.
 
 Immediate (non-Deep-Research) modes — `gemini_quick`, `gemini_pro`, plain chat completions — are much cheaper, typically **$0.001–$0.10 per run**.
+
+## Example use cases
+
+A handful of concrete prompts to get a feel for the tool. All assume the relevant API keys are set and `doxa init` has been run.
+
+**Compare technical approaches across providers**
+
+```bash
+doxa ask "Compare WebGPU vs WebGL vs WebAssembly+SIMD for browser-based ML inference. \
+  Focus on latency, browser support, and current production deployments."
+```
+
+Each provider's analysis becomes its own section in the report. Useful when no single provider's training cutoff is recent enough on its own.
+
+**Survey recent papers**
+
+```bash
+doxa ask --mode deep_research "Survey the most-cited distributed-systems papers \
+  published in 2025. Include venue, citation count, and a one-paragraph summary of each."
+```
+
+Sources blocks land per-provider, so you can see which model is grounding on which papers.
+
+**Plan an implementation (PRD-style output)**
+
+```bash
+doxa ask --mode openai_prd "Plan a multi-tenant SaaS architecture using Postgres \
+  row-level security. Include schema, RLS policies, and a migration plan."
+```
+
+The `*_prd` modes are tuned for design-document output rather than reference research.
+
+**Quick single-provider research**
+
+```bash
+doxa ask --provider openai "What's the current best practice for OAuth refresh-token rotation?"
+```
+
+When you only need one perspective, scope to a single provider to cut cost and latency.
+
+**Resume a long-running Deep Research job from another terminal**
+
+```bash
+# Terminal 1: kick off and exit
+doxa ask --async --mode gemini_deep_research "Comprehensive review of consensus algorithms 1980-2025."
+# → operation_id: research-20260518-093412-...
+
+# Terminal 2 (any time later, even after process restart):
+doxa resume research-20260518-093412-...
+```
+
+`doxa resume <op-id>` re-attaches to the in-flight provider jobs via the checkpoint stored under `~/.config/doxa-research/checkpoints/`.
 
 ## Authentication
 
@@ -157,6 +251,8 @@ Authentication — recommended order:
    ```
 
 For related command help, run `doxa config --help`.
+
+> **🔐 Security note.** Never commit `.env`, `openai.env`, or your `~/.config/doxa-research/doxa-research.config.toml` to a public repository — these files contain provider API keys that grant paid access. The project's `.gitignore` already excludes `openai.env` at the repo root; if you store keys elsewhere, double-check they're ignored. Prefer environment variables in shell-rc files (sourced at session start, not committed) or `~/.config/doxa-research/` (in your home dir, not in any repo) over CLI flags (which leak into shell history).
 
 ## Usage
 
@@ -995,6 +1091,27 @@ doxa list --json | jq '.data.operations[]'
 ```
 
 See `docs/json-output.md` for the envelope contract and per-command schemas.
+
+## Roadmap
+
+In rough order of priority:
+
+- **More providers** — Anthropic Claude, Cohere, Mistral. The `ResearchProvider` contract is structured so adding a new provider is a contained ~600-line addition (see `src/doxa_research/providers/CLAUDE.md` for conventions).
+- **Per-provider polling tunables** — wire `[providers.<name>].poll_interval` and `.max_wait_minutes` into the runtime polling loop so DR-heavy workloads can override the global `[execution]` defaults.
+- **Interactive prompt refiner** — guided clarification before sending a Deep Research request, so the prompt-engineering step doesn't fall on the user.
+- **MCP server interface** — expose Doxa via Model Context Protocol so IDEs and agents (Claude Code, Cursor) can call `doxa ask` as a tool.
+- **VCR cassette replay** — record provider interactions for fully-offline testing and CI without API spend.
+- **Architecture review & cleanup** — cross-provider refactor of `openai.py`, `perplexity.py`, `gemini.py` once all three immediate paths and all three background paths are in place.
+
+See `PROJECTS.md` for the granular task trunk and `archive/` for completed work.
+
+## Discussion & support
+
+- 🐛 **Bug reports** — [GitHub Issues](https://github.com/smorin/doxa-research/issues)
+- 💡 **Feature requests & general discussion** — [GitHub Discussions](https://github.com/smorin/doxa-research/discussions)
+- 📋 **Changelog** — [`CHANGELOG.md`](CHANGELOG.md)
+- 🛠️ **Contributing** — see the [Development](#development) section, or [`CONTRIBUTING.md`](CONTRIBUTING.md) if present
+- 🔄 **Migrating from `thoth`** — [`MIGRATION.md`](MIGRATION.md)
 
 ## About the name
 
