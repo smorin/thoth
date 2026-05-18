@@ -13,7 +13,7 @@ is no automatic config migration.
 | CLI command | `thoth` | `doxa` (and `doxa-research` alias) |
 | Python module | `thoth` | `doxa_research` |
 | Environment variables (project) | `THOTH_*` | `DOXA_*` |
-| User config directory | `~/.config/thoth/` | `~/.config/doxa-research/` |
+| User config directory | `~/.config/thoth/` | `~/.config/doxa/` |
 | Test runner script | `./thoth_test` | `./doxa_test` |
 
 Provider-namespaced API key variables (`OPENAI_API_KEY`,
@@ -38,9 +38,9 @@ Provider-namespaced API key variables (`OPENAI_API_KEY`,
 
 3. **Move your config directory** (if you had one) and rename the config file inside:
    ```bash
-   mv ~/.config/thoth ~/.config/doxa-research
-   mv ~/.config/doxa-research/thoth.config.toml \
-      ~/.config/doxa-research/doxa-research.config.toml 2>/dev/null || true
+   mv ~/.config/thoth ~/.config/doxa
+   mv ~/.config/doxa/thoth.config.toml \
+      ~/.config/doxa/doxa.config.toml 2>/dev/null || true
    doxa providers list              # verify the new config loads cleanly
    ```
 

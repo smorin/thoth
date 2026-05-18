@@ -4,7 +4,7 @@ Doxa Research talks to three Deep Research backends. Each provider has its
 own auth, configuration knobs, and model catalog. This document is the
 detailed reference; the [README](../README.md) covers the 30-second setup.
 
-All settings below live in `~/.config/doxa-research/doxa-research.config.toml`
+All settings below live in `~/.config/doxa/doxa.config.toml`
 unless noted otherwise. Run `doxa providers list` to see which providers
 are currently configured.
 
@@ -28,7 +28,7 @@ precedence):
    export OPENAI_API_KEY="sk-..."
    ```
 
-3. **Configuration file** (`~/.config/doxa-research/doxa-research.config.toml`):
+3. **Configuration file** (`~/.config/doxa/doxa.config.toml`):
    ```toml
    [providers.openai]
    api_key = "${OPENAI_API_KEY}"  # Reference env var
@@ -39,24 +39,32 @@ precedence):
 ### Configuration options
 
 All OpenAI settings can be configured in
-`~/.config/doxa-research/doxa-research.config.toml`:
+`~/.config/doxa/doxa.config.toml`:
 
 ```toml
 [providers.openai]
 api_key = "${OPENAI_API_KEY}"  # API key (required)
-model = "gpt-4o"                # Model to use (default: gpt-4o)
+model = "o3"                    # Model to use (default: o3 for general modes)
 timeout = 30.0                  # Request timeout in seconds (default: 30.0)
-temperature = 0.7               # Creativity/randomness (0.0-2.0, default: 0.7)
+temperature = 0.7               # Creativity/randomness, 0.0–2.0 (ignored by o3/o3-deep-research)
 max_tokens = 4000               # Maximum response tokens (default: 4000)
 ```
 
 ### Available models
 
-- `gpt-4o` (default) — Optimized GPT-4 model
-- `gpt-4o-mini` — Smaller, faster, cost-effective version
-- `gpt-3.5-turbo` — Fast and economical model
+Doxa Research ships these OpenAI models in its built-in catalog:
 
-Run `doxa providers models -P openai` to list models live from the API.
+- `o3` — Reasoning model used by the `default`, `clarification`, and
+  `openai_reasoning` modes.
+- `o3-deep-research` — Deep-research model used by the `deep_research`,
+  `exploration`, `deep_dive`, `tutorial`, `solution`, `prd`, and `tdd`
+  modes.
+- `o4-mini-deep-research` — Lower-cost deep-research variant used by the
+  `quick_research` mode.
+
+Run `doxa providers models -P openai` to list models live from the API
+(includes any additional models your OpenAI account exposes — Doxa will
+accept them but the built-in modes are tuned for the three above).
 
 ### CLI options
 

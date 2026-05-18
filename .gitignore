@@ -48,7 +48,6 @@ snapshot_report.html
 
 # Doxa Research specific
 research-outputs/
-~/.doxa-research/checkpoints/
 *.md
 openai.env
 

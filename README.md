@@ -176,7 +176,7 @@ You pay each provider's API directly — Doxa does not add cost or take a cut. R
 | Gemini | `deep-research-preview-04-2026` | $1–$3 (preview pricing; paid Tier 1+ required) |
 | Gemini | `deep-research-max-preview-04-2026` | $3–$7 (max comprehensiveness) |
 
-A single `doxa ask` run with all three providers active typically costs **$2–$15** depending on the prompt and which models are enabled. Provider keys come from environment variables or `~/.config/doxa-research/doxa-research.config.toml`; providers without keys are skipped, so you only pay for what runs.
+A single `doxa ask` run with all three providers active typically costs **$2–$15** depending on the prompt and which models are enabled. Provider keys come from environment variables or `~/.config/doxa/doxa.config.toml`; providers without keys are skipped, so you only pay for what runs.
 
 Immediate (non-Deep-Research) modes — `gemini_quick`, `gemini_pro`, plain chat completions — are much cheaper, typically **$0.001–$0.10 per run**.
 
@@ -205,11 +205,11 @@ Sources blocks land per-provider, so you can see which model is grounding on whi
 **Plan an implementation (PRD-style output)**
 
 ```bash
-doxa ask --mode openai_prd "Plan a multi-tenant SaaS architecture using Postgres \
+doxa ask --mode prd "Plan a multi-tenant SaaS architecture using Postgres \
   row-level security. Include schema, RLS policies, and a migration plan."
 ```
 
-The `*_prd` modes are tuned for design-document output rather than reference research.
+The `prd` / `gemini_prd` modes are tuned for design-document output rather than reference research.
 
 **Quick single-provider research**
 
@@ -230,7 +230,7 @@ doxa ask --async --mode gemini_deep_research "Comprehensive review of consensus 
 doxa resume research-20260518-093412-...
 ```
 
-`doxa resume <op-id>` re-attaches to the in-flight provider jobs via the checkpoint stored under `~/.config/doxa-research/checkpoints/`.
+`doxa resume <op-id>` re-attaches to the in-flight provider jobs via the checkpoint stored under `~/.local/state/doxa/checkpoints/`.
 
 ## Authentication
 
@@ -242,7 +242,7 @@ Authentication — recommended order:
    export PERPLEXITY_API_KEY=pplx-...
    ```
 
-2. **Config file** (persistent, per-machine): `~/.config/doxa-research/doxa-research.config.toml`
+2. **Config file** (persistent, per-machine): `~/.config/doxa/doxa.config.toml`
    ```toml
    [providers.openai]
    api_key = "sk-..."
@@ -255,7 +255,7 @@ Authentication — recommended order:
 
 For related command help, run `doxa config --help`.
 
-> **🔐 Security note.** Never commit `.env`, `openai.env`, or your `~/.config/doxa-research/doxa-research.config.toml` to a public repository — these files contain provider API keys that grant paid access. The project's `.gitignore` already excludes `openai.env` at the repo root; if you store keys elsewhere, double-check they're ignored. Prefer environment variables in shell-rc files (sourced at session start, not committed) or `~/.config/doxa-research/` (in your home dir, not in any repo) over CLI flags (which leak into shell history).
+> **🔐 Security note.** Never commit `.env`, `openai.env`, or your `~/.config/doxa/doxa.config.toml` to a public repository — these files contain provider API keys that grant paid access. The project's `.gitignore` already excludes `openai.env` at the repo root; if you store keys elsewhere, double-check they're ignored. Prefer environment variables in shell-rc files (sourced at session start, not committed) or `~/.config/doxa/` (in your home dir, not in any repo) over CLI flags (which leak into shell history).
 
 ## Usage
 
@@ -385,7 +385,7 @@ upstream job runs to completion.
 
 Each mode is declared as `kind = "immediate"` (synchronous, streaming)
 or `kind = "background"` (async, polling-loop). User-defined modes in
-`~/.config/doxa-research/doxa-research.config.toml` should declare `kind` explicitly; missing
+`~/.config/doxa/doxa.config.toml` should declare `kind` explicitly; missing
 `kind` warns once and falls back to a substring heuristic on the model
 name.
 
@@ -485,7 +485,7 @@ doxa list --all
 
 ## Configuration
 
-Configuration file is stored at `~/.config/doxa-research/doxa-research.config.toml`. Key settings:
+Configuration file is stored at `~/.config/doxa/doxa.config.toml`. Key settings:
 
 - `default_project`: Default project name for outputs
 - `default_mode`: Default research mode
@@ -513,8 +513,8 @@ Selection precedence is `--profile` → `DOXA_PROFILE` → `general.default_prof
 `doxa-research config get general.default_profile` reflects the **persisted pointer** in the file. `--profile` and `DOXA_PROFILE` are read-only runtime inputs — they never write back to `general.default_profile`. With persisted `general.default_profile = "fast"`, running `doxa-research --profile bar config get general.default_profile` returns `"fast"`; the runtime active selection is `bar`.
 
 Profile CLI management is available through `doxa-research config profiles ...`.
-Manual editing of `~/.config/doxa-research/doxa-research.config.toml` (or project-scoped
-`./doxa.config.toml` / `./.doxa-research.config.toml`) still works when you need to
+Manual editing of `~/.config/doxa/doxa.config.toml` (or project-scoped
+`./doxa.config.toml` / `./.doxa.config.toml`) still works when you need to
 make larger structural changes.
 
 #### Managing profiles from the CLI
@@ -536,17 +536,14 @@ doxa config profiles unset-default       # clear the persisted pointer
 
 `--profile` is honored only by `list` and `current`. `show NAME` and mutator commands reject `--profile` because the profile they inspect or operate on is the positional argument.
 
-### Migrating from earlier Doxa Research versions
+### Migrating from `thoth`
 
-Doxa Research previously read three different filenames depending on location. Starting with vX.Y.0, the canonical name is `doxa-research.config.toml` everywhere:
+The `thoth` → `doxa-research` rename in v3.0.0 changed config paths,
+env var prefixes, and the test-runner script. See
+[MIGRATION.md](MIGRATION.md) for the full migration steps.
 
-| Old | New |
-|---|---|
-| `~/.config/doxa-research/config.toml` | `~/.config/doxa-research/doxa-research.config.toml` |
-| `./doxa.toml` | `./doxa.config.toml` *or* `./.doxa-research.config.toml` |
-| `./.doxa-research/config.toml` | `./.doxa-research.config.toml` *or* `./doxa.config.toml` |
-
-The old filenames are no longer read. Rename them with `mv`. If both `./doxa.config.toml` and `./.doxa-research.config.toml` exist in the same project, config-loading commands refuse to start until one is deleted. `doxa-research init --user` is a user-tier write and still creates or repairs `~/.config/doxa-research/doxa-research.config.toml` from that directory.
+If both `./doxa.config.toml` and `./.doxa.config.toml` exist in the same
+project, config-loading commands refuse to start until one is deleted.
 
 #### Change the default mode for a profile
 
@@ -647,7 +644,7 @@ Resolution outcomes:
 | `deep` | `default` | `Be thorough. Cite primary sources where possible.` (profiles.deep) |
 | `deep` | `deep_research` | `Be thorough. Cite primary sources. Include counter-arguments.` (profiles.deep.modes.deep_research) |
 
-`doxa-research init` ships these profiles pre-populated in your config (`~/.config/doxa-research/doxa-research.config.toml`): `daily`, `quick`, `openai_deep`, `all_deep`, `interactive`, and `deep_research` — the last one demonstrates the `prompt_prefix` hierarchy end-to-end. Edit or delete them as you like.
+`doxa-research init` ships these profiles pre-populated in your config (`~/.config/doxa/doxa.config.toml`): `daily`, `quick`, `openai_deep`, `all_deep`, `interactive`, and `deep_research` — the last one demonstrates the `prompt_prefix` hierarchy end-to-end. Edit or delete them as you like.
 
 ## Provider configuration
 
@@ -779,23 +776,20 @@ just check && ./doxa_test -r
 API keys are resolved in the following order (highest to lowest priority):
 1. Command-line arguments (`--api-key-openai`, `--api-key-perplexity`, `--api-key-gemini`, `--api-key-mock`)
 2. Environment variables (`OPENAI_API_KEY`, `PERPLEXITY_API_KEY`, `GEMINI_API_KEY`, `MOCK_API_KEY`)
-3. Configuration file (`~/.config/doxa-research/doxa-research.config.toml`)
+3. Configuration file (`~/.config/doxa/doxa.config.toml`)
 
 ## Exit Codes
 
 | Code | Meaning |
 |------|---------|
 | 0 | Success |
-| 1 | Validation error or user abort |
-| 2 | Missing API key |
-| 3 | Unsupported provider |
-| 4 | API/network failure |
-| 5 | Timeout exceeded |
-| 6 | Operation not found |
-| 7 | Config/IO error |
+| 1 | Validation error, config error, mode/profile lookup failure, or user abort |
+| 2 | Missing API key, or Click usage error (bad arguments) |
+| 3 | Upstream provider failure |
+| 6 | Operation not found (for `resume` / `cancel` / `status`) |
 | 8 | Disk space error |
 | 9 | API quota exceeded |
-| 10 | Checkpoint corruption |
+| 10 | API rate limit exceeded |
 | 127 | Unexpected error |
 
 ## Commands Reference
