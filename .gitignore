@@ -72,6 +72,8 @@ openai.env
 !docs/superpowers/plans/*.md
 !projects/*.md
 !docs/json-output.md
+!docs/COMMANDS.md
+!docs/providers.md
 !research/*.md
 !MILESTONES.md
 !doxa_vcr.md

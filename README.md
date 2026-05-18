@@ -5,6 +5,7 @@
 [![Downloads](https://img.shields.io/pypi/dm/doxa-research)](https://pypi.org/project/doxa-research/)
 [![CI](https://github.com/smorin/doxa-research/actions/workflows/ci.yml/badge.svg)](https://github.com/smorin/doxa-research/actions/workflows/ci.yml)
 [![Last commit](https://img.shields.io/github/last-commit/smorin/doxa-research)](https://github.com/smorin/doxa-research/commits/main)
+[![GitHub stars](https://img.shields.io/github/stars/smorin/doxa-research?style=flat&logo=github)](https://github.com/smorin/doxa-research/stargazers)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue)](LICENSE)
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
 [![uv](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/uv/main/assets/badge/v0.json)](https://github.com/astral-sh/uv)
@@ -21,6 +22,8 @@ doxa ask "What are the latest advances in distributed consensus?"
 ```
 
 The result lands as a markdown file in `./research-outputs/`.
+
+> ⭐ **Like what you see?** [Star the repo](https://github.com/smorin/doxa-research) — it helps others find Doxa and signals which Deep Research integrations to prioritize next.
 
 <details>
 <summary><strong>Table of contents</strong></summary>
@@ -646,105 +649,20 @@ Resolution outcomes:
 
 `doxa-research init` ships these profiles pre-populated in your config (`~/.config/doxa-research/doxa-research.config.toml`): `daily`, `quick`, `openai_deep`, `all_deep`, `interactive`, and `deep_research` — the last one demonstrates the `prompt_prefix` hierarchy end-to-end. Edit or delete them as you like.
 
-## Provider Configuration
+## Provider configuration
 
-### OpenAI Provider
+Each provider (OpenAI, Perplexity, Gemini) has its own auth, models, and
+tunable knobs. The 30-second setup is in the
+[Authentication](#authentication) section above. For the full reference —
+config-file keys, model lists, Gemini cost tiers, the 9 `gemini_*_research`
+modes — see **[docs/providers.md](docs/providers.md)**.
 
-The OpenAI provider integrates with OpenAI's Chat Completions API for AI-powered research.
-
-#### API Key Setup
-
-Configure your OpenAI API key using one of these methods (in order of precedence):
-
-1. **Command-line flag** (highest priority):
-   ```bash
-   doxa-research "prompt" --api-key-openai "sk-..." --provider openai
-   ```
-
-2. **Environment variable**:
-   ```bash
-   export OPENAI_API_KEY="sk-..."
-   ```
-
-3. **Configuration file** (`~/.config/doxa-research/doxa-research.config.toml`):
-   ```toml
-   [providers.openai]
-   api_key = "${OPENAI_API_KEY}"  # Reference env var
-   # Or directly:
-   api_key = "sk-..."
-   ```
-
-#### Configuration Options
-
-All OpenAI settings can be configured in `~/.config/doxa-research/doxa-research.config.toml`:
-
-```toml
-[providers.openai]
-api_key = "${OPENAI_API_KEY}"  # API key (required)
-model = "gpt-4o"                # Model to use (default: gpt-4o)
-timeout = 30.0                  # Request timeout in seconds (default: 30.0)
-temperature = 0.7               # Creativity/randomness (0.0-2.0, default: 0.7)
-max_tokens = 4000               # Maximum response tokens (default: 4000)
-```
-
-#### Available Models
-
-- `gpt-4o` (default) - Optimized GPT-4 model
-- `gpt-4o-mini` - Smaller, faster, cost-effective version
-- `gpt-3.5-turbo` - Fast and economical model
-
-#### CLI Options
-
-Override configuration via command-line:
+Quick check that your provider is wired up correctly:
 
 ```bash
-# Set custom timeout
-doxa "prompt" --provider openai --timeout 60.0
-
-# Verbose mode shows configuration
-doxa "prompt" --provider openai -v
+doxa providers list           # show which providers are configured
+doxa providers models -P openai   # list models live from the API
 ```
-
-#### Performance Tuning
-
-**Temperature Settings:**
-- `0.0-0.3`: Factual, consistent responses
-- `0.4-0.7`: Balanced creativity (default)
-- `0.8-1.2`: Creative, varied responses
-
-**Timeout Recommendations:**
-- Short prompts: 15-30 seconds
-- Deep research: 60-120 seconds
-- Complex analysis: 180+ seconds
-
-### Gemini Deep Research costs
-
-Gemini Deep Research is a paid-tier feature (Tier 1+ on Google AI Studio).
-Estimated cost per task:
-- `deep-research-preview-04-2026` (default for the 9 `gemini_*_research` modes): **$1–$3 per task**
-- `deep-research-max-preview-04-2026` (deferred to a successor project): **$3–$7 per task**
-
-Both agents are currently in **preview**; pricing and behavior may change.
-The 60-minute hard research-time limit is enforced upstream — if you hit
-this with longer prompts, set `[execution].max_wait = 60` in your config
-(default is 30 minutes).
-
-### Gemini modes
-
-The 9 background deep-research modes each map to the
-`deep-research-preview-04-2026` model via the Gemini Interactions API:
-
-| Mode | Description |
-|---|---|
-| `gemini_quick_research` | Quick Gemini Deep Research — short summary. |
-| `gemini_exploration` | Open-ended exploratory Gemini Deep Research. |
-| `gemini_deep_dive` | In-depth Gemini Deep Research dive. |
-| `gemini_tutorial` | Tutorial-format Gemini Deep Research. |
-| `gemini_solution` | Solution-recommendation Gemini Deep Research. |
-| `gemini_prd` | PRD-format Gemini Deep Research. |
-| `gemini_tdd` | TDD-plan Gemini Deep Research. |
-| `gemini_deep_research` | Exhaustive Gemini Deep Research. |
-| `gemini_comparison` | Comparison-table Gemini Deep Research. |
 
 ## Error Handling
 
@@ -790,7 +708,7 @@ Each output file includes (unless `--no-metadata` is used):
 prompt: What is Python?
 mode: default
 provider: openai
-model: gpt-4o
+model: o3-deep-research
 operation_id: research-20250802-154755-a38d159848984fa8
 created_at: 2025-08-02T15:47:55.468596
 ---
@@ -810,7 +728,7 @@ For modes with system prompts:
 query: explain kubernetes
 mode: deep_research
 provider: openai
-model: gpt-4o
+model: o3-deep-research
 operation_id: research-20250802-154755-a38d159848984fa8
 created_at: 2025-08-02T15:47:55.468596
 ---
@@ -837,162 +755,15 @@ User: explain kubernetes
 
 ## Development
 
-### Bootstrap With `make`
-
-`make` is bootstrap-only in this repo. Run `make env-check` first on a new machine or shell to verify the local environment before using `just`:
-
-```bash
-make env-check   # Verify uv, python3, and just are installed
-make check-uv    # Verify uv is installed
-make help        # Show bootstrap commands
-```
-
-For all development, quality, test, build, and release workflows, use `just`:
+Setup, the full `just` task list, the `doxa_test` matrix, and the
+live-API marker workflow are all in **[CONTRIBUTING.md](CONTRIBUTING.md)**.
+Quickstart for contributors:
 
 ```bash
-just --list              # Show all available tasks
-just check               # Run code-quality checks for src/doxa_research/
-just lint                # Lint src/doxa_research/
-just typecheck           # Type-check src/doxa_research/
-just fix                 # Auto-fix and format src/doxa_research/
-just test-lint           # Lint doxa_test
-just test-typecheck      # Type-check doxa_test
-just test-fix            # Auto-fix and format doxa_test
-just check-all           # Check src/doxa_research/ and doxa_test
-just fix-all             # Fix and format src/doxa_research/ and doxa_test
-just test                # Run ./doxa_test -r
-just test-skip-interactive  # Run tests skipping interactive coverage
-just test-vcr            # Run cassette-backed pytest coverage
-just update-snapshots    # Regenerate pytest snapshot files
-just clean               # Remove local build and cache artifacts
-just install             # Sync dependencies with uv
-just build               # Build distribution packages
-just publish-test        # Publish to TestPyPI
-just publish             # Publish to PyPI
-```
-
-### Running Tests
-
-```bash
-# Quick manual smoke check of the CLI itself (not the regression suite)
-./doxa "test prompt" --provider mock
-```
-
-Use `doxa_test` for the actual regression suite. It mixes provider-agnostic CLI tests, mock-provider runs, interactive `pexpect` coverage, and provider-specific tests that only run when the needed API keys are present.
-
-| Command | What it runs | When to use it |
-|------|---------|---------|
-| `just test` | Full `doxa_test` suite (`./doxa_test -r`) | Local full validation before merging |
-| `./doxa_test -r` | All available tests for the current environment | Default comprehensive test run |
-| `just test-skip-interactive` | Mock + provider-agnostic tests, skipping interactive `pexpect` cases | Fast CI-safe pass or non-TTY environments |
-| `./doxa_test -r --interactive` | Interactive-only `pexpect` tests (`INT-*`) | Debugging terminal UI and interactive mode |
-| `./doxa_test -r --provider mock` | Provider-agnostic tests plus mock-provider coverage | Fastest broad regression run with no real API keys |
-| `./doxa_test -r --provider openai` | Provider-agnostic tests plus OpenAI-specific cases | Validating OpenAI integration with a real key |
-| `./doxa_test -r --provider gemini` | Provider-agnostic tests plus Gemini-specific smoke cases | Validating Gemini runner wiring with a real key |
-| `./doxa_test -r --all-providers` | Every provider test the suite knows about | Full provider matrix validation |
-| `just test-extended` | Real-API provider contract tests (`pytest -m "extended and not extended_slow"`) | Nightly job; manual when investigating provider-API changes |
-| `just test-extended-openai` / `just test-extended-perplexity` / `just test-extended-gemini` | Provider-scoped extended tests | Debugging one provider without running the full live contract matrix |
-| `just test-live-api` | Real-API CLI workflow regression suite (`pytest -m "live_api and not extended_slow"`) | Weekly job (Sat 7pm PDT); manual when verifying user-visible streaming/file/secret behavior |
-| `just test-live-api-openai` / `just test-live-api-perplexity` / `just test-live-api-gemini` | Provider-scoped live workflow tests | Debugging one provider's live CLI workflows |
-
-`doxa_test -r` behaves like this:
-- Always runs provider-agnostic tests.
-- Always runs mock-provider tests because the suite auto-generates a mock key.
-- Runs interactive tests unless you pass `--skip-interactive`.
-- Skips OpenAI and Perplexity tests when their API keys are not set.
-
-Useful commands:
-
-```bash
-# Full suite with whatever providers are available in your environment
-./doxa_test -r
-
-# Run tests skipping interactive (pexpect) tests — fast, CI-safe
-./doxa_test -r --provider mock --skip-interactive
-# or equivalently
-just test-skip-interactive
-
-# Run interactive tests only
-./doxa_test -r --interactive
-
-# Run the broad no-API-key path most contributors use
-./doxa_test -r --provider mock
-
-# Run OpenAI provider tests (requires API key)
-./doxa_test -r --provider openai -t M8T
-
-# Run all provider tests
-./doxa_test -r --all-providers
-
-# Run specific test pattern
-./doxa_test -r -t "async" -v
-
-# Save stdout/stderr and metadata for each test under test_outputs/
-./doxa_test -r --provider mock --save-output
-```
-
-### Real Provider Extended Tests
-
-The `extended` pytest marker is for live provider calls that mock tests cannot
-prove. The default pytest selection excludes these tests, so they only run when
-you ask for them explicitly.
-
-Fast extended tests should stay intentional because they spend real API budget.
-The current required live scenarios are:
-
-| Scenario ID | What it proves | Cost behavior |
-|------|---------|---------|
-| `test_model_kind_matches_runtime_behavior[...]` | Every `KNOWN_MODELS` OpenAI, Perplexity, and Gemini model kind matches upstream runtime behavior | Immediate models complete; background models use best-effort cleanup |
-| `test_ext_*_mode_*_passthrough` | OpenAI, Perplexity, and Gemini provider request settings reach the real provider-specific request shape | Non-live request-construction guard under the extended marker |
-| `EXT-OAI-IMM-STREAM-TEE` | Immediate OpenAI streaming writes the same live text to stdout and an `--out` file | Completes immediately |
-| `EXT-OAI-BG-JSON-AUTO-ASYNC` | Background `ask --json` auto-submits asynchronously without explicit `--async` | Cancels in cleanup |
-| `EXT-OAI-BG-JSON-EXPLICIT-ASYNC` | Background `ask --async --json` returns the expected submit envelope | Cancels in cleanup |
-| `EXT-OAI-BG-CANCEL-CMD` | `doxa-research cancel <op-id> --json` cancels a live OpenAI background job through the user-facing CLI | Cancels in test |
-| `EXT-OAI-BG-ASYNC-BLOCKING-RESUME-COMPLETE` | Full lifecycle: async submit, blocking `resume`, completed checkpoint, and output file metadata | Runs to completion; opt-in with `DOXA_EXTENDED_SLOW=1` |
-
-To run the fast live provider extended set manually:
-
-```bash
-# Export the provider keys you want this run to cover. If openai.env contains
-# shell-style assignments:
-set -a
-source openai.env
-set +a
-
-# If openai.env is just the raw OpenAI key instead:
-export OPENAI_API_KEY="$(cat openai.env)"
-
-# Also export PERPLEXITY_API_KEY and GEMINI_API_KEY for those provider slices.
-
-uv run pytest -m "extended and not extended_slow" tests/extended -v
-```
-
-To run only the slow full lifecycle tests:
-
-```bash
-DOXA_EXTENDED_SLOW=1 uv run pytest \
-  -m "extended and extended_slow" \
-  tests/extended \
-  -v
-```
-
-The slow tests intentionally let background jobs finish so they can validate
-blocking resume, final checkpoint state, result extraction, and output-file
-metadata. Keep them out of routine local validation unless you are explicitly
-checking those lifecycles.
-
-Verification workflow used in this repo:
-
-```bash
-make env-check
-just fix
-just check
-./doxa_test -r
-just test-lint
-just test-typecheck
-just test-fix
-just test-lint
-just test-typecheck
+git clone https://github.com/smorin/doxa-research.git
+cd doxa-research
+make env-check && lefthook install && uv sync
+just check && ./doxa_test -r
 ```
 
 ## Environment Variables
@@ -1029,31 +800,19 @@ API keys are resolved in the following order (highest to lowest priority):
 
 ## Commands Reference
 
-### Main Commands
+See [`docs/COMMANDS.md`](docs/COMMANDS.md) for the full CLI surface, or run `doxa <command> --help` for authoritative per-command help.
 
-| Command | Description | Example |
-|---------|-------------|---------|
-| (default) | Run research with prompt | `doxa-research "your research prompt"` |
-| ask | Run research with an explicit subcommand | `doxa-research ask "your research prompt"` |
-| resume | Resume a checkpointed operation | `doxa-research resume research-20240803-143022-xxx` |
-| cancel | Cancel an in-flight background operation | `doxa-research cancel research-20240803-143022-xxx` |
-| init | Setup wizard for API keys | `doxa-research init` |
-| status | Show operation details | `doxa-research status research-20240803-143022-xxx` |
-| list | Show recent operations | `doxa-research list` |
-| config | Inspect and edit configuration | `doxa-research config get general.default_mode` |
-| modes | List research modes | `doxa-research modes list` |
-| providers | Manage providers and models | `doxa-research providers list` |
-| completion | Generate shell completion scripts | `doxa-research completion zsh` |
-| help | Show help information | `doxa-research help [COMMAND]` |
+Most-used commands:
 
-### Providers Subcommands
-
-| Subcommand | Description | Example |
-|------------|-------------|---------|
-| list | Show available providers and status | `doxa-research providers list` |
-| models | List models from providers | `doxa-research providers models` |
-| check | Show API key configuration | `doxa-research providers check` |
-| --provider, -P | Filter by specific provider | `doxa-research providers models -P openai` |
+| Command | What it does |
+|---|---|
+| `doxa ask "<prompt>"` | Run research across all configured providers |
+| `doxa resume <op-id>` | Re-attach to a checkpointed operation |
+| `doxa cancel <op-id>` | Cancel an in-flight background operation |
+| `doxa status <op-id>` | Show operation details |
+| `doxa providers list` | Show available providers and key status |
+| `doxa modes list` | List research modes |
+| `doxa init` | Setup wizard for keys and config |
 
 ## Version History
 
