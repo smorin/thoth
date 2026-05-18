@@ -329,6 +329,14 @@ async def run_research(
         cli_api_keys=cli_api_keys,
     )
 
+    # Preflight: immediate modes must be single-provider. Two upstream model
+    # spaces (immediate vs Deep Research) don't mix; fan-out is background-only.
+    from doxa_research.config import mode_kind as _mode_kind
+    from doxa_research.errors import ImmediateMultiProviderError
+
+    if _mode_kind(mode_config) == "immediate" and len(providers_to_use) > 1:
+        raise ImmediateMultiProviderError(mode, providers_to_use)
+
     providers = {}
     for provider_name in providers_to_use:
         try:

@@ -270,3 +270,48 @@ class ModeKindMismatchError(DoxaError):
             ),
             exit_code=1,
         )
+
+
+class ImmediateMultiProviderError(DoxaError):
+    """Preflight: an immediate-kind mode cannot declare multiple providers.
+
+    Doxa has two upstream model spaces:
+      * Immediate models — fast, single-provider, streaming output
+        (e.g. gpt-4.1-mini, sonar, gemini-2.5-flash-lite). Built-ins:
+        `openai_quick`, `perplexity_quick`, `gemini_quick`.
+      * Deep Research models — long-running, background, support
+        multi-provider fan-out (e.g. o3-deep-research, sonar-deep-research,
+        deep-research-preview-04-2026). Built-in fan-out: `all_deep_research`.
+
+    The two families are distinct upstream and cannot be mixed: an immediate
+    mode that declares `providers: [a, b, ...]` is structurally invalid.
+    Raised at preflight before any provider is instantiated.
+
+    Attributes:
+      * mode_name — the offending mode
+      * providers — the multi-provider list that triggered the error
+    """
+
+    def __init__(self, mode_name: str, providers: list[str]):
+        self.mode_name = mode_name
+        self.providers = providers
+        super().__init__(
+            (
+                f"Mode '{mode_name}' is kind='immediate' but declares "
+                f"{len(providers)} providers ({', '.join(providers)}). "
+                f"Immediate modes are single-provider by design."
+            ),
+            (
+                "Doxa has two separate upstream model spaces:\n"
+                "  - Immediate models: fast, single-provider, streaming. "
+                "Built-ins: openai_quick, perplexity_quick, gemini_quick.\n"
+                "  - Deep Research models: long-running, background, "
+                "support multi-provider fan-out. Built-in: all_deep_research "
+                "(openai -> o3-deep-research, perplexity -> sonar-deep-research, "
+                "gemini -> deep-research-preview-04-2026).\n"
+                "To fan out across all three providers, use "
+                "`--mode all_deep_research`. To call one provider quickly, "
+                "use `--mode openai_quick` (or perplexity_quick / gemini_quick)."
+            ),
+            exit_code=1,
+        )
