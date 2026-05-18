@@ -110,39 +110,53 @@ For per-provider config and resumable / cancellable workflows see [Usage](#usage
 
 ## What a Doxa report looks like
 
-A combined multi-provider report (excerpt):
+A combined multi-provider report (excerpt). The frontmatter shape and
+section wrappers are what Doxa emits; the body underneath each
+`## <Provider> Results` heading is the model's own output, including
+its inline citations and sources.
 
 ```markdown
 ---
 prompt: Compare Paxos, Raft, and Viewstamped Replication.
 mode: default
-providers: openai, perplexity, gemini
+provider: combined
+model: Multiple
 operation_id: research-20260517-103412-a38d159848984fa8
-created_at: 2026-05-17T10:34:12Z
+created_at: 2026-05-17T10:34:12.481593
 ---
 
 ### Prompt
 
+```
 Compare Paxos, Raft, and Viewstamped Replication.
+```
 
-## OpenAI — o3-deep-research
+# Combined Research Report: Compare Paxos, Raft, and Viewstamped Replication.
+
+Generated: 2026-05-17T10:42:08.117244
+
+## Openai Results
 
 Paxos, Raft, and Viewstamped Replication (VR) are three foundational consensus
 protocols that achieve agreement among distributed nodes despite failures.
-[…3-8 pages of analysis, with inline citation anchors…]
+[…3–8 pages of analysis from o3-deep-research, with inline citation anchors…]
 
 ### Sources
 - [Paxos Made Simple — Lamport (lamport.azurewebsites.net)](https://...)
 - [In Search of an Understandable Consensus Algorithm (usenix.org)](https://...)
 - [Viewstamped Replication Revisited (pmg.csail.mit.edu)](https://...)
 
-## Perplexity — sonar-deep-research
+---
 
-[parallel synthesis from Perplexity with its own ### Sources block]
+## Perplexity Results
 
-## Gemini — deep-research-preview-04-2026
+[parallel synthesis from sonar-deep-research with its own ### Sources block]
 
-[parallel synthesis from Gemini Deep Research with its own ### Sources block]
+---
+
+## Gemini Results
+
+[parallel synthesis from deep-research-preview-04-2026 with its own ### Sources block]
 ```
 
 Each provider contributes a self-contained section with its own citations. Pass `--combined false` to write per-provider files instead.
@@ -722,7 +736,7 @@ What is Python?
 For modes with system prompts:
 ```yaml
 ---
-query: explain kubernetes
+prompt: explain kubernetes
 mode: deep_research
 provider: openai
 model: o3-deep-research
@@ -765,11 +779,23 @@ just check && ./doxa_test -r
 
 ## Environment Variables
 
-- `OPENAI_API_KEY`: OpenAI API key
-- `PERPLEXITY_API_KEY`: Perplexity API key
-- `GEMINI_API_KEY`: Gemini API key
-- `MOCK_API_KEY`: Mock provider API key (for testing)
-- `DOXA_DEBUG`: Enable debug output (set to 1)
+**Provider API keys** (read by both `doxa ask` and the test suite):
+- `OPENAI_API_KEY` — OpenAI API key
+- `PERPLEXITY_API_KEY` — Perplexity API key
+- `GEMINI_API_KEY` — Gemini API key
+- `MOCK_API_KEY` — Mock provider key (test harness auto-generates one if unset)
+
+**Runtime / debug:**
+- `DOXA_DEBUG=1` — Enable debug output
+- `DOXA_PROFILE=<name>` — Select an active profile for this process
+
+**Config-key overrides** (each maps to a `doxa.config.toml` key; env wins
+over the file but loses to a `--flag` of the same name):
+- `DOXA_DEFAULT_MODE` — overrides `general.default_mode`
+- `DOXA_DEFAULT_PROJECT` — overrides `general.default_project`
+- `DOXA_OUTPUT_DIR` — overrides `paths.base_output_dir`
+- `DOXA_POLL_INTERVAL` — overrides `execution.poll_interval`
+- `DOXA_MAX_WAIT` — overrides `execution.max_wait`
 
 ### API Key Precedence
 

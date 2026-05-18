@@ -1,7 +1,8 @@
 # Commands reference
 
 Full CLI surface for `doxa` / `doxa-research`. Run `doxa <command> --help`
-for the authoritative per-command help.
+for the authoritative per-command help — this document is a cross-reference,
+not a substitute.
 
 ## Main commands
 
@@ -15,7 +16,7 @@ for the authoritative per-command help.
 | `status` | Show operation details | `doxa status research-20260518-093412-xxx` |
 | `list` | Show recent operations | `doxa list` |
 | `config` | Inspect and edit configuration | `doxa config get general.default_mode` |
-| `modes` | List research modes | `doxa modes list` |
+| `modes` | List or mutate research modes | `doxa modes list` |
 | `providers` | Manage providers and models | `doxa providers list` |
 | `completion` | Generate shell completion scripts | `doxa completion zsh` |
 | `help` | Show help information | `doxa help [COMMAND]` |
@@ -24,13 +25,115 @@ for the authoritative per-command help.
 
 | Subcommand | Description | Example |
 |------------|-------------|---------|
-| `list` | Show available providers and status | `doxa providers list` |
-| `models` | List models from providers | `doxa providers models` |
-| `check` | Show API key configuration | `doxa providers check` |
-| `--provider`, `-P` | Filter by specific provider | `doxa providers models -P openai` |
+| `list` | Show available providers and key status | `doxa providers list` |
+| `models` | List models from providers (use `--refresh-cache` to force live fetch) | `doxa providers models -P openai` |
+| `check` | Show API key configuration sources | `doxa providers check` |
+
+All three accept `--provider`, `-P <name>` to filter to a single provider.
+
+## `config` subcommands
+
+| Subcommand | Description | Example |
+|------------|-------------|---------|
+| `get KEY` | Read a configuration value (use `--layer` to pin to defaults/user/project/profile/env/cli) | `doxa config get providers.openai.model` |
+| `set KEY VALUE` | Persist a value (defaults to the user-tier config file) | `doxa config set general.default_mode deep_research` |
+| `unset KEY` | Remove a key from the target tier | `doxa config unset providers.openai.timeout` |
+| `list` | Dump the merged configuration; supports `--json` | `doxa config list --json` |
+| `path` | Show the resolved config file path | `doxa config path` |
+| `edit` | Open the active config file in `$EDITOR` | `doxa config edit` |
+| `help` | Show config command help | `doxa config help` |
+
+### `config profiles` subcommands
+
+| Subcommand | Description | Example |
+|------------|-------------|---------|
+| `list` | List configuration profiles | `doxa config profiles list` |
+| `show NAME` | Show a single profile's contents | `doxa config profiles show daily` |
+| `current` | Show the runtime active profile and its source | `doxa config profiles current` |
+| `add NAME` | Create profile `NAME` (idempotent) | `doxa config profiles add my_profile` |
+| `set NAME KEY VALUE` | Set a key on profile `NAME` | `doxa config profiles set daily general.default_mode quick_research` |
+| `unset NAME KEY` | Remove a key from profile `NAME` | `doxa config profiles unset daily general.default_mode` |
+| `remove NAME` | Delete profile `NAME` (idempotent) | `doxa config profiles remove old_profile` |
+| `set-default NAME` | Persist `general.default_profile = NAME` | `doxa config profiles set-default daily` |
+| `unset-default` | Remove `general.default_profile` from the target file | `doxa config profiles unset-default` |
+
+All `config` mutators accept `--config PATH`, `--profile NAME`, and `--json`.
+Use `--project` to write to `./doxa.config.toml` instead of the user-tier file.
+
+## `modes` subcommands
+
+| Subcommand | Description | Example |
+|------------|-------------|---------|
+| `list` | List research modes (filter with `--kind`, `--source`, `--name`; supports `--json`) | `doxa modes list --kind deep_research` |
+| `add NAME --model MODEL [--description D] [--kind K]` | Define a new mode | `doxa modes add my_mode --model o3-deep-research --kind deep_research` |
+| `set NAME KEY VALUE` | Set a key on mode `NAME` | `doxa modes set my_mode temperature 0.3` |
+| `unset NAME KEY` | Remove a key from mode `NAME` | `doxa modes unset my_mode temperature` |
+| `remove NAME` | Delete a custom mode | `doxa modes remove my_mode` |
+| `rename OLD NEW` | Rename a custom mode | `doxa modes rename old new` |
+| `copy SRC DST [--from-profile X] [--override]` | Copy a mode definition; use `--override` to shadow a builtin name | `doxa modes copy deep_research deep_research_lite` |
+| `set-default NAME` | Persist `general.default_mode = NAME` | `doxa modes set-default deep_research` |
+| `unset-default` | Remove `general.default_mode` from the target file | `doxa modes unset-default` |
+
+All mutators accept `--project`, `--config PATH`, `--profile X`, and `--json`.
+
+## Built-in modes catalog
+
+These ship with `doxa init`. List them at runtime with `doxa modes list`
+(add `--kind immediate` or `--kind deep_research` to filter).
+
+### General modes (provider-agnostic)
+
+| Mode | Default model | Notes |
+|---|---|---|
+| `default` | `o3` (OpenAI) | Plain question answering, no system prompt |
+| `clarification` | `o3` | Asks Doxa for clarifying questions before research |
+| `quick_research` | `o4-mini-deep-research` | Cheaper, faster Deep Research |
+| `exploration` | `o3-deep-research` | Open-ended exploratory research |
+| `deep_dive` | `o3-deep-research` | In-depth research dive |
+| `tutorial` | `o3-deep-research` | Tutorial-format output |
+| `solution` | `o3-deep-research` | Solution-recommendation output |
+| `prd` | `o3-deep-research` | PRD-style design document |
+| `tdd` | `o3-deep-research` | TDD plan / implementation outline |
+| `comparison` | `o3-deep-research` | Comparison-table output |
+| `deep_research` | `o3-deep-research` | Exhaustive Deep Research |
+| `thinking` | `o3` | Reasoning model, no deep-research overhead |
+
+The chain `exploration` → `deep_dive` → `tutorial` → `solution` → `prd` → `tdd`
+mirrors the Gemini chain (below) and is intended for multi-stage Deep
+Research workflows where each stage's output can feed the next.
+
+### Provider-pinned variants
+
+| Mode | Provider | Default model |
+|---|---|---|
+| `openai_reasoning` | OpenAI | `o3` |
+| `perplexity_quick` | Perplexity | `sonar` |
+| `perplexity_pro` | Perplexity | `sonar-pro` |
+| `perplexity_reasoning` | Perplexity | `sonar-reasoning-pro` |
+| `perplexity_deep_research` | Perplexity | `sonar-deep-research` |
+| `gemini_quick` | Gemini | `gemini-2.5-flash-lite` |
+| `gemini_pro` | Gemini | `gemini-2.5-pro` |
+| `gemini_reasoning` | Gemini | `gemini-2.5-pro` |
+
+### Gemini Deep Research modes
+
+All map to `deep-research-preview-04-2026`:
+
+| Mode | Description |
+|---|---|
+| `gemini_quick_research` | Quick Gemini Deep Research — short summary |
+| `gemini_exploration` | Open-ended exploratory Gemini Deep Research |
+| `gemini_deep_dive` | In-depth Gemini Deep Research dive |
+| `gemini_tutorial` | Tutorial-format Gemini Deep Research |
+| `gemini_solution` | Solution-recommendation Gemini Deep Research |
+| `gemini_prd` | PRD-format Gemini Deep Research |
+| `gemini_tdd` | TDD-plan Gemini Deep Research |
+| `gemini_deep_research` | Exhaustive Gemini Deep Research |
+| `gemini_comparison` | Comparison-table Gemini Deep Research |
 
 ## See also
 
 - [README.md](../README.md) — start here
 - [docs/providers.md](providers.md) — per-provider configuration details
 - [docs/json-output.md](json-output.md) — `--json` envelope contract
+- [CONTRIBUTING.md](../CONTRIBUTING.md) — development workflow
