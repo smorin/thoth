@@ -73,6 +73,7 @@ openai.env
 !docs/json-output.md
 !docs/COMMANDS.md
 !docs/providers.md
+!docs/HERO-RECORDING.md
 !research/*.md
 !MILESTONES.md
 !doxa_vcr.md
