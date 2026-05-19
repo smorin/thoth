@@ -334,6 +334,43 @@ class CombinedNeedsMultiProviderError(DoxaError):
         )
 
 
+class ModelOverrideMultiProviderError(DoxaError):
+    """`--model NAME` is ambiguous on a multi-provider mode.
+
+    Standardization #5: each provider in a multi-provider mode has its
+    own per-provider namespace model (`mode.openai.model`,
+    `mode.perplexity.model`, etc.) that wins in the parameter_config.py
+    merge order. A single `--model NAME` flag can't sensibly fan out to
+    three different upstream model spaces — gpt-4.1-mini doesn't exist
+    on Perplexity, sonar doesn't exist on Gemini.
+
+    Attributes:
+      * mode_name — the multi-provider mode the user invoked
+      * providers — the list that would have run
+      * model     — the override the user attempted
+    """
+
+    def __init__(self, mode_name: str, providers: list[str], model: str):
+        self.mode_name = mode_name
+        self.providers = providers
+        self.model = model
+        super().__init__(
+            (
+                f"--model '{model}' is ambiguous on multi-provider mode "
+                f"'{mode_name}' ({', '.join(providers)} would run)."
+            ),
+            (
+                "Each provider in a multi-provider mode has its own per-provider "
+                "model (e.g. openai -> o3-deep-research, perplexity -> "
+                "sonar-deep-research, gemini -> deep-research-preview-04-2026). "
+                "Narrow to one provider first: --provider PROVIDER --model "
+                f"{model}. Or edit the mode's per-provider namespace model "
+                "in your config to change defaults persistently."
+            ),
+            exit_code=1,
+        )
+
+
 class ImmediateMultiProviderError(DoxaError):
     """Preflight: an immediate-kind mode cannot declare multiple providers.
 

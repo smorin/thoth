@@ -319,7 +319,16 @@ async def run_research(
     mode_config = config.get_mode_config(mode)
 
     if model_override is not None:
+        # Patch both the mode-generic model AND the matching per-provider
+        # namespace if narrowing with --provider X. Otherwise the
+        # parameter_config.py merge order (namespace > generic) would
+        # silently drop the override on modes that have a per-provider
+        # namespace (e.g. openai_quick, all_deep_research after narrowing).
         mode_config = {**mode_config, "model": model_override}
+        if provider:
+            existing_ns = mode_config.get(provider)
+            if isinstance(existing_ns, dict):
+                mode_config[provider] = {**existing_ns, "model": model_override}
 
     providers_to_use = _select_providers(
         provider=provider,
@@ -336,6 +345,7 @@ async def run_research(
         BackgroundFlagError,
         CombinedNeedsMultiProviderError,
         ImmediateMultiProviderError,
+        ModelOverrideMultiProviderError,
     )
 
     _resolved_kind = _mode_kind(mode_config)
@@ -354,6 +364,12 @@ async def run_research(
     # --combined needs N providers to combine.
     if combined and len(providers_to_use) < 2:
         raise CombinedNeedsMultiProviderError(mode, providers_to_use)
+
+    # --model NAME is ambiguous on multi-provider modes (per-provider
+    # namespace models would win in the merge order anyway). Force the user
+    # to narrow with --provider first.
+    if model_override is not None and len(providers_to_use) > 1:
+        raise ModelOverrideMultiProviderError(mode, providers_to_use, model_override)
 
     providers = {}
     for provider_name in providers_to_use:
