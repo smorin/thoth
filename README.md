@@ -170,7 +170,7 @@ protocols that achieve agreement among distributed nodes despite failures.
 [parallel synthesis from deep-research-preview-04-2026 with its own ### Sources block]
 ```
 
-Each provider contributes a self-contained section with its own citations. Pass `--combined false` to write per-provider files instead.
+Each provider contributes a self-contained section with its own citations. `--combined` is a boolean flag (no value): pass it to synthesize the unified report shown above, or omit it to get per-provider files only.
 
 ## Why Doxa?
 
@@ -730,7 +730,7 @@ Each output file includes (unless `--no-metadata` is used):
 prompt: What is Python?
 mode: default
 provider: openai
-model: o3-deep-research
+model: o3
 operation_id: research-20250802-154755-a38d159848984fa8
 created_at: 2025-08-02T15:47:55.468596
 ---

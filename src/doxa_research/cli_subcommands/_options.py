@@ -134,7 +134,7 @@ _RESEARCH_OPTIONS: list[tuple[tuple, dict]] = [
                 "Output options: stream sink for immediate-mode runs. '-' = stdout "
                 "(default if no --out given), PATH = file. Repeatable; comma-list "
                 "also accepted; every sink receives every byte (tee). Background "
-                "modes ignore --out — use --output-dir / --project instead."
+                "modes reject --out at preflight — use --output-dir / --project instead."
             ),
         },
     ),
@@ -143,9 +143,10 @@ _RESEARCH_OPTIONS: list[tuple[tuple, dict]] = [
         {
             "is_flag": True,
             "help": (
-                "Output options: open --out files in append mode instead of "
-                "truncating. No effect on stdout sinks or on background-mode "
-                "auto-named files."
+                "Output options: only valid with --out on immediate-kind runs; "
+                "opens --out files in append mode instead of truncating. Has no "
+                "effect on stdout sinks. Background modes reject --append at "
+                "preflight (their auto-named files are always written atomically)."
             ),
         },
     ),

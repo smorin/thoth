@@ -770,7 +770,17 @@ class ConfigManager:
                 stacklevel=2,
             )
             target_str = str(target_name)
-            mode_config = (BUILTIN_MODES.get(target_str) or {}).copy()
+            if target_str not in BUILTIN_MODES:
+                # Defensive: an alias stub pointing at a non-existent target
+                # would silently produce an empty mode_config and undermine
+                # the ModeNotFoundError contract. Treat it as missing.
+                available = sorted(
+                    name
+                    for name in BUILTIN_MODES
+                    if "_deprecated_alias_for" not in BUILTIN_MODES[name]
+                )
+                raise ModeNotFoundError(target_str, available_modes=available)
+            mode_config = BUILTIN_MODES[target_str].copy()
             user_mode = user_modes.get(mode, {})
             return self._deep_merge(mode_config, user_mode)
 

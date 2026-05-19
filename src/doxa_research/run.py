@@ -694,10 +694,11 @@ async def _execute_immediate(
     await checkpoint_manager.save(operation)
 
     if not quiet and (project or output_dir):
-        if project:
-            saved_to = f"{output_dir or 'current directory'}/{project}/"
-        else:
-            saved_to = str(output_dir)
+        # Use the actually-resolved output directory rather than reconstructing
+        # from --project / --output-dir, which would lie when --project is set
+        # without --output-dir (the file lands in base_output_dir/<project>/).
+        op_path = operation.output_paths.get(provider_name)
+        saved_to = str(op_path.parent) if op_path else str(output_dir or "")
         target_console.print(f"\n[green]✓[/green] Saved to: [dim]{saved_to}[/dim]")
 
 

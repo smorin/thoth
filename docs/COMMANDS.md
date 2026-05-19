@@ -64,8 +64,8 @@ Use `--project` to write to `./doxa.config.toml` instead of the user-tier file.
 
 | Subcommand | Description | Example |
 |------------|-------------|---------|
-| `list` | List research modes (filter with `--kind`, `--source`, `--name`; supports `--json`) | `doxa modes list --kind deep_research` |
-| `add NAME --model MODEL [--description D] [--kind K]` | Define a new mode | `doxa modes add my_mode --model o3-deep-research --kind deep_research` |
+| `list` | List research modes (filter with `--kind`, `--source`, `--name`; supports `--json`) | `doxa modes list --kind background` |
+| `add NAME --model MODEL [--description D] [--kind K]` | Define a new mode | `doxa modes add my_mode --model o3-deep-research --kind background` |
 | `set NAME KEY VALUE` | Set a key on mode `NAME` | `doxa modes set my_mode temperature 0.3` |
 | `unset NAME KEY` | Remove a key from mode `NAME` | `doxa modes unset my_mode temperature` |
 | `remove NAME` | Delete a custom mode | `doxa modes remove my_mode` |
@@ -79,7 +79,7 @@ All mutators accept `--project`, `--config PATH`, `--profile X`, and `--json`.
 ## Built-in modes catalog
 
 These ship with `doxa init`. List them at runtime with `doxa modes list`
-(add `--kind immediate` or `--kind deep_research` to filter).
+(add `--kind immediate` or `--kind background` to filter).
 
 ### General modes (provider-agnostic)
 
