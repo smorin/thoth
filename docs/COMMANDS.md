@@ -150,4 +150,5 @@ All map to `deep-research-preview-04-2026`:
 - [README.md](../README.md) — start here
 - [docs/providers.md](providers.md) — per-provider configuration details
 - [docs/json-output.md](json-output.md) — `--json` envelope contract
+- [docs/HERO-RECORDING.md](HERO-RECORDING.md) — re-recording the README asciinema hero
 - [CONTRIBUTING.md](../CONTRIBUTING.md) — development workflow
