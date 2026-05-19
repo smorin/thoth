@@ -407,6 +407,82 @@ def test_immediate_writes_side_channel_events_to_file_sink(
 
 
 # ---------------------------------------------------------------------------
+# Persistence-gate decoupling — `--project` is no longer the sole trigger for
+# OutputManager.save_result on the immediate path. Any destination flag
+# (--project OR --output-dir) triggers persistence. Without either, the
+# stream is the only output (matches Unix-tool intuition).
+# ---------------------------------------------------------------------------
+
+
+def test_immediate_output_dir_alone_triggers_persistence(
+    stub_config,
+    tmp_path: Path,
+) -> None:
+    """`--output-dir DIR` without `--project` writes an auto-named file.
+
+    Pre-fix: this was a silent no-op — the persistence gate keyed on
+    `if project:` alone, so passing only `--output-dir` produced stdout
+    output and nothing on disk. Now `--output-dir` is also a destination
+    flag and triggers OutputManager.save_result.
+    """
+    operation = make_operation("research-outdir-only")
+    output_stub = _OutputCaptureStub()
+    asyncio.run(
+        _execute_immediate(
+            operation=operation,
+            checkpoint_manager=_CheckpointStub(),  # ty: ignore[invalid-argument-type]
+            output_manager=output_stub,  # ty: ignore[invalid-argument-type]
+            config=stub_config,
+            mode_config={"system_prompt": None},
+            providers={"perplexity": _SideChannelProvider()},
+            quiet=True,
+            verbose=False,
+            output_dir=str(tmp_path),
+            project=None,
+            mode="perplexity_quick",
+            prompt="hi",
+            out_specs=(),
+            append=False,
+            ctx=AppContext(config=stub_config),
+        )
+    )
+    assert len(output_stub.calls) == 1, "save_result should be called when --output-dir is given"
+    assert output_stub.calls[0]["output_dir"] == str(tmp_path)
+
+
+def test_immediate_no_destination_flag_does_not_persist(
+    stub_config,
+) -> None:
+    """No destination flags → stream-only, no file persistence.
+
+    Regression check: confirms the gate is still gated; we're decoupling
+    `--project` from being the sole trigger, not removing the gate.
+    """
+    operation = make_operation("research-streamonly")
+    output_stub = _OutputCaptureStub()
+    asyncio.run(
+        _execute_immediate(
+            operation=operation,
+            checkpoint_manager=_CheckpointStub(),  # ty: ignore[invalid-argument-type]
+            output_manager=output_stub,  # ty: ignore[invalid-argument-type]
+            config=stub_config,
+            mode_config={"system_prompt": None},
+            providers={"perplexity": _SideChannelProvider()},
+            quiet=True,
+            verbose=False,
+            output_dir=None,
+            project=None,
+            mode="perplexity_quick",
+            prompt="hi",
+            out_specs=(),
+            append=False,
+            ctx=AppContext(config=stub_config),
+        )
+    )
+    assert output_stub.calls == [], "save_result must not be called without a destination flag"
+
+
+# ---------------------------------------------------------------------------
 # P23-TS06 — explicit stream=False opts out of streaming entirely.
 # ---------------------------------------------------------------------------
 

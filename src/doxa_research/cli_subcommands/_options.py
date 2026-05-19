@@ -34,8 +34,26 @@ _RESEARCH_OPTIONS: list[tuple[tuple, dict]] = [
     (("--prompt", "-q", "prompt_opt"), {"help": "Research prompt"}),
     (("--prompt-file", "-F"), {"help": "Read prompt from file (use - for stdin)"}),
     (("--async", "-A", "async_mode"), {"is_flag": True, "help": "Submit and exit"}),
-    (("--project", "-p"), {"help": "Project name"}),
-    (("--output-dir", "-o"), {"help": "Override output directory"}),
+    (
+        ("--project", "-p"),
+        {
+            "help": (
+                "Project name. Output options: files land under "
+                "<base_output_dir>/<NAME>/<auto>.md (or under --output-dir/<NAME>/ "
+                "if --output-dir is also set). Also enables --auto mode-chaining."
+            ),
+        },
+    ),
+    (
+        ("--output-dir", "-o"),
+        {
+            "help": (
+                "Output options: directory for auto-named result files. Used by "
+                "background modes (always) and immediate modes when explicitly set. "
+                "For per-sink streaming paths see --out instead."
+            ),
+        },
+    ),
     (
         ("--provider", "-P"),
         {
@@ -84,14 +102,27 @@ _RESEARCH_OPTIONS: list[tuple[tuple, dict]] = [
     (("--profile", "profile"), {"help": "Configuration profile to apply"}),
     (
         ("--combined",),
-        {"is_flag": True, "help": "Generate combined report from multiple providers"},
+        {
+            "is_flag": True,
+            "help": (
+                "Output options: synthesize a combined report from multiple "
+                "providers (background multi-provider modes only, e.g. "
+                "all_deep_research). The combined file lands alongside the "
+                "per-provider files under the same destination."
+            ),
+        },
     ),
     (("--quiet", "-Q"), {"is_flag": True, "help": "Minimal output during execution"}),
     (
         ("--no-metadata",),
         {
             "is_flag": True,
-            "help": "Disable metadata headers and prompt section in output files",
+            "help": (
+                "Output options: suppress the YAML frontmatter (prompt, mode, "
+                "provider, model, operation_id) in saved files. Streaming output "
+                "via --out is unaffected — frontmatter is only added by saved "
+                "files."
+            ),
         },
     ),
     (("--timeout", "-T"), {"type": float, "help": "Override request timeout in seconds"}),
@@ -100,9 +131,10 @@ _RESEARCH_OPTIONS: list[tuple[tuple, dict]] = [
         {
             "multiple": True,
             "help": (
-                "P18: output sink for immediate-mode runs. '-' for stdout (default), "
-                "PATH for file. Repeatable; comma-list also accepted. "
-                "Background modes still use --output-dir / --project."
+                "Output options: stream sink for immediate-mode runs. '-' = stdout "
+                "(default if no --out given), PATH = file. Repeatable; comma-list "
+                "also accepted; every sink receives every byte (tee). Background "
+                "modes reject --out at preflight — use --output-dir / --project instead."
             ),
         },
     ),
@@ -110,7 +142,12 @@ _RESEARCH_OPTIONS: list[tuple[tuple, dict]] = [
         ("--append",),
         {
             "is_flag": True,
-            "help": "P18: open --out file in append mode instead of truncating",
+            "help": (
+                "Output options: only valid with --out on immediate-kind runs; "
+                "opens --out files in append mode instead of truncating. Has no "
+                "effect on stdout sinks. Background modes reject --append at "
+                "preflight (their auto-named files are always written atomically)."
+            ),
         },
     ),
     (("--interactive", "-i"), {"is_flag": True, "help": "Enter interactive prompt mode"}),

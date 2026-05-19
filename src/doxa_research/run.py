@@ -319,7 +319,16 @@ async def run_research(
     mode_config = config.get_mode_config(mode)
 
     if model_override is not None:
+        # Patch both the mode-generic model AND the matching per-provider
+        # namespace if narrowing with --provider X. Otherwise the
+        # parameter_config.py merge order (namespace > generic) would
+        # silently drop the override on modes that have a per-provider
+        # namespace (e.g. openai_quick, all_deep_research after narrowing).
         mode_config = {**mode_config, "model": model_override}
+        if provider:
+            existing_ns = mode_config.get(provider)
+            if isinstance(existing_ns, dict):
+                mode_config[provider] = {**existing_ns, "model": model_override}
 
     providers_to_use = _select_providers(
         provider=provider,
@@ -328,6 +337,39 @@ async def run_research(
         config=config,
         cli_api_keys=cli_api_keys,
     )
+
+    # Preflight: refuse flag/mode combinations that would silently no-op.
+    # Each error names the flag, the mode, and the correct alternative.
+    from doxa_research.config import mode_kind as _mode_kind
+    from doxa_research.errors import (
+        BackgroundFlagError,
+        CombinedNeedsMultiProviderError,
+        ImmediateMultiProviderError,
+        ModelOverrideMultiProviderError,
+    )
+
+    _resolved_kind = _mode_kind(mode_config)
+
+    # Immediate modes are single-provider by design (two model spaces don't mix).
+    if _resolved_kind == "immediate" and len(providers_to_use) > 1:
+        raise ImmediateMultiProviderError(mode, providers_to_use)
+
+    # Streaming-only flags don't make sense on background modes.
+    if _resolved_kind == "background":
+        if out_specs:
+            raise BackgroundFlagError("--out", mode)
+        if append:
+            raise BackgroundFlagError("--append", mode)
+
+    # --combined needs N providers to combine.
+    if combined and len(providers_to_use) < 2:
+        raise CombinedNeedsMultiProviderError(mode, providers_to_use)
+
+    # --model NAME is ambiguous on multi-provider modes (per-provider
+    # namespace models would win in the merge order anyway). Force the user
+    # to narrow with --provider first.
+    if model_override is not None and len(providers_to_use) > 1:
+        raise ModelOverrideMultiProviderError(mode, providers_to_use, model_override)
 
     providers = {}
     for provider_name in providers_to_use:
@@ -627,9 +669,16 @@ async def _execute_immediate(
     final_text = "".join(aggregated)
     operation.providers[provider_name]["status"] = "completed"
 
-    # Persist via output_manager only when the user asked for it via
-    # --project. Otherwise the streamed output is the user-visible result.
-    if project:
+    # Persist via output_manager when the user opted in via ANY destination
+    # flag — either --project NAME (project subdirectory namespace) or
+    # --output-dir DIR (explicit directory). Both flags express "I want a
+    # file here"; without either, the streamed output is the user-visible
+    # result and no auto-named file is also written. Standardization note:
+    # `--project` was previously the sole gate; making `--output-dir` an
+    # equal trigger fixes a silent-ignore bug and removes the side-effect
+    # overload of `--project` (which previously meant both "subdirectory
+    # namespace" AND "please persist").
+    if project or output_dir:
         provider_model = getattr(provider_instance, "model", None)
         output_path = await output_manager.save_result(
             operation,
@@ -644,10 +693,13 @@ async def _execute_immediate(
     operation.transition_to("completed")
     await checkpoint_manager.save(operation)
 
-    if not quiet and project:
-        target_console.print(
-            f"\n[green]✓[/green] Saved to: [dim]{output_dir or 'current directory'}/{project}/[/dim]"
-        )
+    if not quiet and (project or output_dir):
+        # Use the actually-resolved output directory rather than reconstructing
+        # from --project / --output-dir, which would lie when --project is set
+        # without --output-dir (the file lands in base_output_dir/<project>/).
+        op_path = operation.output_paths.get(provider_name)
+        saved_to = str(op_path.parent) if op_path else str(output_dir or "")
+        target_console.print(f"\n[green]✓[/green] Saved to: [dim]{saved_to}[/dim]")
 
 
 async def _maybe_cancel_upstream_and_raise(

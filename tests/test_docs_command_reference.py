@@ -7,6 +7,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 README = REPO_ROOT / "README.md"
+COMMANDS_DOC = REPO_ROOT / "docs" / "COMMANDS.md"
 JSON_OUTPUT_DOC = REPO_ROOT / "docs" / "json-output.md"
 
 
@@ -19,12 +20,18 @@ def _section(text: str, heading: str) -> str:
     return rest[: next_heading.start()]
 
 
-def test_readme_main_command_reference_lists_all_registered_top_level_commands() -> None:
+def test_commands_doc_lists_all_registered_top_level_commands() -> None:
+    """docs/COMMANDS.md is the canonical reference for the CLI surface.
+
+    Previously the README carried a `### Main Commands` table; the R14
+    structural pass moved that table to docs/COMMANDS.md (`## Main commands`).
+    This test now enforces coverage at the new location.
+    """
     from doxa_research.cli import cli
 
-    text = README.read_text(encoding="utf-8")
-    section = _section(text, "### Main Commands")
-    documented = set(re.findall(r"^\| ([a-z][a-z-]*) \|", section, flags=re.MULTILINE))
+    text = COMMANDS_DOC.read_text(encoding="utf-8")
+    section = _section(text, "## Main commands")
+    documented = set(re.findall(r"^\| `?([a-z][a-z-]*)`? \|", section, flags=re.MULTILINE))
     registered = {
         name for name, command in cli.commands.items() if not getattr(command, "hidden", False)
     }

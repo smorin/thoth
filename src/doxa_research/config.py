@@ -329,6 +329,32 @@ BUILTIN_MODES = {
         "previous": None,
         "next": None,
     },
+    "all_deep_research": {
+        "providers": ["openai", "perplexity", "gemini"],
+        "parallel": True,
+        "kind": "background",
+        "system_prompt": (
+            "Conduct comprehensive research with citations and multiple "
+            "perspectives. Organize findings clearly and highlight key insights."
+        ),
+        "description": (
+            "Parallel Deep Research across OpenAI, Perplexity, and Gemini. "
+            "Fans one prompt out to all three providers concurrently, each "
+            "using its own Deep Research model."
+        ),
+        "openai": {"model": "o3-deep-research"},
+        "perplexity": {"model": "sonar-deep-research"},
+        "gemini": {"model": "deep-research-preview-04-2026"},
+    },
+    "openai_quick": {
+        "provider": "openai",
+        "model": "gpt-4.1-mini",
+        "kind": "immediate",
+        "description": ("Fast OpenAI gpt-4.1-mini immediate mode with web search grounding."),
+        "openai": {
+            "web_search": True,
+        },
+    },
 }
 
 
@@ -706,9 +732,30 @@ class ConfigManager:
     def get_mode_config(self, mode: str) -> dict[str, Any]:
         """Get mode configuration, merging built-in with user config.
 
-        P18: resolves `_deprecated_alias_for` stubs with a one-time
-        DeprecationWarning per process. Aliases are removed in v4.0.0.
+        Raises ``ModeNotFoundError`` if ``mode`` is neither a built-in nor
+        a user-defined mode in the loaded config. Prior behavior silently
+        returned ``{}`` for unknown modes, which let bogus ``--mode FOO``
+        invocations fall through to default-mode dispatch — confusing and
+        a footgun. P18 alias stubs (`_deprecated_alias_for`) still resolve
+        with a one-time DeprecationWarning per process.
         """
+        from doxa_research.errors import ModeNotFoundError
+
+        user_modes = self.data.get("modes", {}) if isinstance(self.data.get("modes"), dict) else {}
+        in_builtin = mode in BUILTIN_MODES
+        in_user = mode in user_modes
+        if not in_builtin and not in_user:
+            # Enumerate everything resolvable so the suggestion is actionable.
+            available = sorted(
+                {
+                    name
+                    for name in BUILTIN_MODES
+                    if "_deprecated_alias_for" not in BUILTIN_MODES[name]
+                }
+                | set(user_modes)
+            )
+            raise ModeNotFoundError(mode, available_modes=available)
+
         # Resolve P18 alias stubs (e.g., `mini_research` → `quick_research`).
         builtin = BUILTIN_MODES.get(mode, {})
         target_name = builtin.get("_deprecated_alias_for")
@@ -723,13 +770,22 @@ class ConfigManager:
                 stacklevel=2,
             )
             target_str = str(target_name)
-            mode_config = (BUILTIN_MODES.get(target_str) or {}).copy()
-            # User config overlay still keyed on the original name.
-            user_mode = self.data.get("modes", {}).get(mode, {})
+            if target_str not in BUILTIN_MODES:
+                # Defensive: an alias stub pointing at a non-existent target
+                # would silently produce an empty mode_config and undermine
+                # the ModeNotFoundError contract. Treat it as missing.
+                available = sorted(
+                    name
+                    for name in BUILTIN_MODES
+                    if "_deprecated_alias_for" not in BUILTIN_MODES[name]
+                )
+                raise ModeNotFoundError(target_str, available_modes=available)
+            mode_config = BUILTIN_MODES[target_str].copy()
+            user_mode = user_modes.get(mode, {})
             return self._deep_merge(mode_config, user_mode)
 
         mode_config = builtin.copy()
-        user_mode = self.data.get("modes", {}).get(mode, {})
+        user_mode = user_modes.get(mode, {})
         return self._deep_merge(mode_config, user_mode)
 
     def get_effective_config(self) -> dict[str, Any]:

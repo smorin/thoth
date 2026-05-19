@@ -84,7 +84,14 @@ class OutputConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     combine_reports: bool = StarterField(False)
-    format: Literal["markdown", "json"] = StarterField("markdown")
+    # Standardization #7: previously also accepted "json", but the "json"
+    # branch was only half-implemented — it changed the file extension to
+    # `.json` and skipped the YAML frontmatter, but the file content was
+    # still raw markdown text. A `.json` file containing markdown was
+    # worse than nothing. Users who want JSON output for scripting should
+    # use the `--json` envelope flag on individual commands instead
+    # (see docs/json-output.md).
+    format: Literal["markdown"] = StarterField("markdown")
     include_metadata: bool = StarterField(True)
     timestamp_format: str = StarterField("%Y-%m-%d_%H%M%S")
 

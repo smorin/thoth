@@ -270,3 +270,147 @@ class ModeKindMismatchError(DoxaError):
             ),
             exit_code=1,
         )
+
+
+class BackgroundFlagError(DoxaError):
+    """A streaming-only flag was passed to a background-kind mode.
+
+    Standardization #4: stop silently ignoring `--out` and `--append` when
+    the user passes them to a background mode. Both flags target the
+    immediate streaming path (MultiSink); background runs write files via
+    the operation lifecycle and OutputManager, so streaming-only flags are
+    meaningless and silently dropping them was a footgun.
+
+    Attributes:
+      * flag_name  — the offending CLI flag (e.g. "--out", "--append")
+      * mode_name  — the background mode the user invoked
+    """
+
+    def __init__(self, flag_name: str, mode_name: str):
+        self.flag_name = flag_name
+        self.mode_name = mode_name
+        super().__init__(
+            (
+                f"Flag {flag_name} targets immediate-kind streaming runs only; "
+                f"mode '{mode_name}' is background."
+            ),
+            (
+                "Background modes write files atomically via the operation "
+                "lifecycle, not via streaming sinks. Use --output-dir DIR to "
+                "control where files land, or --project NAME for a subdirectory "
+                "namespace under base_output_dir. Drop --out / --append for "
+                "background modes."
+            ),
+            exit_code=1,
+        )
+
+
+class CombinedNeedsMultiProviderError(DoxaError):
+    """`--combined` was passed but only one provider would run.
+
+    Standardization #4: `--combined` synthesizes one unified report from
+    N per-provider outputs. With a single provider there's nothing to
+    combine — silently no-op'ing it would hide a user typo or misunderstanding.
+
+    Attributes:
+      * mode_name  — the mode the user invoked
+      * providers  — the (single-entry) providers list that would have run
+    """
+
+    def __init__(self, mode_name: str, providers: list[str]):
+        self.mode_name = mode_name
+        self.providers = providers
+        only = providers[0] if providers else "one provider"
+        super().__init__(
+            (
+                f"--combined needs multiple providers to synthesize from, but "
+                f"mode '{mode_name}' would run only {only}."
+            ),
+            (
+                "Use a multi-provider background mode like all_deep_research "
+                "(openai + perplexity + gemini fan-out), or drop --combined."
+            ),
+            exit_code=1,
+        )
+
+
+class ModelOverrideMultiProviderError(DoxaError):
+    """`--model NAME` is ambiguous on a multi-provider mode.
+
+    Standardization #5: each provider in a multi-provider mode has its
+    own per-provider namespace model (`mode.openai.model`,
+    `mode.perplexity.model`, etc.) that wins in the parameter_config.py
+    merge order. A single `--model NAME` flag can't sensibly fan out to
+    three different upstream model spaces — gpt-4.1-mini doesn't exist
+    on Perplexity, sonar doesn't exist on Gemini.
+
+    Attributes:
+      * mode_name — the multi-provider mode the user invoked
+      * providers — the list that would have run
+      * model     — the override the user attempted
+    """
+
+    def __init__(self, mode_name: str, providers: list[str], model: str):
+        self.mode_name = mode_name
+        self.providers = providers
+        self.model = model
+        super().__init__(
+            (
+                f"--model '{model}' is ambiguous on multi-provider mode "
+                f"'{mode_name}' ({', '.join(providers)} would run)."
+            ),
+            (
+                "Each provider in a multi-provider mode has its own per-provider "
+                "model (e.g. openai -> o3-deep-research, perplexity -> "
+                "sonar-deep-research, gemini -> deep-research-preview-04-2026). "
+                "Narrow to one provider first: --provider PROVIDER --model "
+                f"{model}. Or edit the mode's per-provider namespace model "
+                "in your config to change defaults persistently."
+            ),
+            exit_code=1,
+        )
+
+
+class ImmediateMultiProviderError(DoxaError):
+    """Preflight: an immediate-kind mode cannot declare multiple providers.
+
+    Doxa has two upstream model spaces:
+      * Immediate models — fast, single-provider, streaming output
+        (e.g. gpt-4.1-mini, sonar, gemini-2.5-flash-lite). Built-ins:
+        `openai_quick`, `perplexity_quick`, `gemini_quick`.
+      * Deep Research models — long-running, background, support
+        multi-provider fan-out (e.g. o3-deep-research, sonar-deep-research,
+        deep-research-preview-04-2026). Built-in fan-out: `all_deep_research`.
+
+    The two families are distinct upstream and cannot be mixed: an immediate
+    mode that declares `providers: [a, b, ...]` is structurally invalid.
+    Raised at preflight before any provider is instantiated.
+
+    Attributes:
+      * mode_name — the offending mode
+      * providers — the multi-provider list that triggered the error
+    """
+
+    def __init__(self, mode_name: str, providers: list[str]):
+        self.mode_name = mode_name
+        self.providers = providers
+        super().__init__(
+            (
+                f"Mode '{mode_name}' is kind='immediate' but declares "
+                f"{len(providers)} providers ({', '.join(providers)}). "
+                f"Immediate modes are single-provider by design."
+            ),
+            (
+                "Doxa has two separate upstream model spaces:\n"
+                "  - Immediate models: fast, single-provider, streaming. "
+                "Built-ins: openai_quick, perplexity_quick, gemini_quick.\n"
+                "  - Deep Research models: long-running, background, "
+                "support multi-provider fan-out. Built-in: all_deep_research "
+                "(openai -> o3-deep-research, perplexity -> sonar-deep-research, "
+                "gemini -> deep-research-preview-04-2026).\n"
+                "To fan out across all three providers, use "
+                "`--mode all_deep_research`. To call one provider quickly, "
+                "use `--mode openai_quick` (or perplexity_quick / gemini_quick)."
+            ),
+            exit_code=1,
+        )

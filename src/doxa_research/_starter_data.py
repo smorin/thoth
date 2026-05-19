@@ -44,10 +44,7 @@ STARTER_PROFILES: list[StarterProfile] = [
     StarterProfile(
         name="all_deep",
         body={
-            "general": {"default_mode": "deep_research"},
-            "modes": {
-                "deep_research": {"providers": ["openai", "perplexity"], "parallel": True},
-            },
+            "general": {"default_mode": "all_deep_research"},
         },
     ),
     StarterProfile(

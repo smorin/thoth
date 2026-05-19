@@ -4,7 +4,7 @@ The generated `~/.config/doxa_research/doxa.config.toml` should contain:
   - daily          — thinking + default project for daily notes
   - quick          — thinking (immediate)
   - openai_deep    — single-provider deep_research
-  - all_deep       — parallel openai+perplexity deep_research
+  - all_deep       — parallel openai+perplexity+gemini all_deep_research
   - interactive    — interactive default mode
   - deep_research  — deep_research with a `prompt_prefix` example
 """
@@ -62,7 +62,7 @@ def test_init_writes_parseable_config(init_run: Path) -> None:
         ("daily", "thinking"),
         ("quick", "thinking"),
         ("openai_deep", "deep_research"),
-        ("all_deep", "deep_research"),
+        ("all_deep", "all_deep_research"),
         ("interactive", "interactive"),
         ("deep_research", "deep_research"),
     ],
@@ -84,12 +84,61 @@ def test_openai_deep_profile_uses_single_provider(init_run: Path) -> None:
     assert deep.get("parallel") is False
 
 
-def test_all_deep_profile_uses_parallel_providers(init_run: Path) -> None:
+def test_all_deep_profile_uses_all_deep_research_mode(init_run: Path) -> None:
+    """The all_deep profile points at the multi-provider all_deep_research mode.
+
+    Previously it overrode `deep_research.providers` to `[openai, perplexity]`,
+    which produced wrong-model dispatch for Perplexity (mode-generic
+    `model: o3-deep-research` overrode Perplexity's own model). The
+    all_deep_research mode uses per-provider namespace models so each
+    provider runs its own Deep Research model.
+    """
     cm = ConfigManager()
     cm.load_all_layers({"_profile": "all_deep"})
-    deep = cm.data["modes"]["deep_research"]
-    assert deep.get("providers") == ["openai", "perplexity"]
-    assert deep.get("parallel") is True
+    assert cm.get("general.default_mode") == "all_deep_research"
+
+
+def test_all_deep_research_mode_fans_out_with_per_provider_models() -> None:
+    """all_deep_research is a built-in background mode that fans out to all
+    three providers in parallel, each with its own provider-specific DR model.
+    """
+    cm = ConfigManager()
+    cm.load_all_layers({})
+    mode = cm.get_mode_config("all_deep_research")
+    assert mode["kind"] == "background"
+    assert mode["providers"] == ["openai", "perplexity", "gemini"]
+    assert mode["parallel"] is True
+    assert mode["openai"]["model"] == "o3-deep-research"
+    assert mode["perplexity"]["model"] == "sonar-deep-research"
+    assert mode["gemini"]["model"] == "deep-research-preview-04-2026"
+
+
+def test_openai_quick_immediate_mode_uses_gpt_4_1_mini_with_web_search() -> None:
+    """openai_quick is the OpenAI counterpart of perplexity_quick / gemini_quick.
+
+    Modern fast immediate model (gpt-4.1-mini, April 2025) with web search
+    grounding enabled. Provides symmetric `*_quick` naming across the three
+    providers so users can grep `doxa modes list | grep quick` to find the
+    fast variant of any provider.
+    """
+    cm = ConfigManager()
+    cm.load_all_layers({})
+    mode = cm.get_mode_config("openai_quick")
+    assert mode["kind"] == "immediate"
+    assert mode["provider"] == "openai"
+    assert mode["model"] == "gpt-4.1-mini"
+    assert mode["openai"]["web_search"] is True
+
+
+def test_all_three_providers_have_symmetric_quick_modes() -> None:
+    """Every provider should have a *_quick immediate built-in so users can
+    discover the fast variant via `doxa modes list | grep quick`.
+    """
+    cm = ConfigManager()
+    cm.load_all_layers({})
+    for mode_name in ("openai_quick", "perplexity_quick", "gemini_quick"):
+        mode = cm.get_mode_config(mode_name)
+        assert mode["kind"] == "immediate", f"{mode_name} should be immediate kind"
 
 
 def test_deep_research_profile_carries_prompt_prefix(init_run: Path) -> None:

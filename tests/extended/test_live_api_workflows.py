@@ -47,9 +47,10 @@ class ImmediateProviderCase:
 
 
 IMMEDIATE_PROVIDER_CASES = [
+    # Symmetric `*_quick` per provider — see docs/COMMANDS.md "Provider-pinned variants".
     ImmediateProviderCase(
         provider="openai",
-        mode="thinking",
+        mode="openai_quick",
         env_var="OPENAI_API_KEY",
         api_key_flag="--api-key-openai",
         fixture_name="live_cli_env",
