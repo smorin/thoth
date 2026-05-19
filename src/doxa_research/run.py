@@ -329,13 +329,31 @@ async def run_research(
         cli_api_keys=cli_api_keys,
     )
 
-    # Preflight: immediate modes must be single-provider. Two upstream model
-    # spaces (immediate vs Deep Research) don't mix; fan-out is background-only.
+    # Preflight: refuse flag/mode combinations that would silently no-op.
+    # Each error names the flag, the mode, and the correct alternative.
     from doxa_research.config import mode_kind as _mode_kind
-    from doxa_research.errors import ImmediateMultiProviderError
+    from doxa_research.errors import (
+        BackgroundFlagError,
+        CombinedNeedsMultiProviderError,
+        ImmediateMultiProviderError,
+    )
 
-    if _mode_kind(mode_config) == "immediate" and len(providers_to_use) > 1:
+    _resolved_kind = _mode_kind(mode_config)
+
+    # Immediate modes are single-provider by design (two model spaces don't mix).
+    if _resolved_kind == "immediate" and len(providers_to_use) > 1:
         raise ImmediateMultiProviderError(mode, providers_to_use)
+
+    # Streaming-only flags don't make sense on background modes.
+    if _resolved_kind == "background":
+        if out_specs:
+            raise BackgroundFlagError("--out", mode)
+        if append:
+            raise BackgroundFlagError("--append", mode)
+
+    # --combined needs N providers to combine.
+    if combined and len(providers_to_use) < 2:
+        raise CombinedNeedsMultiProviderError(mode, providers_to_use)
 
     providers = {}
     for provider_name in providers_to_use:

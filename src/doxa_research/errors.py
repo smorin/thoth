@@ -272,6 +272,68 @@ class ModeKindMismatchError(DoxaError):
         )
 
 
+class BackgroundFlagError(DoxaError):
+    """A streaming-only flag was passed to a background-kind mode.
+
+    Standardization #4: stop silently ignoring `--out` and `--append` when
+    the user passes them to a background mode. Both flags target the
+    immediate streaming path (MultiSink); background runs write files via
+    the operation lifecycle and OutputManager, so streaming-only flags are
+    meaningless and silently dropping them was a footgun.
+
+    Attributes:
+      * flag_name  — the offending CLI flag (e.g. "--out", "--append")
+      * mode_name  — the background mode the user invoked
+    """
+
+    def __init__(self, flag_name: str, mode_name: str):
+        self.flag_name = flag_name
+        self.mode_name = mode_name
+        super().__init__(
+            (
+                f"Flag {flag_name} targets immediate-kind streaming runs only; "
+                f"mode '{mode_name}' is background."
+            ),
+            (
+                "Background modes write files atomically via the operation "
+                "lifecycle, not via streaming sinks. Use --output-dir DIR to "
+                "control where files land, or --project NAME for a subdirectory "
+                "namespace under base_output_dir. Drop --out / --append for "
+                "background modes."
+            ),
+            exit_code=1,
+        )
+
+
+class CombinedNeedsMultiProviderError(DoxaError):
+    """`--combined` was passed but only one provider would run.
+
+    Standardization #4: `--combined` synthesizes one unified report from
+    N per-provider outputs. With a single provider there's nothing to
+    combine — silently no-op'ing it would hide a user typo or misunderstanding.
+
+    Attributes:
+      * mode_name  — the mode the user invoked
+      * providers  — the (single-entry) providers list that would have run
+    """
+
+    def __init__(self, mode_name: str, providers: list[str]):
+        self.mode_name = mode_name
+        self.providers = providers
+        only = providers[0] if providers else "one provider"
+        super().__init__(
+            (
+                f"--combined needs multiple providers to synthesize from, but "
+                f"mode '{mode_name}' would run only {only}."
+            ),
+            (
+                "Use a multi-provider background mode like all_deep_research "
+                "(openai + perplexity + gemini fan-out), or drop --combined."
+            ),
+            exit_code=1,
+        )
+
+
 class ImmediateMultiProviderError(DoxaError):
     """Preflight: an immediate-kind mode cannot declare multiple providers.
 
