@@ -18,10 +18,13 @@ Doxa Research is a CLI for AI-powered deep research automation. It fans a single
 ```bash
 uvx doxa-research init                                  # one-time setup
 export OPENAI_API_KEY="sk-..."                          # any subset of providers works
-doxa ask "What are the latest advances in distributed consensus?"
+doxa ask "What are the latest advances in distributed consensus?"     # streams to terminal
+
+# Or fan out across all three providers in parallel (Deep Research, 5-15 min each):
+doxa ask --mode all_deep_research "What are the latest advances in distributed consensus?"
 ```
 
-The result lands as a markdown file in `./research-outputs/`.
+Immediate modes stream to your terminal. Background Deep Research modes (`all_deep_research`, `deep_research`, the `gemini_*_research` family) write each provider's report to `./research-outputs/`. See [docs/COMMANDS.md](docs/COMMANDS.md) for the full mode catalog.
 
 ![Doxa Research fanning out to OpenAI, Perplexity, and Gemini in parallel](docs/assets/hero.svg)
 
@@ -75,17 +78,17 @@ The result lands as a markdown file in `./research-outputs/`.
 ## How it works
 
 ```
-                   ┌────────────┐
-   prompt  ──────▶ │    doxa    │ ──────▶  research-outputs/<timestamp>_<mode>_combined.md
-                   └────────────┘
-                          │
-                          │  fans out concurrently
-                          │
+                   ┌────────────┐         research-outputs/
+   prompt  ──────▶ │    doxa    │ ──────▶  <ts>_all_deep_research_openai_<slug>.md
+                   └────────────┘          <ts>_all_deep_research_perplexity_<slug>.md
+                          │                <ts>_all_deep_research_gemini_<slug>.md
+                          │  fans out      <ts>_all_deep_research_combined_<slug>.md (--combined)
+                          │  concurrently
             ┌─────────────┼─────────────┐
             ▼             ▼             ▼
          OpenAI       Perplexity      Gemini
-        (o3-DR /     (sonar-DR)     (deep-research-
-       o4-mini-DR)                   preview-04-2026)
+       (o3-deep-     (sonar-deep-   (deep-research-
+        research)     research)      preview-04-2026)
 ```
 
 Each enabled provider runs in parallel. Doxa polls each one until completion (or timeout / cancel), then merges the results into a single markdown report with per-provider sections and citation blocks. Long-running background jobs (Deep Research) are checkpointed: you can `Ctrl-C` and resume later, or fire-and-forget with `--async` and pick the result up from a different terminal session via `doxa resume <op-id>`.
@@ -101,9 +104,15 @@ export OPENAI_API_KEY="sk-..."
 export PERPLEXITY_API_KEY="pplx-..."
 export GEMINI_API_KEY="..."        # paid Tier 1+ required for Gemini Deep Research
 
-# 3. Ask
+# 3. Ask — immediate single-provider, streams to terminal:
 doxa ask "Compare Paxos, Raft, and Viewstamped Replication."
-# → ./research-outputs/<timestamp>_default_combined.md
+
+# Or run Deep Research across all three providers in parallel:
+doxa ask --mode all_deep_research --combined "Compare Paxos, Raft, and Viewstamped Replication."
+# → ./research-outputs/<ts>_all_deep_research_openai_<slug>.md
+# → ./research-outputs/<ts>_all_deep_research_perplexity_<slug>.md
+# → ./research-outputs/<ts>_all_deep_research_gemini_<slug>.md
+# → ./research-outputs/<ts>_all_deep_research_combined_<slug>.md
 ```
 
 Prefer `pip install doxa-research` or `uv tool install doxa-research` if you want a permanent install instead of running via `uvx`.
