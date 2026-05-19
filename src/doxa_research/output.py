@@ -24,7 +24,6 @@ class OutputManager:
     def __init__(self, config: ConfigManager, no_metadata: bool = False):
         self.config = config
         self.base_output_dir = Path(config.data["paths"]["base_output_dir"])
-        self.format = config.data["output"]["format"]
         self.no_metadata = no_metadata
 
     def get_output_path(
@@ -56,8 +55,9 @@ class OutputManager:
         # Ensure directory exists
         base_dir.mkdir(parents=True, exist_ok=True)
 
-        # Generate filename with provider
-        ext = "md" if self.format == "markdown" else "json"
+        # Generate filename with provider. `output.format` is always
+        # "markdown" post-standardization #7; the `.md` extension is fixed.
+        ext = "md"
         if provider == "combined":
             # Special case for combined reports: <timestamp>_<mode>_combined_<slug>.md
             base_name = f"{timestamp}_{operation.mode}_combined_{slug}"
@@ -91,11 +91,7 @@ class OutputManager:
         if not check_disk_space(output_path.parent, 10):  # 10MB minimum
             raise DiskSpaceError("Insufficient disk space to save results")
 
-        if (
-            self.format == "markdown"
-            and self.config.data["output"]["include_metadata"]
-            and not self.no_metadata
-        ):
+        if self.config.data["output"]["include_metadata"] and not self.no_metadata:
             # Add metadata header
             metadata = f"""---
 prompt: {operation.prompt}
